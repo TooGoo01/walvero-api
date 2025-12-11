@@ -177,6 +177,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                                 FirstName = user.Name,
                                 LastName = user.Surname,
                                 Email = user.Email,
+                                WalveroId = user.WalveroId,
                                 BirthDate = user.DateOfBirth != null ? user.DateOfBirth : DateTime.Now,
                                 Roles = rolem,
                                 TenantId = user.TenantId,
@@ -193,44 +194,44 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 // Normal login uğursuz oldu və ya UserName/Password verilməyib
                 // Guest login istifadə et
-                if (_guestAuthService == null)
-                {
-                    return new ServiceResult(false, "Guest auth service not available");
-                }
+                //if (_guestAuthService == null)
+                //{
+                //    return new ServiceResult(false, "Guest auth service not available");
+                //}
 
-                var guestLoginDto = new GuestLoginDto
-                {
-                    DeviceId = loginUser.DeviceId
-                };
+                //var guestLoginDto = new GuestLoginDto
+                //{
+                //    DeviceId = loginUser.DeviceId
+                //};
 
-                var guestResult = await _guestAuthService.GuestLoginAsync(guestLoginDto);
+                //var guestResult = await _guestAuthService.GuestLoginAsync(guestLoginDto);
                 
-                if (guestResult.Success && guestResult.Data is GuestLoginResponseDto guestResponse)
-                {
-                    // GuestLoginResponseDto artıq tam məlumatları ehtiva edir, ona görə də birbaşa istifadə edə bilərik
-                    // UserSessionDto formatına çevir
-                    var detail = new UserSessionDto
-                    {
-                        Id = guestResponse.Id,
-                        UserName = guestResponse.UserName ?? "",
-                        FirstName = guestResponse.FirstName ?? "",
-                        LastName = guestResponse.LastName ?? "",
-                        Email = guestResponse.Email,
-                        Phone = guestResponse.Phone,
-                        BirthDate = guestResponse.BirthDate,
-                        Roles = guestResponse.Roles ?? new List<string>(),
-                        TenantId = guestResponse.TenantId,
-                        ProgramId = guestResponse.ProgramId,
-                        Token = guestResponse.Token,
-                        Expiration = guestResponse.Expiration,
-                        RefreshToken = guestResponse.RefreshToken,
-                        RefreshTokenExpiration = guestResponse.RefreshTokenExpiration
-                    };
+                //if (guestResult.Success && guestResult.Data is GuestLoginResponseDto guestResponse)
+                //{
+                //    // GuestLoginResponseDto artıq tam məlumatları ehtiva edir, ona görə də birbaşa istifadə edə bilərik
+                //    // UserSessionDto formatına çevir
+                //    var detail = new UserSessionDto
+                //    {
+                //        Id = guestResponse.Id,
+                //        UserName = guestResponse.UserName ?? "",
+                //        FirstName = guestResponse.FirstName ?? "",
+                //        LastName = guestResponse.LastName ?? "",
+                //        Email = guestResponse.Email,
+                //        Phone = guestResponse.Phone,
+                //        BirthDate = guestResponse.BirthDate,
+                //        Roles = guestResponse.Roles ?? new List<string>(),
+                //        TenantId = guestResponse.TenantId,
+                //        ProgramId = guestResponse.ProgramId,
+                //        Token = guestResponse.Token,
+                //        Expiration = guestResponse.Expiration,
+                //        RefreshToken = guestResponse.RefreshToken,
+                //        RefreshTokenExpiration = guestResponse.RefreshTokenExpiration
+                //    };
                     
-                    return new ServiceResult(true, detail, "guest login success");
-                }
+                //    return new ServiceResult(true, detail, "guest login success");
+                //}
 
-                return new ServiceResult(false, guestResult.Message ?? "Login failed");
+                return new ServiceResult(false, "Login failed");
             }
             catch (Exception ex)
             {
@@ -545,7 +546,7 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 // Check if user with this phone already exists
                 var existingUser = await _dbContext.Users
-                    .FirstOrDefaultAsync(u => u.PhoneNumber == registerDto.PhoneNumber);
+                    .FirstOrDefaultAsync(u => u.UserName == registerDto.PhoneNumber);
 
                 if (existingUser != null)
                 {
@@ -566,9 +567,16 @@ namespace Loyalty.Business.Services.Implementations.Users
                     EmailConfirmed = false,
                     PhoneNumberConfirmed = false,
                     Position="Customer"
+                   
                 };
 
                 var result = await _userManager.CreateAsync(user, registerDto.Password);
+                var addResult = await _userManager.AddToRoleAsync(user, "Customer");
+                if (!addResult.Succeeded)
+                {
+                    var errors = string.Join(", ", addResult.Errors.Select(e => e.Description));
+                    throw new Exception($"Failed to add user to role 'Customer': errors");
+                }
 
                 if (!result.Succeeded)
                 {
@@ -760,6 +768,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                             UserName = user.UserName!,
                             FirstName = user.Name,
                             LastName = user.Surname,
+                            WalveroId=user.WalveroId,
                             Email = user.Email,
                             Phone = user.PhoneNumber,
                             BirthDate = user.DateOfBirth ?? DateTime.Now,
@@ -811,7 +820,7 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 // Find user by phone number
                 var user = await _dbContext.Users
-                    .FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber);
+                    .FirstOrDefaultAsync(u => u.NormalizedUserName == phoneNumber);
 
                 // Don't reveal if user exists or not (security best practice)
                 // But we still need to send OTP if user exists

@@ -26,7 +26,7 @@ namespace Loyalty.WebAPI.Controllers
 
         [HttpPost]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+       
         public async Task<ActionResult<ServiceResult>> Add([FromBody] AddCustomerWithCardDto model)
         {
             if (!ModelState.IsValid)
