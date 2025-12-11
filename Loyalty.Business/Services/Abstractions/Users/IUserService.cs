@@ -1,6 +1,5 @@
 ﻿using Loyalty.Business.Dtos.Post.Users;
 using Loyalty.Business.Results;
-using Loyalty.DataAccess.Enums;
 
 namespace Loyalty.Business.Services.Abstractions.Users
 {
@@ -25,15 +24,5 @@ namespace Loyalty.Business.Services.Abstractions.Users
         Task<bool> EmailConfirmAsync(string email);
         Task<bool> VerifyConfirmAsync(string userName, string confirmToken);
         Task<ServiceResult> Verify(string phone, string randomString);
-        
-        // Phone-based OTP registration methods
-        Task<ServiceResult> RegisterUserWithPendingStatusAsync(RegisterWithPhoneDto registerDto);
-        Task<ServiceResult> GenerateAndSendOtpAsync(int userId, OtpPurpose purpose);
-        Task<ServiceResult> VerifyOtpAsync(int userId, string otpCode, OtpPurpose purpose);
-        
-        // Phone-based password reset methods
-        Task<ServiceResult> StartForgotPasswordAsync(string phoneNumber);
-        Task<ServiceResult> VerifyForgotPasswordOtpAsync(string phoneNumber, string otpCode);
-        Task<ServiceResult> ResetPasswordAsync(string resetToken, string newPassword);
     }
 }

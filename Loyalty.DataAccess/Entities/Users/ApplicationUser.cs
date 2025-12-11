@@ -29,13 +29,5 @@ namespace Loyalty.DataAccess.Entities.Users
         
         // Navigation property for RefreshToken
         public ICollection<RefreshToken>? RefreshTokens { get; set; } = new List<RefreshToken>();
-        
-        // Phone verification properties
-        public bool IsPhoneVerified { get; set; } = false;
-        public UserStatus Status { get; set; } = UserStatus.Pending;
-        
-        // Navigation properties for OTP and PasswordResetToken
-        public ICollection<Otp>? Otps { get; set; } = new List<Otp>();
-        public ICollection<PasswordResetToken>? PasswordResetTokens { get; set; } = new List<PasswordResetToken>();
     }
 }

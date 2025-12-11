@@ -6,7 +6,7 @@ namespace Loyalty.Business.Dtos.Post.Users
     public class RegisterUserDto
     {
         // Guest login üçün DeviceId tələb olunur
-        [Required]
+       
         public string DeviceId { get; set; } = string.Empty;
        
         // Profil tamamlama üçün (optional - guest login zamanı lazım deyil)

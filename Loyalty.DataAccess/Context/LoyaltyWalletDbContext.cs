@@ -37,8 +37,6 @@ namespace Loyalty.DataAccess.Context
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<DeviceSession> DeviceSessions { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
-        public DbSet<Otp> Otps { get; set; }
-        public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -382,52 +380,8 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(r => r.ImageUrl).HasMaxLength(500);
 
             });
+          
 
-            // ==== OTP ====
-            modelBuilder.Entity<Otp>(entity =>
-            {
-                entity.ToTable("Otps");
-                entity.HasKey(o => o.Id);
-                entity.Property(o => o.CodeHash).IsRequired().HasMaxLength(200);
-                entity.Property(o => o.CodeSalt).IsRequired().HasMaxLength(100);
-                entity.Property(o => o.ExpiresAt).IsRequired();
-                entity.Property(o => o.CreatedAt).IsRequired();
-                entity.Property(o => o.Purpose).HasConversion<int>();
-
-                entity.HasIndex(o => o.ApplicationUserId);
-                entity.HasIndex(o => new { o.ApplicationUserId, o.Purpose, o.IsUsed });
-                entity.HasIndex(o => o.ExpiresAt);
-
-                entity.HasOne(o => o.User)
-                    .WithMany(u => u.Otps)
-                    .HasForeignKey(o => o.ApplicationUserId)
-                    .OnDelete(DeleteBehavior.Cascade);
-            });
-
-            // ==== PASSWORD RESET TOKEN ====
-            modelBuilder.Entity<PasswordResetToken>(entity =>
-            {
-                entity.ToTable("PasswordResetTokens");
-                entity.HasKey(prt => prt.Id);
-                entity.Property(prt => prt.Token).IsRequired().HasMaxLength(500);
-                entity.Property(prt => prt.ExpiresAt).IsRequired();
-                entity.Property(prt => prt.CreatedAt).IsRequired();
-
-                entity.HasIndex(prt => prt.Token).IsUnique();
-                entity.HasIndex(prt => prt.ApplicationUserId);
-                entity.HasIndex(prt => prt.ExpiresAt);
-
-                entity.HasOne(prt => prt.User)
-                    .WithMany(u => u.PasswordResetTokens)
-                    .HasForeignKey(prt => prt.ApplicationUserId)
-                    .OnDelete(DeleteBehavior.Cascade);
-            });
-
-            // ==== APPLICATION USER ====
-            modelBuilder.Entity<ApplicationUser>(entity =>
-            {
-                entity.Property(u => u.Status).HasConversion<int>();
-            });
 
         }
 
