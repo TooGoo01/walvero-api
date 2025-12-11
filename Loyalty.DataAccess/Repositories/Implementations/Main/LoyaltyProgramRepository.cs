@@ -1,0 +1,52 @@
+﻿using Loyalty.DataAccess.Context;
+using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Repositories.Abstractions.Main;
+using Microsoft.EntityFrameworkCore;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Loyalty.DataAccess.Repositories.Implementations.Main
+{
+    public class LoyaltyProgramRepository : GenericRepository<LoyaltyProgram>, ILoyaltyProgramRepository
+    {
+        public LoyaltyProgramRepository(LoyaltyWalletDbContext LoyaltyDbContext) : base(LoyaltyDbContext)
+        {
+        }
+
+        public async Task<List<LoyaltyProgram>> GetActive(CancellationToken ct = default)
+        {
+            return await GetAsQueryable().Where(x=>x.IsActive==true)
+             .ToListAsync();
+        }
+
+        public Task<LoyaltyProgram?> GetByCodeAsync(int tenantId, string code, CancellationToken ct = default)
+        => GetAsQueryable().AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Code == code, ct);
+
+        public async Task<LoyaltyProgram?> GetByIdNameAsync(int programId, CancellationToken ct = default)
+        {
+          return  await GetAsQueryable().Include(x=>x.CardTemplate).ThenInclude(t => t.Icons).AsNoTracking().FirstOrDefaultAsync(x => x.Id == programId, ct);
+        }
+        
+        public Task<List<LoyaltyProgram>> ListAsync(int tenantId, bool onlyActive = true, CancellationToken ct = default)
+        {
+            var q = GetAsQueryable().AsNoTracking().Where(x => x.TenantId == tenantId);
+            if (onlyActive) q = q.Where(x => x.IsActive);
+            return q.OrderBy(x => x.ProgramName).ToListAsync(ct);
+        }
+        public async Task<List<LoyaltyProgram>> GetByIdsAsync(IEnumerable<int> programIds, CancellationToken ct = default)
+        {
+            var ids = programIds?.Distinct().ToList() ?? new List<int>();
+            if (!ids.Any())
+                return new List<LoyaltyProgram>();
+
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Where(p => ids.Contains(p.Id))
+                .Include(p => p.CardTemplate) // dizayn üçün lazım olacaqsa
+                .ToListAsync(ct);
+        }
+    }
+}

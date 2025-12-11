@@ -1,0 +1,257 @@
+﻿using Loyalty.Business.Dtos.Post.Main;
+using Loyalty.Business.Results;
+using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Repositories.Abstractions.Main;
+using Loyalty.DataAccess.UnitOfWorks;
+using System.Collections.Concurrent;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text.Json;
+using File = System.IO.File;
+
+public sealed class AppleWalletService : IAppleWalletService
+{
+    private readonly IApplePassBuilder _builder;
+    private readonly ILoyaltyCardRepository _loyaltyCardRepository;
+    private readonly IApplePassSigner _signer;
+    private readonly IAppEnvironment _env;
+    private readonly IUnitOfWork _uow;
+    private readonly IPasskitPushService _passkitPush;
+    private readonly IWalletCredentialProvider _credProvider;
+
+    public AppleWalletService(
+        IApplePassBuilder builder,
+        IApplePassSigner signer,
+        IAppEnvironment env,
+        IUnitOfWork uow,
+        IPasskitPushService passkitPush,
+        IWalletCredentialProvider credProvider,
+        ILoyaltyCardRepository loyaltyCardRepository)
+    {
+        _builder = builder;
+        _signer = signer;
+        _env = env;
+        _uow = uow;
+        _passkitPush = passkitPush;
+        _credProvider = credProvider;
+        _loyaltyCardRepository = loyaltyCardRepository;
+    }
+
+    private static readonly ConcurrentDictionary<int, SemaphoreSlim> _passLocks = new();
+
+    public async Task<ServiceResult> GeneratePassUrlByCardIdAsync(
+        int loyaltyCardId,
+        AppleWalletRuntimeCreds creds,               // istəsən bu parametri çıxarıb içəridə credProvider-dən götür
+        CardTemplateSnapshot snapshot,
+        string customerFullName,
+        string barcodeValue,
+        CancellationToken ct = default)
+    {
+        var card = await _uow.Repository<LoyaltyCard>().GetByIdAsync(loyaltyCardId);
+        if (card is null) return new ServiceResult(false, "Card not found.");
+
+        var tenantId = card.TenantId;
+        var outDir = Path.Combine(_env.WebRootPath, "passes", tenantId.ToString(), card.LoyaltyProgramId.ToString());
+        Directory.CreateDirectory(outDir);
+
+        var sem = _passLocks.GetOrAdd(card.Id, _ => new SemaphoreSlim(1, 1));
+        await sem.WaitAsync(ct);
+        try
+        {
+            var serial = card.AppleSerial;
+            if (string.IsNullOrWhiteSpace(serial))
+            {
+                serial = $"AL-{card.Id:D8}";
+                card.AppleSerial = serial;
+            }
+
+            var workDir = Path.Combine(Path.GetTempPath(), $"pkpass-{card.Id}-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(workDir);
+            int percent = 0;
+            int percentCash = 0;
+            if (card.CurrentPoints < snapshot.BronzeThreshold)
+            {
+                percent = snapshot.BronzePercent.Value; // Bronze tier
+                percentCash = snapshot.BronzePercentCash.Value; // Bronze tier
+            }
+
+            else if (card.CurrentPoints >= snapshot.BronzeThreshold && card.CurrentPoints < snapshot.SilverThreshold)
+            {
+                percent = snapshot.BronzePercent.Value;
+                percentCash = snapshot.BronzePercentCash.Value;
+            }
+
+            else if (card.CurrentPoints >= snapshot.SilverThreshold && card.CurrentPoints < snapshot.GoldThreshold)
+            {
+                percent = snapshot.SilverPercent.Value;
+                percentCash = snapshot.SilverPercentCash.Value;
+            }
+
+            else if (card.CurrentPoints >= snapshot.GoldPercent && card.CurrentPoints < snapshot.PlatinumThreshold)
+            {
+                percent = snapshot.GoldPercent.Value;
+                percentCash = snapshot.GoldPercentCash.Value;
+            }
+            else
+            {
+                percent = snapshot.PlatinumPercent.Value;
+                percentCash = snapshot.PlatinumPercentCash.Value;
+            }
+
+            try
+            {
+                string cashback;
+                string cashbackText;
+                if (snapshot.PayMentType)
+                {
+                    cashback = $"Cashback:{percent}%";
+                    cashbackText = $" Nağd ödənişdə {percentCash}%";
+                }
+                else
+                {
+                    cashback = "Cashback";
+                    cashbackText = $"{percent}%";
+
+                }
+                // 1) pass.json + şəkillər (DB creds → Team/PassType)
+                var req = new BuildPassRequest
+                {
+                    TeamIdentifier = creds.TeamIdentifier,
+                    PassTypeIdentifier = creds.PassTypeIdentifier,
+                    SerialNumber = serial,
+                    OrganizationName = snapshot.ProgramName ?? "Walvero",
+                    Description = "Loyalty Card",
+                    LogoText = "",
+                    BackgroundColor = snapshot.BackgroundColor,
+                    BarcodeMessage = barcodeValue,
+                    Barcode = barcodeValue,
+                    CustomerName = customerFullName,
+                    BarcodeFormat = "PKBarcodeFormatCode128",
+                    SecondaryFields = new() { new PassField("name", customerFullName, "Customer") },
+                    HeaderFields = new() { new PassField("balance", card.CurrentPoints.ToString() + " " + "AZN", "Balance") },
+                    AuxiliaryFields = new() { new PassField("cashback", cashbackText, cashback) },
+                    LogoUrl = snapshot.LogoUrl,
+                    HeroImageUrl = snapshot.HeroImageUrl,
+                    WebServiceURL = creds.WebServiceUrl,          // varsa
+                    AuthenticationToken = creds.AuthToken,       // varsa
+                    StripImageUrl = snapshot.StripImageUrl,
+                    ForegroundColor = snapshot.ForegroundColor,
+                    LabelColor = snapshot.LabelColor,
+                };
+
+                await _builder.BuildAsync(req, workDir, ct);
+
+                // 2) manifest.json (SHA-1)
+                var files = Directory.GetFiles(workDir)
+                                     .Where(p => Path.GetFileName(p) != "manifest.json" && Path.GetFileName(p) != "signature")
+                                     .OrderBy(p => p, StringComparer.Ordinal)
+                                     .ToList();
+
+                var manifest = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var f in files)
+                {
+                    var sha1 = SHA1.HashData(await File.ReadAllBytesAsync(f, ct));
+                    manifest[Path.GetFileName(f)] = Convert.ToHexString(sha1).ToLowerInvariant();
+                }
+                var manifestPath = Path.Combine(workDir, "manifest.json");
+                await File.WriteAllTextAsync(manifestPath, JsonSerializer.Serialize(manifest), ct);
+
+                // 3) signature (tam DB creds ilə)
+                var signatureBytes = _signer.Sign(
+                    await File.ReadAllBytesAsync(manifestPath, ct),
+                    creds.CertP12Path, creds.CertPassword, creds.WwdrCertPath);
+                await File.WriteAllBytesAsync(Path.Combine(workDir, "signature"), signatureBytes, ct);
+
+                // 4) pkpass (TMP → MOVE atomik)
+                var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmssfff}.pkpass";
+                var finalPath = Path.Combine(outDir, fileName);
+                await CreatePkpassSafelyAsync(workDir, finalPath, ct);
+
+                // 5) latest link
+                var publicUrl = $"/passes/{tenantId}/{card.LoyaltyProgramId}/{fileName}";
+
+                // 6) DB update
+                card.AppleSerial = serial;
+                card.AppleAuthToken ??= creds.AuthToken; // varsa saxla
+                card.ApplePassUrl = publicUrl;
+                _uow.Repository<LoyaltyCard>().Update(card);
+                _uow.Commit();
+
+                // 7) push (WebService varsa) — qeydiyyatlı cihazlara xəbər ver
+                if (!string.IsNullOrWhiteSpace(creds.WebServiceUrl))
+                    await _passkitPush.NotifyUpdatedAsync(tenantId, creds.PassTypeIdentifier, serial, fileName, ct);
+
+                return new ServiceResult(true, publicUrl);
+            }
+            finally
+            {
+                try { Directory.Delete(workDir, true); } catch { }
+            }
+        }
+        finally
+        {
+            sem.Release();
+            _passLocks.TryRemove(card.Id, out _);
+        }
+    }
+    private int GetCashbackPercent(int points, int bronze, int silver, int gold, int platinium)
+    {
+        // Points sayına görə cashback faizini təyin edin
+        if (points < 50)
+            return 5; // Bronze tier
+        else if (points >= 50 && points < 100)
+            return 10; // Silver tier
+        else if (points >= 100 && points < 150)
+            return 15; // Gold tier
+        else
+            return 20; // Platinum tier
+    }
+
+    public async Task<ServiceResult> RedeemByCardIdAsync(
+        int loyaltyCardId, CardTemplateSnapshot tpl, AppleWalletRuntimeCreds creds, int currentPoints, int currentSteps, int pointsDelta, CancellationToken ct = default)
+    {
+        // Creds-i DB-dən burda da çəkə bilərsən (tenantId → _credProvider.GetAppleAsync)
+        var card = await _loyaltyCardRepository.GetById(loyaltyCardId, ct);
+        if (card is null) return new(false, "Card not found.");
+
+
+        // Serial sabit qalsın (Wallet pass-ı serial ilə tanıyır)
+        if (string.IsNullOrWhiteSpace(card.AppleSerial))
+            card.AppleSerial = $"AL-{card.Id:D8}";
+        card.AppleAuthToken ??= creds.AuthToken;
+
+        // Build + sign + zip → latest link qaytar (yuxarıdakı GeneratePassUrlByCardIdAsync
+        // ilə eyni, sadəcə Serial = card.AppleSerial istifadə et və SecondaryFields balansa uyğun)
+        // Qısa olsun deyə istifadəçidə həmin metodu çağır:
+        return await GeneratePassUrlByCardIdAsync(loyaltyCardId, creds, tpl,
+            $"{card.Customer?.FirstName} {card.Customer?.LastName}".Trim(),
+            card.BarcodeValue ?? card.Id.ToString(), ct);
+    }
+
+    private static async Task<string> CreatePkpassSafelyAsync(string workingDir, string finalPath, CancellationToken ct)
+    {
+        var outDir = Path.GetDirectoryName(finalPath)!;
+        Directory.CreateDirectory(outDir);
+
+        var tmpPath = Path.Combine(outDir, Path.GetRandomFileName() + ".pkpass");
+        using (var fs = new FileStream(tmpPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 64 * 1024, FileOptions.SequentialScan))
+        using (var zip = new ZipArchive(fs, ZipArchiveMode.Create, leaveOpen: false))
+        {
+            foreach (var file in Directory.EnumerateFiles(workingDir))
+            {
+                var name = Path.GetFileName(file);
+                zip.CreateEntryFromFile(file, name, CompressionLevel.NoCompression);
+            }
+        }
+
+        File.Move(tmpPath, finalPath);
+        return finalPath;
+    }
+
+    private static string RandomToken(int len)
+    {
+        var bytes = RandomNumberGenerator.GetBytes(len);
+        return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    }
+}

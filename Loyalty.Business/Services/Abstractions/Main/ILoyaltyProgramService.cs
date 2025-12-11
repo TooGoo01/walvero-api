@@ -1,0 +1,22 @@
+﻿using Loyalty.Business.Dtos.Post.Main;
+using Loyalty.Business.Results;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Loyalty.Business.Services.Abstractions.Main
+{
+    public interface ILoyaltyProgramService
+    {
+        Task<ServiceResult> Add(AddLoyaltyProgramDto Dto);
+        Task<ServiceResult> AddOrUpdateAsync(AddLoyaltyProgramDto dto, CancellationToken ct = default);
+        Task<ServiceResult> Get(int id);
+        Task<ServiceResult> GetAll();
+        Task<ServiceResult> GetActive();
+        Task<ServiceResult> GetLast();
+        Task<ServiceResult> Update(AddLoyaltyProgramDto dto, int id);
+        Task<ServiceResult> Delete(int id);
+    }
+}

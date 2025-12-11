@@ -1,0 +1,37 @@
+﻿    using Loyalty.DataAccess.Abstractions;
+using Loyalty.DataAccess.Entities.Base;
+using Loyalty.DataAccess.Enums;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Loyalty.DataAccess.Entities.Main
+{
+    public class LoyaltyProgram : EntityBase, IEntity
+    {
+        public int TenantId { get; set; }
+            
+        public string ProgramName { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string Code { get; set; } = string.Empty;
+
+        // Points Configuration
+        public decimal PointsPerCurrency { get; set; } = 1; // məs: 1 AZN = 10 xal
+        public decimal CurrencyPerPoint { get; set; } = 0.1m; // məs: 1 xal = 0.10 AZN
+        public LoyaltyProgramType ProgramType { get; set; } = LoyaltyProgramType.ProgressBased;
+
+        // Rules
+        public int MinPointsToRedeem { get; set; } = 0;
+        public int? PointsExpiryDays { get; set; } // null = heç vaxt bitmir
+        public bool IsActive { get; set; } = true;
+        public int? CardTemplateId { get; set; }
+        public CardTemplate? CardTemplate { get; set; }
+
+        // Navigation Properties
+        public Tenant Tenant { get; set; } = null!;
+        public ICollection<LoyaltyCard> LoyaltyCards { get; set; } = new List<LoyaltyCard>();
+        public ICollection<Reward> Rewards { get; set; } = new List<Reward>();
+    }
+}
