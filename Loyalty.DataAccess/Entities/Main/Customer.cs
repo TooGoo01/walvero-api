@@ -34,6 +34,9 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool IsActive { get; set; } = true;
         public DateTime? LastActivityDate { get; set; }
 
+        // Card Number - auto-generated per tenant with dynamic prefix
+        public string? CardNumber { get; set; }
+
         // Navigation Properties
         public Tenant Tenant { get; set; } = null!;
         public int? applicationUserId { get; set; } = null!;

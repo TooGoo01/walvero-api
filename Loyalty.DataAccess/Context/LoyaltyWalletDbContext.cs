@@ -1,10 +1,13 @@
 ﻿using Loyalty.DataAccess.Entities.Base;
 using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Entities.Sequences;
 using Loyalty.DataAccess.Entities.Users;
+using Loyalty.DataAccess.Enums;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Text.RegularExpressions;
 using File = Loyalty.DataAccess.Entities.Main.File;
 
 namespace Loyalty.DataAccess.Context
@@ -39,6 +42,11 @@ namespace Loyalty.DataAccess.Context
         public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<Otp> Otps { get; set; }
         public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
+        
+        // Sequence tables for ID generation
+        public DbSet<CountrySequence> CountrySequences { get; set; }
+        public DbSet<TenantCustomerSequence> TenantCustomerSequences { get; set; }
+        public DbSet<CardPrefixSequence> CardPrefixSequences { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -100,13 +108,17 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(x => x.OtpChannel).HasMaxLength(20);
                 entity.Property(x => x.OtpDestinationMasked).HasMaxLength(120);
                 entity.Property(c => c.Gender).HasConversion<int>();
+                entity.Property(c => c.CardNumber).HasMaxLength(50);
 
                 entity.HasIndex(c => new { c.TenantId, c.PhoneNumber }).IsUnique();
+                entity.HasIndex(c => c.CardNumber)
+                    .IsUnique()
+                    .HasFilter("[CardNumber] IS NOT NULL");
 
                 entity.HasMany(c => c.LoyaltyCards)
                     .WithOne(lc => lc.Customer)
                     .HasForeignKey(lc => lc.CustomerId)
-                    .OnDelete(DeleteBehavior.Restrict);
+                    .OnDelete(DeleteBehavior.Cascade); // Changed to Cascade - delete cards when customer is deleted
 
                 entity.HasOne(wc => wc.applicationUser)
                    .WithMany(t => t.Customers)
@@ -426,13 +438,66 @@ namespace Loyalty.DataAccess.Context
             // ==== APPLICATION USER ====
             modelBuilder.Entity<ApplicationUser>(entity =>
             {
-                entity.Property(u => u.Status).HasConversion<int>();
+                entity.Property(u => u.Status)
+                    .HasConversion<int>();
+                // Note: Default value is set in ApplicationUser entity property initializer (Status = UserStatus.Active)
+                // Cannot use HasDefaultValue with enum conversion in EF Core
+                
+                entity.Property(u => u.IsPhoneVerified)
+                    .HasDefaultValue(false);
+                
+                entity.Property(u => u.WalveroId)
+                    .IsRequired(false);
+                
+                entity.HasIndex(u => u.WalveroId)
+                    .IsUnique()
+                    .HasFilter("[WalveroId] IS NOT NULL");
+            });
+
+            // ==== COUNTRY SEQUENCE ====
+            modelBuilder.Entity<CountrySequence>(entity =>
+            {
+                entity.ToTable("CountrySequences");
+                entity.HasKey(cs => cs.CountryCode);
+                entity.Property(cs => cs.CountryCode).ValueGeneratedNever(); // Manual PK
+                entity.Property(cs => cs.LastNumber).IsRequired();
+                entity.Ignore(cs => cs.Id);
+                entity.Ignore(cs => cs.RegUserId);
+                entity.Ignore(cs => cs.IsActive);
+                entity.Ignore(cs => cs.RegDate);
+                entity.Ignore(cs => cs.EditUserId);
+                entity.Ignore(cs => cs.EditDate);
+            });
+
+            // ==== TENANT CUSTOMER SEQUENCE ====
+            modelBuilder.Entity<TenantCustomerSequence>(entity =>
+            {
+                entity.ToTable("TenantCustomerSequences");
+                entity.HasKey(tcs => tcs.TenantId);
+                entity.Property(tcs => tcs.TenantId).ValueGeneratedNever(); // Manual PK
+                entity.Property(tcs => tcs.LastNumber).IsRequired();
+                entity.Ignore(tcs => tcs.Id);
+                entity.Ignore(tcs => tcs.RegUserId);
+                entity.Ignore(tcs => tcs.IsActive);
+                entity.Ignore(tcs => tcs.RegDate);
+                entity.Ignore(tcs => tcs.EditUserId);
+                entity.Ignore(tcs => tcs.EditDate);
+            });
+
+            // ==== CARD PREFIX SEQUENCE ====
+            modelBuilder.Entity<CardPrefixSequence>(entity =>
+            {
+                entity.ToTable("CardPrefixSequences");
+                entity.HasKey(cps => cps.Id);
+                entity.Property(cps => cps.Id).ValueGeneratedNever(); // Always 1
+                entity.Property(cps => cps.LastPrefix).IsRequired();
             });
 
         }
 
-        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
+            // Process EntityBase timestamps first
             var entries = ChangeTracker.Entries<EntityBase>();
 
             foreach (var entry in entries)
@@ -448,7 +513,191 @@ namespace Loyalty.DataAccess.Context
                 }
             }
 
-            return base.SaveChangesAsync(cancellationToken);
+            // Generate WalveroId for new ApplicationUsers
+            var newUsers = ChangeTracker.Entries<ApplicationUser>()
+                .Where(e => e.State == EntityState.Added && e.Entity.WalveroId == null)
+                .Select(e => e.Entity)
+                .ToList();
+
+            foreach (var user in newUsers)
+            {
+                if (string.IsNullOrEmpty(user.PhoneNumber))
+                    continue; // Skip if no phone number
+
+                var countryCode = ExtractCountryCode(user.PhoneNumber);
+                if (countryCode.HasValue)
+                {
+                    user.WalveroId = await GenerateWalveroIdAsync(countryCode.Value, cancellationToken);
+                }
+            }
+
+            // Generate CardNumber for new Customers
+            var newCustomers = ChangeTracker.Entries<Customer>()
+                .Where(e => e.State == EntityState.Added && string.IsNullOrEmpty(e.Entity.CardNumber))
+                .Select(e => e.Entity)
+                .ToList();
+
+            foreach (var customer in newCustomers)
+            {
+                customer.CardNumber = await GenerateCardNumberAsync(customer.TenantId, cancellationToken);
+            }
+
+            // Set BarcodeValue for new LoyaltyCards from Customer's CardNumber
+            var newLoyaltyCards = ChangeTracker.Entries<LoyaltyCard>()
+                .Where(e => e.State == EntityState.Added && string.IsNullOrEmpty(e.Entity.BarcodeValue))
+                .Select(e => e.Entity)
+                .ToList();
+
+            foreach (var loyaltyCard in newLoyaltyCards)
+            {
+                // Load the customer if not already loaded
+                if (loyaltyCard.Customer == null && loyaltyCard.CustomerId > 0)
+                {
+                    await Entry(loyaltyCard)
+                        .Reference(lc => lc.Customer)
+                        .LoadAsync(cancellationToken);
+                }
+
+                // Set BarcodeValue from Customer's CardNumber
+                if (loyaltyCard.Customer != null && !string.IsNullOrEmpty(loyaltyCard.Customer.CardNumber))
+                {
+                    loyaltyCard.BarcodeValue = loyaltyCard.Customer.CardNumber;
+                }
+            }
+
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// Extracts country code from phone number (supports +994, 994, 0 prefixes)
+        /// </summary>
+        private int? ExtractCountryCode(string phoneNumber)
+        {
+            if (string.IsNullOrWhiteSpace(phoneNumber))
+                return null;
+
+            // Remove all non-digit characters
+            var digits = Regex.Replace(phoneNumber, @"[^\d]", "");
+            
+            if (string.IsNullOrEmpty(digits))
+                return null;
+
+            // Try to extract country code
+            // Common formats: +994501234567, 994501234567, 0501234567
+            
+            // If starts with country code (3 digits: 994, 336, etc.)
+            if (digits.Length >= 3)
+            {
+                var possibleCode = int.Parse(digits.Substring(0, 3));
+                
+                // Common country codes (you can extend this list)
+                if (possibleCode >= 100 && possibleCode <= 999)
+                {
+                    // Check if it's a valid country code length
+                    // For Azerbaijan (994), if next digit is 0, it's likely country code
+                    // For France (336), similar logic
+                    if (digits.Length > 3)
+                    {
+                        return possibleCode;
+                    }
+                }
+            }
+
+            // If starts with 0 (local format), try to infer from length
+            // This is a fallback - you may want to add a CountryCode field to ApplicationUser
+            if (digits.StartsWith("0") && digits.Length >= 9)
+            {
+                // Default to 994 (Azerbaijan) if local format - adjust based on your needs
+                // TODO: Consider adding CountryCode field to ApplicationUser for explicit country
+                return 994; // Default country code - you should make this configurable
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Generates WalveroId for a user based on country code
+        /// Pattern: {countryCode}{1}{seq:00000}
+        /// Example: 994100001, 994100002, ...
+        /// </summary>
+        private async Task<long> GenerateWalveroIdAsync(int countryCode, CancellationToken cancellationToken)
+        {
+            // Use database transaction to ensure atomicity
+            var sequence = await CountrySequences
+                .FirstOrDefaultAsync(cs => cs.CountryCode == countryCode, cancellationToken);
+
+            if (sequence == null)
+            {
+                sequence = new CountrySequence
+                {
+                    CountryCode = countryCode,
+                    LastNumber = 0
+                };
+                await CountrySequences.AddAsync(sequence, cancellationToken);
+            }
+
+            sequence.LastNumber++;
+            var walveroId = long.Parse($"{countryCode}1{sequence.LastNumber:D5}");
+
+            return walveroId;
+        }
+
+        /// <summary>
+        /// Generates CardNumber for a customer
+        /// Pattern: {prefix}{tenantId}{prefix}{seq:0000}
+        /// Example for tenant 1: "7891 7890001", "7891 7890002"
+        /// Example for tenant 2: "7892 7890001", "7892 7890002" (if prefix hasn't changed)
+        /// </summary>
+        private async Task<string> GenerateCardNumberAsync(int tenantId, CancellationToken cancellationToken)
+        {
+            // Get or create tenant sequence
+            var tenantSequence = await TenantCustomerSequences
+                .FirstOrDefaultAsync(tcs => tcs.TenantId == tenantId, cancellationToken);
+
+            if (tenantSequence == null)
+            {
+                tenantSequence = new TenantCustomerSequence
+                {
+                    TenantId = tenantId,
+                    LastNumber = 0
+                };
+                await TenantCustomerSequences.AddAsync(tenantSequence, cancellationToken);
+            }
+
+            // Get or create global prefix sequence
+            var prefixSequence = await CardPrefixSequences
+                .FirstOrDefaultAsync(cps => cps.Id == 1, cancellationToken);
+
+            if (prefixSequence == null)
+            {
+                prefixSequence = new CardPrefixSequence
+                {
+                    Id = 1,
+                    LastPrefix = 789 // Starting prefix
+                };
+                await CardPrefixSequences.AddAsync(prefixSequence, cancellationToken);
+            }
+
+            // Increment tenant sequence
+            tenantSequence.LastNumber++;
+
+            // Check if we need to increment prefix (every 10000 customers per tenant, or your business logic)
+            // For now, we'll increment prefix when tenant sequence wraps around
+            // You can adjust this logic based on your requirements
+            if (tenantSequence.LastNumber > 9999)
+            {
+                prefixSequence.LastPrefix++;
+                tenantSequence.LastNumber = 1; // Reset to 1 for new prefix
+            }
+
+            var prefix = prefixSequence.LastPrefix;
+            var seq = tenantSequence.LastNumber;
+
+            // Format: {prefix}{tenantId}{prefix}{seq:0000}
+            // Example: 78917890001, 78917890002, ...
+            var cardNumber = $"{prefix}{tenantId}{prefix}{seq:D4}";
+
+            return cardNumber;
         }
         //protected override void OnModelCreating(ModelBuilder modelBuilder)
         //{

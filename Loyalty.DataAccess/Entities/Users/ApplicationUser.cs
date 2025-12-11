@@ -31,11 +31,16 @@ namespace Loyalty.DataAccess.Entities.Users
         public ICollection<RefreshToken>? RefreshTokens { get; set; } = new List<RefreshToken>();
         
         // Phone verification properties
+        // Note: Status defaults to Active for backward compatibility with existing users
+        // Existing users will remain Active after migration
         public bool IsPhoneVerified { get; set; } = false;
-        public UserStatus Status { get; set; } = UserStatus.Pending;
+        public UserStatus Status { get; set; } = UserStatus.Active; // Default to Active for backward compatibility
         
         // Navigation properties for OTP and PasswordResetToken
         public ICollection<Otp>? Otps { get; set; } = new List<Otp>();
         public ICollection<PasswordResetToken>? PasswordResetTokens { get; set; } = new List<PasswordResetToken>();
+        
+        // WalveroId - custom ID per country (e.g., 994100001, 994100002, ...)
+        public long? WalveroId { get; set; }
     }
 }

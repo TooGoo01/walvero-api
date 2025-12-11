@@ -9,11 +9,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace Loyalty.DataAccess.Migrations
+namespace LoyaltyWalletApp.DataAccess.Migrations
 {
     [DbContext(typeof(LoyaltyWalletDbContext))]
-    [Migration("20251124194326_customer_user")]
-    partial class customer_user
+    [Migration("20251125214003_user_date")]
+    partial class user_date
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -25,7 +25,7 @@ namespace Loyalty.DataAccess.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.CardTemplate", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.CardTemplate", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -193,7 +193,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("CardTemplates", (string)null);
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Contact", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Contact", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -237,7 +237,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("Contacts");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Customer", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Customer", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -329,7 +329,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("Customers", (string)null);
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Icon", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Icon", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -379,7 +379,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("Icon");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyCard", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyCard", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -473,7 +473,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("LoyaltyCards", (string)null);
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyProgram", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -541,7 +541,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("LoyaltyPrograms", (string)null);
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PassDeviceRegistration", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.PassDeviceRegistration", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -609,7 +609,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("PassDeviceRegistrations");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.RedeemRequest", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.RedeemRequest", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -671,7 +671,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("RedeemRequests");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Reward", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Reward", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -723,7 +723,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("Rewards", (string)null);
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Tenant", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -789,7 +789,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("Tenants", (string)null);
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantBranding", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.TenantBranding", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -860,7 +860,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("TenantBrandings", (string)null);
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Transaction", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Transaction", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -918,7 +918,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("Transactions", (string)null);
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.WalletCredential", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.WalletCredential", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -998,7 +998,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("WalletCredentials", (string)null);
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.WalletPass", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.WalletPass", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1061,7 +1061,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("WalletPasses", (string)null);
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.ApplicationRole", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationRole", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1091,7 +1091,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("AspNetRoles", (string)null);
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.ApplicationUser", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1106,12 +1106,18 @@ namespace Loyalty.DataAccess.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTime?>("DateOfBirth")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("bit");
+
+                    b.Property<int?>("Gender")
+                        .HasColumnType("int");
 
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("bit");
@@ -1283,15 +1289,15 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Customer", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Customer", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany("Customers")
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", "applicationUser")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", "applicationUser")
                         .WithMany("Customers")
                         .HasForeignKey("applicationUserId")
                         .OnDelete(DeleteBehavior.Cascade);
@@ -1301,9 +1307,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("applicationUser");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Icon", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Icon", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.CardTemplate", "CardTemplate")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.CardTemplate", "CardTemplate")
                         .WithMany("Icons")
                         .HasForeignKey("CardTemplateId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1312,21 +1318,21 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("CardTemplate");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyCard", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyCard", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.Customer", "Customer")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Customer", "Customer")
                         .WithMany("LoyaltyCards")
                         .HasForeignKey("CustomerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", "LoyaltyProgram")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyProgram", "LoyaltyProgram")
                         .WithMany("LoyaltyCards")
                         .HasForeignKey("LoyaltyProgramId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany()
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1339,14 +1345,14 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("Tenant");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyProgram", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.CardTemplate", "CardTemplate")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.CardTemplate", "CardTemplate")
                         .WithOne("LoyaltyProgram")
-                        .HasForeignKey("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", "CardTemplateId")
+                        .HasForeignKey("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyProgram", "CardTemplateId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany("LoyaltyPrograms")
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1357,9 +1363,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("Tenant");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Reward", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Reward", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", "LoyaltyProgram")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyProgram", "LoyaltyProgram")
                         .WithMany("Rewards")
                         .HasForeignKey("LoyaltyProgramId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1368,20 +1374,20 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("LoyaltyProgram");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantBranding", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.TenantBranding", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithOne("Branding")
-                        .HasForeignKey("Loyalty.DataAccess.Entities.Main.TenantBranding", "TenantId")
+                        .HasForeignKey("LoyaltyWalletApp.DataAccess.Entities.Main.TenantBranding", "TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Tenant");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Transaction", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Transaction", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyCard", "LoyaltyCard")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyCard", "LoyaltyCard")
                         .WithMany("Transactions")
                         .HasForeignKey("LoyaltyCardId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1390,9 +1396,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("LoyaltyCard");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.WalletCredential", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.WalletCredential", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany("WalletCredentials")
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1401,9 +1407,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("Tenant");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.WalletPass", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.WalletPass", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyCard", "LoyaltyCard")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyCard", "LoyaltyCard")
                         .WithMany("WalletPasses")
                         .HasForeignKey("LoyaltyCardId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1412,9 +1418,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("LoyaltyCard");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.ApplicationUser", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany("Admins")
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict);
@@ -1424,7 +1430,7 @@ namespace Loyalty.DataAccess.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationRole", null)
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationRole", null)
                         .WithMany()
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1433,7 +1439,7 @@ namespace Loyalty.DataAccess.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<int>", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", null)
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1442,7 +1448,7 @@ namespace Loyalty.DataAccess.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<int>", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", null)
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1451,13 +1457,13 @@ namespace Loyalty.DataAccess.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<int>", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationRole", null)
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationRole", null)
                         .WithMany()
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", null)
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1466,14 +1472,14 @@ namespace Loyalty.DataAccess.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<int>", b =>
                 {
-                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", null)
+                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.CardTemplate", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.CardTemplate", b =>
                 {
                     b.Navigation("Icons");
 
@@ -1481,26 +1487,26 @@ namespace Loyalty.DataAccess.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Customer", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Customer", b =>
                 {
                     b.Navigation("LoyaltyCards");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyCard", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyCard", b =>
                 {
                     b.Navigation("Transactions");
 
                     b.Navigation("WalletPasses");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyProgram", b =>
                 {
                     b.Navigation("LoyaltyCards");
 
                     b.Navigation("Rewards");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Tenant", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", b =>
                 {
                     b.Navigation("Admins");
 
@@ -1513,7 +1519,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("WalletCredentials");
                 });
 
-            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.ApplicationUser", b =>
+            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", b =>
                 {
                     b.Navigation("Customers");
                 });

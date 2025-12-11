@@ -3,15 +3,56 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Loyalty.DataAccess.Migrations
+namespace LoyaltyWalletApp.DataAccess.Migrations
 {
     /// <inheritdoc />
-    public partial class customer_user : Migration
+    public partial class first_migration : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-           
+            migrationBuilder.CreateTable(
+                name: "About",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    AzTitle = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    AzDescription = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    EnTitle = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    EnDescription = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    RuTitle = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    RuDescription = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Twitter = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Facebook = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Instagram = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Email = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Phone = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    RegUserId = table.Column<int>(type: "int", nullable: false),
+                    RegDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    EditUserId = table.Column<int>(type: "int", nullable: true),
+                    EditDate = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_About", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "AspNetRoles",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Name = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    NormalizedName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    ConcurrencyStamp = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AspNetRoles", x => x.Id);
+                });
 
             migrationBuilder.CreateTable(
                 name: "CardTemplates",
@@ -22,36 +63,21 @@ namespace Loyalty.DataAccess.Migrations
                     LoyaltyProgramId = table.Column<int>(type: "int", nullable: false),
                     TemplateName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     TemplateType = table.Column<int>(type: "int", nullable: false),
-                    OneRedeem = table.Column<bool>(type: "bit", nullable: false),
                     TotalSteps = table.Column<int>(type: "int", nullable: false),
                     StepLabel = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     RewardDescription = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
                     BronzeIconUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     BronzeThreshold = table.Column<int>(type: "int", nullable: true),
-                    BronzePercent = table.Column<int>(type: "int", nullable: true),
-                    BronzePercentCash = table.Column<int>(type: "int", nullable: true),
-                    BronzeColor = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    SilverColor = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    GoldColor = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    PlatinumColor = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     SilverIconUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     SilverThreshold = table.Column<int>(type: "int", nullable: true),
-                    SilverPercent = table.Column<int>(type: "int", nullable: true),
-                    SilverPercentCash = table.Column<int>(type: "int", nullable: true),
                     GoldIconUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     GoldThreshold = table.Column<int>(type: "int", nullable: true),
-                    GoldPercent = table.Column<int>(type: "int", nullable: true),
-                    GoldPercentCash = table.Column<int>(type: "int", nullable: true),
                     PlatinumIconUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     PlatinumThreshold = table.Column<int>(type: "int", nullable: true),
-                    PlatinumPercent = table.Column<int>(type: "int", nullable: true),
-                    PlatinumPercentCash = table.Column<int>(type: "int", nullable: true),
-                    PayMentType = table.Column<bool>(type: "bit", nullable: false),
                     BackgroundColor = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     ForegroundColor = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     LabelColor = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     ProgressBarColor = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
-                    GoogleLogoUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     LogoUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     BackgroundImageUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     StripImageUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
@@ -90,63 +116,6 @@ namespace Loyalty.DataAccess.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "PassDeviceRegistrations",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    DeviceLibraryIdentifier = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    PassTypeIdentifier = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    SerialNumber = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    PushToken = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    RegisteredAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    LastUpdatedUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    LoyaltyCardId = table.Column<int>(type: "int", nullable: true),
-                    CustomerId = table.Column<int>(type: "int", nullable: true),
-                    TenantId = table.Column<int>(type: "int", nullable: false),
-                    UserAgent = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    OsVersion = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    PassUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    RegUserId = table.Column<int>(type: "int", nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    RegDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    EditUserId = table.Column<int>(type: "int", nullable: true),
-                    EditDate = table.Column<DateTime>(type: "datetime2", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_PassDeviceRegistrations", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "RedeemRequests",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    TenantId = table.Column<int>(type: "int", nullable: false),
-                    LoyaltyCardId = table.Column<int>(type: "int", nullable: false),
-                    PointsDelta = table.Column<int>(type: "int", nullable: false),
-                    Status = table.Column<int>(type: "int", nullable: false),
-                    Platform = table.Column<int>(type: "int", nullable: false),
-                    Code = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    ExpiresUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    IdempotencyKey = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    OperatorId = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    OrderId = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Note = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    RegUserId = table.Column<int>(type: "int", nullable: false),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    RegDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    EditUserId = table.Column<int>(type: "int", nullable: true),
-                    EditDate = table.Column<DateTime>(type: "datetime2", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_RedeemRequests", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "Tenants",
                 columns: table => new
                 {
@@ -157,10 +126,6 @@ namespace Loyalty.DataAccess.Migrations
                     ContactEmail = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     ContactPhone = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     SubscriptionExpiryDate = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    RequireConfirmation = table.Column<bool>(type: "bit", nullable: false),
-                    ConfirmationTtlMinutes = table.Column<int>(type: "int", nullable: false),
-                    AcceptAnonymus = table.Column<bool>(type: "bit", nullable: false),
-                    ConfirmationChannel = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     RegUserId = table.Column<int>(type: "int", nullable: false),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     RegDate = table.Column<DateTime>(type: "datetime2", nullable: false),
@@ -170,6 +135,32 @@ namespace Loyalty.DataAccess.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Tenants", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "AboutFile",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    AboutId = table.Column<int>(type: "int", nullable: false),
+                    RegUserId = table.Column<int>(type: "int", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    RegDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    EditUserId = table.Column<int>(type: "int", nullable: true),
+                    EditDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    FileName = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Path = table.Column<string>(type: "nvarchar(max)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AboutFile", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_AboutFile_About_AboutId",
+                        column: x => x.AboutId,
+                        principalTable: "About",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -199,10 +190,8 @@ namespace Loyalty.DataAccess.Migrations
                 {
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    Name = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    IconUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    CardTemplateId = table.Column<int>(type: "int", nullable: false),
-                    Order = table.Column<int>(type: "int", nullable: false),
+                    AboutId = table.Column<int>(type: "int", nullable: false),
+                    CardTemplateId = table.Column<int>(type: "int", nullable: true),
                     RegUserId = table.Column<int>(type: "int", nullable: false),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     RegDate = table.Column<DateTime>(type: "datetime2", nullable: false),
@@ -215,11 +204,16 @@ namespace Loyalty.DataAccess.Migrations
                 {
                     table.PrimaryKey("PK_Icon", x => x.Id);
                     table.ForeignKey(
+                        name: "FK_Icon_About_AboutId",
+                        column: x => x.AboutId,
+                        principalTable: "About",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
                         name: "FK_Icon_CardTemplates_CardTemplateId",
                         column: x => x.CardTemplateId,
                         principalTable: "CardTemplates",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        principalColumn: "Id");
                 });
 
             migrationBuilder.CreateTable(
@@ -252,6 +246,37 @@ namespace Loyalty.DataAccess.Migrations
                     table.PrimaryKey("PK_AspNetUsers", x => x.Id);
                     table.ForeignKey(
                         name: "FK_AspNetUsers_Tenants_TenantId",
+                        column: x => x.TenantId,
+                        principalTable: "Tenants",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Customers",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    TenantId = table.Column<int>(type: "int", nullable: false),
+                    FirstName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    LastName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
+                    PhoneNumber = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    Email = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    Gender = table.Column<int>(type: "int", nullable: true),
+                    DateOfBirth = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    LastActivityDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    RegUserId = table.Column<int>(type: "int", nullable: false),
+                    RegDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    EditUserId = table.Column<int>(type: "int", nullable: true),
+                    EditDate = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Customers", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Customers_Tenants_TenantId",
                         column: x => x.TenantId,
                         principalTable: "Tenants",
                         principalColumn: "Id",
@@ -340,16 +365,11 @@ namespace Loyalty.DataAccess.Migrations
                     Platform = table.Column<int>(type: "int", nullable: false),
                     TeamIdentifier = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
                     PassTypeIdentifier = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    AppleCertificateUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    CertificatePath = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     CertificatePassword = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    AppleWwdrCertUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    PassKitServiceUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    PassKitAuthToken = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    AppleCertFileName = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    AppleWwdrFileName = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     IssuerId = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     ServiceAccountEmail = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    GooglePrivateKeyUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    PrivateKeyPath = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
                     RegUserId = table.Column<int>(type: "int", nullable: false),
                     RegDate = table.Column<DateTime>(type: "datetime2", nullable: false),
@@ -453,80 +473,6 @@ namespace Loyalty.DataAccess.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "Customers",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    TenantId = table.Column<int>(type: "int", nullable: false),
-                    FirstName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    LastName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    PhoneNumber = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
-                    Email = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    OtpHash = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    OtpSalt = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    OtpExpiresAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    OtpAttempts = table.Column<int>(type: "int", nullable: false),
-                    OtpLastSentAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    OtpChannel = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
-                    OtpDestinationMasked = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
-                    Gender = table.Column<int>(type: "int", nullable: true),
-                    DateOfBirth = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    LastActivityDate = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    applicationUserId = table.Column<int>(type: "int", nullable: true),
-                    RegUserId = table.Column<int>(type: "int", nullable: false),
-                    RegDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    EditUserId = table.Column<int>(type: "int", nullable: true),
-                    EditDate = table.Column<DateTime>(type: "datetime2", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Customers", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_Customers_AspNetUsers_applicationUserId",
-                        column: x => x.applicationUserId,
-                        principalTable: "AspNetUsers",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_Customers_Tenants_TenantId",
-                        column: x => x.TenantId,
-                        principalTable: "Tenants",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "Rewards",
-                columns: table => new
-                {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    LoyaltyProgramId = table.Column<int>(type: "int", nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
-                    PointsCost = table.Column<int>(type: "int", nullable: false),
-                    ImageUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false),
-                    StockQuantity = table.Column<int>(type: "int", nullable: true),
-                    RegUserId = table.Column<int>(type: "int", nullable: false),
-                    RegDate = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    EditUserId = table.Column<int>(type: "int", nullable: true),
-                    EditDate = table.Column<DateTime>(type: "datetime2", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_Rewards", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_Rewards_LoyaltyPrograms_LoyaltyProgramId",
-                        column: x => x.LoyaltyProgramId,
-                        principalTable: "LoyaltyPrograms",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "LoyaltyCards",
                 columns: table => new
                 {
@@ -542,11 +488,6 @@ namespace Loyalty.DataAccess.Migrations
                     LifetimePoints = table.Column<int>(type: "int", nullable: false),
                     CurrentSteps = table.Column<int>(type: "int", nullable: false),
                     CompletedCycles = table.Column<int>(type: "int", nullable: false),
-                    IsAndroid = table.Column<bool>(type: "bit", nullable: false),
-                    IsIOS = table.Column<bool>(type: "bit", nullable: false),
-                    AppleSerial = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    ApplePassUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    AppleAuthToken = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Status = table.Column<int>(type: "int", nullable: false),
                     ActivatedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     ExpiresAt = table.Column<DateTime>(type: "datetime2", nullable: true),
@@ -580,6 +521,35 @@ namespace Loyalty.DataAccess.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Rewards",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    LoyaltyProgramId = table.Column<int>(type: "int", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    PointsCost = table.Column<int>(type: "int", nullable: false),
+                    ImageUrl = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    StockQuantity = table.Column<int>(type: "int", nullable: true),
+                    RegUserId = table.Column<int>(type: "int", nullable: false),
+                    RegDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    EditUserId = table.Column<int>(type: "int", nullable: true),
+                    EditDate = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Rewards", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Rewards_LoyaltyPrograms_LoyaltyProgramId",
+                        column: x => x.LoyaltyProgramId,
+                        principalTable: "LoyaltyPrograms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Transactions",
                 columns: table => new
                 {
@@ -591,7 +561,6 @@ namespace Loyalty.DataAccess.Migrations
                     Amount = table.Column<decimal>(type: "decimal(18,2)", nullable: true),
                     Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     ReferenceNumber = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
-                    OrderId = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     BalanceAfter = table.Column<int>(type: "int", nullable: false),
                     RegUserId = table.Column<int>(type: "int", nullable: false),
                     IsActive = table.Column<bool>(type: "bit", nullable: false),
@@ -642,6 +611,11 @@ namespace Loyalty.DataAccess.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_AboutFile_AboutId",
+                table: "AboutFile",
+                column: "AboutId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_AspNetRoleClaims_RoleId",
                 table: "AspNetRoleClaims",
                 column: "RoleId");
@@ -686,15 +660,15 @@ namespace Loyalty.DataAccess.Migrations
                 filter: "[NormalizedUserName] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Customers_applicationUserId",
-                table: "Customers",
-                column: "applicationUserId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_Customers_TenantId_PhoneNumber",
                 table: "Customers",
                 columns: new[] { "TenantId", "PhoneNumber" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Icon_AboutId",
+                table: "Icon",
+                column: "AboutId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Icon_CardTemplateId",
@@ -784,6 +758,9 @@ namespace Loyalty.DataAccess.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
+                name: "AboutFile");
+
+            migrationBuilder.DropTable(
                 name: "AspNetRoleClaims");
 
             migrationBuilder.DropTable(
@@ -805,12 +782,6 @@ namespace Loyalty.DataAccess.Migrations
                 name: "Icon");
 
             migrationBuilder.DropTable(
-                name: "PassDeviceRegistrations");
-
-            migrationBuilder.DropTable(
-                name: "RedeemRequests");
-
-            migrationBuilder.DropTable(
                 name: "Rewards");
 
             migrationBuilder.DropTable(
@@ -829,6 +800,12 @@ namespace Loyalty.DataAccess.Migrations
                 name: "AspNetRoles");
 
             migrationBuilder.DropTable(
+                name: "AspNetUsers");
+
+            migrationBuilder.DropTable(
+                name: "About");
+
+            migrationBuilder.DropTable(
                 name: "LoyaltyCards");
 
             migrationBuilder.DropTable(
@@ -836,9 +813,6 @@ namespace Loyalty.DataAccess.Migrations
 
             migrationBuilder.DropTable(
                 name: "LoyaltyPrograms");
-
-            migrationBuilder.DropTable(
-                name: "AspNetUsers");
 
             migrationBuilder.DropTable(
                 name: "CardTemplates");

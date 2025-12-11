@@ -256,11 +256,29 @@ namespace Loyalty.Business.Services.Implementations.Users
         {
             try
             {
-                // Register artıq guest login kimi işləyir
-                // DeviceId tələb olunur
+                // Əgər Phone və Password verilibsə, phone-based OTP registration istifadə et
+                if (!string.IsNullOrEmpty(registerUser.Phone) && !string.IsNullOrEmpty(registerUser.Password))
+                {
+                    _logger?.LogInformation("Phone-based registration detected for phone: {Phone}", WalletCodeHelper.MaskPhone(registerUser.Phone));
+                    
+                    // RegisterWithPhoneDto formatına çevir
+                    var phoneRegisterDto = new RegisterWithPhoneDto
+                    {
+                        PhoneNumber = registerUser.Phone,
+                        Password = registerUser.Password,
+                        ConfirmPassword = registerUser.ConfirmPassword ?? registerUser.Password,
+                        Name = registerUser.Name,
+                        Surname = registerUser.Surname,
+                        Email = registerUser.Email
+                    };
+                    
+                    return await RegisterUserWithPendingStatusAsync(phoneRegisterDto);
+                }
+
+                // Əks halda guest login kimi işlə (DeviceId tələb olunur)
                 if (string.IsNullOrEmpty(registerUser.DeviceId))
                 {
-                    return new ServiceResult(false, "DeviceId is required for registration");
+                    return new ServiceResult(false, "DeviceId is required for guest registration, or Phone and Password for phone-based registration");
                 }
 
                 // Guest login istifadə et
@@ -305,6 +323,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             }
             catch (Exception ex)
             {
+                _logger?.LogError(ex, "Error in Register method");
                 return new ServiceResult(false, ex.Message);
             }
         }
@@ -545,7 +564,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     IsPhoneVerified = false,
                     Status = UserStatus.Pending,
                     EmailConfirmed = false,
-                    PhoneNumberConfirmed = false
+                    PhoneNumberConfirmed = false,
+                    Position="Customer"
                 };
 
                 var result = await _userManager.CreateAsync(user, registerDto.Password);
@@ -594,7 +614,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     .Where(o => o.ApplicationUserId == userId && 
                                 o.Purpose == purpose && 
                                 !o.IsUsed && 
-                                !o.IsExpired)
+                                o.ExpiresAt > DateTime.UtcNow) // Use ExpiresAt instead of IsExpired (computed property)
                     .ToListAsync();
 
                 foreach (var otp in previousOtps)

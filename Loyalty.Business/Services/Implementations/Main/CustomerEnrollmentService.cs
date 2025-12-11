@@ -186,15 +186,16 @@ UserManager<ApplicationUser> userManager)
                 // Əgər deactive kart tapılmadısa, yeni kart yarat
                 if (card is null)
                 {
-                    var barcode = await _cardSvc.GenerateUniqueWalletCodeAsync(tenantId, program.Id, int.Parse(userId), ct);
-
+                    // QEYD: CardNumber və BarcodeValue artıq avtomatik generate olunacaq SaveChangesAsync-də
+                    // BarcodeValue Customer.CardNumber ilə eyniləşdiriləcək
+                    // CardNumber boş buraxılır - avtomatik generate olunacaq (əgər lazımdırsa)
+                    
                     card = new LoyaltyCard
                     {
                         TenantId = tenantId,
                         CustomerId = customer.Id,
                         LoyaltyProgramId = program.Id,
-                        CardNumber = $"LC-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}".Substring(0, 20),
-                        BarcodeValue = barcode,
+                        // CardNumber və BarcodeValue boş buraxılır - SaveChangesAsync-də avtomatik set olunacaq
                         BarcodeType = BarcodeType.Code128,
                         Status = CardStatus.Active,
                         ActivatedAt = DateTime.UtcNow,
@@ -204,7 +205,7 @@ UserManager<ApplicationUser> userManager)
                     };
 
                     await _uow.Repository<LoyaltyCard>().AddAsync(card);
-                    _uow.Commit();
+                    _uow.Commit(); // Bu SaveChangesAsync çağırmalıdır - BarcodeValue avtomatik set olunacaq
                 }
             }
             else
