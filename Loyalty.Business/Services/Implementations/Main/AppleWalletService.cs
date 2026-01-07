@@ -114,6 +114,60 @@ public sealed class AppleWalletService : IAppleWalletService
                     cashbackText = $"{percent}%";
 
                 }
+
+                // ProgressBased vs TierBased/PointsBased logic
+                bool isProgressBased = snapshot.TemplateType == CardTemplateType.ProgressBased;
+
+                string? stripImageUrl = snapshot.StripImageUrl;
+                List<PassField> headerFields = new();
+                List<PassField> primaryFields = new();
+                List<PassField> secondaryFields = new();
+                List<PassField> auxiliaryFields = new();
+
+                if (isProgressBased)
+                {
+                    // ProgressBased Apple Wallet Layout:
+                    // Top: reward description (uppercase rule text) - use headerFields for top rule text
+                    // Middle: progress icons grid (strip image)
+                    // Lower-middle: "Reward Card" (left) and "Pulsuz içki: {N}" (right) - use secondaryFields for side-by-side
+                    // Bottom: barcode (existing)
+
+                    // Use CompletedCycles from card (available reward count)
+                    int completedCycles = card.CompletedCycles;
+                    string freeDrinkValue = completedCycles == 0 ? "0" : completedCycles.ToString();
+
+                    // Get FreeRewardLabel from template (default: "bonus" instead of "Pulsuz içki")
+                    string freeRewardLabel = string.IsNullOrWhiteSpace(snapshot.FreeRewardLabel)
+                        ? "bonus"
+                        : snapshot.FreeRewardLabel;
+
+                    string freeDrinkText = completedCycles == 0 ? "0" : $"{completedCycles} {freeRewardLabel.ToLowerInvariant()}";
+
+                    // Top: Reward description as uppercase rule text (headerFields for top placement)
+                    if (!string.IsNullOrWhiteSpace(snapshot.RewardDescription))
+                    {
+                        string rewardDescUpper = snapshot.RewardDescription.ToUpperInvariant();
+                        headerFields.Add(new PassField("rule", rewardDescUpper, null)); // No label for rule text
+                    }
+
+                    // Lower-middle: "Reward Card" (left) and "{FreeRewardLabel}: {N}" (right) - side-by-side
+                    secondaryFields.Add(new PassField("rewardCard", "Reward Card", null));
+                    secondaryFields.Add(new PassField("pulsuzIcki", $"{freeRewardLabel}: {freeDrinkText}", null));
+
+                    // Progress icons grid: Use strip image showing the grid
+                    // Try to get a composite grid image, or use the current step icon
+                    stripImageUrl = PickProgressIconBySteps(snapshot.IconUrls, card.CurrentSteps, snapshot.TotalSteps);
+                    if (string.IsNullOrWhiteSpace(stripImageUrl)) stripImageUrl = snapshot.StripImageUrl;
+                    if (string.IsNullOrWhiteSpace(stripImageUrl)) stripImageUrl = snapshot.HeroImageUrl;
+                    // If we have multiple icons, we might need a composite, but for now use the current icon
+                }
+                else
+                {
+                    // TierBased/PointsBased: Keep existing logic
+                    headerFields.Add(new PassField("balance", card.CurrentPoints.ToString() + " " + "AZN", "Balance"));
+                    auxiliaryFields.Add(new PassField("cashback", cashbackText, cashback));
+                    secondaryFields.Add(new PassField("name", customerFullName, "Customer"));
+                }
                 // 1) pass.json + şəkillər (DB creds → Team/PassType)
                 var req = new BuildPassRequest
                 {

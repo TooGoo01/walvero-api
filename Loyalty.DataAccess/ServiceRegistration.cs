@@ -32,6 +32,7 @@ namespace Loyalty.DataAccess
             services.AddScoped<ICardTemplateRepository, CardTemplateRepository>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<IAppVersionRepository, AppVersionRepository>();
+            services.AddScoped<ISequenceRepository, SequenceRepository>();
 
         }
     }
