@@ -10,9 +10,6 @@ namespace Loyalty.Business.Dtos.Post.Main
     public class StartScannerSessionDto
     {
         [Required]
-        public int TenantId { get; set; }
-        
-        [Required]
         public string ScannerDeviceId { get; set; } = string.Empty;
         
         [Required]

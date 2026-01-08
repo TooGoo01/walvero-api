@@ -45,7 +45,7 @@ namespace Loyalty.WebAPI.Controllers
             }
 
             _logger.LogInformation("Starting scanner session for TenantId: {TenantId}, UserId: {UserId}, DeviceId: {DeviceId}, Barcode: {Barcode}",
-                dto.TenantId, dto.UserId, dto.ScannerDeviceId, dto.Barcode);
+                dto.UserId, dto.ScannerDeviceId, dto.Barcode);
 
             var result = await _posSessionService.StartSessionAsync(dto, ct);
 

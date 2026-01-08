@@ -22,17 +22,20 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ICustomerRepository _customerRepository;
         private readonly ILoyaltyCardRepository _loyaltyCardRepository;
         private readonly LoyaltyWalletDbContext _dbContext;
+        private readonly ITenantProvider _tenantProvider;
 
         public PosSessionService(
             IUnitOfWork unitOfWork,
             ICustomerRepository customerRepository,
             ILoyaltyCardRepository loyaltyCardRepository,
-            LoyaltyWalletDbContext dbContext)
+            LoyaltyWalletDbContext dbContext,
+            ITenantProvider tenantProvider)
         {
             _unitOfWork = unitOfWork;
             _customerRepository = customerRepository;
             _loyaltyCardRepository = loyaltyCardRepository;
             _dbContext = dbContext;
+            _tenantProvider = tenantProvider;
         }
 
         public async Task<ServiceResult<ScannerSessionResponseDto>> StartSessionAsync(
@@ -41,12 +44,19 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             try
             {
+                // Get TenantId from JWT using TenantProvider
+                var tenantId = _tenantProvider.CurrentTenantId;
+                if (tenantId == null)
+                {
+                    return ServiceResult<ScannerSessionResponseDto>.Fail("TenantId is required. Unable to get TenantId from JWT token.");
+                }
+
                 var barcode = dto.Barcode.Trim();
                 Customer? customer = null;
                 LoyaltyCard? activeCard = null;
 
                 // First, try to find card by barcode
-                activeCard = await _loyaltyCardRepository.GetByBarcodeValueAsync(dto.TenantId, barcode, ct);
+                activeCard = await _loyaltyCardRepository.GetByBarcodeValueAsync(tenantId.Value, barcode, ct);
 
                 if (activeCard != null)
                 {
@@ -61,7 +71,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 else if (long.TryParse(barcode, out long walveroId))
                 {
                     // Barcode not found, try WalveroId
-                    customer = await _customerRepository.GetByWalveroIdAsync(dto.TenantId, walveroId, ct);
+                    customer = await _customerRepository.GetByWalveroIdAsync(tenantId.Value, walveroId, ct);
                     
                     if (customer == null || !customer.IsActive)
                     {
@@ -69,7 +79,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     }
 
                     // Find the active card for this customer
-                    var loyaltyCards = await _loyaltyCardRepository.ListByCustomerAsync(dto.TenantId, customer.Id, ct);
+                    var loyaltyCards = await _loyaltyCardRepository.ListByCustomerAsync(tenantId.Value, customer.Id, ct);
                     activeCard = loyaltyCards
                         .Where(c => c.IsActive && c.Status == CardStatus.Active)
                         .OrderByDescending(c => c.Id)
@@ -111,7 +121,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // Create PosSession
                 var posSession = new PosSession
                 {
-                    TenantId = dto.TenantId,
+                    TenantId = tenantId.Value,
                     scannerDeviceId = dto.ScannerDeviceId,
                     userId = dto.UserId,
                     tableId = dto.TableId,
