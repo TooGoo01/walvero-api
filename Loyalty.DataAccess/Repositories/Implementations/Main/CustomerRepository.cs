@@ -20,7 +20,16 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
 
         public async Task<Customer?> GetByPhoneAsync(int tenantId, string phone, CancellationToken ct = default)
         {
-          return await  GetAsQueryable().Include(x=>x.LoyaltyCards).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.PhoneNumber == phone, ct);
+          return await  GetAsQueryable().Include(x=>x.LoyaltyCards).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.PhoneNumber == phone && x.IsActive, ct);
+        }
+
+        public async Task<Customer?> GetByWalveroIdAsync(int tenantId, long walveroId, CancellationToken ct = default)
+        {
+            return await GetAsQueryable()
+                .Include(x => x.LoyaltyCards)
+                .Include(x => x.applicationUser)
+                .Where(x => x.TenantId == tenantId && x.IsActive && x.applicationUser != null && x.applicationUser.WalveroId == walveroId)
+                .FirstOrDefaultAsync(ct);
         }
 
         public async Task<List<Customer>> GetByTenant(int tenantId, int? userId)

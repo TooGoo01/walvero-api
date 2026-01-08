@@ -10,12 +10,13 @@ namespace Loyalty.Business.Services.Abstractions.Main
 {
     public interface IWalletRedeemer
     {
+      
         Task<ServiceResult> RedeemByCardIdAsync(
-            int loyaltyCardId,
-            CardTemplateSnapshot tpl,
-            int currentPoints,
-            int currentSteps,
-            int pointsDelta,
-            CancellationToken ct = default);
+          int loyaltyCardId,
+          CardTemplateSnapshot tpl,
+          int currentPoints,
+          int currentSteps,
+          int pointsDelta,
+          CancellationToken ct = default);
     }
 }

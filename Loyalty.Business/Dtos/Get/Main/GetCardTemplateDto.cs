@@ -20,6 +20,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int TotalSteps { get; set; }
         public string StepLabel { get; set; } = "";
         public string RewardDescription { get; set; } = "";
+        public string? FreeRewardLabel { get; set; }  // "Pulsuz içki", "Burger" və s. (nullable, default: "Pulsuz içki")
 
         public string? BronzeIconUrl { get; set; }
         public int? BronzeThreshold { get; set; }

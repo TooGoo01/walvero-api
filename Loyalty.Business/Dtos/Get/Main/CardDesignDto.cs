@@ -13,15 +13,19 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string LabelColor { get; set; } = "#000000";
         public string? HeroImageUrl { get; set; }
         public string? LogoImageUrl { get; set; }
+        public string? GoogleLogoUrl { get; set; }  // Same as LogoImageUrl, for convenience
         public string? StripImageUrl { get; set; }
         public string ProgramName { get; set; } = string.Empty;
         public string? TierName { get; set; }
+        public string? ProgramDescription { get; set; }
+        public string? RewardDescription { get; set; }
     }
     public class UserCardDto
     {
         public int TenantId { get; set; }
         public string TenantName { get; set; } = string.Empty;
         public string CustomerFullName { get; set; } = string.Empty;
+        public string? LocationUrl { get; set; } = string.Empty;
 
         public int CardId { get; set; }
         public int? categoryId { get; set; }
@@ -37,5 +41,9 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string BarcodeValue { get; set; } = string.Empty;
 
         public CardDesignDto Design { get; set; } = new();
+        
+        // ProgressBased card fields
+        public string? progressText { get; set; }  // e.g., "5/10"
+        public string? freeRewardText { get; set; }  // e.g., "1 Pulsuz içki"
     }
 }

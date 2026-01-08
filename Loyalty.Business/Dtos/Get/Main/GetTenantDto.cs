@@ -14,6 +14,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string Subdomain { get; set; } = string.Empty;
         public string ContactEmail { get; set; } = string.Empty;
         public string ContactPhone { get; set; } = string.Empty;
+        public string? LocationUrl { get; set; } = string.Empty;
         public bool RequireConfirmation { get; init; } = true; // tenant setting
         public int ConfirmationTtlMinutes { get; set; } = 10;
         public List<ApplicationUserDto> Admins { get; set; }

@@ -1,6 +1,8 @@
 ﻿using Loyalty.DataAccess.Repositories;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
+using Loyalty.DataAccess.Repositories.Abstractions.Sequences;
 using Loyalty.DataAccess.Repositories.Implementations.Main;
+using Loyalty.DataAccess.Repositories.Implementations.Sequences;
 using Loyalty.DataAccess.UnitOfWorks;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -23,6 +25,7 @@ namespace Loyalty.DataAccess
             services.AddScoped<IAboutRepository, AboutRepository>();
             services.AddScoped<IWalletCredentialRepository, WalletCredentialRepository>();
             services.AddScoped<IWalletPassRepository, WalletPassRepository>();
+            services.AddScoped<IWalveroWalletPassRepository, WalveroWalletPassRepository>();
             services.AddScoped<ITransactionRepository, TransactionRepository>();
             services.AddScoped<ITenantRepository, TenantRepository>();
             services.AddScoped<ITenantBrandingRepository, TenantBrandingRepository>();
@@ -32,6 +35,8 @@ namespace Loyalty.DataAccess
             services.AddScoped<ICardTemplateRepository, CardTemplateRepository>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<IAppVersionRepository, AppVersionRepository>();
+            services.AddScoped<IOfferRepository, OfferRepository>();
+            services.AddScoped<IStoryRepository, StoryRepository>();
             services.AddScoped<ISequenceRepository, SequenceRepository>();
 
         }

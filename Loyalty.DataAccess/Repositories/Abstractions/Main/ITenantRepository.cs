@@ -1,4 +1,5 @@
 ﻿using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,6 +19,19 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         Task<IEnumerable<Tenant>> GetByUserId(int tenantId);
         Task<List<Tenant>> GetByIdsAsync(IEnumerable<int> tenantIds, CancellationToken ct = default);
         Task<IEnumerable<Tenant>> GetActive();
-        Task<IQueryable<Tenant>> GetActiveWithUser(string? name,string? userName,int? categoryId);
+        IQueryable<Tenant> GetActiveWithUser(string? name,string? userName,int? categoryId);
+        Task<IReadOnlyList<HomeTenantProjection>> ListHomeTenantsAsync(CancellationToken ct = default);
+
+        /// <summary>
+        /// Get tenant with branding, category, and first active loyalty program with card template.
+        /// Used for wallet card details in TenantOnly mode.
+        /// </summary>
+        Task<Tenant?> GetTenantForWalletDetailsAsync(int tenantId, CancellationToken ct = default);
+
+        /// <summary>
+        /// Find Walvero shadow tenant by name (case-insensitive) and IsHidden flag.
+        /// Used only by WalveroWalletPassService.
+        /// </summary>
+        Task<Tenant?> FindWalveroTenantAsync(CancellationToken ct = default);
     }
 }

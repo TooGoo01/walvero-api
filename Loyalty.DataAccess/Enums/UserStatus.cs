@@ -2,10 +2,9 @@ namespace Loyalty.DataAccess.Enums
 {
     public enum UserStatus
     {
-        Pending = 0,
+        PendingOtpConfirmation = 0,
         Active = 1,
-        Suspended = 2,
-        Inactive = 3
+        Blocked = 2
     }
 }
 

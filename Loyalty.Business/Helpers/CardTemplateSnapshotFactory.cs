@@ -43,6 +43,7 @@ namespace Loyalty.Business.Helpers
                 TotalSteps = ct.TotalSteps > 0 ? ct.TotalSteps : 10,
                 StepLabel = string.IsNullOrWhiteSpace(ct.StepLabel) ? "Visit" : ct.StepLabel!,
                 RewardDescription = string.IsNullOrWhiteSpace(ct.RewardDescription) ? "Get 1 FREE" : ct.RewardDescription!,
+                FreeRewardLabel = ct?.FreeRewardLabel ?? "Pulsuz içki",
 
                 // Points based
                 StartPoints = 0,

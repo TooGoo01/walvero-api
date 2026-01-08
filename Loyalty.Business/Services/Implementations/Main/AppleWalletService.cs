@@ -2,9 +2,12 @@
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
+
 using System.Collections.Concurrent;
+using System.Data.Entity.ModelConfiguration.Configuration;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -48,7 +51,7 @@ public sealed class AppleWalletService : IAppleWalletService
         string barcodeValue,
         CancellationToken ct = default)
     {
-        var card = await _uow.Repository<LoyaltyCard>().GetByIdAsync(loyaltyCardId);
+        var card = await _loyaltyCardRepository.GetByIdAsync(loyaltyCardId, ct);
         if (card is null) return new ServiceResult(false, "Card not found.");
 
         var tenantId = card.TenantId;
@@ -88,7 +91,8 @@ public sealed class AppleWalletService : IAppleWalletService
                 percentCash = snapshot.SilverPercentCash.Value;
             }
 
-            else if (card.CurrentPoints >= snapshot.GoldPercent && card.CurrentPoints < snapshot.PlatinumThreshold)
+            // FIX C: Use GoldThreshold instead of GoldPercent
+            else if (card.CurrentPoints >= snapshot.GoldThreshold && card.CurrentPoints < snapshot.PlatinumThreshold)
             {
                 percent = snapshot.GoldPercent.Value;
                 percentCash = snapshot.GoldPercentCash.Value;
@@ -123,6 +127,7 @@ public sealed class AppleWalletService : IAppleWalletService
                 List<PassField> primaryFields = new();
                 List<PassField> secondaryFields = new();
                 List<PassField> auxiliaryFields = new();
+                List<PassField> backFields = new();
 
                 if (isProgressBased)
                 {
@@ -168,6 +173,23 @@ public sealed class AppleWalletService : IAppleWalletService
                     auxiliaryFields.Add(new PassField("cashback", cashbackText, cashback));
                     secondaryFields.Add(new PassField("name", customerFullName, "Customer"));
                 }
+                backFields.Add(new PassField(
+    "about",
+    "POS ilə inteqrasiya olunan sadiqlik proqramı. Müştəri bağlılığını artırın və təkrar alışları təşviq edin.",
+    "Walvero Loyallıq"
+));
+
+                backFields.Add(new PassField(
+                    "features",
+                    "• Fərdiləşdirilmiş mükafatlar\n• Avtomatlaşdırılmış izləmə (POS)\n• Hədəfli kampaniyalar\n• Analitika və insight-lar",
+                    "Əsas imkanlar"
+                ));
+
+                backFields.Add(new PassField(
+                    "website",
+                    "https://www.walvero.com",
+                    "Veb-sayt"
+                ));
                 // 1) pass.json + şəkillər (DB creds → Team/PassType)
                 var req = new BuildPassRequest
                 {
@@ -182,14 +204,16 @@ public sealed class AppleWalletService : IAppleWalletService
                     Barcode = barcodeValue,
                     CustomerName = customerFullName,
                     BarcodeFormat = "PKBarcodeFormatCode128",
-                    SecondaryFields = new() { new PassField("name", customerFullName, "Customer") },
-                    HeaderFields = new() { new PassField("balance", card.CurrentPoints.ToString() + " " + "AZN", "Balance") },
-                    AuxiliaryFields = new() { new PassField("cashback", cashbackText, cashback) },
+                    PrimaryFields = primaryFields,
+                    SecondaryFields = secondaryFields,
+                    HeaderFields = headerFields,
+                    AuxiliaryFields = auxiliaryFields,
+                    BackFields = backFields,
                     LogoUrl = snapshot.LogoUrl,
                     HeroImageUrl = snapshot.HeroImageUrl,
                     WebServiceURL = creds.WebServiceUrl,          // varsa
                     AuthenticationToken = creds.AuthToken,       // varsa
-                    StripImageUrl = snapshot.StripImageUrl,
+                    StripImageUrl = stripImageUrl,
                     ForegroundColor = snapshot.ForegroundColor,
                     LabelColor = snapshot.LabelColor,
                 };
@@ -307,5 +331,53 @@ public sealed class AppleWalletService : IAppleWalletService
     {
         var bytes = RandomNumberGenerator.GetBytes(len);
         return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    }
+
+    /// <summary>
+    /// Selects progress icon based on currentSteps and totalSteps.
+    /// Rules:
+    /// - If currentSteps == 0 => show 0th icon
+    /// - Calculate: remainder = currentSteps % totalSteps
+    /// - If currentSteps > 0 and remainder == 0 => iconIndex = totalSteps (completion icon if exists)
+    /// - Else iconIndex = remainder
+    /// - Clamp to [0 .. icons.Count-1]
+    /// </summary>
+    private static string? PickProgressIconBySteps(List<string> icons, int currentSteps, int totalSteps)
+    {
+        if (icons == null || icons.Count == 0) return null;
+        if (totalSteps <= 0) totalSteps = 1;
+
+        int iconIndex;
+        if (currentSteps == 0)
+        {
+            iconIndex = 0;
+        }
+        else
+        {
+            int remainder = currentSteps % totalSteps;
+            if (remainder == 0)
+            {
+                // Completion icon (totalSteps-th icon if exists, else last icon)
+                iconIndex = totalSteps < icons.Count ? totalSteps : icons.Count - 1;
+            }
+            else
+            {
+                iconIndex = remainder;
+            }
+        }
+
+        // Clamp to valid range
+        iconIndex = Math.Clamp(iconIndex, 0, icons.Count - 1);
+        var url = icons[iconIndex]?.Trim();
+        return !string.IsNullOrWhiteSpace(url) ? url : null;
+    }
+
+    /// <summary>
+    /// Calculates free drink count: floor(currentSteps / totalSteps)
+    /// </summary>
+    private static int CalculateFreeDrinkCount(int currentSteps, int totalSteps)
+    {
+        if (totalSteps <= 0) return 0;
+        return currentSteps / totalSteps; // Integer division = floor
     }
 }

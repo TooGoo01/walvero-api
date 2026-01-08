@@ -22,9 +22,12 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool RequireConfirmation { get; set; } = true; // tenant setting
         public int ConfirmationTtlMinutes { get; set; } = 10;
         public bool AcceptAnonymus { get; set; } = false;
+        public bool ShowOnHome { get; set; } = false;
+        public bool IsHidden { get; set; } = false; // Hidden tenants (e.g., Walvero shadow tenant) never appear in listings
 
         // (Opsional) OTP kanal konfiqi
         public string? ConfirmationChannel { get; set; }
+        public string? LocationUrl { get; set; }
 
         // Navigation Properties
        

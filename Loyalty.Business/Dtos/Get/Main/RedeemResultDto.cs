@@ -18,5 +18,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int? NewPoints { get; set; }
         public bool? IsPending { get; set; }
         public int? RedeemRequestId { get; set; }
+        public int? RemainingRewardCount { get; set; }   // Redeem-dən sonra yeni CompletedCycles
+        public string? FreeRewardLabel { get; set; }      // "Pulsuz içki", "Burger" və s.
     }
 }

@@ -22,6 +22,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public int TotalSteps { get; set; } = 10;
         public string StepLabel { get; set; } = "Coffee";
         public string RewardDescription { get; set; } = string.Empty;
+        public string? FreeRewardLabel { get; set; }  // "Pulsuz içki", "Burger" və s.
 
         // ===== POINTS BASED =====
         public string? BronzeIconUrl { get; set; }

@@ -6,6 +6,7 @@ using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Entities.Users;
+using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.Repositories.Implementations.Main;
 using Loyalty.DataAccess.UnitOfWorks;
@@ -122,6 +123,94 @@ int points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null)
             return (name, percent, percentCash, icon);
         }
 
+        /// <summary>
+        /// Maps LoyaltyCard entity with navigation properties to UserCardDto.
+        /// This method encapsulates the complex mapping logic for better maintainability.
+        /// </summary>
+        private static UserCardDto MapToUserCardDto(
+            LoyaltyCard card,
+            Tenant tenant,
+            LoyaltyProgram program,
+            CardTemplateSnapshot snapshot,
+            string tierName,
+            int? percent,
+            int? percentCash,
+            GetCardTemplateDto? template = null)
+        {
+            string? progressText = null;
+            string? freeRewardText = null;
+
+            // ProgressBased card specific logic
+            if (snapshot.TemplateType == CardTemplateType.ProgressBased)
+            {
+                int totalSteps = Math.Max(1, snapshot.TotalSteps);
+                int currentSteps = Math.Clamp(card.CurrentSteps, 0, totalSteps);
+                
+                // Progress text: "5/10"
+                progressText = $"{currentSteps}/{totalSteps}";
+
+                // Free reward text: "1 Pulsuz içki"
+                int freeRewardCount = card.CompletedCycles;
+                string freeRewardLabel = template?.FreeRewardLabel ?? snapshot.FreeRewardLabel ?? "Pulsuz içki";
+                freeRewardText = $"{freeRewardCount} {freeRewardLabel}";
+            }
+
+            // Build design DTO (HeroImageUrl and StripImageUrl are NOT overridden for ProgressBased in GetMyCards)
+            var design = new CardDesignDto
+            {
+                ProgramName = program.ProgramName,
+                BackgroundColor = snapshot.BackgroundColor,
+                ForegroundColor = snapshot.ForegroundColor,
+                LabelColor = snapshot.LabelColor,
+                HeroImageUrl = snapshot.HeroImageUrl,
+                LogoImageUrl = snapshot.GoogleLogoUrl,
+                StripImageUrl = snapshot.StripImageUrl,
+                TierName = tierName,
+                ProgramDescription = snapshot.ProgramDescription,
+                RewardDescription = snapshot.RewardDescription,
+            };
+
+            return new UserCardDto
+            {
+                TenantId = card.TenantId,
+                TenantName = tenant.CompanyName,
+                CustomerFullName = $"{card.Customer.FirstName} {card.Customer.LastName}".Trim(),
+                LocationUrl = tenant.LocationUrl,
+                CardId = card.Id,
+                ProgramId = card.LoyaltyProgramId,
+                ProgramName = program.ProgramName,
+                CurrentPoints = card.CurrentPoints,
+                categoryId = tenant.categoryId,
+                categoryAz = tenant.Category?.AzName,
+                categoryEn = tenant.Category?.EnName,
+                categoryRu = tenant.Category?.RuName,
+                CardNumber = card.CardNumber,
+                BarcodeValue = card.BarcodeValue,
+                CashbackPercent = percent,
+                CashbackPercentCash = percentCash,
+                Design = design,
+                progressText = progressText,
+                freeRewardText = freeRewardText
+            };
+        }
+
+        /// <summary>
+        /// Pick progress icon from icon list based on current step index.
+        /// Returns icon URL if valid, otherwise null.
+        /// Note: IconUrls in snapshot are already absolute URLs from CardTemplateSnapshotFactory.
+        /// </summary>
+        private static string? PickProgressIcon(List<string>? icons, int curIndex)
+        {
+            if (icons == null || icons.Count == 0) return null;
+            
+            // Clamp index to valid range (0 -> 0th icon, 1 -> 1st icon, etc.)
+            int clampedIndex = Math.Clamp(curIndex, 0, icons.Count - 1);
+            var iconUrl = icons[clampedIndex]?.Trim();
+            
+            // Return the icon URL if it's not empty (even if not HTTPS)
+            return string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl;
+        }
+
         public async Task<ServiceResult> GetMyCardsAsync(
      int currentPage,
      int pageSize,
@@ -143,14 +232,12 @@ int points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null)
 
             var applicationUserId = appUser.Id;
 
-            // 2) Userin bütün tenantlardakı son aktiv kartları (filtrlərlə birlikdə)
-            var cards = await _cardRepo.GetLastActiveCardsForApplicationUserAsync(
+            // 2) OPTIMIZATION: Get count first, then paginated cards in a single efficient query
+            var totalCount = await _cardRepo.GetActiveCardsCountForApplicationUserAsync(
                 applicationUserId,
                 model.Name,
                 model.categoryId,
                 ct);
-
-            var totalCount = cards.Count;
 
             if (totalCount == 0)
             {
@@ -165,30 +252,15 @@ int points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null)
                 return new ServiceResult(true, emptyResponse);
             }
 
-            // 2.1) Sıralama + paging (istəsən Id yerinə başqa kritere görə sıralaya bilərsən)
-            var pagedCards = cards
-                .OrderBy(c => c.Id)
-                .Skip((currentPage - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
-
-            // 3) Tenant, Program, Branding – artıq yalnız pagedCards üzrə lazımdır
-            var tenantIds = pagedCards.Select(c => c.TenantId).Distinct().ToList();
-            var programIds = pagedCards.Select(c => c.LoyaltyProgramId).Distinct().ToList();
-
-            var tenants = await _tenantRepo.GetByIdsAsync(tenantIds, ct);
-            var programs = await _programRepo.GetByIdsAsync(programIds, ct);
-
-            var tenantDict = tenants.ToDictionary(t => t.Id);
-            var programDict = programs.ToDictionary(p => p.Id);
-
-            var brandingDict = new Dictionary<int, TenantBranding?>();
-
-            foreach (var tid in tenantIds)
-            {
-                var b = await _tenantBrandingRepository.GetByTenantIdAsync(tid);
-                brandingDict[tid] = b;
-            }
+            // 2.1) OPTIMIZATION: Get paginated cards directly from database with all includes
+            // Cards query already includes: Customer, LoyaltyProgram.CardTemplate, Tenant.Category, Tenant.Branding
+            var pagedCards = await _cardRepo.GetLastActiveCardsForApplicationUserPaginatedAsync(
+                applicationUserId,
+                model.Name,
+                model.categoryId,
+                currentPage,
+                pageSize,
+                ct);
 
             // BaseUrl
             var baseUrl = _config["App:BaseUrl"] ?? "https://walvero.com";
@@ -201,20 +273,19 @@ int points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null)
                 return baseUrl + rel;
             }
 
-            // 4) Snapshot cache
+            // 3) Snapshot cache - use data already loaded via Include
             var snapshotCache = new Dictionary<(int tenantId, int programId), CardTemplateSnapshot>();
 
             var resultList = new List<UserCardDto>();
 
             foreach (var card in pagedCards)
             {
-                if (!tenantDict.TryGetValue(card.TenantId, out var tenant))
-                    continue;
+                // Use navigation properties directly - data is already loaded via Include
+                var tenant = card.Tenant;
+                var program = card.LoyaltyProgram;
 
-                if (!programDict.TryGetValue(card.LoyaltyProgramId, out var program))
+                if (tenant == null || program == null || program.CardTemplate == null)
                     continue;
-
-                brandingDict.TryGetValue(card.TenantId, out var branding);
 
                 var key = (card.TenantId, card.LoyaltyProgramId);
                 if (!snapshotCache.TryGetValue(key, out var snapshot))
@@ -222,71 +293,22 @@ int points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null)
                     snapshot = CardTemplateSnapshotFactory.From(
                         program,
                         program.CardTemplate,
-                        branding,
+                        null, // Branding not needed
                         ToAbs);
 
                     snapshotCache[key] = snapshot;
                 }
 
-                // CardTemplate-dən TierResolver üçün DTO
-                var tpl = new GetCardTemplateDto
-                {
-                    BronzeThreshold = program.CardTemplate.BronzeThreshold,
-                    BronzePercent = program.CardTemplate.BronzePercent,
-                    BronzePercentCash = program.CardTemplate.BronzePercentCash,
-                    BronzeIconUrl = program.CardTemplate.BronzeIconUrl,
-                    SilverThreshold = program.CardTemplate.SilverThreshold,
-                    SilverPercent = program.CardTemplate.SilverPercent,
-                    SilverPercentCash = program.CardTemplate.SilverPercentCash,
-                    SilverIconUrl = program.CardTemplate.SilverIconUrl,
-                    GoldThreshold = program.CardTemplate.GoldThreshold,
-                    GoldPercent = program.CardTemplate.GoldPercent,
-                    GoldPercentCash = program.CardTemplate.GoldPercentCash,
-                    GoldIconUrl = program.CardTemplate.GoldIconUrl,
-                    PlatinumThreshold = program.CardTemplate.PlatinumThreshold,
-                    PlatinumPercent = program.CardTemplate.PlatinumPercent,
-                    PlatinumPercentCash = program.CardTemplate.PlatinumPercentCash,
-                    PlatinumIconUrl = program.CardTemplate.PlatinumIconUrl,
-                    LogoUrl = program.CardTemplate.GoogleLogoUrl
-                };
+                // OPTIMIZATION: Use AutoMapper for CardTemplate → GetCardTemplateDto mapping
+                var cardTemplate = program.CardTemplate;
+                var tpl = _mapper.Map<GetCardTemplateDto>(cardTemplate);
 
                 // TierResolver
                 var (tierName, percent, percentCash, tierIconUrl) =
                     TierResolver(card.CurrentPoints, tpl, ToAbs);
 
-                var dto = new UserCardDto
-                {
-                    TenantId = card.TenantId,
-                    TenantName = tenant.CompanyName,
-                    CustomerFullName = card.Customer.FirstName + " " + card.Customer.LastName,
-
-                    CardId = card.Id,
-                    ProgramId = card.LoyaltyProgramId,
-                    ProgramName = program.ProgramName,
-
-                    CurrentPoints = card.CurrentPoints,
-                    categoryId=tenant.categoryId,
-                    categoryAz=tenant!.Category.AzName,
-                    categoryEn=tenant!.Category.EnName,
-                    categoryRu=tenant!.Category.RuName,
-                    CardNumber = card.CardNumber,
-                    BarcodeValue = card.BarcodeValue,
-
-                    CashbackPercent = percent,
-                    CashbackPercentCash = percentCash,
-
-                    Design = new CardDesignDto
-                    {
-                        ProgramName = program.ProgramName,
-                        BackgroundColor = snapshot.BackgroundColor,
-                        ForegroundColor = snapshot.ForegroundColor,
-                        LabelColor = snapshot.LabelColor,
-                        HeroImageUrl = snapshot.HeroImageUrl,
-                        LogoImageUrl = snapshot.GoogleLogoUrl,
-                        StripImageUrl = snapshot.StripImageUrl,
-                        TierName = tierName
-                    }
-                };
+                // OPTIMIZATION: Use helper method for complex mapping
+                var dto = MapToUserCardDto(card, tenant, program, snapshot, tierName, percent, percentCash, tpl);
 
                 resultList.Add(dto);
             }

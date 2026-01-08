@@ -12,5 +12,7 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         Task<TenantBranding?> GetByTenantIdAsync(int tenantId, CancellationToken ct = default);
         Task<TenantBranding?> GetById(int id, CancellationToken ct = default);
         Task UpsertAsync(int tenantId, TenantBranding branding, CancellationToken ct = default);
+        // OPTIMIZATION: Batch method to avoid N+1 queries
+        Task<Dictionary<int, TenantBranding>> GetByTenantIdsAsync(IEnumerable<int> tenantIds, CancellationToken ct = default);
     }
 }

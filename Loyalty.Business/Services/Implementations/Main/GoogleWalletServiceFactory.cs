@@ -17,12 +17,14 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILoyaltyProgramRepository _programSvc;
         private readonly IAppEnvironment _env;
         private readonly HttpClient _httpClient;
-        public GoogleWalletServiceFactory(IAppEnvironment env, ILoyaltyProgramRepository programSvc, IWalletCredentialRepository walletSvc, HttpClient httpClient)
+        private readonly ILoyaltyCardRepository? _cardRepo;
+        public GoogleWalletServiceFactory(IAppEnvironment env, ILoyaltyProgramRepository programSvc, IWalletCredentialRepository walletSvc, HttpClient httpClient, ILoyaltyCardRepository? cardRepo)
         {
             _env = env;
             _programSvc = programSvc;
             _walletSvc = walletSvc;
             _httpClient = httpClient;
+            _cardRepo = cardRepo;
         }
 
 
@@ -90,7 +92,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             };
 
             // 5) Servisi yaradıb qaytar
-            return new GoogleWalletService(cfg);
+            return new GoogleWalletService(cfg,null, _cardRepo);
         }
 
     }

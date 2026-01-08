@@ -32,4 +32,8 @@
     <ProjectReference Include="..\Loyalty.Infrastructure\Loyalty.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Controllers\Pos\" />
+  </ItemGroup>
+
 </Project>

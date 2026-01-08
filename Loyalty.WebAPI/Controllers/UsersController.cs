@@ -1,4 +1,5 @@
 ﻿
+using Loyalty.Business.Dtos.Get.Users;
 using Loyalty.Business.Dtos.Post.Users;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Users;
@@ -187,6 +188,72 @@ namespace Loyalty.WebAPI.Controllers
         public async Task<ActionResult<ServiceResult>> ResetPassword([FromBody] ResetPasswordDto resetDto)
         {
             var result = await _userService.ResetPasswordAsync(resetDto.ResetToken, resetDto.NewPassword);
+            return Ok(result);
+        }
+
+        // ========== NEW IMPROVED OTP AUTHENTICATION FLOW ENDPOINTS ==========
+
+        /// <summary>
+        /// Register a new user with phone number (creates user in PendingOtpConfirmation state and sends OTP)
+        /// </summary>
+        [HttpPost("register-new")]
+        [ProducesResponseType(typeof(ServiceResult<OtpRequiredResponse>), (int)HttpStatusCode.OK)]
+        public async Task<ActionResult<ServiceResult<OtpRequiredResponse>>> RegisterNew([FromBody] RegisterRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _userService.RegisterAsync(request);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Login with phone and password (returns session if Active, or OTP required if PendingOtpConfirmation)
+        /// </summary>
+        [HttpPost("login-new")]
+        [ProducesResponseType(typeof(ServiceResult<object>), (int)HttpStatusCode.OK)]
+        public async Task<ActionResult<ServiceResult<object>>> LoginNew([FromBody] LoginRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _userService.LoginAsync(request);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Verify OTP code for registration or login (returns session with JWT tokens) - New improved flow
+        /// </summary>
+        [HttpPost("verify-otp-new")]
+        [ProducesResponseType(typeof(ServiceResult<VerifyOtpResponse>), (int)HttpStatusCode.OK)]
+        public async Task<ActionResult<ServiceResult<VerifyOtpResponse>>> VerifyOtpNew([FromBody] VerifyOtpRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _userService.VerifyOtpAsync(request);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Resend OTP code for registration or login
+        /// </summary>
+        [HttpPost("resend-otp")]
+        [ProducesResponseType(typeof(ServiceResult<OtpRequiredResponse>), (int)HttpStatusCode.OK)]
+        public async Task<ActionResult<ServiceResult<OtpRequiredResponse>>> ResendOtp([FromBody] ResendOtpRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _userService.ResendOtpAsync(request);
             return Ok(result);
         }
     }

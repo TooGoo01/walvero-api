@@ -32,6 +32,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public List<PassField> PrimaryFields { get; set; } = new();
         public List<PassField> SecondaryFields { get; set; } = new();
         public List<PassField> AuxiliaryFields { get; set; } = new();
+        public List<PassField> BackFields { get; set; } = new();
 
         // Images (absolute URLs, builder yükləyib fayla çevirəcək)
         public string? LogoUrl { get; set; }

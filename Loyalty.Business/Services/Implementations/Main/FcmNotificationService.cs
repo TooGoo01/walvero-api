@@ -94,7 +94,30 @@ Payload: {json}
             {
                 token = deviceToken,
                 notification = new { title, body },
-                data = data
+                data = data,
+                android = new
+    {
+        priority = "HIGH",
+        notification = new { title, body }
+    },
+
+    apns = new
+    {
+        headers = new Dictionary<string, string>
+        {
+            ["apns-push-type"] = "alert",
+            ["apns-priority"]  = "10",
+        },
+        payload = new
+        {
+            aps = new Dictionary<string, object>
+            {
+                ["alert"] = new { title = title, body = body },
+                ["sound"] = "default",
+                ["content-available"] = 1
+            }
+        }
+    }
             });
         }
 

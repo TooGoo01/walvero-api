@@ -101,8 +101,18 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             if (pageSize > 100)
                 pageSize = 100;
-            var respose = await _tenantRepository.GetActiveWithUser(model.Name,model.userName,model.categoryId);
-            var page = respose.Skip((currentPage - 1) * pageSize).Take(pageSize).ToList();
+            
+            // OPTIMIZATION: Get IQueryable and count BEFORE pagination
+            var query =  _tenantRepository.GetActiveWithUser(model.Name,model.userName,model.categoryId);
+            
+            // Execute count query first (single database call)
+            var totalCount = await query.CountAsync();
+            
+            // Apply pagination at database level and materialize
+            var page = await query
+                .Skip((currentPage - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
 
             // Map tenants - Customers collection is not included in GetTenantDto
             // Only IsCustomer flag is set based on active cards
@@ -111,12 +121,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             SearchResult<IEnumerable<GetTenantDto>> response = new SearchResult<IEnumerable<GetTenantDto>>()
             {
                 Value = mappedTenants,
-                
-                DataCount = respose.Count(),
+                DataCount = totalCount,
                 CurrentPage = currentPage,
                 PageSize = pageSize
             };
-           
 
             return new ServiceResult(true, response);
         }
@@ -228,6 +236,20 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new ServiceResult(true, response.Id);
             }
             return new ServiceResult(false);
+        }
+        public async Task<IReadOnlyList<HomeTenantDto>> GetHomeTenantsAsync(CancellationToken ct = default)
+        {
+            var projections = await _tenantRepository.ListHomeTenantsAsync(ct);
+
+            // Map from repository projection to service DTO
+            return projections.Select(p => new HomeTenantDto
+            {
+                TenantId = p.TenantId,
+                TenantName = p.TenantName,
+                TenantProgramName = p.TenantProgramName,
+                GoogleLogoUrl = p.GoogleLogoUrl,
+                RewardDescription = p.RewardDescription
+            }).ToList();
         }
     }
 }

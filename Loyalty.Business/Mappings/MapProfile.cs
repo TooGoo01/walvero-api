@@ -5,6 +5,7 @@ using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Dtos.Post.Users;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Entities.Users;
+using Loyalty.DataAccess.Models;
 using LoyaltyWalletApp.Business.Dtos.Get.Main;
 
 
@@ -66,8 +67,16 @@ namespace Loyalty.Business.Mappings
                     opt => opt.MapFrom(s => s.Customers != null && 
                                              s.Customers.Any(c => c.LoyaltyCards != null && 
                                                                   c.LoyaltyCards.Any(lc => lc.IsActive))));
+            CreateMap<Offer, AddOfferDto>().ReverseMap();
+            CreateMap<Offer, GetOfferDto>().ReverseMap();
 
+            CreateMap<Story, AddStoryDto>().ReverseMap();
+            CreateMap<Story, GetStoryDto>().ReverseMap();
 
+            // Home page projections mapping
+            CreateMap<HomeTenantProjection, HomeTenantDto>().ReverseMap();
+            CreateMap<HomeStoryProjection, HomeStoryDto>().ReverseMap();
+            CreateMap<HomeOfferProjection, HomeOfferDto>().ReverseMap();
 
             #endregion
 

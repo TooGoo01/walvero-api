@@ -26,6 +26,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public int TotalSteps { get; set; } = 10;
         public string StepLabel { get; set; } = "Visit";
         public string RewardDescription { get; set; } = "Get 1 FREE";
+        public string? FreeRewardLabel { get; set; }  // From CardTemplate.FreeRewardLabel
 
         // ---- Points Based ----
         public int StartPoints { get; set; } = 0;           // obyekt yarananda başlanğıc points

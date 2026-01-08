@@ -6,6 +6,7 @@ using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.Business.Services.Abstractions.Sequences;
 using Loyalty.Business.Services.Abstractions.Users;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Entities.Users;
@@ -37,6 +38,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ITenantBrandingRepository _tenantBrandingRepository;
         private readonly IMapper _mapper;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly ICardNumberGenerator _cardNumberGenerator;
         public CustomerEnrollmentService(
             ITenantProvider tp,
             ICustomerRepository customerRepo,
@@ -52,12 +54,17 @@ namespace Loyalty.Business.Services.Implementations.Main
             ITenantBrandingRepository tenantBrandingRepository,
             IMapper mapper
 ,
-UserManager<ApplicationUser> userManager)
+UserManager<ApplicationUser> userManager,
+            ICardNumberGenerator cardNumberGenerator)
         {
             _tp = tp; _customerRepo = customerRepo; _programRepo = programRepo;
             _cardRepo = cardRepo; _cardSvc = cardSvc; _credSvc = credSvc;
             _googleFactory = googleFactory; _appleService = appleService;
             _uow = uow; _env = env;
+            _tenantBrandingRepository = tenantBrandingRepository;
+            _mapper = mapper;
+            _userManager = userManager;
+            _cardNumberGenerator = cardNumberGenerator;
             _tenantBrandingRepository = tenantBrandingRepository;
             _mapper = mapper;
             _userManager = userManager;
@@ -130,6 +137,9 @@ UserManager<ApplicationUser> userManager)
 
             if (customer is null)
             {
+                // Generate CardNumber before creating customer
+                var cardNumber = await _cardNumberGenerator.GenerateCardNumberAsync(tenantId, ct);
+
                 customer = new Customer
                 {
                     TenantId = tenantId,
@@ -141,11 +151,23 @@ UserManager<ApplicationUser> userManager)
                     DateOfBirth = user.DateOfBirth,
                     IsActive = true,
                     LastActivityDate = DateTime.UtcNow,
-                    applicationUserId = int.Parse(userId)
+                    applicationUserId = int.Parse(userId),
+                    CardNumber = cardNumber // Set before save
                 };
 
                 await _uow.Repository<Customer>().AddAsync(customer);
-                _uow.Commit();
+                
+                // Retry on unique constraint violation
+                try
+                {
+                    _uow.Commit();
+                }
+                catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 2601 || ex.Number == 2627)
+                {
+                    // Regenerate and retry once
+                    customer.CardNumber = await _cardNumberGenerator.GenerateCardNumberAsync(tenantId, ct);
+                    _uow.Commit();
+                }
             }
 
             // 3) Son aktiv kartı reuse et / yoxdursa deactive kartı aktivləşdir / yoxdursa yarat
@@ -183,19 +205,17 @@ UserManager<ApplicationUser> userManager)
                     }
                 }
                 
-                // Əgər deactive kart tapılmadısa, yeni kart yarat
+               
                 if (card is null)
                 {
-                    // QEYD: CardNumber və BarcodeValue artıq avtomatik generate olunacaq SaveChangesAsync-də
-                    // BarcodeValue Customer.CardNumber ilə eyniləşdiriləcək
-                    // CardNumber boş buraxılır - avtomatik generate olunacaq (əgər lazımdırsa)
+                    
                     
                     card = new LoyaltyCard
                     {
                         TenantId = tenantId,
                         CustomerId = customer.Id,
                         LoyaltyProgramId = program.Id,
-                        // CardNumber və BarcodeValue boş buraxılır - SaveChangesAsync-də avtomatik set olunacaq
+                        // CardNumber və BarcodeValue boş buraxılır 
                         BarcodeType = BarcodeType.Code128,
                         Status = CardStatus.Active,
                         ActivatedAt = DateTime.UtcNow,

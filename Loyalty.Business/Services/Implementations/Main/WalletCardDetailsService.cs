@@ -1,0 +1,406 @@
+using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Helpers;
+using Loyalty.Business.Results;
+using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Enums;
+using Loyalty.DataAccess.Repositories.Abstractions.Main;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System;
+
+namespace Loyalty.Business.Services.Implementations.Main
+{
+    /// <summary>
+    /// Service for retrieving wallet card details with proper authorization.
+    /// </summary>
+    public class WalletCardDetailsService : IWalletCardDetailsService
+    {
+        private readonly ITenantProvider _tenantProvider;
+        private readonly ITenantRepository _tenantRepository;
+        private readonly ILoyaltyCardRepository _cardRepository;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<WalletCardDetailsService> _logger;
+
+        public WalletCardDetailsService(
+            ITenantProvider tenantProvider,
+            ITenantRepository tenantRepository,
+            ILoyaltyCardRepository cardRepository,
+            IConfiguration configuration,
+            ILogger<WalletCardDetailsService> logger)
+        {
+            _tenantProvider = tenantProvider;
+            _tenantRepository = tenantRepository;
+            _cardRepository = cardRepository;
+            _configuration = configuration;
+            _logger = logger;
+        }
+
+        /// <inheritdoc />
+        public async Task<ServiceResult<WalletCardDetailsResponseDto>> GetTenantWalletInfoAsync(
+            int tenantId,
+            CancellationToken ct = default)
+        {
+            var baseUrl = _configuration["App:BaseUrl"] ?? "https://walvero.com";
+
+            // Log without sensitive data
+            _logger.LogInformation("Fetching tenant wallet info for TenantId: {TenantId}", tenantId);
+
+            var tenant = await _tenantRepository.GetTenantForWalletDetailsAsync(tenantId, ct);
+            if (tenant == null)
+            {
+                _logger.LogWarning("Tenant not found: {TenantId}", tenantId);
+                return ServiceResult<WalletCardDetailsResponseDto>.Fail("Tenant not found");
+            }
+
+            var response = new WalletCardDetailsResponseDto
+            {
+                Mode = WalletCardDetailsMode.TenantOnly,
+                Tenant = BuildTenantPublicDto(tenant, baseUrl),
+                Card = null // Explicitly null - no card-specific data
+            };
+
+            return ServiceResult<WalletCardDetailsResponseDto>.Ok(response);
+        }
+
+        /// <inheritdoc />
+        public async Task<ServiceResult<WalletCardDetailsResponseDto>> GetCardDetailsAsync(
+            int tenantId,
+            int cardId,
+            CancellationToken ct = default)
+        {
+            var baseUrl = _configuration["App:BaseUrl"] ?? "https://walvero.com";
+
+            // Log without sensitive data (no card numbers, barcodes, etc.)
+            _logger.LogInformation(
+                "Fetching card details for TenantId: {TenantId}, CardId: {CardId}",
+                tenantId, cardId);
+
+            // 1. Get the card with full details
+            var card = await _cardRepository.GetCardWithFullDetailsAsync(cardId, ct);
+            if (card == null)
+            {
+                _logger.LogWarning("Card not found: {CardId}", cardId);
+                return ServiceResult<WalletCardDetailsResponseDto>.Fail("Card not found");
+            }
+
+            // 2. Validate tenant match - card must belong to requested tenant
+            if (card.TenantId != tenantId)
+            {
+                // Return 404-style message to avoid leaking card existence across tenants
+                _logger.LogWarning(
+                    "Tenant mismatch: Card {CardId} belongs to Tenant {ActualTenantId}, requested Tenant {RequestedTenantId}",
+                    cardId, card.TenantId, tenantId);
+                return ServiceResult<WalletCardDetailsResponseDto>.Fail("Card not found");
+            }
+
+            // 3. Authorization check - verify current user owns this card
+            var currentUserId = _tenantProvider.CurrentUserId;
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                _logger.LogWarning("No authenticated user for card access: {CardId}", cardId);
+                return ServiceResult<WalletCardDetailsResponseDto>.Fail("Authentication required");
+            }
+
+            if (!int.TryParse(currentUserId, out var applicationUserId))
+            {
+                _logger.LogWarning("Invalid user ID format: {UserId}", currentUserId);
+                return ServiceResult<WalletCardDetailsResponseDto>.Fail("Authentication required");
+            }
+
+            // Check if card belongs to the requesting user
+            var isOwner = await _cardRepository.CardBelongsToUserAsync(cardId, applicationUserId, ct);
+            if (!isOwner)
+            {
+                // Return 404-style message to avoid leaking card existence to other users
+                _logger.LogWarning(
+                    "Unauthorized card access attempt: User {UserId} tried to access Card {CardId}",
+                    applicationUserId, cardId);
+                return ServiceResult<WalletCardDetailsResponseDto>.Fail("Card not found");
+            }
+
+            // 4. Build response with full card details
+            // Use card's LoyaltyProgram directly since it's already loaded with CardTemplate
+            var response = new WalletCardDetailsResponseDto
+            {
+                Mode = WalletCardDetailsMode.CardDetails,
+                Tenant = BuildTenantPublicDto(card.Tenant, card.LoyaltyProgram, card, baseUrl),
+                Card = BuildCardPrivateDto(card, baseUrl)
+            };
+
+            return ServiceResult<WalletCardDetailsResponseDto>.Ok(response);
+        }
+
+        /// <summary>
+        /// Build public tenant DTO from entity.
+        /// Contains ONLY public, non-sensitive information.
+        /// </summary>
+        private TenantWalletPublicDto BuildTenantPublicDto(Tenant tenant, string baseUrl)
+        {
+            var branding = tenant.Branding;
+            var category = tenant.Category;
+            var program = tenant.LoyaltyPrograms?.FirstOrDefault(lp => lp.IsActive);
+            return BuildTenantPublicDto(tenant, program, null, baseUrl);
+        }
+
+        /// <summary>
+        /// Build public tenant DTO from entity with explicit program.
+        /// Used when program is already loaded (e.g., from card).
+        /// </summary>
+        private TenantWalletPublicDto BuildTenantPublicDto(Tenant tenant, LoyaltyProgram? program, LoyaltyCard? card, string baseUrl)
+        {
+            var branding = tenant.Branding;
+            var category = tenant.Category;
+            var cardTemplate = program?.CardTemplate;
+
+            var dto = new TenantWalletPublicDto
+            {
+                TenantId = tenant.Id,
+                TenantName = tenant.CompanyName,
+                
+                // Branding (from TenantBranding)
+                LogoUrl = ToAbsoluteUrl(branding?.LogoUrl, baseUrl),
+                BackgroundImageUrl = ToAbsoluteUrl(branding?.BackgroundImageUrl, baseUrl),
+                IconUrl = ToAbsoluteUrl(branding?.IconUrl, baseUrl),
+                PrimaryColor = branding?.PrimaryColor ?? "#000000",
+                SecondaryColor = branding?.SecondaryColor ?? "#FFFFFF",
+                BackgroundColor = branding?.BackgroundColor ?? "#FFFFFF",
+                TextColor = branding?.TextColor ?? "#000000",
+
+                // Card Template Images (from CardTemplate)
+                GoogleLogoUrl = ToAbsoluteUrl(cardTemplate?.GoogleLogoUrl, baseUrl),
+                HeroImageUrl = ToAbsoluteUrl(cardTemplate?.HeroImageUrl, baseUrl),
+                StripImageUrl = ToAbsoluteUrl(cardTemplate?.StripImageUrl, baseUrl),
+
+                // Card Template Colors (from CardTemplate)
+                CardBackgroundColor = cardTemplate?.BackgroundColor ?? "#FFFFFF",
+                CardForegroundColor = cardTemplate?.ForegroundColor ?? "#000000",
+                CardLabelColor = cardTemplate?.LabelColor ?? "#999999",
+
+                // General info
+                Description = branding?.Description,
+                Website = branding?.Website,
+                LocationUrl = tenant.LocationUrl,
+                ContactEmail = tenant.ContactEmail,
+                ContactPhone = tenant.ContactPhone,
+
+                // Category
+                CategoryId = category?.Id,
+                CategoryAz = category?.AzName,
+                CategoryEn = category?.EnName,
+                CategoryRu = category?.RuName,
+
+                // Program info (public)
+                ProgramName = program?.ProgramName,
+                ProgramId = program?.Id,
+                ProgramDescription = program?.Description,
+                RewardDescription = cardTemplate?.RewardDescription,
+
+                // Card template design (nested object with all design info)
+                Design = cardTemplate != null ? BuildDesignDto(cardTemplate, program, card, baseUrl) : null
+            };
+
+            return dto;
+        }
+
+        /// <summary>
+        /// Build card private DTO from entity.
+        /// Contains SENSITIVE customer-specific information.
+        /// </summary>
+        private WalletCardPrivateDto BuildCardPrivateDto(LoyaltyCard card, string baseUrl)
+        {
+            var customer = card.Customer;
+            var program = card.LoyaltyProgram;
+            var cardTemplate = program?.CardTemplate;
+
+            // Calculate tier based on points
+            var (tierName, cashbackPercent, cashbackPercentCash) = CalculateTier(
+                card.CurrentPoints, 
+                cardTemplate);
+
+            string? progressText = null;
+            string? freeRewardText = null;
+
+            // ProgressBased card specific logic
+            if (cardTemplate != null && cardTemplate.TemplateType == CardTemplateType.ProgressBased)
+            {
+                int totalSteps = Math.Max(1, cardTemplate.TotalSteps);
+                int currentSteps = Math.Clamp(card.CurrentSteps, 0, totalSteps);
+                
+                // Progress text: "5/10"
+                progressText = $"{currentSteps}/{totalSteps}";
+
+                // Free reward text: "1 Pulsuz içki"
+                int freeRewardCount = card.CompletedCycles;
+                string freeRewardLabel = cardTemplate.FreeRewardLabel ?? "Pulsuz içki";
+                freeRewardText = $"{freeRewardCount} {freeRewardLabel}";
+            }
+
+            return new WalletCardPrivateDto
+            {
+                CardId = card.Id,
+                CustomerId = card.CustomerId,
+                LoyaltyProgramId = card.LoyaltyProgramId,
+
+                // Customer info (SENSITIVE)
+                CustomerFullName = $"{customer?.FirstName} {customer?.LastName}".Trim(),
+                CustomerPhone = customer?.PhoneNumber,
+
+                // Card details (SENSITIVE)
+                CardNumber = card.CardNumber,
+                BarcodeValue = card.BarcodeValue,
+                BarcodeType = card.BarcodeType,
+
+                // Points/Balance (SENSITIVE)
+                CurrentPoints = card.CurrentPoints,
+                LifetimePoints = card.LifetimePoints,
+                CurrentSteps = card.CurrentSteps,
+                CompletedCycles = card.CompletedCycles,
+
+                // ProgressBased card fields
+                progressText = progressText,
+                freeRewardText = freeRewardText,
+
+                // Tier/Cashback
+                TierName = tierName,
+                CashbackPercent = cashbackPercent,
+                CashbackPercentCash = cashbackPercentCash,
+
+                // Status
+                CardStatus = card.Status,
+                ActivatedAt = card.ActivatedAt,
+                ExpiresAt = card.ExpiresAt,
+
+                // Wallet platform info
+                IsAndroid = card.IsAndroid,
+                IsIOS = card.IsIOS,
+                ApplePassUrl = card.ApplePassUrl
+            };
+        }
+
+        /// <summary>
+        /// Build card design DTO for UI preview.
+        /// For ProgressBased cards, overrides HeroImageUrl and StripImageUrl with progress icon.
+        /// When card is null (not added to wallet), uses default icon (first icon, index 0).
+        /// </summary>
+        private CardDesignDto BuildDesignDto(CardTemplate cardTemplate, LoyaltyProgram? program, LoyaltyCard? card, string baseUrl)
+        {
+            var googleLogoUrl = ToAbsoluteUrl(cardTemplate.GoogleLogoUrl, baseUrl);
+            
+            string? heroImageUrl = ToAbsoluteUrl(cardTemplate.HeroImageUrl, baseUrl);
+            string? stripImageUrl = ToAbsoluteUrl(cardTemplate.StripImageUrl, baseUrl);
+
+            // ProgressBased card: override with progress icon
+            if (cardTemplate.TemplateType == CardTemplateType.ProgressBased)
+            {
+                var snapshot = CardTemplateSnapshotFactory.From(
+                    program ?? new LoyaltyProgram { Id = 0, TenantId = 0 },
+                    cardTemplate,
+                    null,
+                    path => ToAbsoluteUrl(path, baseUrl));
+
+                int totalSteps = Math.Max(1, snapshot.TotalSteps);
+                // If card is null (not added to wallet), use default icon (index 0)
+                int currentSteps = card != null ? Math.Clamp(card.CurrentSteps, 0, totalSteps) : 0;
+                string? progressIconUrl = PickProgressIcon(snapshot.IconUrls, currentSteps);
+
+                if (progressIconUrl != null)
+                {
+                    heroImageUrl = progressIconUrl;
+                    stripImageUrl = progressIconUrl;
+                }
+            }
+            
+            return new CardDesignDto
+            {
+                BackgroundColor = cardTemplate.BackgroundColor ?? "#FFFFFF",
+                ForegroundColor = cardTemplate.ForegroundColor ?? "#000000",
+                LabelColor = cardTemplate.LabelColor ?? "#999999",
+                HeroImageUrl = heroImageUrl,
+                LogoImageUrl = googleLogoUrl,
+                GoogleLogoUrl = googleLogoUrl,  // Same as LogoImageUrl
+                StripImageUrl = stripImageUrl,
+                ProgramName = program?.ProgramName ?? string.Empty,
+                ProgramDescription = program?.Description,
+                RewardDescription = cardTemplate.RewardDescription
+            };
+        }
+
+        /// <summary>
+        /// Pick progress icon from icon list based on current step index.
+        /// Returns icon URL if valid, otherwise null.
+        /// </summary>
+        private static string? PickProgressIcon(List<string>? icons, int curIndex)
+        {
+            if (icons == null || icons.Count == 0) return null;
+            
+            // Clamp index to valid range (0 -> 0th icon, 1 -> 1st icon, etc.)
+            int clampedIndex = Math.Clamp(curIndex, 0, icons.Count - 1);
+            var iconUrl = icons[clampedIndex]?.Trim();
+            
+            // Return the icon URL if it's not empty
+            return string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl;
+        }
+
+        /// <summary>
+        /// Calculate tier name and cashback percentages based on points.
+        /// </summary>
+        private static (string tierName, decimal? percent, decimal? percentCash) CalculateTier(
+            int points,
+            CardTemplate? cardTemplate)
+        {
+            if (cardTemplate == null)
+                return ("Bronze", null, null);
+
+            int bronzeTh = cardTemplate.BronzeThreshold ?? 0;
+            int? silverTh = cardTemplate.SilverThreshold;
+            int? goldTh = cardTemplate.GoldThreshold;
+            int? platTh = cardTemplate.PlatinumThreshold;
+
+            // Ensure thresholds are in ascending order
+            if (silverTh.HasValue && silverTh.Value < bronzeTh) silverTh = bronzeTh;
+            if (goldTh.HasValue && silverTh.HasValue && goldTh.Value < silverTh.Value) goldTh = silverTh;
+            if (platTh.HasValue && goldTh.HasValue && platTh.Value < goldTh.Value) platTh = goldTh;
+
+            string name = "Bronze";
+            int? percent = cardTemplate.BronzePercent;
+            int? percentCash = cardTemplate.BronzePercentCash;
+
+            if (platTh.HasValue && points >= platTh.Value)
+            {
+                name = "Platinum";
+                percent = cardTemplate.PlatinumPercent;
+                percentCash = cardTemplate.PlatinumPercentCash;
+            }
+            else if (goldTh.HasValue && points >= goldTh.Value)
+            {
+                name = "Gold";
+                percent = cardTemplate.GoldPercent;
+                percentCash = cardTemplate.GoldPercentCash;
+            }
+            else if (silverTh.HasValue && points >= silverTh.Value)
+            {
+                name = "Silver";
+                percent = cardTemplate.SilverPercent;
+                percentCash = cardTemplate.SilverPercentCash;
+            }
+
+            return (name, percent, percentCash);
+        }
+
+        /// <summary>
+        /// Convert database path to absolute URL.
+        /// </summary>
+        private static string? ToAbsoluteUrl(string? dbPath, string baseUrl)
+        {
+            if (string.IsNullOrWhiteSpace(dbPath)) 
+                return null;
+            
+            if (dbPath.StartsWith("http", StringComparison.OrdinalIgnoreCase)) 
+                return dbPath;
+            
+            var relativePath = "/" + dbPath.TrimStart('/', '\\');
+            return baseUrl + relativePath;
+        }
+    }
+}

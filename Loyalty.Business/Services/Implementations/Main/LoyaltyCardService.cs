@@ -2,6 +2,7 @@
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.Repositories.Implementations.Main;
 using Loyalty.DataAccess.UnitOfWorks;
@@ -19,12 +20,14 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILoyaltyCardRepository _repo;
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
+        private readonly ILoyaltyProgramRepository _programRepo;
 
-        public LoyaltyCardService(ILoyaltyCardRepository repo, IMapper mapper, IUnitOfWork unitOfWork)
+        public LoyaltyCardService(ILoyaltyCardRepository repo, IMapper mapper, IUnitOfWork unitOfWork, ILoyaltyProgramRepository programRepo)
         {
             _repo = repo;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
+            _programRepo = programRepo;
         }
 
         public async Task<string> GenerateUniqueWalletCodeAsync(int tenantId, int programId, int userId, CancellationToken ct = default)
@@ -46,16 +49,36 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             try
             {
-                var result = await _repo.GetByBarcodeValueAsync(tenantId,code);
+                var result = await _repo.GetByBarcodeValueAsync(tenantId, code);
                 if (result == null)
                     return new ServiceResult(false, "data not found");
 
                 var response = _mapper.Map<GetLoyaltyCardDto>(result);
+                await PopulateFreeRewardFieldsAsync(response, result, CancellationToken.None);
                 return new ServiceResult(true, response);
             }
             catch (Exception ex)
             {
                 return new ServiceResult(false, ex.Message);
+            }
+        }
+
+        private async Task PopulateFreeRewardFieldsAsync(GetLoyaltyCardDto dto, LoyaltyCard card, CancellationToken ct)
+        {
+            dto.CompletedCycles = card.CompletedCycles;
+            dto.AvailableRewardCount = card.CompletedCycles;
+            dto.MaxSpendCount = card.CompletedCycles;
+
+            var program = await _programRepo.GetByIdNameAsync(card.LoyaltyProgramId, ct);
+            if (program?.CardTemplate != null)
+            {
+                dto.FreeRewardLabel = string.IsNullOrWhiteSpace(program.CardTemplate.FreeRewardLabel)
+                    ? "bonus"  // Default label
+                    : program.CardTemplate.FreeRewardLabel;
+            }
+            else
+            {
+                dto.FreeRewardLabel = "bonus"; // Default
             }
         }
     }

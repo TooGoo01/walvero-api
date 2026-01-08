@@ -11,6 +11,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string CompanyName { get; set; } = string.Empty;
         public string Subdomain { get; set; } = string.Empty;
         public string ContactEmail { get; set; } = string.Empty;
-        public string ContactPhone { get; set; } = string.Empty;
+        public string ContactPhone { get; set; } = string.Empty; 
+        public string? LocationUrl { get; set; } = string.Empty;
     }
 }

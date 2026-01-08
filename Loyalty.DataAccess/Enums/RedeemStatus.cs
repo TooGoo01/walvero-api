@@ -6,5 +6,5 @@ using System.Threading.Tasks;
 
 namespace Loyalty.DataAccess.Enums
 {
-    public enum RedeemStatus { Pending = 0, Applied = 1, Rejected = 2, Expired = 3 }
+    public enum RedeemStatus { Pending = 0, Applied = 1, Rejected = 2, Expired = 3 ,Reversed=4}
 }

@@ -30,6 +30,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<LoyaltyProgram> LoyaltyPrograms { get; set; }
         public DbSet<LoyaltyCard> LoyaltyCards { get; set; }
         public DbSet<WalletPass> WalletPasses { get; set; }
+        public DbSet<WalveroWalletPass> WalveroWalletPasses { get; set; }
         public DbSet<WalletCredential> WalletCredentials { get; set; }
         public DbSet<Transaction> Transactions { get; set; }
         public DbSet<Reward> Rewards { get; set; }
@@ -46,7 +47,10 @@ namespace Loyalty.DataAccess.Context
         // Sequence tables for ID generation
         public DbSet<CountrySequence> CountrySequences { get; set; }
         public DbSet<TenantCustomerSequence> TenantCustomerSequences { get; set; }
+        public DbSet<Offer> Offers { get; set; }
+        public DbSet<Story> Stories { get; set; }
         public DbSet<CardPrefixSequence> CardPrefixSequences { get; set; }
+        public DbSet<PosSession> PosSessions { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -82,7 +86,9 @@ namespace Loyalty.DataAccess.Context
                     .HasForeignKey(lp => lp.TenantId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                
+                entity.Property(t => t.IsHidden)
+                    .IsRequired()
+                    .HasDefaultValue(false);
             });
             modelBuilder.Entity<TenantBranding>(entity =>
             {
@@ -141,6 +147,7 @@ namespace Loyalty.DataAccess.Context
             
                 entity.Property(ct => ct.StepLabel).HasMaxLength(50);
                 entity.Property(ct => ct.RewardDescription).HasMaxLength(500);
+                entity.Property(ct => ct.FreeRewardLabel).HasMaxLength(100);
                 entity.Property(ct => ct.BronzeIconUrl).HasMaxLength(500);
                 entity.Property(ct => ct.SilverIconUrl).HasMaxLength(500);
                 entity.Property(ct => ct.GoldIconUrl).HasMaxLength(500);
@@ -225,6 +232,31 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(wp => wp.Status).HasConversion<int>();
 
                 entity.HasIndex(wp => new { wp.LoyaltyCardId, wp.Platform }).IsUnique();
+            });
+            // ==== WALVERO WALLET PASS ====
+            modelBuilder.Entity<WalveroWalletPass>(entity =>
+            {
+                entity.ToTable("WalveroWalletPasses");
+                entity.HasKey(wwp => wwp.Id);
+                entity.Property(wwp => wwp.WalveroIdMasked).IsRequired().HasMaxLength(50);
+                entity.Property(wwp => wwp.ApplePassUrl).HasMaxLength(500);
+                entity.Property(wwp => wwp.GoogleSaveUrl).HasMaxLength(2000); // Google Wallet save links can be very long (JWT tokens)
+                entity.Property(wwp => wwp.AppleSerialNumber).HasMaxLength(100);
+                entity.Property(wwp => wwp.GoogleObjectId).HasMaxLength(200);
+
+                entity.HasIndex(wwp => new { wwp.ApplicationUserId, wwp.TenantId }).IsUnique();
+                entity.HasIndex(wwp => wwp.ApplicationUserId);
+                entity.HasIndex(wwp => wwp.TenantId);
+
+                entity.HasOne(wwp => wwp.ApplicationUser)
+                    .WithMany()
+                    .HasForeignKey(wwp => wwp.ApplicationUserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(wwp => wwp.Tenant)
+                    .WithMany()
+                    .HasForeignKey(wwp => wwp.TenantId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
             // ==== WALLET CREDENTIAL ====
             modelBuilder.Entity<WalletCredential>(entity =>
@@ -461,6 +493,7 @@ namespace Loyalty.DataAccess.Context
                 entity.HasKey(cs => cs.CountryCode);
                 entity.Property(cs => cs.CountryCode).ValueGeneratedNever(); // Manual PK
                 entity.Property(cs => cs.LastNumber).IsRequired();
+                entity.Property(cs => cs.UpdatedAt).IsRequired();
                 entity.Ignore(cs => cs.Id);
                 entity.Ignore(cs => cs.RegUserId);
                 entity.Ignore(cs => cs.IsActive);
@@ -476,6 +509,8 @@ namespace Loyalty.DataAccess.Context
                 entity.HasKey(tcs => tcs.TenantId);
                 entity.Property(tcs => tcs.TenantId).ValueGeneratedNever(); // Manual PK
                 entity.Property(tcs => tcs.LastNumber).IsRequired();
+                entity.Property(tcs => tcs.Prefix).IsRequired().HasMaxLength(5).HasDefaultValue("789");
+                entity.Property(tcs => tcs.UpdatedAt).IsRequired();
                 entity.Ignore(tcs => tcs.Id);
                 entity.Ignore(tcs => tcs.RegUserId);
                 entity.Ignore(tcs => tcs.IsActive);
@@ -493,6 +528,26 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(cps => cps.LastPrefix).IsRequired();
             });
 
+            // ==== POS SESSION ====
+            modelBuilder.Entity<PosSession>(entity =>
+            {
+                entity.ToTable("PosSessions");
+                entity.HasKey(ps => ps.Id);
+                entity.Property(ps => ps.scannerDeviceId).IsRequired().HasMaxLength(200);
+                entity.Property(ps => ps.SessionToken).HasMaxLength(500);
+                entity.HasIndex(ps => ps.SessionToken);
+                
+                entity.HasOne(ps => ps.Tenant)
+                    .WithMany()
+                    .HasForeignKey(ps => ps.TenantId)
+                    .OnDelete(DeleteBehavior.Restrict);
+                
+                entity.HasOne(ps => ps.applicationUser)
+                    .WithMany()
+                    .HasForeignKey(ps => ps.userId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
         }
 
         public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -505,199 +560,298 @@ namespace Loyalty.DataAccess.Context
                 if (entry.State == EntityState.Added)
                 {
                     entry.Entity.RegDate = DateTime.UtcNow;
+                    if (entry.Entity.RegUserId == 0)
+                    {
+                        entry.Entity.RegUserId = 1; // Default user ID
+                    }
                 }
-
-                if (entry.State == EntityState.Modified)
+                else if (entry.State == EntityState.Modified)
                 {
                     entry.Entity.EditDate = DateTime.UtcNow;
+                    if (entry.Entity.EditUserId == null || entry.Entity.EditUserId == 0)
+                    {
+                        entry.Entity.EditUserId = 1; // Default user ID
+                    }
                 }
             }
 
-            // Generate WalveroId for new ApplicationUsers
-            var newUsers = ChangeTracker.Entries<ApplicationUser>()
-                .Where(e => e.State == EntityState.Added && e.Entity.WalveroId == null)
-                .Select(e => e.Entity)
-                .ToList();
+            // NOTE: WalveroId and CardNumber generation has been moved to services (ICardNumberGenerator, IWalveroIdGenerator)
+            // They are generated before SaveChanges is called to avoid N+1 queries and improve performance
 
-            foreach (var user in newUsers)
-            {
-                if (string.IsNullOrEmpty(user.PhoneNumber))
-                    continue; // Skip if no phone number
-
-                var countryCode = ExtractCountryCode(user.PhoneNumber);
-                if (countryCode.HasValue)
-                {
-                    user.WalveroId = await GenerateWalveroIdAsync(countryCode.Value, cancellationToken);
-                }
-            }
-
-            // Generate CardNumber for new Customers
-            var newCustomers = ChangeTracker.Entries<Customer>()
-                .Where(e => e.State == EntityState.Added && string.IsNullOrEmpty(e.Entity.CardNumber))
-                .Select(e => e.Entity)
-                .ToList();
-
-            foreach (var customer in newCustomers)
-            {
-                customer.CardNumber = await GenerateCardNumberAsync(customer.TenantId, cancellationToken);
-            }
-
-            // Set BarcodeValue for new LoyaltyCards from Customer's CardNumber
+            // Generate CardNumber and BarcodeValue for new LoyaltyCards
+            // This runs after Customer.CardNumber is generated
             var newLoyaltyCards = ChangeTracker.Entries<LoyaltyCard>()
-                .Where(e => e.State == EntityState.Added && string.IsNullOrEmpty(e.Entity.BarcodeValue))
+                .Where(e => e.State == EntityState.Added)
                 .Select(e => e.Entity)
                 .ToList();
 
             foreach (var loyaltyCard in newLoyaltyCards)
             {
-                // Load the customer if not already loaded
-                if (loyaltyCard.Customer == null && loyaltyCard.CustomerId > 0)
+                // Always ensure CardNumber is set - never leave it empty or whitespace
+                // Check both IsNullOrEmpty and IsNullOrWhiteSpace to be safe
+                if (string.IsNullOrEmpty(loyaltyCard.CardNumber) || string.IsNullOrWhiteSpace(loyaltyCard.CardNumber))
                 {
-                    await Entry(loyaltyCard)
-                        .Reference(lc => lc.Customer)
-                        .LoadAsync(cancellationToken);
-                }
-
-                // Set BarcodeValue from Customer's CardNumber
-                if (loyaltyCard.Customer != null && !string.IsNullOrEmpty(loyaltyCard.Customer.CardNumber))
-                {
-                    loyaltyCard.BarcodeValue = loyaltyCard.Customer.CardNumber;
-                }
-            }
-
-            return await base.SaveChangesAsync(cancellationToken);
-        }
-
-        /// <summary>
-        /// Extracts country code from phone number (supports +994, 994, 0 prefixes)
-        /// </summary>
-        private int? ExtractCountryCode(string phoneNumber)
-        {
-            if (string.IsNullOrWhiteSpace(phoneNumber))
-                return null;
-
-            // Remove all non-digit characters
-            var digits = Regex.Replace(phoneNumber, @"[^\d]", "");
-            
-            if (string.IsNullOrEmpty(digits))
-                return null;
-
-            // Try to extract country code
-            // Common formats: +994501234567, 994501234567, 0501234567
-            
-            // If starts with country code (3 digits: 994, 336, etc.)
-            if (digits.Length >= 3)
-            {
-                var possibleCode = int.Parse(digits.Substring(0, 3));
-                
-                // Common country codes (you can extend this list)
-                if (possibleCode >= 100 && possibleCode <= 999)
-                {
-                    // Check if it's a valid country code length
-                    // For Azerbaijan (994), if next digit is 0, it's likely country code
-                    // For France (336), similar logic
-                    if (digits.Length > 3)
+                    // Load the customer if not already loaded
+                    if (loyaltyCard.Customer == null && loyaltyCard.CustomerId > 0)
                     {
-                        return possibleCode;
+                        await Entry(loyaltyCard)
+                            .Reference(lc => lc.Customer)
+                            .LoadAsync(cancellationToken);
+                    }
+
+                    // Generate CardNumber from Customer's CardNumber or create unique one
+                    if (loyaltyCard.Customer != null && !string.IsNullOrEmpty(loyaltyCard.Customer.CardNumber) && !string.IsNullOrWhiteSpace(loyaltyCard.Customer.CardNumber))
+                    {
+                        var customerCardNumber = loyaltyCard.Customer.CardNumber.Trim();
+                        
+                        // Check if this CardNumber already exists in local tracking
+                        var existingCardNumber = LoyaltyCards
+                            .Local
+                            .FirstOrDefault(lc => !string.IsNullOrEmpty(lc.CardNumber) && 
+                                                 !string.IsNullOrWhiteSpace(lc.CardNumber) &&
+                                                 lc.CardNumber.Trim() == customerCardNumber && 
+                                                 lc.Id != loyaltyCard.Id && 
+                                                 lc.Id != 0);
+                        
+                        if (existingCardNumber == null)
+                        {
+                            // Use Customer.CardNumber as CardNumber (truncate if too long)
+                            loyaltyCard.CardNumber = customerCardNumber.Length > 50 
+                                ? customerCardNumber.Substring(0, 50) 
+                                : customerCardNumber;
+                        }
+                        else
+                        {
+                            // Generate unique CardNumber with suffix
+                            var suffix = 1;
+                            string uniqueCardNumber;
+                            do
+                            {
+                                uniqueCardNumber = $"{customerCardNumber}-{suffix}";
+                                if (uniqueCardNumber.Length > 50)
+                                {
+                                    var maxBaseLength = 50 - suffix.ToString().Length - 1;
+                                    uniqueCardNumber = $"{customerCardNumber.Substring(0, Math.Min(maxBaseLength, customerCardNumber.Length))}-{suffix}";
+                                }
+                                suffix++;
+                            } while (suffix < 1000 && LoyaltyCards.Local.Any(lc => !string.IsNullOrEmpty(lc.CardNumber) && 
+                                                                                    !string.IsNullOrWhiteSpace(lc.CardNumber) &&
+                                                                                    lc.CardNumber.Trim() == uniqueCardNumber && 
+                                                                                    lc.Id != loyaltyCard.Id && 
+                                                                                    lc.Id != 0));
+                            
+                            loyaltyCard.CardNumber = uniqueCardNumber;
+                        }
+                    }
+                    else
+                    {
+                        // If Customer or CardNumber is null, generate a unique CardNumber
+                        var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+                        var guid = Guid.NewGuid().ToString("N").Substring(0, 8);
+                        loyaltyCard.CardNumber = $"LC-{timestamp}-{guid}";
+                    }
+                    
+                    // Final safety check - ensure CardNumber is never empty
+                    if (string.IsNullOrEmpty(loyaltyCard.CardNumber) || string.IsNullOrWhiteSpace(loyaltyCard.CardNumber))
+                    {
+                        // Last resort - generate a unique CardNumber
+                        var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+                        var guid = Guid.NewGuid().ToString("N").Substring(0, 8);
+                        loyaltyCard.CardNumber = $"LC-{timestamp}-{guid}";
+                    }
+                }
+                
+                // Set BarcodeValue from Customer's CardNumber if empty
+                if (string.IsNullOrEmpty(loyaltyCard.BarcodeValue) || string.IsNullOrWhiteSpace(loyaltyCard.BarcodeValue))
+                {
+                    // Load the customer if not already loaded
+                    if (loyaltyCard.Customer == null && loyaltyCard.CustomerId > 0)
+                    {
+                        await Entry(loyaltyCard)
+                            .Reference(lc => lc.Customer)
+                            .LoadAsync(cancellationToken);
+                    }
+                    
+                    if (loyaltyCard.Customer != null && !string.IsNullOrEmpty(loyaltyCard.Customer.CardNumber) && !string.IsNullOrWhiteSpace(loyaltyCard.Customer.CardNumber))
+                    {
+                        loyaltyCard.BarcodeValue = loyaltyCard.Customer.CardNumber.Trim();
                     }
                 }
             }
 
-            // If starts with 0 (local format), try to infer from length
-            // This is a fallback - you may want to add a CountryCode field to ApplicationUser
-            if (digits.StartsWith("0") && digits.Length >= 9)
+
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+
+        public override int SaveChanges()
+        {
+            // Process EntityBase timestamps
+            var entries = ChangeTracker.Entries<EntityBase>();
+            foreach (var entry in entries)
             {
-                // Default to 994 (Azerbaijan) if local format - adjust based on your needs
-                // TODO: Consider adding CountryCode field to ApplicationUser for explicit country
-                return 994; // Default country code - you should make this configurable
+                if (entry.State == EntityState.Added)
+                {
+                    entry.Entity.RegDate = DateTime.UtcNow;
+                    if (entry.Entity.RegUserId == 0)
+                    {
+                        entry.Entity.RegUserId = 1; // Default user ID
+                    }
+                }
+                else if (entry.State == EntityState.Modified)
+                {
+                    entry.Entity.EditDate = DateTime.UtcNow;
+                    if (entry.Entity.EditUserId == null || entry.Entity.EditUserId == 0)
+                    {
+                        entry.Entity.EditUserId = 1; // Default user ID
+                    }
+                }
+            }
+
+            // NOTE: WalveroId and CardNumber generation has been moved to services (ICardNumberGenerator, IWalveroIdGenerator)
+            // They are generated before SaveChanges is called to avoid N+1 queries and improve performance
+
+            // Generate CardNumber and BarcodeValue for new LoyaltyCards
+            var newLoyaltyCards = ChangeTracker.Entries<LoyaltyCard>()
+                .Where(e => e.State == EntityState.Added)
+                .Select(e => e.Entity)
+                .ToList();
+
+            foreach (var loyaltyCard in newLoyaltyCards)
+            {
+                // Always ensure CardNumber is set - never leave it empty or whitespace
+                if (string.IsNullOrEmpty(loyaltyCard.CardNumber) || string.IsNullOrWhiteSpace(loyaltyCard.CardNumber))
+                {
+                    // Load the customer if not already loaded
+                    if (loyaltyCard.Customer == null && loyaltyCard.CustomerId > 0)
+                    {
+                        Entry(loyaltyCard)
+                            .Reference(lc => lc.Customer)
+                            .Load();
+                    }
+
+                    // Generate CardNumber from Customer's CardNumber or create unique one
+                    if (loyaltyCard.Customer != null && !string.IsNullOrEmpty(loyaltyCard.Customer.CardNumber) && !string.IsNullOrWhiteSpace(loyaltyCard.Customer.CardNumber))
+                    {
+                        var customerCardNumber = loyaltyCard.Customer.CardNumber.Trim();
+                        
+                        // Check if this CardNumber already exists in local tracking
+                        var existingCardNumber = LoyaltyCards
+                            .Local
+                            .FirstOrDefault(lc => !string.IsNullOrEmpty(lc.CardNumber) && 
+                                                 !string.IsNullOrWhiteSpace(lc.CardNumber) &&
+                                                 lc.CardNumber.Trim() == customerCardNumber && 
+                                                 lc.Id != loyaltyCard.Id && 
+                                                 lc.Id != 0);
+                        
+                        if (existingCardNumber == null)
+                        {
+                            // Use Customer.CardNumber as CardNumber (truncate if too long)
+                            loyaltyCard.CardNumber = customerCardNumber.Length > 50 
+                                ? customerCardNumber.Substring(0, 50) 
+                                : customerCardNumber;
+                        }
+                        else
+                        {
+                            // Generate unique CardNumber with suffix
+                            var suffix = 1;
+                            string uniqueCardNumber;
+                            do
+                            {
+                                uniqueCardNumber = $"{customerCardNumber}-{suffix}";
+                                if (uniqueCardNumber.Length > 50)
+                                {
+                                    var maxBaseLength = 50 - suffix.ToString().Length - 1;
+                                    uniqueCardNumber = $"{customerCardNumber.Substring(0, Math.Min(maxBaseLength, customerCardNumber.Length))}-{suffix}";
+                                }
+                                suffix++;
+                            } while (suffix < 1000 && LoyaltyCards.Local.Any(lc => !string.IsNullOrEmpty(lc.CardNumber) && 
+                                                                                    !string.IsNullOrWhiteSpace(lc.CardNumber) &&
+                                                                                    lc.CardNumber.Trim() == uniqueCardNumber && 
+                                                                                    lc.Id != loyaltyCard.Id && 
+                                                                                    lc.Id != 0));
+                            
+                            loyaltyCard.CardNumber = uniqueCardNumber;
+                        }
+                    }
+                    else
+                    {
+                        // If Customer or CardNumber is null, generate a unique CardNumber
+                        var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+                        var guid = Guid.NewGuid().ToString("N").Substring(0, 8);
+                        loyaltyCard.CardNumber = $"LC-{timestamp}-{guid}";
+                    }
+                    
+                    // Final safety check - ensure CardNumber is never empty
+                    if (string.IsNullOrEmpty(loyaltyCard.CardNumber) || string.IsNullOrWhiteSpace(loyaltyCard.CardNumber))
+                    {
+                        // Last resort - generate a unique CardNumber
+                        var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+                        var guid = Guid.NewGuid().ToString("N").Substring(0, 8);
+                        loyaltyCard.CardNumber = $"LC-{timestamp}-{guid}";
+                    }
+                }
+                
+                // Set BarcodeValue from Customer's CardNumber if empty
+                if (string.IsNullOrEmpty(loyaltyCard.BarcodeValue) || string.IsNullOrWhiteSpace(loyaltyCard.BarcodeValue))
+                {
+                    // Load the customer if not already loaded
+                    if (loyaltyCard.Customer == null && loyaltyCard.CustomerId > 0)
+                    {
+                        Entry(loyaltyCard)
+                            .Reference(lc => lc.Customer)
+                            .Load();
+                    }
+                    
+                    if (loyaltyCard.Customer != null && !string.IsNullOrEmpty(loyaltyCard.Customer.CardNumber) && !string.IsNullOrWhiteSpace(loyaltyCard.Customer.CardNumber))
+                    {
+                        loyaltyCard.BarcodeValue = loyaltyCard.Customer.CardNumber.Trim();
+                    }
+                }
+            }
+
+            return base.SaveChanges();
+        }
+
+        // OLD GENERATION METHODS REMOVED - Now using ICardNumberGenerator and IWalveroIdGenerator services
+        // These methods scanned Customers table and were slow (O(N)) and not concurrency-safe
+        // New implementation uses atomic SQL Server UPDATE...OUTPUT in SequenceRepository
+        //
+        // Removed methods:
+        // - GenerateWalveroIdSync(int countryCode)
+        // - GenerateCardNumberSync(int tenantId)  
+        // - GenerateWalveroIdAsync(int countryCode, CancellationToken)
+        // - GenerateCardNumberAsync(int tenantId, CancellationToken)
+        // - ExtractCountryCode(string phoneNumber) - use IWalveroIdGenerator.ExtractCountryCode instead
+
+        /// <summary>
+        /// Extracts numeric part from barcode string (e.g., "78917890001" -> 7890001)
+        /// Extracts digits from the end of the string
+        /// </summary>
+        private long? ExtractNumericPartFromBarcode(string? barcode)
+        {
+            if (string.IsNullOrEmpty(barcode))
+                return null;
+
+            // Extract all digits from the end of the string
+            var digits = new System.Text.StringBuilder();
+            for (int i = barcode.Length - 1; i >= 0; i--)
+            {
+                if (char.IsDigit(barcode[i]))
+                {
+                    digits.Insert(0, barcode[i]);
+                }
+                else
+                {
+                    break; // Stop when we hit a non-digit
+                }
+            }
+
+            if (digits.Length > 0 && long.TryParse(digits.ToString(), out var numeric))
+            {
+                return numeric;
             }
 
             return null;
-        }
-
-        /// <summary>
-        /// Generates WalveroId for a user based on country code
-        /// Pattern: {countryCode}{1}{seq:00000}
-        /// Example: 994100001, 994100002, ...
-        /// </summary>
-        private async Task<long> GenerateWalveroIdAsync(int countryCode, CancellationToken cancellationToken)
-        {
-            // Use database transaction to ensure atomicity
-            var sequence = await CountrySequences
-                .FirstOrDefaultAsync(cs => cs.CountryCode == countryCode, cancellationToken);
-
-            if (sequence == null)
-            {
-                sequence = new CountrySequence
-                {
-                    CountryCode = countryCode,
-                    LastNumber = 0
-                };
-                await CountrySequences.AddAsync(sequence, cancellationToken);
-            }
-
-            sequence.LastNumber++;
-            var walveroId = long.Parse($"{countryCode}1{sequence.LastNumber:D5}");
-
-            return walveroId;
-        }
-
-        /// <summary>
-        /// Generates CardNumber for a customer
-        /// Pattern: {prefix}{tenantId}{prefix}{seq:0000}
-        /// Example for tenant 1: "7891 7890001", "7891 7890002"
-        /// Example for tenant 2: "7892 7890001", "7892 7890002" (if prefix hasn't changed)
-        /// </summary>
-        private async Task<string> GenerateCardNumberAsync(int tenantId, CancellationToken cancellationToken)
-        {
-            // Get or create tenant sequence
-            var tenantSequence = await TenantCustomerSequences
-                .FirstOrDefaultAsync(tcs => tcs.TenantId == tenantId, cancellationToken);
-
-            if (tenantSequence == null)
-            {
-                tenantSequence = new TenantCustomerSequence
-                {
-                    TenantId = tenantId,
-                    LastNumber = 0
-                };
-                await TenantCustomerSequences.AddAsync(tenantSequence, cancellationToken);
-            }
-
-            // Get or create global prefix sequence
-            var prefixSequence = await CardPrefixSequences
-                .FirstOrDefaultAsync(cps => cps.Id == 1, cancellationToken);
-
-            if (prefixSequence == null)
-            {
-                prefixSequence = new CardPrefixSequence
-                {
-                    Id = 1,
-                    LastPrefix = 789 // Starting prefix
-                };
-                await CardPrefixSequences.AddAsync(prefixSequence, cancellationToken);
-            }
-
-            // Increment tenant sequence
-            tenantSequence.LastNumber++;
-
-            // Check if we need to increment prefix (every 10000 customers per tenant, or your business logic)
-            // For now, we'll increment prefix when tenant sequence wraps around
-            // You can adjust this logic based on your requirements
-            if (tenantSequence.LastNumber > 9999)
-            {
-                prefixSequence.LastPrefix++;
-                tenantSequence.LastNumber = 1; // Reset to 1 for new prefix
-            }
-
-            var prefix = prefixSequence.LastPrefix;
-            var seq = tenantSequence.LastNumber;
-
-            // Format: {prefix}{tenantId}{prefix}{seq:0000}
-            // Example: 78917890001, 78917890002, ...
-            var cardNumber = $"{prefix}{tenantId}{prefix}{seq:D4}";
-
-            return cardNumber;
         }
         //protected override void OnModelCreating(ModelBuilder modelBuilder)
         //{

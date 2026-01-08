@@ -27,8 +27,23 @@ namespace Loyalty.Business.Services.Abstractions.Main
             int loyaltyCardId,
             CancellationToken ct = default);
 
-        /// Kassir əməliyyatı (redeem/add). DB-də yenilənmiş p/u dəyərləri göndərilir,
-        /// Wallet tərəfdə text/ikon/points dinamik patch olunur.
+        /// Walvero pass üçün object yaradır (xüsusi object ID formatı ilə)
+        Task<ServiceResult> CreateOrGetWalveroObjectAsync(
+            string objectId,
+            CardTemplateSnapshot tpl,
+            string accountName,
+            string barcodeValue,
+            CancellationToken ct = default);
+
+        /// Walvero pass üçün "Save to Google Wallet" linki yaradır
+        Task<ServiceResult> GenerateWalveroSaveLinkAsync(
+            string objectId,
+            CancellationToken ct = default);
+
+        /// Get IssuerId for constructing object IDs
+        string GetIssuerId();
+
+      
         Task<ServiceResult> RedeemByCardIdAsync(
      int loyaltyCardId,
      CardTemplateSnapshot tpl,

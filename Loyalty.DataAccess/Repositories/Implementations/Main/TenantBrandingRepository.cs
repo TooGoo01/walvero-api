@@ -22,6 +22,21 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         public Task<TenantBranding?> GetByTenantIdAsync(int tenantId, CancellationToken ct = default)
         => GetAsQueryable().AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId, ct);
 
+        // OPTIMIZATION: Batch method to fetch brandings for multiple tenants in single query
+        public async Task<Dictionary<int, TenantBranding>> GetByTenantIdsAsync(IEnumerable<int> tenantIds, CancellationToken ct = default)
+        {
+            var ids = tenantIds?.Distinct().ToList() ?? new List<int>();
+            if (!ids.Any())
+                return new Dictionary<int, TenantBranding>();
+
+            var brandings = await GetAsQueryable()
+                .AsNoTracking()
+                .Where(b => ids.Contains(b.TenantId))
+                .ToListAsync(ct);
+
+            return brandings.ToDictionary(b => b.TenantId);
+        }
+
         public async Task UpsertAsync(int tenantId, TenantBranding branding, CancellationToken ct = default)
         {
            throw new NotImplementedException();

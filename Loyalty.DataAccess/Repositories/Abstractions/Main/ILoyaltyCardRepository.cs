@@ -19,5 +19,30 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
     int applicationUserId,
     string? name, int? categoryId,
     CancellationToken ct = default);
+        // OPTIMIZATION: Get count without loading all data into memory
+        Task<int> GetActiveCardsCountForApplicationUserAsync(
+            int applicationUserId,
+            string? name,
+            int? categoryId,
+            CancellationToken ct = default);
+        // OPTIMIZATION: Get paginated cards directly from database
+        Task<List<LoyaltyCard>> GetLastActiveCardsForApplicationUserPaginatedAsync(
+            int applicationUserId,
+            string? name,
+            int? categoryId,
+            int currentPage,
+            int pageSize,
+            CancellationToken ct = default);
+
+        /// <summary>
+        /// Get a card by ID with full details for wallet card details view.
+        /// Includes: Customer, LoyaltyProgram, CardTemplate, Tenant (with Branding and Category).
+        /// </summary>
+        Task<LoyaltyCard?> GetCardWithFullDetailsAsync(int cardId, CancellationToken ct = default);
+
+        /// <summary>
+        /// Check if a card belongs to a specific application user (for authorization).
+        /// </summary>
+        Task<bool> CardBelongsToUserAsync(int cardId, int applicationUserId, CancellationToken ct = default);
     }
 }

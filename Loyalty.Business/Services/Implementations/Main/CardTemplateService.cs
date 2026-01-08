@@ -73,6 +73,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             entity.TotalSteps = Math.Max(1, dto.TotalSteps);
             entity.StepLabel = dto.StepLabel?.Trim() ?? "Step";
             entity.RewardDescription = dto.RewardDescription?.Trim() ?? "";
+            entity.FreeRewardLabel = dto.FreeRewardLabel?.Trim();  // nullable, default "Pulsuz içki" istifadəçi tərəfində
 
             entity.BronzeThreshold = dto.BronzeThreshold;
             entity.BronzePercent = dto.BronzePercent;
@@ -257,7 +258,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 BackgroundImageUrl = e.BackgroundImageUrl,
                 StripImageUrl = e.StripImageUrl,
                 HeroImageUrl = e.HeroImageUrl,
-                IconLayout = e.IconLayout
+                IconLayout = e.IconLayout,
+                FreeRewardLabel = e.FreeRewardLabel
             };
         }
         public Task<ServiceResult> Delete(int id)

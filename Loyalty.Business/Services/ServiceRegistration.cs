@@ -3,10 +3,12 @@ using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Mappings; // Profil(lər)inizin namespace-i (məs: TenantMappingProfile)
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.Business.Services.Abstractions.Sequences;
 using Loyalty.Business.Services.Abstractions.Storage;
 using Loyalty.Business.Services.Abstractions.Users;
 using Loyalty.Business.Services.Implementations;
 using Loyalty.Business.Services.Implementations.Main;
+using Loyalty.Business.Services.Implementations.Sequences;
 using Loyalty.Business.Services.Implementations.Storage;
 using Loyalty.Business.Services.Implementations.Users;
 using Loyalty.DataAccess.Entities.Main;
@@ -37,6 +39,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<ITenantBrandingService, TenantBrandingService>();
             services.AddScoped<IStorage, FileStorage>();
             services.AddScoped<IUserService, UserService>();
+            services.AddScoped<IOtpService, OtpService>();
             services.AddScoped<IMailService, MailService>();
             services.AddScoped<IWalletCredentialService, WalletCredentialService>();
             services.AddScoped<ICardTemplateService, CardTemplateService>();
@@ -66,6 +69,16 @@ namespace Loyalty.Business.Services
             services.AddScoped<IAppVersionService, AppVersionService>();
             services.AddScoped<IFeedbackService, FeedbackService>();
             services.AddScoped<IGuestAuthService, GuestAuthService>();
+            services.AddScoped<IOfferService, OfferService>();
+            services.AddScoped<IStoryService, StoryService>();
+            services.AddScoped<IHomeService, HomeService>();
+            services.AddScoped<IWalletCardDetailsService, WalletCardDetailsService>();
+            services.AddScoped<IWalveroWalletPassService, WalveroWalletPassService>();
+            services.AddScoped<ICardNumberGenerator, CardNumberGenerator>();
+            services.AddScoped<IWalveroIdGenerator, WalveroIdGenerator>();
+            services.AddScoped<ICountrySequenceService, CountrySequenceService>();
+            services.AddScoped<IPosSessionService, PosSessionService>();
+            services.AddScoped<ITransactionReverseService, TransactionReverseService>();
             services.AddSignalR();
             return services;
         }

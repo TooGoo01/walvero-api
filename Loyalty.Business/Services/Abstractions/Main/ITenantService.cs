@@ -21,5 +21,6 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> Update(UpdateTenantDto dto);
         Task<ServiceResult> Delete(int id);
         Task<ServiceResult> HasAnyRoleAsync(int userId,int tenantId,string[] roles);
+        Task<IReadOnlyList<HomeTenantDto>> GetHomeTenantsAsync(CancellationToken ct = default);
     }
 }

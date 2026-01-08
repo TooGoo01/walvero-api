@@ -82,4 +82,25 @@
         public static ServiceResult Fail(string message = "")
             => new ServiceResult(false, message);
     }
+
+    // Generic version for type-safe results
+    public class ServiceResult<T>
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public T? Data { get; set; }
+
+        public ServiceResult(bool success, T? data = default, string message = "")
+        {
+            Success = success;
+            Data = data;
+            Message = message ?? string.Empty;
+        }
+
+        public static ServiceResult<T> Ok(T data, string message = "") 
+            => new ServiceResult<T>(true, data, message);
+
+        public static ServiceResult<T> Fail(string message) 
+            => new ServiceResult<T>(false, default, message);
+    }
 }

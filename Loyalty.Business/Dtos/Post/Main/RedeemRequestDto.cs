@@ -34,6 +34,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? OperatorId { get; set; }                                          // kassir/operator ID (audit)
         public string? OrderId { get; set; }                                          // kassir/operator ID (audit)
         public string? Note { get; set; }                                                // səbəb/şərh (audit)
+        public int? SpendCount { get; set; }                                             // Free reward xərcləmə sayı (kassirin daxil etdiyi)
     }
 
     /// <summary>

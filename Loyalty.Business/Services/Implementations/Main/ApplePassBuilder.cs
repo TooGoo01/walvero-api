@@ -72,10 +72,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (req.SecondaryFields?.Any() == true)
                 storeCard["secondaryFields"] = req.SecondaryFields
                     .Select(f => new { key = f.Key, label = f.Label, value = f.Value }).ToArray();
-            if (req.AuxiliaryFields?.Any() == true)
+            if (req.HeaderFields?.Any() == true)
                 storeCard["headerFields"] = req.HeaderFields
                     .Select(f => new { key = f.Key, label = f.Label, value = f.Value }).ToArray();
-
+            if (req.BackFields?.Any() == true)
+                storeCard["backFields"] = req.BackFields
+                    .Select(f => new { key = f.Key, label = f.Label, value = f.Value }).ToArray();
             // >>> ADI QR-KODUN ÜSTÜNDƏ GÖSTƏRMƏK
             var aux = new List<object>();
             if (req.AuxiliaryFields?.Any() == true)

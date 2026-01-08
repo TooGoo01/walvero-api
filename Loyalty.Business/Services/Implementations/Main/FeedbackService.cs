@@ -403,7 +403,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     {
                         // Customer check - need to get customer from ApplicationUser
                         var customer = await _dbContext.Customers
-                            .FirstOrDefaultAsync(c => c.applicationUserId == userId.Value);
+                            .FirstOrDefaultAsync(c => c.applicationUserId == userId.Value && c.TenantId==feedback.TenantId);
                         if (customer == null || customer.Id != feedback.CustomerId)
                         {
                             return new ServiceResult(false, "You are not authorized to view this feedback.");

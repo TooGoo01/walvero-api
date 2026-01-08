@@ -3,11 +3,12 @@ using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Enums;
-
+using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using LoyaltyWalletApp.WEBUI.Tenancy;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 
 namespace Loyalty.WebAPI.Controllers
@@ -25,6 +26,7 @@ namespace Loyalty.WebAPI.Controllers
         private readonly ILoyaltyCardService _cardSvc;
         private readonly ICustomerEnrollmentService _customerSvc;
         private readonly IPasskitPushService _passkitPushService;
+        private readonly ICustomerRepository _customerRepository;
         private readonly ILogger<RedeemController> _logger;
 
         public RedeemController(
@@ -34,7 +36,8 @@ namespace Loyalty.WebAPI.Controllers
             ICustomerEnrollmentService customerSvc,
             ILoyaltyCardService cardSvc,
             ILogger<RedeemController> logger,
-            IPasskitPushService passkitPushService)
+            IPasskitPushService passkitPushService,
+            ICustomerRepository customerRepository)
         {
             _tenantProvider = tenantProvider;
             _redeemService = redeemService;
@@ -43,6 +46,7 @@ namespace Loyalty.WebAPI.Controllers
             _cardSvc = cardSvc;
             _logger = logger;
             _passkitPushService = passkitPushService;
+            _customerRepository = customerRepository;
         }
 
         // === UI CONFIG ===
@@ -210,16 +214,66 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
 
             var tenantId = _tenantProvider.CurrentTenantId ?? 0;
             var programId = _tenantProvider.CurrentProgramId ?? 0;
-            var cardModel = await _cardSvc.GetByBarcodeValueAsync(tenantId, (code ?? "").Trim());
-            var card = cardModel.Data as GetLoyaltyCardDto;
-            if (card is null)
+            var codeStr = (code ?? "").Trim();
+            
+            GetLoyaltyCardDto? card = null;
+            GetCustomerDto? customer = null;
+            
+            // First, try to find by barcode (priority)
+            var cardModel = await _cardSvc.GetByBarcodeValueAsync(tenantId, codeStr);
+            card = cardModel.Data as GetLoyaltyCardDto;
+            
+            if (card == null && long.TryParse(codeStr, out long walveroId))
             {
+                // Barcode not found, try WalveroId
+                _logger.LogInformation("Barcode not found, trying WalveroId: {WalveroId}", walveroId);
+                
+                // Find customer by WalveroId
+                var customerEntity = await _customerRepository.GetByWalveroIdAsync(tenantId, walveroId, ct);
+                
+                if (customerEntity == null)
+                {
+                    _logger.LogWarning("Customer not found by WalveroId: {WalveroId} for TenantId: {TenantId}", walveroId, tenantId);
+                    return NotFound(new { success = false, message = "Card not found" });
+                }
+
+                // Get customer DTO
+                var customerModel = await _customerSvc.GetByIdName(customerEntity.Id, "N/A");
+                customer = customerModel.Data as GetCustomerDto;
+
+                if (customer == null)
+                {
+                    _logger.LogWarning("Customer DTO not found for CustomerId: {CustomerId}", customerEntity.Id);
+                    return NotFound(new { success = false, message = "Card not found" });
+                }
+
+                // Find the active card for this customer and program
+                if (programId > 0 && customer.LoyaltyCards != null && customer.LoyaltyCards.Any())
+                {
+                    card = customer.LoyaltyCards
+                        .Where(c => c.LoyaltyProgramId == programId)
+                        .OrderByDescending(c => c.Id)
+                        .FirstOrDefault();
+                }
+
+                if (card == null)
+                {
+                    _logger.LogWarning("Active card not found for CustomerId: {CustomerId}, ProgramId: {ProgramId}", customer.Id, programId);
+                    return NotFound(new { success = false, message = "Card not found" });
+                }
+            }
+            else if (card == null)
+            {
+                // Neither barcode nor WalveroId found
                 _logger.LogWarning("Card not found for Code={Code}", code);
                 return NotFound(new { success = false, message = "Card not found" });
             }
-
-            var customerModel = await _customerSvc.GetByIdName(card.CustomerId, "N/A");
-            var customer = customerModel.Data as GetCustomerDto;
+            else
+            {
+                // Card found by barcode, get customer
+                var customerModel = await _customerSvc.GetByIdName(card.CustomerId, "N/A");
+                customer = customerModel.Data as GetCustomerDto;
+            }
 
             var programModel = await _programSvc.Get(programId);
             var program = programModel.Data as GetLoyaltyProgramDto;
@@ -234,12 +288,27 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                     (tierName, tierPercent,tierPercentCash, tierIconUrl) = TierResolver(card.CurrentPoints, tpl, AbsHttps);
             }
 
+            // Get completedCycles from card (AvailableRewardCount is populated by PopulateFreeRewardFieldsAsync)
+            int completedCycles = card.MaxSpendCount > 0 ? card.MaxSpendCount : 
+                                  (card.AvailableRewardCount > 0 ? card.AvailableRewardCount : 
+                                   card.CompletedCycles);
+            
+            string? freeRewardLabel = card.FreeRewardLabel;
+            if (string.IsNullOrWhiteSpace(freeRewardLabel) && tpl != null)
+            {
+                freeRewardLabel = string.IsNullOrWhiteSpace(tpl.FreeRewardLabel) ? "bonus" : tpl.FreeRewardLabel;
+            }
+
             return Ok(new
             {
                 success = true,
                 customerFullName = (customer?.FirstName + " " + customer?.LastName)?.Trim(),
                 cardNumber = card.CardNumber,
                 currentPoints = card.CurrentPoints,
+                completedCycles = completedCycles,  // Available reward count
+                availableRewardCount = completedCycles,  // = CompletedCycles
+                maxSpendCount = completedCycles,  // = CompletedCycles (UI input limit)
+                freeRewardLabel = freeRewardLabel ?? "bonus",  // From card DTO or template
                 tierName,
                 tierPercent,
                 tierPercentCash,
@@ -248,7 +317,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
         }
 
         // === START REDEEM ===
-        public sealed record StartRedeemRequest( string Code, int Delta, string OrderId,string mode,string paymentMethod);
+        public sealed record StartRedeemRequest( string Code, int Delta, string? OrderId,string mode,string? paymentMethod, int? spendCount);
 
         [HttpPost]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
@@ -264,36 +333,84 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 _logger.LogWarning("Redeem Start failed: TenantId is null");
                 return BadRequest(new { success = false, message = "Tenant subdomendən təyin olunmadı." });
             }
-            var cardModel = await _cardSvc.GetByBarcodeValueAsync(tenantId.Value, (model.Code ?? "").Trim());
-            var card = cardModel.Data as GetLoyaltyCardDto;
-           
 
-            var customerModel = await _customerSvc.GetByIdName(card.CustomerId, "N/A");
-            var customer = customerModel.Data as GetCustomerDto;
+            var code = (model.Code ?? "").Trim();
+            GetLoyaltyCardDto? card = null;
+            GetCustomerDto? customer = null;
+
+            // First, try to find by barcode (priority)
+            var cardModel = await _cardSvc.GetByBarcodeValueAsync(tenantId.Value, code);
+            card = cardModel.Data as GetLoyaltyCardDto;
+
+            if (card == null && long.TryParse(code, out long walveroId))
+            {
+                // Barcode not found, try WalveroId
+                _logger.LogInformation("Barcode not found, trying WalveroId: {WalveroId}", walveroId);
+                
+                // Find customer by WalveroId
+                var customerEntity = await _customerRepository.GetByWalveroIdAsync(tenantId.Value, walveroId, ct);
+                
+                if (customerEntity == null)
+                {
+                    _logger.LogWarning("Customer not found by WalveroId: {WalveroId} for TenantId: {TenantId}", walveroId, tenantId.Value);
+                    return BadRequest(new { success = false, message = $"Kart tapılmadı (barcode və WalveroId uyğun gəlmədi)." });
+                }
+
+                // Get customer DTO
+                var customerModel = await _customerSvc.GetByIdName(customerEntity.Id, "N/A");
+                customer = customerModel.Data as GetCustomerDto;
+
+                if (customer == null)
+                {
+                    _logger.LogWarning("Customer DTO not found for CustomerId: {CustomerId}", customerEntity.Id);
+                    return BadRequest(new { success = false, message = "Customer məlumatları tapılmadı." });
+                }
+
+                // Find the active card for this customer and program
+                if (programId.HasValue && customer.LoyaltyCards != null && customer.LoyaltyCards.Any())
+                {
+                    card = customer.LoyaltyCards
+                        .Where(c => c.LoyaltyProgramId == programId.Value)
+                        .OrderByDescending(c => c.Id)
+                        .FirstOrDefault();
+                }
+
+                if (card == null)
+                {
+                    _logger.LogWarning("Active card not found for CustomerId: {CustomerId}, ProgramId: {ProgramId}", customer.Id, programId);
+                    return BadRequest(new { success = false, message = "Aktiv kart tapılmadı." });
+                }
+            }
+            else if (card == null)
+            {
+                // Neither barcode nor WalveroId found
+                _logger.LogWarning("Card not found by barcode: {Code}", code);
+                return BadRequest(new { success = false, message = "Kart tapılmadı." });
+            }
+            else
+            {
+                // Card found by barcode, get customer
+                var customerModel = await _customerSvc.GetByIdName(card.CustomerId, "N/A");
+                customer = customerModel.Data as GetCustomerDto;
+            }
 
             var programModel = await _programSvc.Get(programId.Value);
             var program = programModel.Data as GetLoyaltyProgramDto;
             var tpl = program.CardTemplate;
 
             string? tierName = null; int? tierPercent = null; int? tierPercentCash = null; string? tierIconUrl = null;
-            if (tpl.TemplateType == CardTemplateType.TierBased)
+            // Percent hesaplaması ProgressBased olmayan template'ler üçün (PointsBased və TierBased)
+            if (tpl.TemplateType != CardTemplateType.ProgressBased)
             {
-
-
-                if (tpl.TemplateType == CardTemplateType.TierBased)
-                {
-                    if (tpl.OneRedeem == true)
-                        (tierName, tierPercent,tierPercentCash, tierIconUrl) = TierResolverDouble(model.Delta, tpl, AbsHttps);
-                    else
-                        (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolver(card.CurrentPoints, tpl, AbsHttps);
-                }
-
-
+                if (tpl.OneRedeem == true)
+                    (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolverDouble(model.Delta, tpl, AbsHttps);
+                else
+                    (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolver(card.CurrentPoints, tpl, AbsHttps);
             }
            
             int delta = model.Delta ;
             int? percent=model.paymentMethod=="cash" ? tierPercentCash : tierPercent;
-            if (delta > 0) {
+            if (delta > 0 && percent.HasValue) {
                 delta = delta * percent.Value / 100;
             }
           
@@ -305,7 +422,8 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 Code = (model.Code ?? "").Trim(),
                 Delta = delta,
                 OrderId = model.OrderId,
-                TenantId = tenantId.Value
+                TenantId = tenantId.Value,
+                SpendCount = model.spendCount // Add SpendCount for "Xərclə" mode
             };
 
             var res = await _redeemService.RedeemAsync(dto, ct);

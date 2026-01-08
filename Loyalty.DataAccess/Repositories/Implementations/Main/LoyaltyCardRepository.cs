@@ -52,7 +52,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
       int? categoryId,
       CancellationToken ct = default)
         {
-            // 1) Əsas sorğu – user-in aktiv kartları
+            // 1) Əsas sorğu – user-in aktiv kartları (hidden tenant-ləri istisna et)
             var baseQuery = GetAsQueryable()
                 .AsNoTracking()
                 .Where(c =>
@@ -60,7 +60,8 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     c.Customer != null &&
                     c.Customer.applicationUserId == applicationUserId &&
                     c.Customer.IsActive &&
-                    c.Status == CardStatus.Active);
+                    c.Status == CardStatus.Active &&
+                    !c.Tenant.IsHidden);
 
             // 1.1) Mağaza adına görə filter (Tenant.CompanyName)
             if (!string.IsNullOrWhiteSpace(name))
@@ -104,6 +105,133 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .ToListAsync(ct);
 
             return cards;
+        }
+
+        // OPTIMIZATION: Separate count method to avoid loading all cards into memory
+        public async Task<int> GetActiveCardsCountForApplicationUserAsync(
+            int applicationUserId,
+            string? name,
+            int? categoryId,
+            CancellationToken ct = default)
+        {
+            var baseQuery = GetAsQueryable()
+                .AsNoTracking()
+                .Where(c =>
+                    c.IsActive &&
+                    c.Customer != null &&
+                    c.Customer.applicationUserId == applicationUserId &&
+                    c.Customer.IsActive &&
+                    c.Status == CardStatus.Active &&
+                    !c.Tenant.IsHidden);
+
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                baseQuery = baseQuery.Where(c =>
+                    EF.Functions.Like(c.Tenant.CompanyName, $"%{name}%"));
+            }
+
+            if (categoryId.HasValue)
+            {
+                baseQuery = baseQuery.Where(c => c.Tenant.categoryId == categoryId.Value);
+            }
+
+            // Count distinct (TenantId, LoyaltyProgramId) combinations
+            var count = await (
+                from card in baseQuery
+                group card by new { card.TenantId, card.LoyaltyProgramId } into g
+                select g.Key
+            ).CountAsync(ct);
+
+            return count;
+        }
+
+        // OPTIMIZATION: Paginated query at database level with all necessary includes
+        public async Task<List<LoyaltyCard>> GetLastActiveCardsForApplicationUserPaginatedAsync(
+      int applicationUserId,
+      string? name,
+      int? categoryId,
+      int currentPage,
+      int pageSize,
+      CancellationToken ct = default)
+        {
+            var baseQuery = GetAsQueryable()
+                .AsNoTracking()
+                .Where(c =>
+                    c.IsActive &&
+                    c.Customer != null &&
+                    c.Customer.applicationUserId == applicationUserId &&
+                    c.Customer.IsActive &&
+                    c.Status == CardStatus.Active &&
+                    !c.Tenant.IsHidden);
+
+            if (!string.IsNullOrWhiteSpace(name))
+                baseQuery = baseQuery.Where(c => EF.Functions.Like(c.Tenant.CompanyName, $"%{name}%"));
+
+            if (categoryId.HasValue)
+                baseQuery = baseQuery.Where(c => c.Tenant.categoryId == categoryId.Value);
+
+            // 1) TenantId + LoyaltyProgramId üzrə son kartın Id-sini tap (DB-də)
+            var lastIdsQuery =
+                from c in baseQuery
+                group c by new { c.TenantId, c.LoyaltyProgramId } into g
+                select new
+                {
+                    g.Key.TenantId,
+                    g.Key.LoyaltyProgramId,
+                    MaxId = g.Max(x => x.Id)
+                };
+
+            // 2) Pagination "son kartlar" üzərində olsun
+            var pagedLastIds = lastIdsQuery
+                .OrderByDescending(x => x.MaxId) // ən son kartlar üstdə
+                .Skip((currentPage - 1) * pageSize)
+                .Take(pageSize);
+
+            // 3) Həmin MaxId-lərə join edib kartları gətir + lazım olan include-lar
+            //    (Include-ları minimum saxla!)
+            var query =
+                from c in baseQuery
+                join x in pagedLastIds on c.Id equals x.MaxId
+                select c;
+
+            var cards = await query
+                .Include(c => c.Customer)
+                .Include(c => c.LoyaltyProgram).ThenInclude(p => p.CardTemplate).ThenInclude(x=>x.Icons)
+                .Include(c => c.Tenant).ThenInclude(t => t.Category)
+                // çox JOIN şişirsə:
+                //.AsSplitQuery()
+                .ToListAsync(ct);
+
+            return cards;
+        }
+
+        /// <inheritdoc />
+        public async Task<LoyaltyCard?> GetCardWithFullDetailsAsync(int cardId, CancellationToken ct = default)
+        {
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Include(c => c.Customer)
+                .Include(c => c.LoyaltyProgram)
+                    .ThenInclude(p => p.CardTemplate)
+                        .ThenInclude(ct => ct!.Icons)
+                .Include(c => c.Tenant)
+                    .ThenInclude(t => t.Branding)
+                .Include(c => c.Tenant)
+                    .ThenInclude(t => t.Category)
+                .Where(c => c.Id == cardId)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        /// <inheritdoc />
+        public async Task<bool> CardBelongsToUserAsync(int cardId, int applicationUserId, CancellationToken ct = default)
+        {
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .AnyAsync(c => 
+                    c.Id == cardId && 
+                    c.Customer != null && 
+                    c.Customer.applicationUserId == applicationUserId, 
+                    ct);
         }
 
     }

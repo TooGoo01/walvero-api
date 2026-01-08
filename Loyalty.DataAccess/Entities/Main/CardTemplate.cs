@@ -27,6 +27,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public int TotalSteps { get; set; } = 10;                     // məs: 10 qəhvə
         public string StepLabel { get; set; } = "Coffee";              // "Coffee", "Visit", "Purchase"
         public string RewardDescription { get; set; } = string.Empty;  // "Get 1 FREE coffee"
+        public string? FreeRewardLabel { get; set; }                   // "Pulsuz içki", "Burger" və s. (nullable, default: "Pulsuz içki")
 
         // ===== POINTS BASED (Traditional loyalty) =====
 
