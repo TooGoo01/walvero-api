@@ -535,6 +535,7 @@ namespace Loyalty.DataAccess.Context
                 entity.HasKey(ps => ps.Id);
                 entity.Property(ps => ps.scannerDeviceId).IsRequired().HasMaxLength(200);
                 entity.Property(ps => ps.SessionToken).HasMaxLength(500);
+                entity.Property(ps => ps.Barcode).HasMaxLength(500);
                 entity.HasIndex(ps => ps.SessionToken);
                 
                 entity.HasOne(ps => ps.Tenant)

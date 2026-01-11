@@ -191,7 +191,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     BalanceAfter = card.CurrentPoints,
                     Amount = reversedAmount,
                     ReferenceNumber = card.BarcodeValue,
-                    OrderId = dto.IdempotencyKey,
+                    OrderId = dto.OrderId,
                     Description = $"Transaction reversed: {dto.Reason}. Original: {originalTransaction.Description}"
                 };
 

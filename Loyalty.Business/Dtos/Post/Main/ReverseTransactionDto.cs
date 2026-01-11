@@ -18,9 +18,6 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string Reason { get; set; } = string.Empty;
         
         [Required]
-        public string IdempotencyKey { get; set; } = string.Empty;
-        
-        [Required]
         public DateTime Timestamp { get; set; }
     }
 }

@@ -323,8 +323,28 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> Start([FromBody] StartRedeemRequest model, CancellationToken ct)
         {
-            _logger.LogInformation("Start redeem called: ProgramId={ProgramId}, Code={Code}, Delta={Delta}",
-               model.Code, model.Delta);
+            _logger.LogInformation("Start redeem called: ProgramId={ProgramId}, Code={Code}, Delta={Delta}, Mode={Mode}",
+               model.Code, model.Delta, model.mode);
+
+            // If mode is "pay", ensure delta is negative (convert positive to negative)
+            // If mode is "earn", ensure delta is positive (convert negative to positive)
+            int delta = model.Delta;
+            if (string.Equals(model.mode, "pay", StringComparison.OrdinalIgnoreCase))
+            {
+                if (delta > 0)
+                {
+                    _logger.LogInformation("Mode is 'pay' but Delta is positive. Converting to negative. Original Delta={Delta}", delta);
+                    delta = -delta;
+                }
+            }
+            else if (string.Equals(model.mode, "earn", StringComparison.OrdinalIgnoreCase))
+            {
+                if (delta < 0)
+                {
+                    _logger.LogInformation("Mode is 'earn' but Delta is negative. Converting to positive. Original Delta={Delta}", delta);
+                    delta = -delta; // Convert negative to positive
+                }
+            }
 
             var tenantId = _tenantProvider.CurrentTenantId;
             var programId = _tenantProvider.CurrentProgramId;
@@ -403,12 +423,11 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             if (tpl.TemplateType != CardTemplateType.ProgressBased)
             {
                 if (tpl.OneRedeem == true)
-                    (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolverDouble(model.Delta, tpl, AbsHttps);
+                    (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolverDouble(delta, tpl, AbsHttps);
                 else
                     (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolver(card.CurrentPoints, tpl, AbsHttps);
             }
            
-            int delta = model.Delta ;
             int? percent=model.paymentMethod=="cash" ? tierPercentCash : tierPercent;
             if (delta > 0 && percent.HasValue) {
                 delta = delta * percent.Value / 100;

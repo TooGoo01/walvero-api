@@ -19,6 +19,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public int userId { get; set; }
         public int? orderId { get; set; }
         public int? tableId { get; set; }
+        public string? Barcode { get; set; }
         public SessionStatus Status { get; set; } = SessionStatus.Active;
         public string? SessionToken { get; set; }
     }
