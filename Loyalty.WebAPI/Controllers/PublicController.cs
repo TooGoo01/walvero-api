@@ -22,13 +22,17 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
-        /// Get home page tenants (IsActive and ShowOnHome)
+        /// Get home page tenants (IsActive and ShowOnHome) with optional location filtering
         /// </summary>
         [HttpGet("home/tenants")]
         [ProducesResponseType(typeof(ServiceResult<List<HomeTenantDto>>), (int)HttpStatusCode.OK)]
-        public async Task<ActionResult<ServiceResult<List<HomeTenantDto>>>> GetHomeTenants(CancellationToken ct)
+        [ResponseCache(Duration = 120, VaryByQueryKeys = new[] { "countryId", "cityId" })]
+        public async Task<ActionResult<ServiceResult<List<HomeTenantDto>>>> GetHomeTenants(
+            [FromQuery] int? countryId,
+            [FromQuery] int? cityId,
+            CancellationToken ct)
         {
-            var result = await _homeService.GetHomeTenantsAsync(ct);
+            var result = await _homeService.GetHomeTenantsAsync(countryId, cityId, ct);
             
             if (result.Success)
             {

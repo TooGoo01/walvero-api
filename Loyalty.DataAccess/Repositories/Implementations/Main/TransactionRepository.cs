@@ -19,7 +19,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         {
             return await GetAsQueryable()
                 .Where(t => t.LoyaltyCardId == cardId)
-                .OrderByDescending(t => t.RegDate)
+                .OrderByDescending(t => t.LocalOccurredAt)
                 .ToListAsync(cancellationToken);
         }
 
@@ -31,7 +31,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         {
             return await GetAsQueryable()
                 .Where(t => t.LoyaltyCardId == cardId)
-                .OrderByDescending(t => t.RegDate)
+                .OrderByDescending(t => t.LocalOccurredAt)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync(cancellationToken);

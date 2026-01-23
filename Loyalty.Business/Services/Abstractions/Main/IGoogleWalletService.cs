@@ -49,7 +49,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
      CardTemplateSnapshot tpl,
      int currentPoints,
      int currentSteps,
-     int pointsDelta,
+     int pointsDelta, string? accountName = null,
      CancellationToken ct = default);
         // (Legacy) skan edilmiş koddan id çıxarıb redeem edən versiya
         Task<ServiceResult> RedeemAsync(

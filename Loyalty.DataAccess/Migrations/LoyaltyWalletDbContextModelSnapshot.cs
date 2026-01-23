@@ -70,7 +70,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("AppVersionConfigs");
+                    b.ToTable("AppVersionConfigs", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.CardTemplate", b =>
@@ -282,7 +282,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Categories");
+                    b.ToTable("Categories", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Contact", b =>
@@ -326,7 +326,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Contacts");
+                    b.ToTable("Contacts", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Customer", b =>
@@ -467,7 +467,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("DeviceTokens");
+                    b.ToTable("DeviceTokens", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Icon", b =>
@@ -517,7 +517,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.HasIndex("CardTemplateId");
 
-                    b.ToTable("Icon");
+                    b.ToTable("Icon", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyCard", b =>
@@ -797,7 +797,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("Offers");
+                    b.ToTable("Offers", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PassDeviceRegistration", b =>
@@ -865,7 +865,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("PassDeviceRegistrations");
+                    b.ToTable("PassDeviceRegistrations", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosSession", b =>
@@ -989,7 +989,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("RedeemRequests");
+                    b.ToTable("RedeemRequests", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Reward", b =>
@@ -1200,7 +1200,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.HasIndex("TenantId");
 
-                    b.ToTable("Stories");
+                    b.ToTable("Stories", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Tenant", b =>

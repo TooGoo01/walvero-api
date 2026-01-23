@@ -11,5 +11,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public int? categoryId { get; set; }
         public string? userName { get; set; }
         public string? Name { get; set; }
+        public int? countryId { get; set; }
+        public int? cityId { get; set; }
     }
 }

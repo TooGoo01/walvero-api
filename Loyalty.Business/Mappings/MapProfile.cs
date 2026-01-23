@@ -7,6 +7,8 @@ using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Entities.Users;
 using Loyalty.DataAccess.Models;
 using LoyaltyWalletApp.Business.Dtos.Get.Main;
+using System.Diagnostics.Metrics;
+using TimeZone = Loyalty.DataAccess.Entities.Main.TimeZone;
 
 
 namespace Loyalty.Business.Mappings
@@ -77,6 +79,20 @@ namespace Loyalty.Business.Mappings
             CreateMap<HomeTenantProjection, HomeTenantDto>().ReverseMap();
             CreateMap<HomeStoryProjection, HomeStoryDto>().ReverseMap();
             CreateMap<HomeOfferProjection, HomeOfferDto>().ReverseMap();
+            CreateMap<Country, AddCountryDto>().ReverseMap();
+            CreateMap<Country, GetCountryDto>().ReverseMap();
+
+            CreateMap<City, AddCityDto>().ReverseMap();
+            CreateMap<City, GetCityDto>().ReverseMap();
+
+            CreateMap<TimeZone, AddTimeZoneDto>().ReverseMap();
+            CreateMap<TimeZone, GetTimeZoneDto>().ReverseMap();
+
+            CreateMap<TenantLocation, GetTenantLocationDto>()
+                  .ForMember(dest => dest.CountryName, opt => opt.MapFrom(src => src.Country != null ? src.Country.AzName : null))
+                  .ForMember(dest => dest.CityName, opt => opt.MapFrom(src => src.City != null ? src.City.AzName : null))
+                  .ForMember(dest => dest.TimeZoneName, opt => opt.MapFrom(src => src.TimeZone != null ? src.TimeZone.Name : null));
+
 
             #endregion
 

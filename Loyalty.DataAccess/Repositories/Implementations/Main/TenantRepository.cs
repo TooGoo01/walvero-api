@@ -72,8 +72,15 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
 
         public async Task<Tenant?> GetById(int id)
         {
-            return await GetAsQueryable().Include(x => x.Category).Include(x=>x.Admins)
-               .FirstOrDefaultAsync(t => t.Id == id);
+            return await GetAsQueryable()
+               .Include(x => x.Admins)
+               .Include(x => x.TenantLocation)
+                   .ThenInclude(tl => tl.Country)
+               .Include(x => x.TenantLocation)
+                   .ThenInclude(tl => tl.City)
+               .Include(x => x.TenantLocation)
+                   .ThenInclude(tl => tl.TimeZone)
+              .FirstOrDefaultAsync(t => t.Id == id);
         }
 
         public Task<IEnumerable<Tenant>> GetByUserId(int tenantId)
@@ -81,12 +88,19 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             throw new NotImplementedException();
         }
 
-        public IQueryable<Tenant> GetActiveWithUser(string? name, string? userName, int? categoryId)
+        public IQueryable<Tenant> GetActiveWithUser(string? name, string? userName, int? categoryId, int? countryId, int? cityId)
         {
+            // PERFORMANCE: Use AsNoTracking for read-only queries
             var query = GetAsQueryable()
+                .AsNoTracking()
                 .Include(x => x.Category)
                 .Include(x => x.LoyaltyPrograms)
                     .ThenInclude(x => x.CardTemplate)
+                // OPTIMIZATION: Include TenantLocation with City and Country to avoid N+1 queries
+                .Include(x => x.TenantLocation)
+                    .ThenInclude(tl => tl.Country)
+                .Include(x => x.TenantLocation)
+                    .ThenInclude(tl => tl.City)
                 .Where(x => x.IsActive && !x.IsHidden);
             
             if (userName != null)
@@ -105,18 +119,39 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     .ThenInclude(c => c.LoyaltyCards.Where(lc => lc.IsActive));
             }
             
+            // Text search filter
             if (name != null)
                 query = query.Where(x => EF.Functions.Like(x.CompanyName, $"%{name}%"));
+            
+            // Category filter
             if (categoryId != null)
                 query = query.Where(x => x.categoryId == categoryId);
             
+            // FEATURE: Country filter
+            if (countryId != null)
+                query = query.Where(x => x.TenantLocation != null && x.TenantLocation.countryId == countryId);
+            
+            // FEATURE: City filter
+            if (cityId != null)
+                query = query.Where(x => x.TenantLocation != null && x.TenantLocation.cityId == cityId);
+            
             return query.OrderBy(x => x.Id);
         }
-        public async Task<IReadOnlyList<HomeTenantProjection>> ListHomeTenantsAsync(CancellationToken ct = default)
+        public async Task<IReadOnlyList<HomeTenantProjection>> ListHomeTenantsAsync(int? countryId = null, int? cityId = null, CancellationToken ct = default)
         {
-            return await _LoyaltyDbContext.Tenants
+            var query = _LoyaltyDbContext.Tenants
                 .AsNoTracking()
-                .Where(t => t.IsActive && t.ShowOnHome && !t.IsHidden)
+                .Where(t => t.IsActive && t.ShowOnHome && !t.IsHidden);
+            
+            // FEATURE: Country filter for discover/home page
+            if (countryId != null)
+                query = query.Where(t => t.TenantLocation != null && t.TenantLocation.countryId == countryId);
+            
+            // FEATURE: City filter for discover/home page
+            if (cityId != null)
+                query = query.Where(t => t.TenantLocation != null && t.TenantLocation.cityId == cityId);
+            
+            return await query
                 .Select(t => new HomeTenantProjection
                 {
                     TenantId = t.Id,

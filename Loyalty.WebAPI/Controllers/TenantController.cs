@@ -19,9 +19,18 @@ namespace Loyalty.WebAPI.Controllers
             _tenantService = tenantService;
         }
 
+        /// <summary>
+        /// Get active tenants with optional filtering by category, location, name, and user
+        /// </summary>
         [HttpGet]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<ActionResult<ServiceResult>> GetTenants([FromQuery]TenantSearchDto? model, int currentPage = 1, int pageSize = 10)
+        [ResponseCache(
+            Duration = 60, 
+            VaryByQueryKeys = new[] { "currentPage", "pageSize", "categoryId", "countryId", "cityId", "name", "userName" })]
+        public async Task<ActionResult<ServiceResult>> GetTenants(
+            [FromQuery] TenantSearchDto? model, 
+            int currentPage = 1, 
+            int pageSize = 10)
         {
             return Ok(await _tenantService.GetActiveUser(currentPage, pageSize, model));
         }

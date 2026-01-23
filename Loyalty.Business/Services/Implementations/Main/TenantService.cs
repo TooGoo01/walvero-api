@@ -40,41 +40,38 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> Add(AddTenantDto Dto)
         {
-            try
+            // Validation: Şəhər seçimi məcburidir
+            if (!Dto.cityId.HasValue || Dto.cityId.Value <= 0)
             {
-                // Validate input
-                if (string.IsNullOrWhiteSpace(Dto.Subdomain))
-                {
-                    return new ServiceResult(false, "Subdomain is required");
-                }
+                return new ServiceResult(false, "Şəhər seçimi məcburidir");
+            }
 
-                if (string.IsNullOrWhiteSpace(Dto.CompanyName))
-                {
-                    return new ServiceResult(false, "Company name is required");
-                }
+            var request = _mapper.Map<Tenant>(Dto);
+            request.IsActive = true;
+            await _unitOfWork.Repository<Tenant>().AddAsync(request);
+            _unitOfWork.Commit();
 
-                // Check if subdomain already exists
-                var existingTenant = await _tenantRepository.GetBySubdomainAsync(Dto.Subdomain);
-                if (existingTenant != null)
+            // Create TenantLocation if location data is provided
+            if (Dto.countryId.HasValue || Dto.cityId.HasValue || Dto.timeZoneId.HasValue)
+            {
+                var tenantLocation = new TenantLocation
                 {
-                    return new ServiceResult(false, "Subdomain already exists");
-                }
-
-                var request = _mapper.Map<Tenant>(Dto);
-                request.IsActive = true;
-                await _unitOfWork.Repository<Tenant>().AddAsync(request);
+                    tenantId = request.Id,
+                    countryId = Dto.countryId,
+                    cityId = Dto.cityId,
+                    timeZoneId = Dto.timeZoneId
+                };
+                await _unitOfWork.Repository<TenantLocation>().AddAsync(tenantLocation);
                 _unitOfWork.Commit();
-                var response = _mapper.Map<GetTenantDto>(request);
-                return new ServiceResult(true, response);
+                request.tenantLocationId = tenantLocation.Id;
+                _unitOfWork.Repository<Tenant>().Update(request);
+                _unitOfWork.Commit();
             }
-            catch (DbUpdateException dbEx)
-            {
-                return new ServiceResult(false, $"Database error: {dbEx.InnerException?.Message ?? dbEx.Message}");
-            }
-            catch (Exception ex)
-            {
-                return new ServiceResult(false, $"Error adding tenant: {ex.Message}");
-            }
+
+            // Reload tenant with TenantLocation for proper mapping
+            var tenantWithLocation = await _tenantRepository.GetById(request.Id);
+            var response = _mapper.Map<GetTenantDto>(tenantWithLocation);
+            return new ServiceResult(true, response.Id);
         }
 
         public Task<ServiceResult> Delete(int id)
@@ -84,7 +81,9 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> Get(int id)
         {
-           var respose= await _unitOfWork.Repository<Tenant>().GetByIdAsync(id);
+            var respose = await _tenantRepository.GetById(id);
+            if (respose == null)
+                return new ServiceResult(false, "Tenant not found");
             var response = _mapper.Map<GetTenantDto>(respose);
             return new ServiceResult(true, response);
         }
@@ -103,7 +102,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                 pageSize = 100;
             
             // OPTIMIZATION: Get IQueryable and count BEFORE pagination
-            var query =  _tenantRepository.GetActiveWithUser(model.Name,model.userName,model.categoryId);
+            var query = _tenantRepository.GetActiveWithUser(
+                model.Name, 
+                model.userName, 
+                model.categoryId,
+                model.countryId,
+                model.cityId);
             
             // Execute count query first (single database call)
             var totalCount = await query.CountAsync();
@@ -180,6 +184,12 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> Update(UpdateTenantDto dto)
         {
+            // Validation: Şəhər seçimi məcburidir
+            if (!dto.cityId.HasValue || dto.cityId.Value <= 0)
+            {
+                return new ServiceResult(false, "Şəhər seçimi məcburidir");
+            }
+
             var category = await _tenantRepository.GetById(dto.Id);
             if (category != null)
             {
@@ -199,11 +209,63 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     category.ContactPhone = dto.ContactPhone;
                 }
-
-                category.RequireConfirmation = dto.RequireConfirmation ? true : false ;
+                if (dto.LocationUrl != null)
+                {
+                    category.LocationUrl = dto.LocationUrl;
+                }
+                if (dto.InstagramUrl != null)
+                {
+                    category.InstagramUrl = dto.InstagramUrl;
+                }
+                if (dto.FacebookUrl != null)
+                {
+                    category.FacebookUrl = dto.FacebookUrl;
+                }
+                if (dto.WhatsAppUrl != null)
+                {
+                    category.WhatsAppUrl = dto.WhatsAppUrl;
+                }
+                if (dto.TelegramUrl != null)
+                {
+                    category.TeleqramUrl = dto.TelegramUrl;
+                }
+                category.ShowOnHome = dto.ShowOnHome;
+                category.categoryId = dto.categoryId;
+                category.RequireConfirmation = dto.RequireConfirmation ? true : false;
                 if (dto.ConfirmationTtlMinutes != null)
                 {
                     category.ConfirmationTtlMinutes = dto.ConfirmationTtlMinutes;
+                }
+
+                // Handle TenantLocation
+                if (dto.countryId.HasValue || dto.cityId.HasValue || dto.timeZoneId.HasValue)
+                {
+                    TenantLocation tenantLocation = null;
+                    if (category.tenantLocationId.HasValue)
+                    {
+                        tenantLocation = await _unitOfWork.Repository<TenantLocation>().GetByIdAsync(category.tenantLocationId.Value);
+                    }
+
+                    if (tenantLocation == null)
+                    {
+                        tenantLocation = new TenantLocation
+                        {
+                            tenantId = category.Id,
+                            countryId = dto.countryId,
+                            cityId = dto.cityId,
+                            timeZoneId = dto.timeZoneId
+                        };
+                        await _unitOfWork.Repository<TenantLocation>().AddAsync(tenantLocation);
+                        _unitOfWork.Commit();
+                        category.tenantLocationId = tenantLocation.Id;
+                    }
+                    else
+                    {
+                        tenantLocation.countryId = dto.countryId;
+                        tenantLocation.cityId = dto.cityId;
+                        tenantLocation.timeZoneId = dto.timeZoneId;
+                        _unitOfWork.Repository<TenantLocation>().Update(tenantLocation);
+                    }
                 }
                 var users = await _dbContext.Users.ToListAsync();
                 var selectedUser = users.Where(d => dto.admins.Contains(d.Id)).ToList();
@@ -232,14 +294,17 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 _unitOfWork.Repository<Tenant>().Update(category);
                 _unitOfWork.Commit();
-                var response = _mapper.Map<GetTenantDto>(category);
+
+                // Reload tenant with TenantLocation for proper mapping
+                var updatedTenant = await _tenantRepository.GetById(category.Id);
+                var response = _mapper.Map<GetTenantDto>(updatedTenant);
                 return new ServiceResult(true, response.Id);
             }
             return new ServiceResult(false);
         }
-        public async Task<IReadOnlyList<HomeTenantDto>> GetHomeTenantsAsync(CancellationToken ct = default)
+        public async Task<IReadOnlyList<HomeTenantDto>> GetHomeTenantsAsync(int? countryId = null, int? cityId = null, CancellationToken ct = default)
         {
-            var projections = await _tenantRepository.ListHomeTenantsAsync(ct);
+            var projections = await _tenantRepository.ListHomeTenantsAsync(countryId, cityId, ct);
 
             // Map from repository projection to service DTO
             return projections.Select(p => new HomeTenantDto

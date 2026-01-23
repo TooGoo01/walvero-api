@@ -11,6 +11,7 @@ using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 using Loyalty.Infrastructure.Extensions;
+
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -37,7 +38,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IHubContext<LoyaltyHub> _hubContext;
         private readonly INotificationService _notificationService;
         private readonly LoyaltyWalletDbContext _dbContext;
-
+        private readonly ITimeZoneService _timeZoneService;
         public RedeemService(
             ILoyaltyCardRepository cardSvc,
             ILoyaltyProgramRepository programSvc,
@@ -51,7 +52,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             IHubContext<LoyaltyHub> hubContext,
             INotificationService notificationService,
             ICustomerRepository customerRepo,
-            LoyaltyWalletDbContext dbContext)
+            LoyaltyWalletDbContext dbContext,
+            ITimeZoneService timeZoneService)
         {
             _cardSvc = cardSvc;
             _programSvc = programSvc;
@@ -68,6 +70,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _hubContext = hubContext;
             _notificationService = notificationService;
             _dbContext = dbContext;
+            _timeZoneService = timeZoneService;
         }
 
         // START (Auto / ForcePending / ForceApply)
@@ -305,8 +308,10 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 card.LifetimePoints += 1;
                 ApplyDelta(card, snapshot, delta);
+                // Get tenant's local time
+                var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(request.TenantId, null, ct);
 
-                var tx = BuildTransaction(card, delta, request.OrderId, request.Note, TransactionType.Earned);
+                var tx = BuildTransaction(card, delta, request.OrderId, request.Note, TransactionType.Earned, localTime, timeZoneId);
                 uow.Repository<LoyaltyCard>().Update(card);
                 uow.Repository<Transaction>().Add(tx);
                 uow.Commit();
@@ -323,37 +328,59 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 // PRIMARY
                 _logger.LogInformation("Routing after confirm to PRIMARY {Platform}.", primaryPlatform);
-                var primaryRes = await _walletRouter.RouteAsync(
-                    primaryPlatform,
-                    card.Id,
-                    snapshot,
-                    card.CurrentPoints,
-                    card.CurrentSteps,
-                    card.CompletedCycles,
-                    delta,
-                    ct);
+                try
+                {
+                    var primaryRes = await _walletRouter.RouteAsync(
+                        primaryPlatform,
+                        card.Id,
+                        snapshot,
+                        card.CurrentPoints,
+                        card.CurrentSteps,
+                        card.CompletedCycles,
+                        delta,
+                        ct);
 
-                if (!primaryRes.Success)
-                    _logger.LogWarning("Wallet update FAILED on PRIMARY {Platform}. CardId={CardId}", primaryPlatform, card.Id);
-                else
-                    primaryOk = true;
+                    if (!primaryRes.Success)
+                        _logger.LogWarning("Wallet update FAILED on PRIMARY {Platform}. CardId={CardId}", primaryPlatform, card.Id);
+                    else
+                        primaryOk = true;
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("credential") || ex.Message.Contains("tapılmadı"))
+                {
+                    _logger.LogWarning(ex, "Credentials not found for PRIMARY {Platform}. Continuing without wallet update. CardId={CardId}", primaryPlatform, card.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Wallet update error on PRIMARY {Platform}. Continuing without wallet update. CardId={CardId}", primaryPlatform, card.Id);
+                }
 
                 // SECONDARY
                 _logger.LogInformation("Trying SECONDARY {Platform}.", secondaryPlatform);
-                var secondaryRes = await _walletRouter.RouteAsync(
-                    secondaryPlatform,
-                    card.Id,
-                    snapshot,
-                    card.CurrentPoints,
-                    card.CurrentSteps,
-                    card.CompletedCycles,
-                    delta,
-                    ct);
+                try
+                {
+                    var secondaryRes = await _walletRouter.RouteAsync(
+                        secondaryPlatform,
+                        card.Id,
+                        snapshot,
+                        card.CurrentPoints,
+                        card.CurrentSteps,
+                        card.CompletedCycles,
+                        delta,
+                        ct);
 
-                if (!secondaryRes.Success)
-                    _logger.LogWarning("Wallet update FAILED on SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
-                else
-                    secondaryOk = true;
+                    if (!secondaryRes.Success)
+                        _logger.LogWarning("Wallet update FAILED on SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
+                    else
+                        secondaryOk = true;
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("credential") || ex.Message.Contains("tapılmadı"))
+                {
+                    _logger.LogWarning(ex, "Credentials not found for SECONDARY {Platform}. Continuing without wallet update. CardId={CardId}", secondaryPlatform, card.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Wallet update error on SECONDARY {Platform}. Continuing without wallet update. CardId={CardId}", secondaryPlatform, card.Id);
+                }
 
                 if (appUserId.HasValue)
                 {
@@ -375,15 +402,19 @@ namespace Loyalty.Business.Services.Implementations.Main
                         .Group(groupName)
                         .SendAsync("CardUpdated", message, cancellationToken: ct);
 
+                    var currency = snapshot.Currency ?? "AZN"; // Default: AZN
                     var message1 = delta > 0
-                        ? $"{snapshot.ProgramName} balansınıza {delta} AZN əlavə olundu!"
-                        : $"{snapshot.ProgramName} balansınızdan {delta * 1} AZN çıxıldı!";
+                        ? $"{snapshot.ProgramName} balansınıza {delta} {currency} əlavə olundu!"
+                        : $"{snapshot.ProgramName} balansınızdan {delta * 1} {currency} çıxıldı!";
 
                     await _notificationService.SendToUserAsync(appUserId.Value, snapshot.ProgramName, message1, data);
                 }
 
                 if (!primaryOk && !secondaryOk)
-                    return Fail("Wallet yenilənmədi (Apple və ya Google).");
+                {
+                    _logger.LogWarning("Wallet update failed on both platforms, but continuing. CardId={CardId}, PrimaryOk={PrimaryOk}, SecondaryOk={SecondaryOk}", 
+                        card.Id, primaryOk, secondaryOk);
+                }
 
                 _logger.LogInformation("Redeem completed successfully. CardId={CardId}, AppliedDelta={Delta}", card.Id, delta);
 
@@ -470,8 +501,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var beforeCompletedCycles = card.CompletedCycles;
 
                 ApplyDelta(card, snapshot, rr.PointsDelta);
+                var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(rr.TenantId, null, ct);
 
-                var tx = BuildTransaction(card, rr.PointsDelta, rr.OrderId, rr.Note, TransactionType.Redeemed);
+                var tx = BuildTransaction(card, rr.PointsDelta, rr.OrderId, rr.Note, TransactionType.Redeemed, localTime, timeZoneId);
                 rr.Status = RedeemStatus.Applied;
 
                 uow.Repository<LoyaltyCard>().Update(card);
@@ -490,40 +522,65 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 // PRIMARY
                 _logger.LogInformation("Routing after confirm to PRIMARY {Platform}.", primaryPlatform);
-                var primaryRes = await _walletRouter.RouteAsync(
-                    primaryPlatform,
-                    card.Id,
-                    snapshot,
-                    card.CurrentPoints,
-                    card.CurrentSteps,
-                    card.CompletedCycles,
-                    rr.PointsDelta,
-                    ct);
+                try
+                {
+                    var primaryRes = await _walletRouter.RouteAsync(
+                        primaryPlatform,
+                        card.Id,
+                        snapshot,
+                        card.CurrentPoints,
+                        card.CurrentSteps,
+                        card.CompletedCycles,
+                        rr.PointsDelta,
+                        ct);
 
-                if (!primaryRes.Success)
-                    _logger.LogWarning("Wallet update FAILED on PRIMARY {Platform}. CardId={CardId}", primaryPlatform, card.Id);
-                else
-                    primaryOk = true;
+                    if (!primaryRes.Success)
+                        _logger.LogWarning("Wallet update FAILED on PRIMARY {Platform}. CardId={CardId}", primaryPlatform, card.Id);
+                    else
+                        primaryOk = true;
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("credential") || ex.Message.Contains("tapılmadı"))
+                {
+                    _logger.LogWarning(ex, "Credentials not found for PRIMARY {Platform}. Continuing without wallet update. CardId={CardId}", primaryPlatform, card.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Wallet update error on PRIMARY {Platform}. Continuing without wallet update. CardId={CardId}", primaryPlatform, card.Id);
+                }
 
                 // SECONDARY
                 _logger.LogInformation("Trying SECONDARY {Platform}.", secondaryPlatform);
-                var secondaryRes = await _walletRouter.RouteAsync(
-                    secondaryPlatform,
-                    card.Id,
-                    snapshot,
-                    card.CurrentPoints,
-                    card.CurrentSteps,
-                    card.CompletedCycles,
-                    rr.PointsDelta,
-                    ct);
+                try
+                {
+                    var secondaryRes = await _walletRouter.RouteAsync(
+                        secondaryPlatform,
+                        card.Id,
+                        snapshot,
+                        card.CurrentPoints,
+                        card.CurrentSteps,
+                        card.CompletedCycles,
+                        rr.PointsDelta,
+                        ct);
 
-                if (!secondaryRes.Success)
-                    _logger.LogWarning("Wallet update FAILED on SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
-                else
-                    secondaryOk = true;
+                    if (!secondaryRes.Success)
+                        _logger.LogWarning("Wallet update FAILED on SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
+                    else
+                        secondaryOk = true;
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("credential") || ex.Message.Contains("tapılmadı"))
+                {
+                    _logger.LogWarning(ex, "Credentials not found for SECONDARY {Platform}. Continuing without wallet update. CardId={CardId}", secondaryPlatform, card.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Wallet update error on SECONDARY {Platform}. Continuing without wallet update. CardId={CardId}", secondaryPlatform, card.Id);
+                }
 
                 if (!primaryOk && !secondaryOk)
-                    return Fail("Wallet yenilənmədi (Apple və ya Google).");
+                {
+                    _logger.LogWarning("Wallet update failed on both platforms, but continuing. CardId={CardId}, PrimaryOk={PrimaryOk}, SecondaryOk={SecondaryOk}", 
+                        card.Id, primaryOk, secondaryOk);
+                }
 
                 var appUserId = card.Customer?.applicationUser?.Id;
                 if (appUserId.HasValue)
@@ -546,9 +603,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                         .Group(groupName)
                         .SendAsync("CardUpdated", message, cancellationToken: ct);
 
+                    var currency = snapshot.Currency ?? "AZN"; // Default: AZN
                     var message1 = rr.PointsDelta > 0
-                        ? $"{snapshot.ProgramName} balansınıza {rr.PointsDelta} AZN əlavə olundu!"
-                        : $"{snapshot.ProgramName} balansınızdan {rr.PointsDelta * 1} AZN çıxıldı!";
+                        ? $"{snapshot.ProgramName} balansınıza {rr.PointsDelta} {currency} əlavə olundu!"
+                        : $"{snapshot.ProgramName} balansınızdan {rr.PointsDelta * 1} {currency} çıxıldı!";
 
                     await _notificationService.SendToUserAsync(appUserId.Value, snapshot.ProgramName, message1, data);
                 }
@@ -609,7 +667,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
         }
 
-        private static Transaction BuildTransaction(LoyaltyCard card, int delta, string? orderId, string? note, TransactionType type)
+
+        private static Transaction BuildTransaction(
+            LoyaltyCard card,
+            int delta,
+            string? orderId,
+            string? note,
+            TransactionType type,
+            DateTimeOffset localOccurredAt,
+            string timeZoneIdUsed)
         {
             return new Transaction
             {
@@ -622,7 +688,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Description = delta >= 0
                     ? $"Kart balansının artımı: +{delta}"
                     : $"Ödəniş zamanı bonus istifadə edildi: {delta}",
-                // OperatorId/Note istəsən əlavə et
+                LocalOccurredAt = localOccurredAt,
+                TimeZoneIdUsed = timeZoneIdUsed
+                // istəsən burada OperatorId/Note da saxla
             };
         }
 
@@ -657,7 +725,18 @@ namespace Loyalty.Business.Services.Implementations.Main
                     return Fail($"Kifayət qədər balans yoxdur. Mövcud: {dbCard.CompletedCycles} {freeRewardLabel}.");
 
                 var before = dbCard.CompletedCycles;
+                var beforePoints = dbCard.CurrentPoints;
+                var beforeSteps = dbCard.CurrentSteps;
+                
+                // ProgressBased-də: Her CompletedCycle = TotalSteps kadar point deməkdir
+                // spendCount kadar CompletedCycle harcandığında, TotalSteps * spendCount kadar point azaltılmalıdır
+                int totalSteps = Math.Max(1, snapshot.TotalSteps);
+                int pointsToDeduct = spendCount * totalSteps;
+                
                 dbCard.CompletedCycles = before - spendCount;
+                dbCard.CurrentPoints = Math.Max(0, beforePoints - pointsToDeduct);
+                // CurrentSteps-i yenidən hesabla: CurrentPoints % TotalSteps
+                dbCard.CurrentSteps = dbCard.CurrentPoints % totalSteps;
                 dbCard.EditDate = DateTime.UtcNow;
 
                 // ✅ (Opsional) idempotency
@@ -685,7 +764,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         };
                     }
                 }
-
+                var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(request.TenantId, null, ct);
                 // ✅ Transaction log yaz
                 var tx = new Transaction
                 {
@@ -693,37 +772,56 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Type = TransactionType.Redeemed,
                     OrderId = idemKey,
                     ReferenceNumber = dbCard.BarcodeValue,
-                    Points = dbCard.CurrentPoints, // Points remain unchanged
-                    BalanceAfter = dbCard.CompletedCycles,
-                    Description = $"{spendCount} {freeRewardLabel} xərcləndi. Balans: {before} -> {dbCard.CompletedCycles}"
+                    Points = dbCard.CurrentPoints,
+                    BalanceAfter = dbCard.CurrentPoints,
+                    Description = $"{spendCount} {freeRewardLabel} xərcləndi. CompletedCycles: {before} -> {dbCard.CompletedCycles}, Points: {beforePoints} -> {dbCard.CurrentPoints}, Steps: {beforeSteps} -> {dbCard.CurrentSteps}",
+                    LocalOccurredAt = localTime,
+                    TimeZoneIdUsed = timeZoneId
                 };
 
                 _dbContext.Set<Transaction>().Add(tx);
                 await _dbContext.SaveChangesAsync(ct);
 
                 // ✅ Wallet refresh (DB-dən oxunmuş real dəyərlə)
+                var primaryPlatform = dbCard.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
+                var secondaryPlatform = dbCard.IsIOS ? WalletPlatform.GooglePay : WalletPlatform.AppleWallet;
+
                 try
                 {
-                    var primaryPlatform = dbCard.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
-                    var secondaryPlatform = dbCard.IsIOS ? WalletPlatform.GooglePay : WalletPlatform.AppleWallet;
-
                     _ = await _walletRouter.RouteAsync(primaryPlatform, dbCard.Id, snapshot, dbCard.CurrentPoints, dbCard.CurrentSteps, dbCard.CompletedCycles, 0, ct);
-                    _ = await _walletRouter.RouteAsync(secondaryPlatform, dbCard.Id, snapshot, dbCard.CurrentPoints, dbCard.CurrentSteps, dbCard.CompletedCycles, 0, ct);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("credential") || ex.Message.Contains("tapılmadı"))
+                {
+                    _logger.LogWarning(ex, "Credentials not found for PRIMARY {Platform} in RedeemFreeRewardAsync. Continuing. CardId={CardId}", primaryPlatform, dbCard.Id);
                 }
                 catch (Exception ex)
                 {
                     // Wallet fail olsa da DB update artıq yazılıb
-                    _logger.LogError(ex, "Wallet routing failed after RedeemFreeRewardAsync. CardId={CardId}", dbCard.Id);
+                    _logger.LogWarning(ex, "Wallet routing failed for PRIMARY {Platform} after RedeemFreeRewardAsync. Continuing. CardId={CardId}", primaryPlatform, dbCard.Id);
+                }
+
+                try
+                {
+                    _ = await _walletRouter.RouteAsync(secondaryPlatform, dbCard.Id, snapshot, dbCard.CurrentPoints, dbCard.CurrentSteps, dbCard.CompletedCycles, 0, ct);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("credential") || ex.Message.Contains("tapılmadı"))
+                {
+                    _logger.LogWarning(ex, "Credentials not found for SECONDARY {Platform} in RedeemFreeRewardAsync. Continuing. CardId={CardId}", secondaryPlatform, dbCard.Id);
+                }
+                catch (Exception ex)
+                {
+                    // Wallet fail olsa da DB update artıq yazılıb
+                    _logger.LogWarning(ex, "Wallet routing failed for SECONDARY {Platform} after RedeemFreeRewardAsync. Continuing. CardId={CardId}", secondaryPlatform, dbCard.Id);
                 }
 
                 return new RedeemResultDto
                 {
                     Success = true,
-                    Message = $"{spendCount} {freeRewardLabel} azaldıldı. Qalan balans: {dbCard.CompletedCycles}",
+                    Message = $"{spendCount} {freeRewardLabel} azaldıldı. Qalan balans: {dbCard.CompletedCycles} {freeRewardLabel}, Points: {dbCard.CurrentPoints}",
                     LoyaltyCardId = dbCard.Id,
                     RemainingRewardCount = dbCard.CompletedCycles,
                     FreeRewardLabel = freeRewardLabel,
-                    AppliedDelta = -spendCount
+                    AppliedDelta = -pointsToDeduct // Point azalmasını qaytarırıq
                 };
             }
             catch (Exception ex)

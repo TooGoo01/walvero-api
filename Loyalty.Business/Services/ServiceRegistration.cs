@@ -79,6 +79,9 @@ namespace Loyalty.Business.Services
             services.AddScoped<ICountrySequenceService, CountrySequenceService>();
             services.AddScoped<IPosSessionService, PosSessionService>();
             services.AddScoped<ITransactionReverseService, TransactionReverseService>();
+            services.AddScoped<ICountryService, CountryService>();
+            services.AddScoped<ICityService, CityService>();
+            services.AddScoped<ITimeZoneService, TimeZoneService>();
             services.AddSignalR();
             return services;
         }

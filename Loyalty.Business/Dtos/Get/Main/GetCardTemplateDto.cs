@@ -58,5 +58,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? HeroImageUrl { get; set; }
 
         public IconLayout IconLayout { get; set; }
+
+        // Currency (Para birimi: AZN, Xal, Point və s.)
+        public string Currency { get; set; } = "AZN"; // Default: AZN
     }
 }

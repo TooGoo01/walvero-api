@@ -23,9 +23,11 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? ReferenceNumber { get; set; }
         public string? OrderId { get; set; }
 
-        public int BalanceAfter { get; set; } 
+        public int BalanceAfter { get; set; }
+        // Timezone tracking
+        public DateTimeOffset LocalOccurredAt { get; set; } // local + offset
+        public string TimeZoneIdUsed { get; set; } = "UTC"; // tenant's timezone
 
-       
         public LoyaltyCard LoyaltyCard { get; set; } = null!;
     }
 }

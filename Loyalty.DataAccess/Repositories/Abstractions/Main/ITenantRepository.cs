@@ -19,8 +19,8 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         Task<IEnumerable<Tenant>> GetByUserId(int tenantId);
         Task<List<Tenant>> GetByIdsAsync(IEnumerable<int> tenantIds, CancellationToken ct = default);
         Task<IEnumerable<Tenant>> GetActive();
-        IQueryable<Tenant> GetActiveWithUser(string? name,string? userName,int? categoryId);
-        Task<IReadOnlyList<HomeTenantProjection>> ListHomeTenantsAsync(CancellationToken ct = default);
+        IQueryable<Tenant> GetActiveWithUser(string? name, string? userName, int? categoryId, int? countryId, int? cityId);
+        Task<IReadOnlyList<HomeTenantProjection>> ListHomeTenantsAsync(int? countryId = null, int? cityId = null, CancellationToken ct = default);
 
         /// <summary>
         /// Get tenant with branding, category, and first active loyalty program with card template.
