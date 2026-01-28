@@ -41,6 +41,17 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .FirstOrDefaultAsync(ct);
         }
 
+        public Task<LoyaltyCard?> GetLastInactiveByCustomerAsync(int tenantId, int programId, int customerId, CancellationToken ct)
+        {
+            return GetAsQueryable()
+                .Where(x => x.TenantId == tenantId &&
+                            x.CustomerId == customerId &&
+                            x.LoyaltyProgramId == programId &&
+                            !x.IsActive)
+                .OrderByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct);
+        }
+
         public Task<LoyaltyCard?> GetById(int id, CancellationToken ct)
         {
             return GetAsQueryable().Include(x=>x.Customer).ThenInclude(x=>x.applicationUser).FirstOrDefaultAsync(x => x.Id==id, ct);

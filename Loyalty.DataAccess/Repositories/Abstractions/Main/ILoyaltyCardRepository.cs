@@ -14,6 +14,7 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         Task<bool> ExistsAsync(int tenantId, string cardNumber, CancellationToken ct = default);
         Task<List<LoyaltyCard>> ListByCustomerAsync(int tenantId, int customerId, CancellationToken ct = default);
         Task<LoyaltyCard?> GetLastActiveByCustomerAsync(int tenantId, int programId, int customerId, CancellationToken ct);
+        Task<LoyaltyCard?> GetLastInactiveByCustomerAsync(int tenantId, int programId, int customerId, CancellationToken ct);
         Task<LoyaltyCard?> GetById(int id,CancellationToken ct);
         Task<List<LoyaltyCard>> GetLastActiveCardsForApplicationUserAsync(
     int applicationUserId,

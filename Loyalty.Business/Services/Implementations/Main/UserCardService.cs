@@ -52,77 +52,6 @@ namespace Loyalty.Business.Services.Implementations.Main
             _unitOfWork = unitOfWork;
             _mapper = mapper;
         }
-        private static string? EnsureHttpsOrNull(string? url)
-        {
-            if (string.IsNullOrWhiteSpace(url)) return null;
-            if (Uri.TryCreate(url, UriKind.Absolute, out var u) &&
-                u.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
-                return url;
-            return null;
-        }
-
-        private static string? FirstNonEmpty(params string?[] urls)
-        {
-            foreach (var u in urls)
-                if (!string.IsNullOrWhiteSpace(u)) return u;
-            return null;
-        }
-        public static (string tierName, int? percent, int? percentCash, string? iconUrl) TierResolver(
-int points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null)
-        {
-            string? H(string? url) =>
-                toAbsHttps is null ? EnsureHttpsOrNull(url) : EnsureHttpsOrNull(toAbsHttps(url));
-
-            // Threshold-lar (Bronze üçün default = 0)
-            int bronzeTh = tpl.BronzeThreshold ?? 0;
-            int? silverTh = tpl.SilverThreshold;
-            int? goldTh = tpl.GoldThreshold;
-            int? platTh = tpl.PlatinumThreshold;
-
-            // Ardıcıllıq pozularsa, artan qaydada düzəlt (opsional, amma təhlükəsizdir)
-            if (silverTh.HasValue && silverTh.Value < bronzeTh) silverTh = bronzeTh;
-            if (goldTh.HasValue && silverTh.HasValue && goldTh.Value < silverTh.Value) goldTh = silverTh;
-            if (platTh.HasValue && goldTh.HasValue && platTh.Value < goldTh.Value) platTh = goldTh;
-
-            // Tier seçimi (>= minimal reqem)
-            string name = "Bronze";
-            int? percent = tpl.BronzePercent;
-            int? percentCash = tpl.BronzePercentCash;
-            string? icon = FirstNonEmpty(H(tpl.BronzeIconUrl), H(tpl.LogoUrl));
-
-            if (platTh.HasValue && points >= platTh.Value)
-            {
-                name = "Platinum";
-                percent = tpl.PlatinumPercent;
-                percentCash = tpl.PlatinumPercentCash;
-                icon = FirstNonEmpty(H(tpl.PlatinumIconUrl), icon);
-            }
-            else if (goldTh.HasValue && points >= goldTh.Value)
-            {
-                name = "Gold";
-                percent = tpl.GoldPercent;
-                percentCash = tpl.GoldPercentCash;
-                icon = FirstNonEmpty(H(tpl.GoldIconUrl), icon);
-            }
-            else if (silverTh.HasValue && points >= silverTh.Value)
-            {
-                name = "Silver";
-                percent = tpl.SilverPercent;
-                percentCash = tpl.SilverPercentCash;
-                icon = FirstNonEmpty(H(tpl.SilverIconUrl), icon);
-            }
-            else
-            {
-                // points < SilverThreshold → Bronze qalır (hətta < BronzeThreshold olsa belə)
-                name = "Bronze";
-                percent = tpl.BronzePercent;
-                percentCash = tpl.BronzePercentCash;
-                icon = FirstNonEmpty(H(tpl.BronzeIconUrl), H(tpl.LogoUrl));
-            }
-
-            return (name, percent, percentCash, icon);
-        }
-
         /// <summary>
         /// Maps LoyaltyCard entity with navigation properties to UserCardDto.
         /// This method encapsulates the complex mapping logic for better maintainability.
@@ -132,9 +61,6 @@ int points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null)
             Tenant tenant,
             LoyaltyProgram program,
             CardTemplateSnapshot snapshot,
-            string tierName,
-            int? percent,
-            int? percentCash,
             GetCardTemplateDto? template = null)
         {
             string? progressText = null;
@@ -155,39 +81,27 @@ int points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null)
                 freeRewardText = $"{freeRewardCount} {freeRewardLabel}";
             }
 
-            // Build design DTO (HeroImageUrl and StripImageUrl are NOT overridden for ProgressBased in GetMyCards)
+            // Build design DTO (minimal fields used in wallet list)
             var design = new CardDesignDto
             {
-                ProgramName = program.ProgramName,
                 BackgroundColor = snapshot.BackgroundColor,
                 ForegroundColor = snapshot.ForegroundColor,
                 LabelColor = snapshot.LabelColor,
-                HeroImageUrl = snapshot.HeroImageUrl,
-                LogoImageUrl = snapshot.GoogleLogoUrl,
-                StripImageUrl = snapshot.StripImageUrl,
-                TierName = tierName,
-                ProgramDescription = snapshot.ProgramDescription,
-                RewardDescription = snapshot.RewardDescription,
+                LogoImageUrl = snapshot.GoogleLogoUrl
             };
 
             return new UserCardDto
             {
                 TenantId = card.TenantId,
                 TenantName = tenant.CompanyName,
-                CustomerFullName = $"{card.Customer.FirstName} {card.Customer.LastName}".Trim(),
                 LocationUrl = tenant.LocationUrl,
                 CardId = card.Id,
                 ProgramId = card.LoyaltyProgramId,
                 ProgramName = program.ProgramName,
+                ProgramDescription = snapshot.ProgramDescription,
+                RewardDescription = snapshot.RewardDescription,
                 CurrentPoints = card.CurrentPoints,
                 categoryId = tenant.categoryId,
-                categoryAz = tenant.Category?.AzName,
-                categoryEn = tenant.Category?.EnName,
-                categoryRu = tenant.Category?.RuName,
-                CardNumber = card.CardNumber,
-                BarcodeValue = card.BarcodeValue,
-                CashbackPercent = percent,
-                CashbackPercentCash = percentCash,
                 Design = design,
                 progressText = progressText,
                 freeRewardText = freeRewardText
@@ -303,12 +217,8 @@ int points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null)
                 var cardTemplate = program.CardTemplate;
                 var tpl = _mapper.Map<GetCardTemplateDto>(cardTemplate);
 
-                // TierResolver
-                var (tierName, percent, percentCash, tierIconUrl) =
-                    TierResolver(card.CurrentPoints, tpl, ToAbs);
-
                 // OPTIMIZATION: Use helper method for complex mapping
-                var dto = MapToUserCardDto(card, tenant, program, snapshot, tierName, percent, percentCash, tpl);
+                var dto = MapToUserCardDto(card, tenant, program, snapshot, tpl);
 
                 resultList.Add(dto);
             }

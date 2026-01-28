@@ -172,40 +172,32 @@ UserManager<ApplicationUser> userManager,
 
             // 3) Son aktiv kartı reuse et / yoxdursa deactive kartı aktivləşdir / yoxdursa yarat
             var card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
+            var hasPendingCardUpdate = false;
+            var platformUpdated = false;
             
             // Əgər aktiv kart yoxdursa, deactive edilmiş kartı tap
             if (card is null)
             {
-                // Deactive edilmiş kartı tap (sonuncu kartı götür)
-                var allCards = await _cardRepo.ListByCustomerAsync(tenantId, customer.Id, ct);
-                var deactiveCardId = allCards
-                    .Where(c => c.LoyaltyProgramId == program.Id && !c.IsActive)
-                    .OrderByDescending(c => c.Id)
-                    .Select(c => c.Id)
-                    .FirstOrDefault();
-
-                if (deactiveCardId > 0)
-                {
-                    // Deactive edilmiş kartı database-dən yenidən götür (tracking problemi üçün)
-                    var deactiveCard = await _uow.Repository<LoyaltyCard>().GetByIdAsync(deactiveCardId);
-                    
-                    if (deactiveCard != null)
-                    {
-                        // Deactive edilmiş kartı aktivləşdir
-                        deactiveCard.IsActive = true;
-                        deactiveCard.Status = CardStatus.Active;
-                        deactiveCard.ActivatedAt = DateTime.UtcNow;
-                        deactiveCard.EditDate = DateTime.UtcNow;
-                        deactiveCard.EditUserId = int.Parse(userId);
-                        
-                        _uow.Repository<LoyaltyCard>().Update(deactiveCard);
-                        _uow.Commit();
-                        
-                        card = deactiveCard;
-                    }
-                }
+                var deactiveCard = await _cardRepo.GetLastInactiveByCustomerAsync(
+                    tenantId,
+                    program.Id,
+                    customer.Id,
+                    ct);
                 
-               
+                if (deactiveCard != null)
+                {
+                    // Deactive edilmiş kartı aktivləşdir
+                    deactiveCard.IsActive = true;
+                    deactiveCard.Status = CardStatus.Active;
+                    deactiveCard.ActivatedAt = DateTime.UtcNow;
+                    deactiveCard.EditDate = DateTime.UtcNow;
+                    deactiveCard.EditUserId = int.Parse(userId);
+
+                    _uow.Repository<LoyaltyCard>().Update(deactiveCard);
+                    hasPendingCardUpdate = true;
+                    card = deactiveCard;
+                }
+
                 if (card is null)
                 {
                     
@@ -226,6 +218,7 @@ UserManager<ApplicationUser> userManager,
 
                     await _uow.Repository<LoyaltyCard>().AddAsync(card);
                     _uow.Commit(); // Bu SaveChangesAsync çağırmalıdır - BarcodeValue avtomatik set olunacaq
+                    hasPendingCardUpdate = false;
                 }
             }
             else
@@ -238,7 +231,7 @@ UserManager<ApplicationUser> userManager,
                 card.EditDate = DateTime.UtcNow;
                 card.EditUserId = int.Parse(userId);
                 _uow.Repository<LoyaltyCard>().Update(card);
-                _uow.Commit();
+                hasPendingCardUpdate = true;
             }
 
             // 4) Program / branding / snapshot (VerifyEnrollment-dan götürdük)
@@ -285,6 +278,7 @@ UserManager<ApplicationUser> userManager,
                     googleUrl = save.Data as string ?? save.Message as string;
 
                 card.IsAndroid = true;
+                platformUpdated = true;
             }
             else if (string.Equals(dto.DevicePlatform, "ios", StringComparison.OrdinalIgnoreCase))
             {
@@ -316,10 +310,16 @@ UserManager<ApplicationUser> userManager,
                 }
 
                 card.IsIOS = true;
+                platformUpdated = true;
             }
 
-            _uow.Repository<LoyaltyCard>().Update(card);
-            _uow.Commit();
+            var needsFinalUpdate = hasPendingCardUpdate || platformUpdated;
+
+            if (needsFinalUpdate)
+            {
+                _uow.Repository<LoyaltyCard>().Update(card);
+                _uow.Commit();
+            }
 
             // 6) Nəticə – artıq OTP yox, birbaşa wallet linkləri qaytarırıq
             return new ServiceResult(true, new VerifyEnrollmentResultDto

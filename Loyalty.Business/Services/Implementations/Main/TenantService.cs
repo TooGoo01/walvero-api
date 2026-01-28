@@ -114,11 +114,45 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Take(pageSize)
                 .ToListAsync();
 
-            // Map tenants - Customers collection is not included in GetTenantDto
-            // Only IsCustomer flag is set based on active cards
-            var mappedTenants = _mapper.Map<IEnumerable<GetTenantDto>>(page);
+            var mappedTenants = page.Select(tenant =>
+            {
+                var isCustomer = tenant.Customers != null &&
+                                 tenant.Customers.Any(c => c.LoyaltyCards != null &&
+                                                           c.LoyaltyCards.Any(lc => lc.IsActive));
 
-            SearchResult<IEnumerable<GetTenantDto>> response = new SearchResult<IEnumerable<GetTenantDto>>()
+                var loyaltyPrograms = tenant.LoyaltyPrograms?
+                    .Where(lp => lp.IsActive)
+                    .OrderBy(lp => lp.Id)
+                    .Select(lp => new TenantDiscoverProgramDto
+                    {
+                        Id = lp.Id,
+                        ProgramName = lp.ProgramName,
+                        Description = lp.Description,
+                        CardTemplate = lp.CardTemplate == null
+                            ? null
+                            : new TenantDiscoverCardTemplateDto
+                            {
+                                BackgroundColor = lp.CardTemplate.BackgroundColor,
+                                ForegroundColor = lp.CardTemplate.ForegroundColor,
+                                LogoUrl = lp.CardTemplate.LogoUrl,
+                                GoogleLogoUrl = lp.CardTemplate.GoogleLogoUrl
+                            }
+                    })
+                    .ToList() ?? new List<TenantDiscoverProgramDto>();
+
+                return new TenantDiscoverDto
+                {
+                    Id = tenant.Id,
+                    CompanyName = tenant.CompanyName,
+                    IsCustomer = isCustomer,
+                    Category = tenant.Category == null
+                        ? null
+                        : new TenantDiscoverCategoryDto { EnName = tenant.Category.EnName },
+                    LoyaltyPrograms = loyaltyPrograms
+                };
+            });
+
+            SearchResult<IEnumerable<TenantDiscoverDto>> response = new SearchResult<IEnumerable<TenantDiscoverDto>>()
             {
                 Value = mappedTenants,
                 DataCount = totalCount,

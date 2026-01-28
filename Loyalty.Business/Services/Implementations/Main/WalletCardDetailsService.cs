@@ -149,55 +149,52 @@ namespace Loyalty.Business.Services.Implementations.Main
         /// </summary>
         private TenantWalletPublicDto BuildTenantPublicDto(Tenant tenant, LoyaltyProgram? program, LoyaltyCard? card, string baseUrl)
         {
-            var branding = tenant.Branding;
-            var category = tenant.Category;
             var cardTemplate = program?.CardTemplate;
+
+            string? stripImageUrl = ToAbsoluteUrl(cardTemplate?.StripImageUrl, baseUrl);
+            if (cardTemplate != null && cardTemplate.TemplateType == CardTemplateType.ProgressBased && card != null)
+            {
+                var snapshot = CardTemplateSnapshotFactory.From(
+                    program ?? new LoyaltyProgram { Id = 0, TenantId = 0 },
+                    cardTemplate,
+                    null,
+                    path => ToAbsoluteUrl(path, baseUrl));
+
+                int totalSteps = Math.Max(1, snapshot.TotalSteps);
+                int currentSteps = Math.Clamp(card.CurrentSteps, 0, totalSteps);
+                var progressIconUrl = PickProgressIcon(snapshot.IconUrls, currentSteps);
+
+                if (!string.IsNullOrWhiteSpace(progressIconUrl))
+                    stripImageUrl = progressIconUrl;
+            }
+
+            decimal? cashbackPercent = null;
+            decimal? cashbackPercentCash = null;
+            if (card != null)
+            {
+                (_, cashbackPercent, cashbackPercentCash) = CalculateTier(card.CurrentPoints, cardTemplate);
+            }
 
             var dto = new TenantWalletPublicDto
             {
                 TenantId = tenant.Id,
                 TenantName = tenant.CompanyName,
-                
-                // Branding (from TenantBranding)
-                LogoUrl = ToAbsoluteUrl(branding?.LogoUrl, baseUrl),
-                BackgroundImageUrl = ToAbsoluteUrl(branding?.BackgroundImageUrl, baseUrl),
-                IconUrl = ToAbsoluteUrl(branding?.IconUrl, baseUrl),
-                PrimaryColor = branding?.PrimaryColor ?? "#000000",
-                SecondaryColor = branding?.SecondaryColor ?? "#FFFFFF",
-                BackgroundColor = (branding?.BackgroundColor?.ToUpper() == "#FFFFFF") ? "#F2F2F2" : (branding?.BackgroundColor ?? "#FFFFFF"),
-                TextColor = branding?.TextColor ?? "#000000",
 
-                // Card Template Images (from CardTemplate)
-                GoogleLogoUrl = ToAbsoluteUrl(cardTemplate?.GoogleLogoUrl, baseUrl),
-                HeroImageUrl = ToAbsoluteUrl(cardTemplate?.HeroImageUrl, baseUrl),
-                StripImageUrl = ToAbsoluteUrl(cardTemplate?.StripImageUrl, baseUrl),
-
-                // Card Template Colors (from CardTemplate)
-                CardBackgroundColor = cardTemplate?.BackgroundColor ?? "#FFFFFF",
-                CardForegroundColor = cardTemplate?.ForegroundColor ?? "#000000",
-                CardLabelColor = cardTemplate?.LabelColor ?? "#999999",
-
-                // General info
-                Description = branding?.Description,
-                Website = branding?.Website,
-                LocationUrl = tenant.LocationUrl,
-                ContactEmail = tenant.ContactEmail,
-                ContactPhone = tenant.ContactPhone,
-
-                // Category
-                CategoryId = category?.Id,
-                CategoryAz = category?.AzName,
-                CategoryEn = category?.EnName,
-                CategoryRu = category?.RuName,
-
-                // Program info (public)
+                // Program info
                 ProgramName = program?.ProgramName,
                 ProgramId = program?.Id,
                 ProgramDescription = program?.Description,
                 RewardDescription = cardTemplate?.RewardDescription,
 
-                // Card template design (nested object with all design info)
-                Design = cardTemplate != null ? BuildDesignDto(cardTemplate, program, card, baseUrl) : null
+                // Card Template Images (from CardTemplate)
+                GoogleLogoUrl = ToAbsoluteUrl(cardTemplate?.GoogleLogoUrl, baseUrl),
+                StripImageUrl = stripImageUrl,
+
+                LocationUrl = tenant.LocationUrl,
+                BackgroundColor = cardTemplate?.BackgroundColor ?? tenant.Branding?.BackgroundColor ?? "#FFFFFF",
+                ForegroundColor = cardTemplate?.ForegroundColor ?? tenant.Branding?.TextColor ?? "#000000",
+                CashbackPercent = cashbackPercent,
+                CashbackPercentCash = cashbackPercentCash
             };
 
             return dto;
@@ -212,11 +209,6 @@ namespace Loyalty.Business.Services.Implementations.Main
             var customer = card.Customer;
             var program = card.LoyaltyProgram;
             var cardTemplate = program?.CardTemplate;
-
-            // Calculate tier based on points
-            var (tierName, cashbackPercent, cashbackPercentCash) = CalculateTier(
-                card.CurrentPoints, 
-                cardTemplate);
 
             string? progressText = null;
             string? freeRewardText = null;
@@ -234,95 +226,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                 int freeRewardCount = card.CompletedCycles;
                 string freeRewardLabel = cardTemplate.FreeRewardLabel ?? "Pulsuz içki";
                 freeRewardText = $"{freeRewardCount} {freeRewardLabel}";
+
             }
 
             return new WalletCardPrivateDto
             {
-                CardId = card.Id,
-                CustomerId = card.CustomerId,
-                LoyaltyProgramId = card.LoyaltyProgramId,
-
-                // Customer info (SENSITIVE)
                 CustomerFullName = $"{customer?.FirstName} {customer?.LastName}".Trim(),
-                CustomerPhone = customer?.PhoneNumber,
-
-                // Card details (SENSITIVE)
-                CardNumber = card.CardNumber,
-                BarcodeValue = card.BarcodeValue,
-                BarcodeType = card.BarcodeType,
-
-                // Points/Balance (SENSITIVE)
                 CurrentPoints = card.CurrentPoints,
-                LifetimePoints = card.LifetimePoints,
-                CurrentSteps = card.CurrentSteps,
-                CompletedCycles = card.CompletedCycles,
 
                 // ProgressBased card fields
                 progressText = progressText,
-                freeRewardText = freeRewardText,
-
-                // Tier/Cashback
-                TierName = tierName,
-                CashbackPercent = cashbackPercent,
-                CashbackPercentCash = cashbackPercentCash,
-
-                // Status
-                CardStatus = card.Status,
-                ActivatedAt = card.ActivatedAt,
-                ExpiresAt = card.ExpiresAt,
-
-                // Wallet platform info
-                IsAndroid = card.IsAndroid,
-                IsIOS = card.IsIOS,
-                ApplePassUrl = card.ApplePassUrl
-            };
-        }
-
-        /// <summary>
-        /// Build card design DTO for UI preview.
-        /// For ProgressBased cards, overrides HeroImageUrl and StripImageUrl with progress icon.
-        /// When card is null (not added to wallet), uses default icon (first icon, index 0).
-        /// </summary>
-        private CardDesignDto BuildDesignDto(CardTemplate cardTemplate, LoyaltyProgram? program, LoyaltyCard? card, string baseUrl)
-        {
-            var googleLogoUrl = ToAbsoluteUrl(cardTemplate.GoogleLogoUrl, baseUrl);
-            
-            string? heroImageUrl = ToAbsoluteUrl(cardTemplate.HeroImageUrl, baseUrl);
-            string? stripImageUrl = ToAbsoluteUrl(cardTemplate.StripImageUrl, baseUrl);
-
-            // ProgressBased card: override with progress icon
-            if (cardTemplate.TemplateType == CardTemplateType.ProgressBased)
-            {
-                var snapshot = CardTemplateSnapshotFactory.From(
-                    program ?? new LoyaltyProgram { Id = 0, TenantId = 0 },
-                    cardTemplate,
-                    null,
-                    path => ToAbsoluteUrl(path, baseUrl));
-
-                int totalSteps = Math.Max(1, snapshot.TotalSteps);
-                // If card is null (not added to wallet), use default icon (index 0)
-                int currentSteps = card != null ? Math.Clamp(card.CurrentSteps, 0, totalSteps) : 0;
-                string? progressIconUrl = PickProgressIcon(snapshot.IconUrls, currentSteps);
-
-                if (progressIconUrl != null)
-                {
-                    heroImageUrl = progressIconUrl;
-                    stripImageUrl = progressIconUrl;
-                }
-            }
-            
-            return new CardDesignDto
-            {
-                BackgroundColor = cardTemplate.BackgroundColor ?? "#FFFFFF",
-                ForegroundColor = cardTemplate.ForegroundColor ?? "#000000",
-                LabelColor = cardTemplate.LabelColor ?? "#999999",
-                HeroImageUrl = heroImageUrl,
-                LogoImageUrl = googleLogoUrl,
-                GoogleLogoUrl = googleLogoUrl,  // Same as LogoImageUrl
-                StripImageUrl = stripImageUrl,
-                ProgramName = program?.ProgramName ?? string.Empty,
-                ProgramDescription = program?.Description,
-                RewardDescription = cardTemplate.RewardDescription
+                freeRewardText = freeRewardText
             };
         }
 
