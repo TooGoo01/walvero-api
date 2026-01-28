@@ -26,6 +26,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int AvailableRewardCount { get; set; } = 0;  // = CompletedCycles
         public int MaxSpendCount { get; set; } = 0;         // = CompletedCycles (UI input limit)
         public string? FreeRewardLabel { get; set; }         // "Pulsuz içki", "Burger" və s. (default: "Pulsuz içki")
+        public string? Currency { get; set; }  // Currency from CardTemplate (e.g., "AZN", "USD", "EUR")
 
         // Status
  

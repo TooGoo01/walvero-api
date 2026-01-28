@@ -65,9 +65,10 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             var storeCard = new Dictionary<string, object?>();
 
-            //if (req.PrimaryFields?.Any() == true)
-            //    storeCard["primaryFields"] = req.PrimaryFields
-            //        .Select(f => new { key = f.Key, label = f.Label, value = f.Value }).ToArray();
+
+            if (req.PrimaryFields?.Any() == true)
+                storeCard["primaryFields"] = req.PrimaryFields
+                    .Select(f => new { key = f.Key, label = f.Label, value = f.Value }).ToArray();
 
             if (req.SecondaryFields?.Any() == true)
                 storeCard["secondaryFields"] = req.SecondaryFields

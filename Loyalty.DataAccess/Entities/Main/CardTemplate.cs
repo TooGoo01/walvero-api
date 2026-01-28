@@ -71,6 +71,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? BackgroundImageUrl { get; set; }
         public string? StripImageUrl { get; set; }       // Apple Wallet banner
         public string? HeroImageUrl { get; set; }        // Google Wallet hero
+        public string Currency { get; set; } = "AZN"; // Default currency
 
         // Layout
         public IconLayout IconLayout { get; set; } = IconLayout.Grid; // Grid, Horizontal, Vertical

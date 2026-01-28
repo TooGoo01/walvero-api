@@ -165,6 +165,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     ApplicationUser user = await _dbContext.Users
                         .Include(x => x.Tenant)
                         .ThenInclude(x => x.LoyaltyPrograms)
+                        .ThenInclude(x => x.CardTemplate)
                         .FirstOrDefaultAsync(x => x.UserName == loginUser.UserName);
 
                     if (user != null)
@@ -182,6 +183,11 @@ namespace Loyalty.Business.Services.Implementations.Users
                             // Save refresh token
                             await SaveRefreshTokenAsync(user.Id, token.RefreshToken!, token.RefreshTokenExpiration!.Value);
 
+                            // Get Google Logo URL from tenant's first active loyalty program's card template
+                            var googleLogoUrl = user.Tenant?.LoyaltyPrograms
+                                ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
+                                ?.CardTemplate?.GoogleLogoUrl;
+
                             var detail = new UserSessionDto
                             {
                                 Id = user.Id,
@@ -196,7 +202,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                                 Token = token.Token,
                                 Expiration = token.Expiration,
                                 RefreshToken = token.RefreshToken,
-                                RefreshTokenExpiration = token.RefreshTokenExpiration
+                                RefreshTokenExpiration = token.RefreshTokenExpiration,
+                                GoogleLogoUrl = googleLogoUrl
                             };
 
                             return new ServiceResult(true, detail, "login success");
@@ -326,7 +333,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                         Token = guestResponse.Token,
                         Expiration = guestResponse.Expiration,
                         RefreshToken = guestResponse.RefreshToken,
-                        RefreshTokenExpiration = guestResponse.RefreshTokenExpiration
+                        RefreshTokenExpiration = guestResponse.RefreshTokenExpiration,
+                        GoogleLogoUrl = guestResponse.GoogleLogoUrl
                     };
 
                     return new ServiceResult(true, detail, "guest registration success");
@@ -781,7 +789,12 @@ namespace Loyalty.Business.Services.Implementations.Users
         {
             try
             {
-                var user = await _userManager.FindByIdAsync(userId.ToString());
+                var user = await _dbContext.Users
+                    .Include(x => x.Tenant)
+                    .ThenInclude(x => x.LoyaltyPrograms)
+                    .ThenInclude(x => x.CardTemplate)
+                    .FirstOrDefaultAsync(x => x.Id == userId);
+                
                 if (user == null)
                 {
                     return new ServiceResult(false, "User not found");
@@ -858,6 +871,11 @@ namespace Loyalty.Business.Services.Implementations.Users
                         var token = _tokenHelper.CreateToken(user, claims);
                         await SaveRefreshTokenAsync(user.Id, token.RefreshToken!, token.RefreshTokenExpiration!.Value);
 
+                        // Get Google Logo URL from tenant's first active loyalty program's card template
+                        var googleLogoUrl = user.Tenant?.LoyaltyPrograms
+                            ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
+                            ?.CardTemplate?.GoogleLogoUrl;
+
                         var session = new UserSessionDto
                         {
                             Id = user.Id,
@@ -873,7 +891,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                             Token = token.Token,
                             Expiration = token.Expiration,
                             RefreshToken = token.RefreshToken,
-                            RefreshTokenExpiration = token.RefreshTokenExpiration
+                            RefreshTokenExpiration = token.RefreshTokenExpiration,
+                            GoogleLogoUrl = googleLogoUrl
                         };
 
                         var response = new VerifyOtpResponseDto
@@ -1277,6 +1296,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var user = await _dbContext.Users
                     .Include(x => x.Tenant)
                     .ThenInclude(x => x.LoyaltyPrograms)
+                    .ThenInclude(x => x.CardTemplate)
                     .FirstOrDefaultAsync(x => x.PhoneNumber == request.Phone || x.UserName == request.Phone, ct);
 
                 if (user == null)
@@ -1308,6 +1328,11 @@ namespace Loyalty.Business.Services.Implementations.Users
                     var token = _tokenHelper.CreateToken(user, claims);
                     await SaveRefreshTokenAsync(user.Id, token.RefreshToken!, token.RefreshTokenExpiration!.Value);
 
+                    // Get Google Logo URL from tenant's first active loyalty program's card template
+                    var googleLogoUrl = user.Tenant?.LoyaltyPrograms
+                        ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
+                        ?.CardTemplate?.GoogleLogoUrl;
+
                     var session = new UserSessionDto
                     {
                         Id = user.Id,
@@ -1324,7 +1349,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                         Token = token.Token,
                         Expiration = token.Expiration,
                         RefreshToken = token.RefreshToken,
-                        RefreshTokenExpiration = token.RefreshTokenExpiration
+                        RefreshTokenExpiration = token.RefreshTokenExpiration,
+                        GoogleLogoUrl = googleLogoUrl
                     };
 
                     return ServiceResult<object>.Ok(session, "Login successful");
@@ -1369,6 +1395,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var user = await _dbContext.Users
                     .Include(x => x.Tenant)
                     .ThenInclude(x => x.LoyaltyPrograms)
+                    .ThenInclude(x => x.CardTemplate)
                     .FirstOrDefaultAsync(u => u.Id == request.UserId, ct);
 
                 if (user == null)
@@ -1420,6 +1447,11 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var token = _tokenHelper.CreateToken(user, claims);
                 await SaveRefreshTokenAsync(user.Id, token.RefreshToken!, token.RefreshTokenExpiration!.Value);
 
+                // Get Google Logo URL from tenant's first active loyalty program's card template
+                var googleLogoUrl = user.Tenant?.LoyaltyPrograms
+                    ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
+                    ?.CardTemplate?.GoogleLogoUrl;
+
                 var session = new UserSessionDto
                 {
                     Id = user.Id,
@@ -1436,7 +1468,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     Token = token.Token,
                     Expiration = token.Expiration,
                     RefreshToken = token.RefreshToken,
-                    RefreshTokenExpiration = token.RefreshTokenExpiration
+                    RefreshTokenExpiration = token.RefreshTokenExpiration,
+                    GoogleLogoUrl = googleLogoUrl
                 };
 
                 var response = new VerifyOtpResponse

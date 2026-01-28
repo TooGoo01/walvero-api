@@ -152,11 +152,11 @@ public sealed class AppleWalletService : IAppleWalletService
                     if (!string.IsNullOrWhiteSpace(snapshot.RewardDescription))
                     {
                         string rewardDescUpper = snapshot.RewardDescription.ToUpperInvariant();
-                        headerFields.Add(new PassField("rule", rewardDescUpper, null)); // No label for rule text
+                        primaryFields.Add(new PassField("rule", rewardDescUpper, null)); // No label for rule text
                     }
 
                     // Lower-middle: "Reward Card" (left) and "{FreeRewardLabel}: {N}" (right) - side-by-side
-                    secondaryFields.Add(new PassField("rewardCard", "Reward Card", null));
+                    secondaryFields.Add(new PassField("rewardCard", customerFullName, null));
                     secondaryFields.Add(new PassField("pulsuzIcki", $"{freeRewardLabel}: {freeDrinkText}", null));
 
                     // Progress icons grid: Use strip image showing the grid

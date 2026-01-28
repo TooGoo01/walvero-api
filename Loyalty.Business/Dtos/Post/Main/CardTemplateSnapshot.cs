@@ -57,6 +57,10 @@ namespace Loyalty.Business.Dtos.Post.Main
         public int? PlatinumPercentCash { get; set; }
         public bool OneRedeem { get; set; } = false;
         public bool PayMentType { get; set; } = false;
+        
+        // ---- Currency ----
+        public string Currency { get; set; } = "AZN";
+        
         // ---- Rənglər / dizayn ----
         public string BackgroundColor { get; set; } = "#FFFFFF";
         public string ForegroundColor { get; set; } = "#000000";

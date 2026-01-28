@@ -41,6 +41,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     .Include(ds => ds.User)
                         .ThenInclude(u => u.Tenant)
                             .ThenInclude(t => t.LoyaltyPrograms)
+                                .ThenInclude(lp => lp.CardTemplate)
                     .FirstOrDefaultAsync(ds => ds.DeviceId == dto.DeviceId && !ds.IsRevoked);
 
                 if (existingSession != null && existingSession.User != null)
@@ -73,11 +74,17 @@ namespace Loyalty.Business.Services.Implementations.Users
                         var roles = await _userManager.GetRolesAsync(user);
                         List<string>? roleList = roles.ToList();
 
-                        // Get ProgramId from Tenant's LoyaltyPrograms if available
+                        // Get ProgramId and GoogleLogoUrl from Tenant's LoyaltyPrograms if available
                         int? programId = null;
-                        if (user.TenantId != null && user.Tenant?.LoyaltyPrograms?.FirstOrDefault() != null)
+                        string? googleLogoUrl = null;
+                        if (user.TenantId != null && user.Tenant?.LoyaltyPrograms != null)
                         {
-                            programId = user.Tenant.LoyaltyPrograms.FirstOrDefault()?.Id;
+                            var firstProgram = user.Tenant.LoyaltyPrograms.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null);
+                            if (firstProgram != null)
+                            {
+                                programId = firstProgram.Id;
+                                googleLogoUrl = firstProgram.CardTemplate?.GoogleLogoUrl;
+                            }
                         }
 
                         var response = new GuestLoginResponseDto
@@ -97,7 +104,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                             RefreshTokenExpiration = token.RefreshTokenExpiration,
                             Roles = roleList,
                             IsGuest = user.IsGuest,
-                            IsProfileCompleted = user.IsProfileCompleted
+                            IsProfileCompleted = user.IsProfileCompleted,
+                            GoogleLogoUrl = googleLogoUrl
                         };
 
                         return new ServiceResult(true, response);
@@ -178,11 +186,17 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var guestRoles = await _userManager.GetRolesAsync(guestUser);
                 List<string>? guestRoleList = guestRoles.ToList();
 
-                // Get ProgramId from Tenant's LoyaltyPrograms if available
+                // Get ProgramId and GoogleLogoUrl from Tenant's LoyaltyPrograms if available
                 int? guestProgramId = null;
-                if (guestUser.TenantId != null && guestUser.Tenant?.LoyaltyPrograms?.FirstOrDefault() != null)
+                string? guestGoogleLogoUrl = null;
+                if (guestUser.TenantId != null && guestUser.Tenant?.LoyaltyPrograms != null)
                 {
-                    guestProgramId = guestUser.Tenant.LoyaltyPrograms.FirstOrDefault()?.Id;
+                    var firstProgram = guestUser.Tenant.LoyaltyPrograms.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null);
+                    if (firstProgram != null)
+                    {
+                        guestProgramId = firstProgram.Id;
+                        guestGoogleLogoUrl = firstProgram.CardTemplate?.GoogleLogoUrl;
+                    }
                 }
 
                 var guestResponse = new GuestLoginResponseDto
@@ -202,7 +216,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     RefreshTokenExpiration = guestToken.RefreshTokenExpiration,
                     Roles = guestRoleList,
                     IsGuest = true,
-                    IsProfileCompleted = false
+                    IsProfileCompleted = false,
+                    GoogleLogoUrl = guestGoogleLogoUrl
                 };
 
                 return new ServiceResult(true, guestResponse);
@@ -224,7 +239,12 @@ namespace Loyalty.Business.Services.Implementations.Users
                     return new ServiceResult(false, "User not authenticated.");
                 }
 
-                var user = await _userManager.FindByIdAsync(userIdStr);
+                var user = await _dbContext.Users
+                    .Include(u => u.Tenant)
+                        .ThenInclude(t => t.LoyaltyPrograms)
+                            .ThenInclude(lp => lp.CardTemplate)
+                    .FirstOrDefaultAsync(u => u.Id == userId);
+                
                 if (user == null)
                 {
                     return new ServiceResult(false, "User not found.");
@@ -329,11 +349,17 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var roles = await _userManager.GetRolesAsync(user);
                 List<string>? roleList = roles.ToList();
 
-                // Get ProgramId from Tenant's LoyaltyPrograms if available
+                // Get ProgramId and GoogleLogoUrl from Tenant's LoyaltyPrograms if available
                 int? programId = null;
-                if (user.TenantId != null && user.Tenant?.LoyaltyPrograms?.FirstOrDefault() != null)
+                string? googleLogoUrl = null;
+                if (user.TenantId != null && user.Tenant?.LoyaltyPrograms != null)
                 {
-                    programId = user.Tenant.LoyaltyPrograms.FirstOrDefault()?.Id;
+                    var firstProgram = user.Tenant.LoyaltyPrograms.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null);
+                    if (firstProgram != null)
+                    {
+                        programId = firstProgram.Id;
+                        googleLogoUrl = firstProgram.CardTemplate?.GoogleLogoUrl;
+                    }
                 }
 
                 var response = new GuestLoginResponseDto
@@ -353,7 +379,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     RefreshTokenExpiration = token.RefreshTokenExpiration,
                     Roles = roleList,
                     IsGuest = false,
-                    IsProfileCompleted = true
+                    IsProfileCompleted = true,
+                    GoogleLogoUrl = googleLogoUrl
                 };
 
                 return new ServiceResult(true, response);
@@ -404,6 +431,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     .Include(rt => rt.User)
                     .ThenInclude(u => u.Tenant)
                     .ThenInclude(t => t.LoyaltyPrograms)
+                        .ThenInclude(lp => lp.CardTemplate)
                     .FirstOrDefaultAsync(rt => rt.Token == dto.RefreshToken);
 
                 if (refreshToken == null)
@@ -441,11 +469,17 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var roles = await _userManager.GetRolesAsync(user);
                 List<string>? roleList = roles.ToList();
 
-                // Get ProgramId from Tenant's LoyaltyPrograms if available
+                // Get ProgramId and GoogleLogoUrl from Tenant's LoyaltyPrograms if available
                 int? programId = null;
-                if (user.TenantId != null && user.Tenant?.LoyaltyPrograms?.FirstOrDefault() != null)
+                string? googleLogoUrl = null;
+                if (user.TenantId != null && user.Tenant?.LoyaltyPrograms != null)
                 {
-                    programId = user.Tenant.LoyaltyPrograms.FirstOrDefault()?.Id;
+                    var firstProgram = user.Tenant.LoyaltyPrograms.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null);
+                    if (firstProgram != null)
+                    {
+                        programId = firstProgram.Id;
+                        googleLogoUrl = firstProgram.CardTemplate?.GoogleLogoUrl;
+                    }
                 }
 
                 var response = new GuestLoginResponseDto
@@ -465,7 +499,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     RefreshTokenExpiration = newToken.RefreshTokenExpiration,
                     Roles = roleList,
                     IsGuest = user.IsGuest,
-                    IsProfileCompleted = user.IsProfileCompleted
+                    IsProfileCompleted = user.IsProfileCompleted,
+                    GoogleLogoUrl = googleLogoUrl
                 };
 
                 return new ServiceResult(true, response);

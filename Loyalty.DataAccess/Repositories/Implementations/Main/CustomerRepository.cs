@@ -15,6 +15,18 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         public CustomerRepository(LoyaltyWalletDbContext LoyaltyDbContext) : base(LoyaltyDbContext)
         {
         }
+        
+        // Override GetByIdAsync to include related data for Currency mapping
+        public override async Task<Customer?> GetByIdAsync(int id, CancellationToken ct = default)
+        {
+            return await GetAsQueryable()
+                .Include(x => x.LoyaltyCards.Where(c => c.IsActive))
+                    .ThenInclude(x => x.LoyaltyProgram)
+                        .ThenInclude(x => x.CardTemplate)
+                .Include(x => x.applicationUser)
+                .FirstOrDefaultAsync(x => x.Id == id, ct);
+        }
+        
         public Task<Customer?> GetByEmailAsync(int tenantId, string email, CancellationToken ct = default)
           => GetAsQueryable().AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Email == email, ct);
 

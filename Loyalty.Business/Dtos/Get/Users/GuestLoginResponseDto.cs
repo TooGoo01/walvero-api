@@ -18,6 +18,7 @@ namespace Loyalty.Business.Dtos.Get.Users
         public List<string>? Roles { get; set; }
         public bool IsGuest { get; set; }
         public bool IsProfileCompleted { get; set; }
+        public string? GoogleLogoUrl { get; set; }
         
         // Legacy property for backward compatibility
         public int UserId 

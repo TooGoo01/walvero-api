@@ -258,6 +258,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 BackgroundImageUrl = e.BackgroundImageUrl,
                 StripImageUrl = e.StripImageUrl,
                 HeroImageUrl = e.HeroImageUrl,
+                Currency = e.Currency,
                 IconLayout = e.IconLayout,
                 FreeRewardLabel = e.FreeRewardLabel
             };

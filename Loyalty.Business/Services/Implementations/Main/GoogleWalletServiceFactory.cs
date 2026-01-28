@@ -35,16 +35,22 @@ namespace Loyalty.Business.Services.Implementations.Main
      CancellationToken ct = default)
         {
             // 1) Program tap
-            var program = await _programSvc.GetByIdNameAsync(loyaltyProgramId, ct)
-                          ?? throw new InvalidOperationException("Loyalty program not found.");
+            var program = await _programSvc.GetByIdNameAsync(loyaltyProgramId, ct);
+            if (program == null)
+            {
+                throw new InvalidOperationException($"Loyalty program not found: ProgramId={loyaltyProgramId}");
+            }
 
             var classSuffix = string.IsNullOrWhiteSpace(program.Code)
                 ? $"lp-{program.Id}"
                 : program.Code;
 
-            // 2) Google cred tap
-            var cred = await _walletSvc.GetActiveAsync(tenantId, WalletPlatform.GooglePay, ct)
-                       ?? throw new InvalidOperationException("Google Wallet credentials not found for tenant.");
+            // 2) Google cred tap - EXCEPTİON ATMADAN log et
+            var cred = await _walletSvc.GetActiveAsync(tenantId, WalletPlatform.GooglePay, ct);
+            if (cred == null)
+            {
+                throw new InvalidOperationException($"Google Wallet credentials not found: TenantId={tenantId}");
+            }
 
             // 3) SA JSON path / URL
             var saJsonPathOrUrl = "https://walvero.com/" + cred.GooglePrivateKeyUrl;

@@ -164,7 +164,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 IconUrl = ToAbsoluteUrl(branding?.IconUrl, baseUrl),
                 PrimaryColor = branding?.PrimaryColor ?? "#000000",
                 SecondaryColor = branding?.SecondaryColor ?? "#FFFFFF",
-                BackgroundColor = branding?.BackgroundColor ?? "#FFFFFF",
+                BackgroundColor = (branding?.BackgroundColor?.ToUpper() == "#FFFFFF") ? "#F2F2F2" : (branding?.BackgroundColor ?? "#FFFFFF"),
                 TextColor = branding?.TextColor ?? "#000000",
 
                 // Card Template Images (from CardTemplate)

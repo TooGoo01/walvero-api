@@ -29,5 +29,6 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int? applicationUserId { get; set; } = null!;
         public ApplicationUser? applicationUser { get; set; } = null!;
         public ICollection<GetLoyaltyCardDto> LoyaltyCards { get; set; }
+        public string? Currency { get; set; }  // Currency from first active card's CardTemplate
     }
 }

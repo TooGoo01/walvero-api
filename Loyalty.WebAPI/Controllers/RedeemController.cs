@@ -309,6 +309,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 availableRewardCount = completedCycles,  // = CompletedCycles
                 maxSpendCount = completedCycles,  // = CompletedCycles (UI input limit)
                 freeRewardLabel = freeRewardLabel ?? "bonus",  // From card DTO or template
+                currency = card.Currency ?? tpl?.Currency ?? "AZN",  // Currency from card's CardTemplate
                 tierName,
                 tierPercent,
                 tierPercentCash,

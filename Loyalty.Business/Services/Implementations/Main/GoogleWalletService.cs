@@ -17,7 +17,7 @@ using Uri = System.Uri;
 
 public sealed class GoogleWalletService : IGoogleWalletService
 {
-    private readonly WalletobjectsService _svc;
+    private readonly WalletobjectsService? _svc;
     private readonly string _issuerId;
     private readonly string _classSuffix;
     private readonly string _serviceAccountEmail;
@@ -27,39 +27,66 @@ public sealed class GoogleWalletService : IGoogleWalletService
     private readonly string _applicationName;
     private readonly ILogger<GoogleWalletService>? _log;
     private readonly ILoyaltyCardRepository? _cardRepo;
+    private readonly bool _isInitialized;
     // Placeholder fallback (public, HTTPS, 3:1 ~ 1032x336/1860x620 və s.)
     private const string FALLBACK_BANNER_URL = "https://yourcdn.example.com/fallback-1032x336.png";
 
     public GoogleWalletService(GoogleWalletRuntimeConfig cfg, ILogger<GoogleWalletService>? log = null, ILoyaltyCardRepository? cardRepo = null)
     {
-        if (cfg is null) throw new ArgumentNullException(nameof(cfg));
-        if (string.IsNullOrWhiteSpace(cfg.IssuerId)) throw new ArgumentException("IssuerId required");
-        if (string.IsNullOrWhiteSpace(cfg.ClassSuffix)) throw new ArgumentException("ClassSuffix required");
-        if (string.IsNullOrWhiteSpace(cfg.ServiceAccountJsonPath)) throw new ArgumentException("ServiceAccountJsonPath required");
-        if (!File.Exists(cfg.ServiceAccountJsonPath)) throw new FileNotFoundException("Service account JSON not found", cfg.ServiceAccountJsonPath);
-
-        _issuerId = cfg.IssuerId;
-        _classSuffix = cfg.ClassSuffix;
-        _origins = cfg.Origins ?? Array.Empty<string>();
-        _applicationName = string.IsNullOrWhiteSpace(cfg.ApplicationName) ? "Walvero Loyalty" : cfg.ApplicationName;
         _log = log;
-
-        var json = File.ReadAllText(cfg.ServiceAccountJsonPath);
-        using var doc = System.Text.Json.JsonDocument.Parse(json);
-        var root = doc.RootElement;
-        _serviceAccountEmail = root.GetProperty("client_email").GetString()!;
-        _privateKeyPem = root.GetProperty("private_key").GetString()!;
-        _privateKeyId = root.TryGetProperty("private_key_id", out var kidEl) ? kidEl.GetString() : null;
-
-        var credential = GoogleCredential.FromFile(cfg.ServiceAccountJsonPath)
-            .CreateScoped(WalletobjectsService.Scope.WalletObjectIssuer);
-
-        _svc = new WalletobjectsService(new BaseClientService.Initializer
-        {
-            HttpClientInitializer = credential,
-            ApplicationName = _applicationName
-        });
         _cardRepo = cardRepo;
+        _isInitialized = false;
+
+        try
+        {
+            if (cfg is null)
+            {
+                _log?.LogWarning("GoogleWalletRuntimeConfig is null. Service will not initialize.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(cfg.IssuerId) || string.IsNullOrWhiteSpace(cfg.ClassSuffix) || string.IsNullOrWhiteSpace(cfg.ServiceAccountJsonPath))
+            {
+                _log?.LogWarning("Google Wallet config incomplete. IssuerId={IssuerId}, ClassSuffix={ClassSuffix}, JsonPath={JsonPath}",
+                    cfg.IssuerId, cfg.ClassSuffix, cfg.ServiceAccountJsonPath);
+                return;
+            }
+
+            if (!File.Exists(cfg.ServiceAccountJsonPath))
+            {
+                _log?.LogWarning("Service account JSON not found: {Path}", cfg.ServiceAccountJsonPath);
+                return;
+            }
+
+            _issuerId = cfg.IssuerId;
+            _classSuffix = cfg.ClassSuffix;
+            _origins = cfg.Origins ?? Array.Empty<string>();
+            _applicationName = string.IsNullOrWhiteSpace(cfg.ApplicationName) ? "Walvero Loyalty" : cfg.ApplicationName;
+
+            var json = File.ReadAllText(cfg.ServiceAccountJsonPath);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            _serviceAccountEmail = root.GetProperty("client_email").GetString()!;
+            _privateKeyPem = root.GetProperty("private_key").GetString()!;
+            _privateKeyId = root.TryGetProperty("private_key_id", out var kidEl) ? kidEl.GetString() : null;
+
+            var credential = GoogleCredential.FromFile(cfg.ServiceAccountJsonPath)
+                .CreateScoped(WalletobjectsService.Scope.WalletObjectIssuer);
+
+            _svc = new WalletobjectsService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = _applicationName
+            });
+
+            _isInitialized = true;
+            _log?.LogInformation("Google Wallet service initialized successfully. IssuerId={IssuerId}", _issuerId);
+        }
+        catch (Exception ex)
+        {
+            _log?.LogError(ex, "Failed to initialize Google Wallet service. Service will be disabled.");
+            _isInitialized = false;
+        }
     }
 
     private string ClassId => $"{_issuerId}.{_classSuffix}";
@@ -70,6 +97,12 @@ public sealed class GoogleWalletService : IGoogleWalletService
     // =================== 1) CLASS ===================
     public async Task EnsureClassAsync(CardTemplateSnapshot tpl, string programName, CancellationToken ct = default)
     {
+        if (!_isInitialized || _svc == null)
+        {
+            _log?.LogWarning("Google Wallet service not initialized. Skipping EnsureClass.");
+            return;
+        }
+
         LoyaltyClass? existing = null;
         try
         {
@@ -157,6 +190,12 @@ public sealed class GoogleWalletService : IGoogleWalletService
          int currentSteps = 0,
          CancellationToken ct = default)
     {
+        if (!_isInitialized || _svc == null)
+        {
+            _log?.LogWarning("Google Wallet service not initialized. Skipping CreateOrGetObject. CardId={CardId}", loyaltyCardId);
+            return new ServiceResult(false, "Google Wallet service not initialized");
+        }
+
         try
         {
             await EnsureClassAsync(tpl, programName: tpl.ProgramName, ct);
@@ -362,6 +401,15 @@ public sealed class GoogleWalletService : IGoogleWalletService
        int delta,
        CancellationToken ct = default)
     {
+        _log?.LogInformation("RedeemByCardIdAsync started. CardId={CardId}, IssuerId={IssuerId}, TenantId={TenantId}, ProgramId={ProgramId}, Delta={Delta}, Initialized={Initialized}",
+            loyaltyCardId, _issuerId, tpl.TenantId, tpl.LoyaltyProgramId, delta, _isInitialized);
+
+        if (!_isInitialized || _svc == null)
+        {
+            _log?.LogWarning("Google Wallet service not initialized. Skipping redeem. CardId={CardId}", loyaltyCardId);
+            return new ServiceResult(false, "Google Wallet service not initialized");
+        }
+
         try
         {
             await EnsureClassAsync(tpl, programName: tpl.ProgramName, ct);
@@ -576,6 +624,12 @@ public sealed class GoogleWalletService : IGoogleWalletService
         string barcodeValue,
         CancellationToken ct = default)
     {
+        if (!_isInitialized || _svc == null)
+        {
+            _log?.LogWarning("Google Wallet service not initialized. Skipping CreateOrGetWalveroObject. ObjectId={ObjectId}", objectId);
+            return new ServiceResult(false, "Google Wallet service not initialized");
+        }
+
         try
         {
             await EnsureClassAsync(tpl, "Walvero", ct);
@@ -670,6 +724,12 @@ public sealed class GoogleWalletService : IGoogleWalletService
         string objectId,
         CancellationToken ct = default)
     {
+        if (!_isInitialized)
+        {
+            _log?.LogWarning("Google Wallet service not initialized. Skipping GenerateWalveroSaveLink. ObjectId={ObjectId}", objectId);
+            return new ServiceResult(false, "Google Wallet service not initialized");
+        }
+
         try
         {
             var loyaltyObject = new JObject
@@ -705,6 +765,12 @@ public sealed class GoogleWalletService : IGoogleWalletService
     // =================== 4) SAVE LINK ===================
     public async Task<ServiceResult> GenerateSaveLinkByCardIdAsync(int loyaltyCardId, CancellationToken ct = default)
     {
+        if (!_isInitialized)
+        {
+            _log?.LogWarning("Google Wallet service not initialized. Skipping GenerateSaveLink. CardId={CardId}", loyaltyCardId);
+            return new ServiceResult(false, "Google Wallet service not initialized");
+        }
+
         try
         {
             var objectId = ObjectIdForCard(_issuerId, loyaltyCardId);

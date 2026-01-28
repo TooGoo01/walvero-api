@@ -48,7 +48,17 @@ namespace Loyalty.Business.Mappings
             CreateMap<AppVersionConfig, GetAppVersionDto>().ReverseMap();
 
             CreateMap<Customer, AddCustomerDto>().ReverseMap();
-            CreateMap<Customer, GetCustomerDto>().ReverseMap();
+            CreateMap<Customer, GetCustomerDto>()
+                .AfterMap((src, dest) =>
+                {
+                    // Set Currency from first active card's CardTemplate
+                    var firstCard = src.LoyaltyCards?.FirstOrDefault(c => c.IsActive);
+                    if (firstCard?.LoyaltyProgram?.CardTemplate != null)
+                    {
+                        dest.Currency = firstCard.LoyaltyProgram.CardTemplate.Currency;
+                    }
+                })
+                .ReverseMap();
             CreateMap<Customer, GetCustomerIdNameDto>().ReverseMap();
 
             CreateMap<Category, AddCategoryDto>().ReverseMap();
@@ -56,7 +66,16 @@ namespace Loyalty.Business.Mappings
             CreateMap<Category, GetCategoryIdNameDto>().ReverseMap();
 
             CreateMap<LoyaltyCard, AddLoyaltyCardDto>().ReverseMap();
-            CreateMap<LoyaltyCard, GetLoyaltyCardDto>().ReverseMap();
+            CreateMap<LoyaltyCard, GetLoyaltyCardDto>()
+                .AfterMap((src, dest) =>
+                {
+                    // Set Currency from CardTemplate
+                    if (src.LoyaltyProgram?.CardTemplate != null)
+                    {
+                        dest.Currency = src.LoyaltyProgram.CardTemplate.Currency;
+                    }
+                })
+                .ReverseMap();
             CreateMap<Icon, IconDto>().ReverseMap();
 
             CreateMap<StoreFeedback, GetStoreFeedbackDto>().ReverseMap();

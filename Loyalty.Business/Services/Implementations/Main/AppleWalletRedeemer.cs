@@ -84,6 +84,34 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 return res;
             }
+            catch (InvalidOperationException ex)
+            {
+                sw.Stop();
+                _logger.LogWarning(ex, "Apple Wallet credentials not found for TenantId={TenantId}. ElapsedMs={ElapsedMs}. Message={Message}",
+                    id, sw.ElapsedMilliseconds, ex.Message);
+                return new ServiceResult(false, ex.Message);
+            }
+            catch (FileNotFoundException ex)
+            {
+                sw.Stop();
+                _logger.LogError(ex, "Apple Wallet certificate file not found for CardId={CardId}. ElapsedMs={ElapsedMs}",
+                    id, sw.ElapsedMilliseconds);
+                return new ServiceResult(false, "Apple Wallet certificate file not found.");
+            }
+            catch (HttpRequestException ex)
+            {
+                sw.Stop();
+                _logger.LogError(ex, "Apple Wallet HTTP error for CardId={CardId}. ElapsedMs={ElapsedMs}",
+                    id, sw.ElapsedMilliseconds);
+                return new ServiceResult(false, "Apple Wallet communication error.");
+            }
+            catch (IOException ex)
+            {
+                sw.Stop();
+                _logger.LogError(ex, "Apple Wallet I/O error for CardId={CardId}. ElapsedMs={ElapsedMs}",
+                    id, sw.ElapsedMilliseconds);
+                return new ServiceResult(false, "Apple Wallet file operation error.");
+            }
             catch (OperationCanceledException)
             {
                 sw.Stop();
@@ -93,7 +121,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             catch (Exception ex)
             {
                 sw.Stop();
-                _logger.LogError(ex, "Apple redeem threw exception after {ElapsedMs} ms.", sw.ElapsedMilliseconds);
+                _logger.LogError(ex, "Apple redeem threw unexpected exception after {ElapsedMs} ms.", sw.ElapsedMilliseconds);
                 return new ServiceResult(false, "Apple redeem failed due to an unexpected error.");
             }
         }
