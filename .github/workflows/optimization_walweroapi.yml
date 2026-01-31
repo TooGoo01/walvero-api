@@ -1,4 +1,7 @@
-name: Build and deploy
+# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+
+name: Build and deploy ASP.Net Core app to Azure Web App - WalweroAPI
 
 on:
   push:
@@ -48,9 +51,9 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_F3CD5E2EC85B4DD3BDB8550AD7CD854E }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_8E8A26694C8B4D4FB0CFF5A7CB794E5A }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_667DB33E8D534181A45DC0DAF87D7DD4 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_209CB6CD87FA4E63A2A920FCA71DC729 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_3C1B38D543534BF2B6E7F4327552BF58 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_3E4AE5E3385743DCB767BE59BE037789 }}
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
@@ -59,5 +62,4 @@ jobs:
           app-name: 'WalweroAPI'
           slot-name: 'Production'
           package: .
-
           
