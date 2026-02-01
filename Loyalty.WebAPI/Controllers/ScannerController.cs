@@ -2,6 +2,7 @@ using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Enums;
 using LoyaltyWalletApp.WEBUI.Tenancy;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -48,6 +49,28 @@ namespace Loyalty.WebAPI.Controllers
                 dto.UserId, dto.ScannerDeviceId, dto.Barcode);
 
             var result = await _posSessionService.StartSessionAsync(dto, ct);
+
+            if (result.Success)
+            {
+                return Ok(result);
+            }
+
+            return BadRequest(result);
+        }
+
+        /// <summary>
+        /// Get sessions by status (tenant is automatically determined from JWT)
+        /// </summary>
+        [HttpGet("sessions")]
+        [ProducesResponseType(typeof(ServiceResult<List<GetPosSessionDto>>), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> GetSessions(
+            [FromQuery] SessionStatus? status,
+            CancellationToken ct)
+        {
+            var tenantId = _tenantProvider.CurrentTenantId;
+            _logger.LogInformation("Getting sessions. TenantId: {TenantId}, Status: {Status}", tenantId, status);
+
+            var result = await _posSessionService.GetSessionsAsync(status, ct);
 
             if (result.Success)
             {

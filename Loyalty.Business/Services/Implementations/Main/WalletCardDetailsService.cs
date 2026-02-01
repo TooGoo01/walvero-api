@@ -191,6 +191,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 StripImageUrl = stripImageUrl,
 
                 LocationUrl = tenant.LocationUrl,
+                ContactNumber = tenant.ContactPhone,
+                InstagramUrl = tenant.InstagramUrl,
+                FacebookUrl = tenant.FacebookUrl,
+                WhatsAppUrl = tenant.WhatsAppUrl,
+                TelegramUrl = tenant.TeleqramUrl,
                 BackgroundColor = cardTemplate?.BackgroundColor ?? tenant.Branding?.BackgroundColor ?? "#FFFFFF",
                 ForegroundColor = cardTemplate?.ForegroundColor ?? tenant.Branding?.TextColor ?? "#000000",
                 CashbackPercent = cashbackPercent,

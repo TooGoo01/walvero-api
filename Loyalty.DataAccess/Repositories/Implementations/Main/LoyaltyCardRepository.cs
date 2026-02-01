@@ -123,6 +123,8 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             int applicationUserId,
             string? name,
             int? categoryId,
+            int? countryId,
+            int? cityId,
             CancellationToken ct = default)
         {
             var baseQuery = GetAsQueryable()
@@ -146,6 +148,20 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 baseQuery = baseQuery.Where(c => c.Tenant.categoryId == categoryId.Value);
             }
 
+            if (countryId.HasValue)
+            {
+                baseQuery = baseQuery.Where(c => 
+                    c.Tenant.TenantLocation != null && 
+                    c.Tenant.TenantLocation.countryId == countryId.Value);
+            }
+
+            if (cityId.HasValue)
+            {
+                baseQuery = baseQuery.Where(c => 
+                    c.Tenant.TenantLocation != null && 
+                    c.Tenant.TenantLocation.cityId == cityId.Value);
+            }
+
             // Count distinct (TenantId, LoyaltyProgramId) combinations
             var count = await (
                 from card in baseQuery
@@ -161,6 +177,8 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
       int applicationUserId,
       string? name,
       int? categoryId,
+      int? countryId,
+      int? cityId,
       int currentPage,
       int pageSize,
       CancellationToken ct = default)
@@ -180,6 +198,16 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
 
             if (categoryId.HasValue)
                 baseQuery = baseQuery.Where(c => c.Tenant.categoryId == categoryId.Value);
+
+            if (countryId.HasValue)
+                baseQuery = baseQuery.Where(c => 
+                    c.Tenant.TenantLocation != null && 
+                    c.Tenant.TenantLocation.countryId == countryId.Value);
+
+            if (cityId.HasValue)
+                baseQuery = baseQuery.Where(c => 
+                    c.Tenant.TenantLocation != null && 
+                    c.Tenant.TenantLocation.cityId == cityId.Value);
 
             // 1) TenantId + LoyaltyProgramId üzrə son kartın Id-sini tap (DB-də)
             var lastIdsQuery =

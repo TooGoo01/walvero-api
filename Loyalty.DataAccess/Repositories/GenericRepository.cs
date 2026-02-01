@@ -118,7 +118,8 @@ namespace Loyalty.DataAccess.Repositories
             //    return entities;
             //}
         }
-
+        public IQueryable<TEntity> Query()
+      => _dbset.AsNoTracking().AsQueryable();
         public IQueryable<TEntity> GetAsQueryable()
         {
             return _dbset;

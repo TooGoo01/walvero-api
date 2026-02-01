@@ -96,6 +96,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
 
                 // Get loyalty balance (points)
+                // Note: Balance can be negative in reverse scenarios (e.g., when reversing an EARN transaction
+                // that was already spent). We allow negative balances to accurately reflect the true state.
                 int loyaltyBalance = activeCard?.CurrentPoints ?? 0;
 
                 // Get user name
@@ -125,6 +127,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     scannerDeviceId = dto.ScannerDeviceId,
                     userId = dto.UserId,
                     tableId = dto.TableId,
+                    Barcode = barcode,
                     SessionToken = sessionToken,
                     IsActive = true
                 };
@@ -191,26 +194,59 @@ namespace Loyalty.Business.Services.Implementations.Main
                 posSession.Status = SessionStatus.Linked;
                 posSession.EditDate = DateTime.UtcNow;
 
-                // Get customer from the session's userId
-                var customers = await _customerRepository.GetByUserId(posSession.userId);
-                var customer = customers.FirstOrDefault(c => c.TenantId == posSession.TenantId && c.IsActive);
+                // Get customer from barcode (walveroId or loyalty card barcode)
+                Customer? customer = null;
+                LoyaltyCard? activeCard = null;
 
-                if (customer == null)
+                if (string.IsNullOrEmpty(posSession.Barcode))
                 {
-                    return ServiceResult<LinkSessionResponseDto>.Fail("Customer not found for this session.");
+                    return ServiceResult<LinkSessionResponseDto>.Fail("Barcode not found in session.");
                 }
 
-                // Get active loyalty card
-                var loyaltyCards = await _loyaltyCardRepository.ListByCustomerAsync(posSession.TenantId, customer.Id, ct);
-                var activeCard = loyaltyCards
-                    .Where(c => c.IsActive && c.Status == CardStatus.Active)
-                    .OrderByDescending(c => c.Id)
-                    .FirstOrDefault();
+                var barcode = posSession.Barcode.Trim();
+
+                // First, try to find card by barcode
+                activeCard = await _loyaltyCardRepository.GetByBarcodeValueAsync(posSession.TenantId, barcode, ct);
+
+                if (activeCard != null)
+                {
+                    // Card found by barcode, get customer
+                    customer = activeCard.Customer;
+                    
+                    if (customer == null || !customer.IsActive)
+                    {
+                        return ServiceResult<LinkSessionResponseDto>.Fail("Customer not found or inactive for this barcode.");
+                    }
+                }
+                else if (long.TryParse(barcode, out long walveroUserId))
+                {
+                    // Barcode not found, try WalveroId
+                    customer = await _customerRepository.GetByWalveroIdAsync(posSession.TenantId, walveroUserId, ct);
+                    
+                    if (customer == null || !customer.IsActive)
+                    {
+                        return ServiceResult<LinkSessionResponseDto>.Fail("Customer not found or inactive by barcode or WalveroId.");
+                    }
+
+                    // Find the active card for this customer
+                    var loyaltyCards = await _loyaltyCardRepository.ListByCustomerAsync(posSession.TenantId, customer.Id, ct);
+                    activeCard = loyaltyCards
+                        .Where(c => c.IsActive && c.Status == CardStatus.Active)
+                        .OrderByDescending(c => c.Id)
+                        .FirstOrDefault();
+                }
+                else
+                {
+                    return ServiceResult<LinkSessionResponseDto>.Fail("Invalid barcode format in session.");
+                }
 
                 if (activeCard == null)
                 {
                     return ServiceResult<LinkSessionResponseDto>.Fail("Active loyalty card not found.");
                 }
+
+                // Note: Balance can be negative in reverse scenarios (e.g., when reversing an EARN transaction
+                // that was already spent). We allow negative balances to accurately reflect the true state.
 
                 // Get loyalty program and template for rewards summary
                 var program = await _dbContext.Set<LoyaltyProgram>()
@@ -262,6 +298,57 @@ namespace Loyalty.Business.Services.Implementations.Main
             catch (Exception ex)
             {
                 return ServiceResult<LinkSessionResponseDto>.Fail($"Failed to link session: {ex.Message}");
+            }
+        }
+
+        public async Task<ServiceResult<List<GetPosSessionDto>>> GetSessionsAsync(
+            SessionStatus? status, 
+            CancellationToken ct = default)
+        {
+            try
+            {
+                // Get TenantId from JWT using TenantProvider
+                var tenantId = _tenantProvider.CurrentTenantId;
+                if (tenantId == null)
+                {
+                    return ServiceResult<List<GetPosSessionDto>>.Fail("TenantId is required. Unable to get TenantId from JWT token.");
+                }
+
+                // Build query
+                var query = _dbContext.Set<PosSession>()
+                    .Where(ps => ps.TenantId == tenantId.Value && ps.IsActive);
+
+                // Filter by status if provided
+                if (status.HasValue)
+                {
+                    query = query.Where(ps => ps.Status == status.Value);
+                }
+
+                // Order by RegDate descending (newest first)
+                var sessions = await query
+                    .OrderByDescending(ps => ps.RegDate)
+                    .Select(ps => new GetPosSessionDto
+                    {
+                        Id = ps.Id,
+                        TenantId = ps.TenantId,
+                        ScannerDeviceId = ps.scannerDeviceId,
+                        UserId = ps.userId,
+                        OrderId = ps.orderId,
+                        TableId = ps.tableId,
+                        Barcode = ps.Barcode,
+                        Status = ps.Status,
+                        SessionToken = ps.SessionToken,
+                        RegDate = ps.RegDate,
+                        EditDate = ps.EditDate,
+                        IsActive = ps.IsActive
+                    })
+                    .ToListAsync(ct);
+
+                return ServiceResult<List<GetPosSessionDto>>.Ok(sessions, $"Found {sessions.Count} session(s).");
+            }
+            catch (Exception ex)
+            {
+                return ServiceResult<List<GetPosSessionDto>>.Fail($"Failed to get sessions: {ex.Message}");
             }
         }
 

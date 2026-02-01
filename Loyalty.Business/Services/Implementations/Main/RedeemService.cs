@@ -11,6 +11,7 @@ using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 using Loyalty.Infrastructure.Extensions;
+
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -37,7 +38,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IHubContext<LoyaltyHub> _hubContext;
         private readonly INotificationService _notificationService;
         private readonly LoyaltyWalletDbContext _dbContext;
-
+        private readonly ITimeZoneService _timeZoneService;
         public RedeemService(
             ILoyaltyCardRepository cardSvc,
             ILoyaltyProgramRepository programSvc,
@@ -51,7 +52,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             IHubContext<LoyaltyHub> hubContext,
             INotificationService notificationService,
             ICustomerRepository customerRepo,
-            LoyaltyWalletDbContext dbContext)
+            LoyaltyWalletDbContext dbContext,
+            ITimeZoneService timeZoneService)
         {
             _cardSvc = cardSvc;
             _programSvc = programSvc;
@@ -68,6 +70,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _hubContext = hubContext;
             _notificationService = notificationService;
             _dbContext = dbContext;
+            _timeZoneService = timeZoneService;
         }
 
         // START (Auto / ForcePending / ForceApply)
@@ -305,8 +308,10 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 card.LifetimePoints += 1;
                 ApplyDelta(card, snapshot, delta);
+                // Get tenant's local time
+                var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(request.TenantId, null, ct);
 
-                var tx = BuildTransaction(card, delta, request.OrderId, request.Note, TransactionType.Earned);
+                var tx = BuildTransaction(card, delta, request.OrderId, request.Note, TransactionType.Earned, localTime, timeZoneId);
                 uow.Repository<LoyaltyCard>().Update(card);
                 uow.Repository<Transaction>().Add(tx);
                 uow.Commit();
@@ -397,6 +402,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         .Group(groupName)
                         .SendAsync("CardUpdated", message, cancellationToken: ct);
 
+                    var currency = snapshot.Currency ?? "AZN"; // Default: AZN
                     var message1 = delta > 0
                         ? $"{snapshot.ProgramName} balansınıza {delta}  əlavə olundu!"
                         : $"{snapshot.ProgramName} balansınızdan {delta * -1} {snapshot.Currency} çıxıldı!";
@@ -491,8 +497,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var beforeCompletedCycles = card.CompletedCycles;
 
                 ApplyDelta(card, snapshot, rr.PointsDelta);
+                var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(rr.TenantId, null, ct);
 
-                var tx = BuildTransaction(card, rr.PointsDelta, rr.OrderId, rr.Note, TransactionType.Redeemed);
+                var tx = BuildTransaction(card, rr.PointsDelta, rr.OrderId, rr.Note, TransactionType.Redeemed, localTime, timeZoneId);
                 rr.Status = RedeemStatus.Applied;
 
                 uow.Repository<LoyaltyCard>().Update(card);
@@ -588,6 +595,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         .Group(groupName)
                         .SendAsync("CardUpdated", message, cancellationToken: ct);
 
+                    var currency = snapshot.Currency ?? "AZN"; // Default: AZN
                     var message1 = rr.PointsDelta > 0
                         ? $"{snapshot.ProgramName} balansınıza {rr.PointsDelta} {snapshot.Currency} əlavə olundu!"
                         : $"{snapshot.ProgramName} balansınızdan {rr.PointsDelta * -1} {snapshot.Currency} çıxıldı!";
@@ -651,7 +659,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
         }
 
-        private static Transaction BuildTransaction(LoyaltyCard card, int delta, string? orderId, string? note, TransactionType type)
+
+        private static Transaction BuildTransaction(
+            LoyaltyCard card,
+            int delta,
+            string? orderId,
+            string? note,
+            TransactionType type,
+            DateTimeOffset localOccurredAt,
+            string timeZoneIdUsed)
         {
             return new Transaction
             {
@@ -664,7 +680,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Description = delta >= 0
                     ? $"Kart balansının artımı: +{delta}"
                     : $"Ödəniş zamanı bonus istifadə edildi: {delta}",
-                // OperatorId/Note istəsən əlavə et
+                LocalOccurredAt = localOccurredAt,
+                TimeZoneIdUsed = timeZoneIdUsed
+                // istəsən burada OperatorId/Note da saxla
             };
         }
 
@@ -698,14 +716,23 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (dbCard.CompletedCycles < spendCount)
                     return Fail($"Kifayət qədər balans yoxdur. Mövcud: {dbCard.CompletedCycles} {freeRewardLabel}.");
 
-                var beforeCompletedCycles = dbCard.CompletedCycles;
-                var beforeCurrentPoints = dbCard.CurrentPoints;
-                var beforeCurrentSteps = dbCard.CurrentSteps;
-                dbCard.CompletedCycles = beforeCompletedCycles - spendCount;
+                var before = dbCard.CompletedCycles;
+                var beforePoints = dbCard.CurrentPoints;
+                var beforeSteps = dbCard.CurrentSteps;
+                
+                // ProgressBased-də: Her CompletedCycle = TotalSteps kadar point deməkdir
+                // spendCount kadar CompletedCycle harcandığında, TotalSteps * spendCount kadar point azaltılmalıdır
+                int totalSteps = Math.Max(1, snapshot.TotalSteps);
+                int pointsToDeduct = spendCount * totalSteps;
+                
+                dbCard.CompletedCycles = before - spendCount;
+                dbCard.CurrentPoints = Math.Max(0, beforePoints - pointsToDeduct);
+                // CurrentSteps-i yenidən hesabla: CurrentPoints % TotalSteps
+                dbCard.CurrentSteps = dbCard.CurrentPoints % totalSteps;
                 dbCard.EditDate = DateTime.UtcNow;
                 if (snapshot.TemplateType == CardTemplateType.ProgressBased)
                 {
-                    int totalSteps = Math.Max(1, snapshot.TotalSteps);
+                   
                     int stepsToDeduct = spendCount * totalSteps;
 
                     // CurrentPoints-i azalt (hər free reward = TotalSteps xal)
@@ -715,7 +742,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     dbCard.CurrentSteps = dbCard.CurrentPoints % totalSteps;
 
                     _logger.LogInformation("ProgressBased free reward redeem. CardId={CardId}, SpendCount={SpendCount}, StepsDeducted={StepsDeducted}, Points {Before}->{After}, Steps {StepsBefore}->{StepsAfter}, Cycles {CyclesBefore}->{CyclesAfter}",
-                        dbCard.Id, spendCount, stepsToDeduct, beforeCurrentPoints, dbCard.CurrentPoints, beforeCurrentSteps, dbCard.CurrentSteps, beforeCompletedCycles, dbCard.CompletedCycles);
+                        dbCard.Id, spendCount, stepsToDeduct, beforePoints, dbCard.CurrentPoints, beforeSteps, dbCard.CurrentSteps, dbCard.CompletedCycles);
                 }
                 // ✅ (Opsional) idempotency
                 var idemKey = (request.OrderId ?? request.IdempotencyKey)?.Trim();
@@ -742,7 +769,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         };
                     }
                 }
-
+                var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(request.TenantId, null, ct);
                 // ✅ Transaction log yaz
                 var tx = new Transaction
                 {
@@ -752,35 +779,52 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ReferenceNumber = dbCard.BarcodeValue,
                     Points = dbCard.CurrentPoints, // Points remain unchanged
                     BalanceAfter = dbCard.CompletedCycles,
-                    Description = $"{spendCount} {freeRewardLabel} xərcləndi. Balans: {beforeCompletedCycles} -> {dbCard.CompletedCycles}"
+                    Description = $"{spendCount} {freeRewardLabel} xərcləndi. Balans: {before} -> {dbCard.CompletedCycles}"
                 };
 
                 _dbContext.Set<Transaction>().Add(tx);
                 await _dbContext.SaveChangesAsync(ct);
 
                 // ✅ Wallet refresh (DB-dən oxunmuş real dəyərlə)
+                var primaryPlatform = dbCard.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
+                var secondaryPlatform = dbCard.IsIOS ? WalletPlatform.GooglePay : WalletPlatform.AppleWallet;
+
                 try
                 {
-                    var primaryPlatform = dbCard.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
-                    var secondaryPlatform = dbCard.IsIOS ? WalletPlatform.GooglePay : WalletPlatform.AppleWallet;
-
                     _ = await _walletRouter.RouteAsync(primaryPlatform, dbCard.Id, snapshot, dbCard.CurrentPoints, dbCard.CurrentSteps, dbCard.CompletedCycles, 0, ct);
-                    _ = await _walletRouter.RouteAsync(secondaryPlatform, dbCard.Id, snapshot, dbCard.CurrentPoints, dbCard.CurrentSteps, dbCard.CompletedCycles, 0, ct);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("credential") || ex.Message.Contains("tapılmadı"))
+                {
+                    _logger.LogWarning(ex, "Credentials not found for PRIMARY {Platform} in RedeemFreeRewardAsync. Continuing. CardId={CardId}", primaryPlatform, dbCard.Id);
                 }
                 catch (Exception ex)
                 {
                     // Wallet fail olsa da DB update artıq yazılıb
-                    _logger.LogError(ex, "Wallet routing failed after RedeemFreeRewardAsync. CardId={CardId}", dbCard.Id);
+                    _logger.LogWarning(ex, "Wallet routing failed for PRIMARY {Platform} after RedeemFreeRewardAsync. Continuing. CardId={CardId}", primaryPlatform, dbCard.Id);
+                }
+
+                try
+                {
+                    _ = await _walletRouter.RouteAsync(secondaryPlatform, dbCard.Id, snapshot, dbCard.CurrentPoints, dbCard.CurrentSteps, dbCard.CompletedCycles, 0, ct);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("credential") || ex.Message.Contains("tapılmadı"))
+                {
+                    _logger.LogWarning(ex, "Credentials not found for SECONDARY {Platform} in RedeemFreeRewardAsync. Continuing. CardId={CardId}", secondaryPlatform, dbCard.Id);
+                }
+                catch (Exception ex)
+                {
+                    // Wallet fail olsa da DB update artıq yazılıb
+                    _logger.LogWarning(ex, "Wallet routing failed for SECONDARY {Platform} after RedeemFreeRewardAsync. Continuing. CardId={CardId}", secondaryPlatform, dbCard.Id);
                 }
 
                 return new RedeemResultDto
                 {
                     Success = true,
-                    Message = $"{spendCount} {freeRewardLabel} azaldıldı. Qalan balans: {dbCard.CompletedCycles}",
+                    Message = $"{spendCount} {freeRewardLabel} azaldıldı. Qalan balans: {dbCard.CompletedCycles} {freeRewardLabel}, Points: {dbCard.CurrentPoints}",
                     LoyaltyCardId = dbCard.Id,
                     RemainingRewardCount = dbCard.CompletedCycles,
                     FreeRewardLabel = freeRewardLabel,
-                    AppliedDelta = -spendCount
+                    AppliedDelta = -pointsToDeduct // Point azalmasını qaytarırıq
                 };
             }
             catch (Exception ex)

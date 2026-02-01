@@ -59,5 +59,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string Currency { get; set; } = "AZN"; // Currency code
 
         public IconLayout IconLayout { get; set; }
+
+        // Currency (Para birimi: AZN, Xal, Point və s.)
+       
     }
 }

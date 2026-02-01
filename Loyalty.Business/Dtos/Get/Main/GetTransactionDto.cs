@@ -19,7 +19,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? Description { get; set; }
         public string? ReferenceNumber { get; set; }
         public string? OrderId { get; set; }
-
+        public DateTimeOffset LocalOccurredAt { get; set; }
+        public string TimeZoneIdUsed { get; set; } = "UTC";
         public int BalanceAfter { get; set; }
 
     }

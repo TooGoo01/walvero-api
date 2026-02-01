@@ -74,5 +74,8 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         // Layout
         public IconLayout IconLayout { get; set; } = IconLayout.Grid;
+
+        // Currency (Para birimi: AZN, Xal, Point və s.)
+        public string Currency { get; set; } = "AZN"; // Default: AZN
     }
 }

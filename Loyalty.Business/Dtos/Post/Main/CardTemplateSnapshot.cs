@@ -76,6 +76,9 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         // ---- Dinamik ikon list (Progress vizual üçün) ----
         public List<string> IconUrls { get; set; } = new(); // CardTemplate.Icons -> absolute URL-lər
+
+        // ---- Currency (Para birimi) ----
+     
     }
 
 }

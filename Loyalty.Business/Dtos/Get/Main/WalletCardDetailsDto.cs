@@ -33,6 +33,11 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? GoogleLogoUrl { get; set; }
         public string? StripImageUrl { get; set; }
         public string? LocationUrl { get; set; }
+        public string? ContactNumber { get; set; }
+        public string? InstagramUrl { get; set; }
+        public string? FacebookUrl { get; set; }
+        public string? WhatsAppUrl { get; set; }
+        public string? TelegramUrl { get; set; }
         public string BackgroundColor { get; set; } = "#FFFFFF";
         public string ForegroundColor { get; set; } = "#000000";
         public decimal? CashbackPercent { get; set; }

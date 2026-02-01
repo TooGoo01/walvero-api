@@ -25,11 +25,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             _mapper = mapper;
         }
 
-        public async Task<ServiceResult<List<HomeTenantDto>>> GetHomeTenantsAsync(CancellationToken ct = default)
+        public async Task<ServiceResult<List<HomeTenantDto>>> GetHomeTenantsAsync(int? countryId = null, int? cityId = null, CancellationToken ct = default)
         {
             try
             {
-                var projections = await _tenantRepository.ListHomeTenantsAsync(ct);
+                var projections = await _tenantRepository.ListHomeTenantsAsync(countryId, cityId, ct);
 
                 // OPTIMIZATION: Use AutoMapper instead of manual mapping
                 var tenants = _mapper.Map<List<HomeTenantDto>>(projections);

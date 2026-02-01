@@ -2,6 +2,7 @@
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 using Microsoft.Extensions.Logging;
 using System;
@@ -60,7 +61,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var cardholderName = $"{card.Customer?.FirstName} {card.Customer?.LastName}".Trim();
 
                 _logger.LogInformation("Routing to GoogleWalletService.RedeemByCardIdAsync... Cardholder={Cardholder}", cardholderName);
-                var res = await gw.RedeemByCardIdAsync(cardId, tpl, pts, steps, delta, ct);
+                var res = await gw.RedeemByCardIdAsync(cardId, tpl, pts, steps, delta,cardholderName, ct);
 
                 sw.Stop();
                 if (res.Success)

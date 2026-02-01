@@ -1,6 +1,7 @@
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
+using Loyalty.DataAccess.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +14,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
     {
         Task<ServiceResult<ScannerSessionResponseDto>> StartSessionAsync(StartScannerSessionDto dto, CancellationToken ct = default);
         Task<ServiceResult<LinkSessionResponseDto>> LinkSessionAsync(LinkSessionDto dto, CancellationToken ct = default);
+        Task<ServiceResult<List<GetPosSessionDto>>> GetSessionsAsync(SessionStatus? status, CancellationToken ct = default);
     }
 }
 

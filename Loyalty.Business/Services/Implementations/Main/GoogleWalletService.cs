@@ -266,7 +266,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     : tpl.FreeRewardLabel;
 
                 // 1) Large "Reward Card" title
-                textModules.Add(new TextModuleData { Id = "rewardCard", Header = "", Body = "Reward Card" });
+                textModules.Add(new TextModuleData { Id = "rewardCard", Header = "", Body = accountName });
 
                 // 2) Free reward label + big number (use FreeRewardLabel from template)
                 textModules.Add(new TextModuleData { Id = "pulsuzIcki", Header = freeRewardLabel, Body = freeDrinkValue });
@@ -311,7 +311,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 if (!IsHttps(bannerUrl)) bannerUrl = FALLBACK_BANNER_URL;
 
                 textModules.Add(new TextModuleData { Id = "customer", Header = "Customer", Body = accountName ?? $"Card #{loyaltyCardId}" });
-                textModules.Add(new TextModuleData { Id = "balance", Header = "BALANCE", Body = currentPoints.ToString() + " " + "AZN" });
+                var currency = string.IsNullOrWhiteSpace(tpl.Currency) ? "AZN" : tpl.Currency;
+                textModules.Add(new TextModuleData { Id = "balance", Header = "BALANCE", Body = currentPoints.ToString() + " " + currency });
                 textModules.Add(new TextModuleData { Id = "cashback", Header = cashback, Body = cashbackText });
             }
 
@@ -346,7 +347,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 LoyaltyPoints = isProgressBased ? null : new LoyaltyPoints
                 {
                     Balance = new LoyaltyPointsBalance { Int__ = currentPoints },
-                    Label = "Points"
+                    Label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency
                 },
 
                 TextModulesData = textModules,
@@ -399,6 +400,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
        int currentPoints,
        int currentSteps,
        int delta,
+       string accountName,
        CancellationToken ct = default)
     {
         _log?.LogInformation("RedeemByCardIdAsync started. CardId={CardId}, IssuerId={IssuerId}, TenantId={TenantId}, ProgramId={ProgramId}, Delta={Delta}, Initialized={Initialized}",
@@ -541,7 +543,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     textList.Add(balance);
                 }
                 balance.Header = "BALANCE";
-                balance.Body = nextPoints.ToString() + " " + "AZN";
+                var currency = string.IsNullOrWhiteSpace(tpl.Currency) ? "AZN" : tpl.Currency;
+                balance.Body = nextPoints.ToString() + " " + currency;
 
                 // cashback
                 var cashbackId = textList.FirstOrDefault(t => t.Id == "cashback");
@@ -586,7 +589,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 LoyaltyPoints = isProgressBased ? null : new LoyaltyPoints
                 {
                     Balance = new LoyaltyPointsBalance { Int__ = nextPoints },
-                    Label = "Points"
+                    Label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency
                 },
                 TextModulesData = textList,
                 ImageModulesData = imageModules

@@ -25,12 +25,16 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
             int applicationUserId,
             string? name,
             int? categoryId,
+            int? countryId,
+            int? cityId,
             CancellationToken ct = default);
         // OPTIMIZATION: Get paginated cards directly from database
         Task<List<LoyaltyCard>> GetLastActiveCardsForApplicationUserPaginatedAsync(
             int applicationUserId,
             string? name,
             int? categoryId,
+            int? countryId,
+            int? cityId,
             int currentPage,
             int pageSize,
             CancellationToken ct = default);

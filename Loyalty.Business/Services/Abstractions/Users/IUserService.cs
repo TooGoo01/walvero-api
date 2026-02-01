@@ -41,5 +41,11 @@ namespace Loyalty.Business.Services.Abstractions.Users
         Task<ServiceResult<object>> LoginAsync(LoginRequest request, CancellationToken ct = default);
         Task<ServiceResult<VerifyOtpResponse>> VerifyOtpAsync(VerifyOtpRequest request, CancellationToken ct = default);
         Task<ServiceResult<OtpRequiredResponse>> ResendOtpAsync(ResendOtpRequest request, CancellationToken ct = default);
+
+        // Profile update methods
+        Task<ServiceResult<UpdateProfileResponseDto>> UpdateProfileAsync(UpdateProfileDto dto, CancellationToken ct = default);
+        Task<ServiceResult> VerifyOldPhoneForUpdateAsync(string otpCode, CancellationToken ct = default);
+        Task<ServiceResult> VerifyNewPhoneForUpdateAsync(string newPhoneNumber, string otpCode, CancellationToken ct = default);
+        Task<ServiceResult> ResendPhoneUpdateOtpAsync(ResendPhoneUpdateOtpDto dto, CancellationToken ct = default);
     }
 }

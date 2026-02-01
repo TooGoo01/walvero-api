@@ -28,9 +28,14 @@ namespace Loyalty.DataAccess.Entities.Main
         // (Opsional) OTP kanal konfiqi
         public string? ConfirmationChannel { get; set; }
         public string? LocationUrl { get; set; }
+        public string? InstagramUrl { get; set; } = string.Empty;
+        public string? FacebookUrl { get; set; } = string.Empty;
+        public string? WhatsAppUrl { get; set; } = string.Empty;
+        public string? TeleqramUrl { get; set; } = string.Empty;
 
         // Navigation Properties
-       
+        public TenantLocation? TenantLocation { get; set; }
+        public int? tenantLocationId { get; set; }
         public TenantBranding? Branding { get; set; }
         public int? categoryId { get; set; }
         public Category? Category { get; set; }

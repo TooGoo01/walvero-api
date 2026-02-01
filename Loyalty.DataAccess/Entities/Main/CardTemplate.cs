@@ -76,6 +76,9 @@ namespace Loyalty.DataAccess.Entities.Main
         // Layout
         public IconLayout IconLayout { get; set; } = IconLayout.Grid; // Grid, Horizontal, Vertical
 
+        // Currency (Para birimi: AZN, Xal, Point və s.)
+     
+
         // Navigation Property
         public LoyaltyProgram LoyaltyProgram { get; set; } = null!;
 

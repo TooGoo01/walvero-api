@@ -51,6 +51,10 @@ namespace Loyalty.DataAccess.Context
         public DbSet<Story> Stories { get; set; }
         public DbSet<CardPrefixSequence> CardPrefixSequences { get; set; }
         public DbSet<PosSession> PosSessions { get; set; }
+        public DbSet<Country> Countries { get; set; }
+        public DbSet<City> Cities { get; set; }
+        public DbSet<Entities.Main.TimeZone> TimeZones { get; set; }
+        public DbSet<TenantLocation> TenantLocations { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -89,6 +93,10 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(t => t.IsHidden)
                     .IsRequired()
                     .HasDefaultValue(false);
+                  entity.HasOne(t => t.TenantLocation)
+                   .WithOne(tl => tl.Tenant)
+                   .HasForeignKey<Tenant>(t => t.tenantLocationId)
+                   .OnDelete(DeleteBehavior.SetNull);
             });
             modelBuilder.Entity<TenantBranding>(entity =>
             {
@@ -161,6 +169,7 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(ct => ct.StripImageUrl).HasMaxLength(500);
                 entity.Property(ct => ct.HeroImageUrl).HasMaxLength(500);
                 entity.Property(ct => ct.IconLayout).HasConversion<int>();
+                entity.Property(ct => ct.Currency).HasMaxLength(50).HasDefaultValue("AZN");
                 entity.HasOne(lp => lp.LoyaltyProgram)
                   .WithOne(ct => ct.CardTemplate)
                   .HasForeignKey<CardTemplate>(lp => lp.LoyaltyProgramId)
@@ -286,10 +295,12 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(t => t.Type).HasConversion<int>();
                 entity.Property(t => t.Amount).HasColumnType("decimal(18,2)");
                 entity.Property(t => t.Description).HasMaxLength(500);
-                entity.Property(t => t.ReferenceNumber).HasMaxLength(100);
+                entity.Property(t => t.TimeZoneIdUsed).IsRequired().HasMaxLength(100).HasDefaultValue("UTC");
+                entity.Property(t => t.LocalOccurredAt).IsRequired();
 
                 entity.HasIndex(t => t.RegDate);
                 entity.HasIndex(t => t.LoyaltyCardId);
+                entity.HasIndex(t => t.LocalOccurredAt);
 
             });
             // ==== REWARD ====
@@ -466,6 +477,7 @@ namespace Loyalty.DataAccess.Context
                     .HasForeignKey(prt => prt.ApplicationUserId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
+          
 
             // ==== APPLICATION USER ====
             modelBuilder.Entity<ApplicationUser>(entity =>
@@ -535,6 +547,7 @@ namespace Loyalty.DataAccess.Context
                 entity.HasKey(ps => ps.Id);
                 entity.Property(ps => ps.scannerDeviceId).IsRequired().HasMaxLength(200);
                 entity.Property(ps => ps.SessionToken).HasMaxLength(500);
+                entity.Property(ps => ps.Barcode).HasMaxLength(500);
                 entity.HasIndex(ps => ps.SessionToken);
                 
                 entity.HasOne(ps => ps.Tenant)
@@ -546,6 +559,75 @@ namespace Loyalty.DataAccess.Context
                     .WithMany()
                     .HasForeignKey(ps => ps.userId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+            modelBuilder.Entity<Country>(entity =>
+            {
+                entity.ToTable("Countries");
+                entity.HasKey(c => c.Id);
+              
+                
+                // Multi-language support
+                entity.Property(c => c.AzName).IsRequired().HasMaxLength(200);
+                entity.Property(c => c.EnName).IsRequired().HasMaxLength(200);
+                entity.Property(c => c.RuName).IsRequired().HasMaxLength(200);
+
+                entity.HasMany(c => c.Cities)
+                    .WithOne(city => city.Country)
+                    .HasForeignKey(city => city.countryId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // ==== CITY ====
+            modelBuilder.Entity<City>(entity =>
+            {
+                entity.ToTable("Cities");
+                entity.HasKey(c => c.Id);
+              
+                
+                // Multi-language support
+                entity.Property(c => c.AzName).IsRequired().HasMaxLength(200);
+                entity.Property(c => c.EnName).IsRequired().HasMaxLength(200);
+                entity.Property(c => c.RuName).IsRequired().HasMaxLength(200);
+
+                entity.HasOne(c => c.Country)
+                    .WithMany(country => country.Cities)
+                    .HasForeignKey(c => c.countryId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // ==== TIMEZONE ====
+            modelBuilder.Entity<Entities.Main.TimeZone>(entity =>
+            {
+                entity.ToTable("TimeZones");
+                entity.HasKey(tz => tz.Id);
+                entity.Property(tz => tz.Name).IsRequired().HasMaxLength(200);
+            });
+
+            // ==== TENANT LOCATION ====
+            modelBuilder.Entity<TenantLocation>(entity =>
+            {
+                entity.ToTable("TenantLocations");
+                entity.HasKey(tl => tl.Id);
+
+                entity.HasOne(tl => tl.Tenant)
+                    .WithOne(t => t.TenantLocation)
+                    .HasForeignKey<TenantLocation>(tl => tl.tenantId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(tl => tl.Country)
+                    .WithMany()
+                    .HasForeignKey(tl => tl.countryId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasOne(tl => tl.City)
+                    .WithMany()
+                    .HasForeignKey(tl => tl.cityId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasOne(tl => tl.TimeZone)
+                    .WithMany()
+                    .HasForeignKey(tl => tl.timeZoneId)
+                    .OnDelete(DeleteBehavior.SetNull);
             });
 
         }

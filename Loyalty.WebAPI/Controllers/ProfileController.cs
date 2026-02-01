@@ -1,3 +1,4 @@
+using Loyalty.Business.Dtos.Get.Users;
 using Loyalty.Business.Dtos.Post.Users;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Users;
@@ -16,10 +17,12 @@ namespace Loyalty.WebAPI.Controllers
     public class ProfileController : ControllerBase
     {
         private readonly IGuestAuthService _guestAuthService;
+        private readonly IUserService _userService;
 
-        public ProfileController(IGuestAuthService guestAuthService)
+        public ProfileController(IGuestAuthService guestAuthService, IUserService userService)
         {
             _guestAuthService = guestAuthService;
+            _userService = userService;
         }
 
         /// <summary>
@@ -59,6 +62,94 @@ namespace Loyalty.WebAPI.Controllers
             }
 
             return BadRequest(result.Message);
+        }
+
+        /// <summary>
+        /// Update user profile information
+        /// </summary>
+        [HttpPost("update")]
+        [ProducesResponseType(typeof(ServiceResult<UpdateProfileResponseDto>), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _userService.UpdateProfileAsync(dto);
+            
+            if (result.Success)
+            {
+                return Ok(result);
+            }
+
+            return BadRequest(result);
+        }
+
+        /// <summary>
+        /// Verify old phone number for profile update
+        /// </summary>
+        [HttpPost("verify-old-phone")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> VerifyOldPhone([FromBody] VerifyOldPhoneDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _userService.VerifyOldPhoneForUpdateAsync(dto.OtpCode);
+            
+            if (result.Success)
+            {
+                return Ok(result);
+            }
+
+            return BadRequest(result);
+        }
+
+        /// <summary>
+        /// Verify new phone number and complete profile update
+        /// </summary>
+        [HttpPost("verify-new-phone")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> VerifyNewPhone([FromBody] VerifyNewPhoneDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _userService.VerifyNewPhoneForUpdateAsync(dto.NewPhoneNumber, dto.OtpCode);
+            
+            if (result.Success)
+            {
+                return Ok(result);
+            }
+
+            return BadRequest(result);
+        }
+
+        /// <summary>
+        /// Resend OTP for phone number update (old phone or new phone)
+        /// </summary>
+        [HttpPost("resend-phone-update-otp")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> ResendPhoneUpdateOtp([FromBody] ResendPhoneUpdateOtpDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _userService.ResendPhoneUpdateOtpAsync(dto);
+            
+            if (result.Success)
+            {
+                return Ok(result);
+            }
+
+            return BadRequest(result);
         }
     }
 }

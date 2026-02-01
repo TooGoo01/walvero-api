@@ -149,8 +149,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             // 2) OPTIMIZATION: Get count first, then paginated cards in a single efficient query
             var totalCount = await _cardRepo.GetActiveCardsCountForApplicationUserAsync(
                 applicationUserId,
-                model.Name,
-                model.categoryId,
+                model?.Name,
+                model?.categoryId,
+                model?.countryId,
+                model?.cityId,
                 ct);
 
             if (totalCount == 0)
@@ -170,8 +172,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             // Cards query already includes: Customer, LoyaltyProgram.CardTemplate, Tenant.Category, Tenant.Branding
             var pagedCards = await _cardRepo.GetLastActiveCardsForApplicationUserPaginatedAsync(
                 applicationUserId,
-                model.Name,
-                model.categoryId,
+                model?.Name,
+                model?.categoryId,
+                model?.countryId,
+                model?.cityId,
                 currentPage,
                 pageSize,
                 ct);

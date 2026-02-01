@@ -10,7 +10,7 @@ namespace Loyalty.DataAccess.Repositories
         Task<TEntity?> GetByIdAsync(int id, CancellationToken ct = default);
 
         TEntity Get(Expression<Func<TEntity, bool>> predicate);
-
+        IQueryable<TEntity> Query();
         Task<TEntity> GetAsync(Expression<Func<TEntity, bool>> predicate);
 
         void Reload(TEntity entity);

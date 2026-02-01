@@ -751,9 +751,14 @@ namespace Loyalty.Business.Services.Implementations.Users
                 // Send SMS
                 try
                 {
-                    var message = purpose == OtpPurpose.Registration
-                        ? $"Your registration code is: {otpCode}. Valid for 10 minutes."
-                        : $"Your password reset code is: {otpCode}. Valid for 10 minutes.";
+                    var message = purpose switch
+                    {
+                        OtpPurpose.Registration => $"Your registration code is: {otpCode}. Valid for 10 minutes.",
+                        OtpPurpose.PasswordReset => $"Your password reset code is: {otpCode}. Valid for 10 minutes.",
+                        OtpPurpose.PhoneUpdateOld => $"Your verification code for phone number update is: {otpCode}. Valid for 10 minutes.",
+                        OtpPurpose.PhoneUpdateNew => $"Your verification code for new phone number is: {otpCode}. Valid for 10 minutes.",
+                        _ => $"Your verification code is: {otpCode}. Valid for 10 minutes."
+                    };
 
                     await Helper.SendSmsAsync(user.PhoneNumber!, message);
                     _logger?.LogInformation("OTP SMS sent successfully to UserId: {UserId}, Phone: {Phone}", userId, WalletCodeHelper.MaskPhone(user.PhoneNumber));
@@ -1539,6 +1544,454 @@ namespace Loyalty.Business.Services.Implementations.Users
                 _logger?.LogError(ex, "Error resending OTP for UserId: {UserId}", request.UserId);
                 return ServiceResult<OtpRequiredResponse>.Fail($"Failed to resend OTP: {ex.Message}");
             }
+        }
+
+        // ========== PROFILE UPDATE METHODS ==========
+
+        public async Task<ServiceResult<UpdateProfileResponseDto>> UpdateProfileAsync(UpdateProfileDto dto, CancellationToken ct = default)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                if (userId == null)
+                {
+                    return ServiceResult<UpdateProfileResponseDto>.Fail("User not authenticated");
+                }
+
+                var user = await _dbContext.Users
+                    .FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+
+                if (user == null)
+                {
+                    return ServiceResult<UpdateProfileResponseDto>.Fail("User not found");
+                }
+
+                // Əvvəlcə telefon nömrəsi istisna olmaqla digər məlumatları yenilə
+                if (!string.IsNullOrEmpty(dto.Name))
+                    user.Name = dto.Name;
+                
+                if (!string.IsNullOrEmpty(dto.Surname))
+                    user.Surname = dto.Surname;
+                
+                if (!string.IsNullOrEmpty(dto.Email))
+                    user.Email = dto.Email;
+                
+                if (dto.Gender.HasValue)
+                    user.Gender = dto.Gender.Value;
+                
+                if (dto.DateOfBirth.HasValue)
+                    user.DateOfBirth = dto.DateOfBirth;
+
+                var currentPhoneNumber = user.PhoneNumber;
+                var newPhoneNumber = dto.PhoneNumber?.Trim();
+                var isPhoneChanging = !string.IsNullOrEmpty(newPhoneNumber) && 
+                                     newPhoneNumber != currentPhoneNumber;
+
+                // Əgər telefon nömrəsi dəyişirsə, köhnə nömrəni təsdiqləmək lazımdır
+                if (isPhoneChanging)
+                {
+                    // Köhnə telefon nömrəsinin təsdiqlənməsi lazımdırmı yoxla
+                    var hasActiveOldPhoneOtp = await _dbContext.Otps
+                        .AnyAsync(o => o.ApplicationUserId == userId.Value &&
+                                      o.Purpose == OtpPurpose.PhoneUpdateOld &&
+                                      !o.IsUsed &&
+                                      o.ExpiresAt > DateTime.UtcNow, ct);
+
+                    if (!hasActiveOldPhoneOtp)
+                    {
+                        // Köhnə telefon nömrəsinə OTP göndər
+                        var otpResult = await GenerateAndSendOtpAsync(userId.Value, OtpPurpose.PhoneUpdateOld);
+                        if (!otpResult.Success)
+                        {
+                            return ServiceResult<UpdateProfileResponseDto>.Fail(otpResult.Message ?? "Failed to send OTP to old phone number");
+                        }
+
+                        return ServiceResult<UpdateProfileResponseDto>.Ok(new UpdateProfileResponseDto
+                        {
+                            RequiresOldPhoneVerification = true,
+                            RequiresNewPhoneVerification = false,
+                            Message = "OTP has been sent to your current phone number. Please verify to continue."
+                        });
+                    }
+
+                    // Köhnə telefon təsdiqlənib, indi yeni telefon üçün OTP göndər
+                    var activeNewPhoneOtps = await _dbContext.Otps
+                        .Where(o => o.ApplicationUserId == userId.Value &&
+                                   o.Purpose == OtpPurpose.PhoneUpdateNew &&
+                                   !o.IsUsed &&
+                                   o.ExpiresAt > DateTime.UtcNow)
+                        .ToListAsync(ct);
+
+                    // Əgər aktiv OTP varsa və yeni telefon nömrəsi dəyişibsə, köhnə OTP-ləri ləğv et
+                    if (activeNewPhoneOtps.Any())
+                    {
+                        // Köhnə OTP-lərdə saxlanılan telefon nömrəsini tapmaq üçün
+                        // (biz OTP-də telefon nömrəsini saxlaya bilmərik, ona görə də hər zaman yeni nömrəyə OTP göndəririk)
+                        // Əgər istifadəçi yeni telefon nömrəsini dəyişdiribsə, köhnə OTP-ləri ləğv et
+                        foreach (var otp in activeNewPhoneOtps)
+                        {
+                            otp.IsUsed = true;
+                            otp.UsedAt = DateTime.UtcNow;
+                        }
+                        await _dbContext.SaveChangesAsync(ct);
+                    }
+
+                    // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (ApplicationUser)
+                    var existingUser = await _userManager.FindByNameAsync(newPhoneNumber);
+                    if (existingUser != null && existingUser.Id != userId.Value)
+                    {
+                        return ServiceResult<UpdateProfileResponseDto>.Fail("This phone number is already registered by another user.");
+                    }
+
+                    // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (Customer)
+                    // Əgər user-in TenantId-si varsa, həmin tenant-da customer yoxla
+                    if (user.TenantId.HasValue)
+                    {
+                        var existingCustomer = await _dbContext.Customers
+                            .FirstOrDefaultAsync(c => c.TenantId == user.TenantId.Value &&
+                                                      c.PhoneNumber == newPhoneNumber &&
+                                                      c.IsActive &&
+                                                      (c.applicationUserId == null || c.applicationUserId != userId.Value), ct);
+                        if (existingCustomer != null)
+                        {
+                            return ServiceResult<UpdateProfileResponseDto>.Fail("This phone number is already registered by another customer.");
+                        }
+                    }
+
+                    // Yeni telefon nömrəsinə OTP göndər
+                    var sendResult = await SendOtpToNewPhoneAsync(userId.Value, newPhoneNumber, ct);
+                    if (!sendResult.Success)
+                    {
+                        return ServiceResult<UpdateProfileResponseDto>.Fail(sendResult.Message ?? "Failed to send OTP to new phone number");
+                    }
+
+                    return ServiceResult<UpdateProfileResponseDto>.Ok(new UpdateProfileResponseDto
+                    {
+                        RequiresOldPhoneVerification = false,
+                        RequiresNewPhoneVerification = true,
+                        Message = "OTP has been sent to your new phone number. Please verify to complete the update.",
+                        PendingNewPhoneNumber = newPhoneNumber // Yeni telefon nömrəsini qaytar ki, istifadəçi bilir hansı nömrəyə OTP göndərilib
+                    });
+                }
+
+                // Telefon nömrəsi dəyişmir və ya telefon dəyişikliyi tamamlanıb, məlumatları yenilə
+                var updateResult = await _userManager.UpdateAsync(user);
+                if (!updateResult.Succeeded)
+                {
+                    return ServiceResult<UpdateProfileResponseDto>.Fail(
+                        $"Failed to update profile: {string.Join(", ", updateResult.Errors.Select(e => e.Description))}");
+                }
+
+                // Customer entity-ləri də yenilə
+                var customers = await _dbContext.Customers
+                    .Where(c => c.applicationUserId == userId.Value)
+                    .ToListAsync(ct);
+
+                foreach (var customer in customers)
+                {
+                    if (!string.IsNullOrEmpty(dto.Name))
+                        customer.FirstName = dto.Name;
+                    if (!string.IsNullOrEmpty(dto.Surname))
+                        customer.LastName = dto.Surname;
+                    if (!string.IsNullOrEmpty(dto.Email))
+                        customer.Email = dto.Email;
+                }
+
+                if (customers.Any())
+                {
+                    _dbContext.Customers.UpdateRange(customers);
+                    await _dbContext.SaveChangesAsync(ct);
+                }
+
+                return ServiceResult<UpdateProfileResponseDto>.Ok(new UpdateProfileResponseDto
+                {
+                    RequiresOldPhoneVerification = false,
+                    RequiresNewPhoneVerification = false,
+                    Message = "Profile updated successfully."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error updating profile for user");
+                return ServiceResult<UpdateProfileResponseDto>.Fail($"Error updating profile: {ex.Message}");
+            }
+        }
+
+        public async Task<ServiceResult> VerifyOldPhoneForUpdateAsync(string otpCode, CancellationToken ct = default)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                if (userId == null)
+                {
+                    return new ServiceResult(false, "User not authenticated");
+                }
+
+                var verifyResult = await VerifyOtpAsyncInternal(userId.Value, otpCode, OtpPurpose.PhoneUpdateOld);
+                if (!verifyResult.Success)
+                {
+                    return verifyResult;
+                }
+
+                // Köhnə telefon təsdiqləndi, indi yeni telefon üçün OTP göndərmək lazımdır
+                // Bu UpdateProfileAsync metodunda avtomatik olaraq baş verəcək
+                return new ServiceResult(true, "Old phone number verified successfully. Please proceed with new phone verification.");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error verifying old phone for update");
+                return new ServiceResult(false, $"Error verifying old phone: {ex.Message}");
+            }
+        }
+
+        public async Task<ServiceResult> VerifyNewPhoneForUpdateAsync(string newPhoneNumber, string otpCode, CancellationToken ct = default)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                if (userId == null)
+                {
+                    return new ServiceResult(false, "User not authenticated");
+                }
+
+                // Əvvəlcə köhnə telefonun təsdiqləndiyini yoxla
+                var oldPhoneVerified = await _dbContext.Otps
+                    .AnyAsync(o => o.ApplicationUserId == userId.Value &&
+                                  o.Purpose == OtpPurpose.PhoneUpdateOld &&
+                                  o.IsUsed &&
+                                  o.UsedAt.HasValue &&
+                                  o.UsedAt.Value > DateTime.UtcNow.AddMinutes(-30), // Son 30 dəqiqədə təsdiqlənib
+                                  ct);
+
+                if (!oldPhoneVerified)
+                {
+                    return new ServiceResult(false, "Please verify your old phone number first.");
+                }
+
+                // Yeni telefon nömrəsinin OTP-sini təsdiqlə
+                var user = await _dbContext.Users
+                    .FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+
+                if (user == null)
+                {
+                    return new ServiceResult(false, "User not found");
+                }
+
+                // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (ApplicationUser)
+                var existingUser = await _userManager.FindByNameAsync(newPhoneNumber);
+                if (existingUser != null && existingUser.Id != userId.Value)
+                {
+                    return new ServiceResult(false, "This phone number is already registered by another user.");
+                }
+
+                // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (Customer)
+                // Əgər user-in TenantId-si varsa, həmin tenant-da customer yoxla
+                if (user.TenantId.HasValue)
+                {
+                    var existingCustomer = await _dbContext.Customers
+                        .FirstOrDefaultAsync(c => c.TenantId == user.TenantId.Value &&
+                                                  c.PhoneNumber == newPhoneNumber &&
+                                                  c.IsActive &&
+                                                  (c.applicationUserId == null || c.applicationUserId != userId.Value), ct);
+                    if (existingCustomer != null)
+                    {
+                        return new ServiceResult(false, "This phone number is already registered by another customer.");
+                    }
+                }
+
+                // Müvəqqəti olaraq telefon nömrəsini dəyişdirib OTP yoxlayırıq
+                var tempPhone = user.PhoneNumber;
+                user.PhoneNumber = newPhoneNumber;
+                await _userManager.UpdateAsync(user);
+
+                var verifyResult = await VerifyOtpAsyncInternal(userId.Value, otpCode, OtpPurpose.PhoneUpdateNew);
+
+                if (!verifyResult.Success)
+                {
+                    // OTP yanlışdırsa, köhnə nömrəni geri qaytar
+                    user.PhoneNumber = tempPhone;
+                    await _userManager.UpdateAsync(user);
+                    // OTP səhvdirsə, istifadəçiyə yenidən OTP göndərə biləcəyini və ya telefon nömrəsini dəyişdirə biləcəyini bildir
+                    return new ServiceResult(false, $"{verifyResult.Message} You can request a new OTP by calling the resend endpoint, or update the phone number by calling the update profile endpoint again with the correct phone number.");
+                }
+
+                // OTP təsdiqləndi, indi telefon nömrəsini və digər məlumatları yenilə
+                user.PhoneNumber = newPhoneNumber;
+                user.UserName = newPhoneNumber;
+                user.NormalizedUserName = newPhoneNumber.ToUpperInvariant();
+                user.PhoneNumberConfirmed = true;
+                user.IsPhoneVerified = true;
+
+                var updateResult = await _userManager.UpdateAsync(user);
+                if (!updateResult.Succeeded)
+                {
+                    return new ServiceResult(false, 
+                        $"Failed to update phone number: {string.Join(", ", updateResult.Errors.Select(e => e.Description))}");
+                }
+
+                // Customer entity-ləri də yenilə
+                var customers = await _dbContext.Customers
+                    .Where(c => c.applicationUserId == userId.Value)
+                    .ToListAsync(ct);
+
+                foreach (var customer in customers)
+                {
+                    customer.PhoneNumber = newPhoneNumber;
+                }
+
+                if (customers.Any())
+                {
+                    _dbContext.Customers.UpdateRange(customers);
+                    await _dbContext.SaveChangesAsync(ct);
+                }
+
+                _logger?.LogInformation("Phone number updated successfully for UserId: {UserId}", userId.Value);
+
+                return new ServiceResult(true, "Phone number updated successfully.");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error verifying new phone for update");
+                return new ServiceResult(false, $"Error verifying new phone: {ex.Message}");
+            }
+        }
+
+        public async Task<ServiceResult> ResendPhoneUpdateOtpAsync(ResendPhoneUpdateOtpDto dto, CancellationToken ct = default)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                if (userId == null)
+                {
+                    return new ServiceResult(false, "User not authenticated");
+                }
+
+                var user = await _dbContext.Users
+                    .FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+
+                if (user == null)
+                {
+                    return new ServiceResult(false, "User not found");
+                }
+
+                if (dto.OtpType.ToLower() == "oldphone")
+                {
+                    // Köhnə telefon nömrəsinə OTP yenidən göndər
+                    var otpResult = await GenerateAndSendOtpAsync(userId.Value, OtpPurpose.PhoneUpdateOld);
+                    if (!otpResult.Success)
+                    {
+                        return new ServiceResult(false, otpResult.Message ?? "Failed to resend OTP to old phone number");
+                    }
+
+                    return new ServiceResult(true, "OTP has been re-sent to your current phone number.");
+                }
+                else if (dto.OtpType.ToLower() == "newphone")
+                {
+                    // Yeni telefon nömrəsi verilməlidir
+                    if (string.IsNullOrEmpty(dto.NewPhoneNumber))
+                    {
+                        return new ServiceResult(false, "New phone number is required for resending OTP to new phone.");
+                    }
+
+                    // Köhnə telefonun təsdiqləndiyini yoxla
+                    var oldPhoneVerified = await _dbContext.Otps
+                        .AnyAsync(o => o.ApplicationUserId == userId.Value &&
+                                      o.Purpose == OtpPurpose.PhoneUpdateOld &&
+                                      o.IsUsed &&
+                                      o.UsedAt.HasValue &&
+                                      o.UsedAt.Value > DateTime.UtcNow.AddMinutes(-30),
+                                      ct);
+
+                    if (!oldPhoneVerified)
+                    {
+                        return new ServiceResult(false, "Please verify your old phone number first.");
+                    }
+
+                    // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (ApplicationUser)
+                    var existingUser = await _userManager.FindByNameAsync(dto.NewPhoneNumber);
+                    if (existingUser != null && existingUser.Id != userId.Value)
+                    {
+                        return new ServiceResult(false, "This phone number is already registered by another user.");
+                    }
+
+                    // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (Customer)
+                    // Əgər user-in TenantId-si varsa, həmin tenant-da customer yoxla
+                    if (user.TenantId.HasValue)
+                    {
+                        var existingCustomer = await _dbContext.Customers
+                            .FirstOrDefaultAsync(c => c.TenantId == user.TenantId.Value &&
+                                                      c.PhoneNumber == dto.NewPhoneNumber &&
+                                                      c.IsActive &&
+                                                      (c.applicationUserId == null || c.applicationUserId != userId.Value), ct);
+                        if (existingCustomer != null)
+                        {
+                            return new ServiceResult(false, "This phone number is already registered by another customer.");
+                        }
+                    }
+
+                    // Yeni telefon nömrəsinə OTP göndər
+                    var sendResult = await SendOtpToNewPhoneAsync(userId.Value, dto.NewPhoneNumber, ct);
+                    if (!sendResult.Success)
+                    {
+                        return new ServiceResult(false, sendResult.Message ?? "Failed to resend OTP to new phone number");
+                    }
+
+                    return new ServiceResult(true, "OTP has been re-sent to your new phone number.");
+                }
+                else
+                {
+                    return new ServiceResult(false, "Invalid OTP type. Use 'OldPhone' or 'NewPhone'.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error resending phone update OTP");
+                return new ServiceResult(false, $"Error resending OTP: {ex.Message}");
+            }
+        }
+
+        // Helper method to send OTP to new phone number
+        private async Task<ServiceResult> SendOtpToNewPhoneAsync(int userId, string newPhoneNumber, CancellationToken ct = default)
+        {
+            try
+            {
+                var user = await _dbContext.Users
+                    .FirstOrDefaultAsync(u => u.Id == userId, ct);
+
+                if (user == null)
+                {
+                    return new ServiceResult(false, "User not found");
+                }
+
+                // Müvəqqəti olaraq user-ın telefon nömrəsini dəyişdirib OTP göndəririk
+                var tempPhone = user.PhoneNumber;
+                user.PhoneNumber = newPhoneNumber;
+                await _userManager.UpdateAsync(user);
+
+                var otpResult = await GenerateAndSendOtpAsync(userId, OtpPurpose.PhoneUpdateNew);
+                
+                // OTP göndərildikdən sonra köhnə nömrəni geri qaytarırıq
+                user.PhoneNumber = tempPhone;
+                await _userManager.UpdateAsync(user);
+
+                return otpResult;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error sending OTP to new phone number");
+                return new ServiceResult(false, $"Error sending OTP: {ex.Message}");
+            }
+        }
+
+        // Helper method to get current user ID
+        private int? GetCurrentUserId()
+        {
+            var userIdStr = _httpContextAccessor?.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (userIdStr != null && int.TryParse(userIdStr, out var userId))
+            {
+                return userId;
+            }
+            return null;
         }
 
     }

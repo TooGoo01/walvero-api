@@ -168,8 +168,9 @@ public sealed class AppleWalletService : IAppleWalletService
                 }
                 else
                 {
+                    var currency = string.IsNullOrWhiteSpace(snapshot.Currency) ? "AZN" : snapshot.Currency;
                     // TierBased/PointsBased: Keep existing logic
-                    headerFields.Add(new PassField("balance", card.CurrentPoints.ToString() + " " + "AZN", "Balance"));
+                    headerFields.Add(new PassField("balance", card.CurrentPoints.ToString() + " " + currency, "Balance"));
                     auxiliaryFields.Add(new PassField("cashback", cashbackText, cashback));
                     secondaryFields.Add(new PassField("name", customerFullName, "Customer"));
                 }

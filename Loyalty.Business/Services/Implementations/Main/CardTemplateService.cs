@@ -93,6 +93,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             entity.SilverColor = dto.SilverColor;
             entity.GoldColor = dto.GoldColor;
             entity.PlatinumColor = dto.PlatinumColor;
+            entity.Currency = string.IsNullOrWhiteSpace(dto.Currency) ? "AZN" : dto.Currency.Trim();
 
             // 5) PROGRESS ikonları: dto.Icons → Icon list (file/URL dəstəyi) → upsert
             if (dto.TemplateType == CardTemplateType.ProgressBased)
@@ -260,7 +261,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 HeroImageUrl = e.HeroImageUrl,
                 Currency = e.Currency,
                 IconLayout = e.IconLayout,
-                FreeRewardLabel = e.FreeRewardLabel
+                FreeRewardLabel = e.FreeRewardLabel,
+               
             };
         }
         public Task<ServiceResult> Delete(int id)

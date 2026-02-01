@@ -71,10 +71,8 @@ namespace Loyalty.Business.Helpers
                 GoldPercentCash = ct.GoldPercentCash ?? 0,
                 OneRedeem = ct.OneRedeem,
                 PayMentType = ct.PayMentType,
-                
-                // Currency
-                Currency = ct.Currency ?? "AZN",
-                
+                // Currency (Para birimi)
+                Currency = string.IsNullOrWhiteSpace(ct.Currency) ? "AZN" : ct.Currency,
                 // Colors (CardTemplate üstünlük, boşdursa Branding → default)
                 BackgroundColor = FirstNonEmpty(ct.BackgroundColor, branding?.SecondaryColor, "#FFFFFF")!,
                 ForegroundColor = FirstNonEmpty(ct.ForegroundColor, "#000000")!,

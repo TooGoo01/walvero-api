@@ -29,6 +29,9 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 // === Controllers & CORS & SignalR ===
 builder.Services.AddControllers();
 
+// === Response Caching ===
+builder.Services.AddResponseCaching();
+
 builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", policy => policy
         .WithOrigins(
@@ -232,6 +235,9 @@ else
 }
 
 app.UseCors("AllowAll");
+
+// Response Caching middleware - must be BEFORE UseSession
+app.UseResponseCaching();
 
 app.UseSession();
 
