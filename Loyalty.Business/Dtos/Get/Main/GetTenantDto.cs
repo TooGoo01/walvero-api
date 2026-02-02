@@ -19,6 +19,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? FacebookUrl { get; set; } = string.Empty;
         public string? WhatsAppUrl { get; set; } = string.Empty;
         public string? TelegramUrl { get; set; } = string.Empty;
+        public string? MenuUrl { get; set; } = string.Empty;
         public bool ShowOnHome { get; set; } = false;
         public bool RequireConfirmation { get; init; } = true; // tenant setting
         public int ConfirmationTtlMinutes { get; set; } = 10;

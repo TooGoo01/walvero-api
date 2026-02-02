@@ -9,11 +9,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace LoyaltyWalletApp.DataAccess.Migrations
+namespace Loyalty.DataAccess.Migrations
 {
     [DbContext(typeof(LoyaltyWalletDbContext))]
-    [Migration("20260107184222_session")]
-    partial class session
+    [Migration("20260202070113_first_migration_azure")]
+    partial class first_migration_azure
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -109,6 +109,13 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.Property<int?>("BronzeThreshold")
                         .HasColumnType("int");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("AZN");
 
                     b.Property<DateTime?>("EditDate")
                         .HasColumnType("datetime2");
@@ -288,6 +295,54 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("Categories");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.City", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AzName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EnName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RuName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("countryId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("countryId");
+
+                    b.ToTable("Cities", (string)null);
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Contact", b =>
                 {
                     b.Property<int>("Id")
@@ -330,6 +385,49 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Contacts");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Country", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AzName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EnName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RuName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Countries", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Customer", b =>
@@ -879,6 +977,10 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Barcode")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<DateTime?>("EditDate")
                         .HasColumnType("datetime2");
 
@@ -1240,6 +1342,12 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Property<int?>("EditUserId")
                         .HasColumnType("int");
 
+                    b.Property<string>("FacebookUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("InstagramUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -1271,7 +1379,16 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Property<DateTime?>("SubscriptionExpiryDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("TeleqramUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("WhatsAppUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int?>("categoryId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("tenantLocationId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -1355,6 +1472,89 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("TenantBrandings", (string)null);
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantLocation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("cityId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("countryId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("tenantId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("timeZoneId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("cityId");
+
+                    b.HasIndex("countryId");
+
+                    b.HasIndex("tenantId")
+                        .IsUnique()
+                        .HasFilter("[tenantId] IS NOT NULL");
+
+                    b.HasIndex("timeZoneId");
+
+                    b.ToTable("TenantLocations", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TimeZone", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TimeZones", (string)null);
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Transaction", b =>
                 {
                     b.Property<int>("Id")
@@ -1382,6 +1582,9 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<DateTimeOffset>("LocalOccurredAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<int>("LoyaltyCardId")
                         .HasColumnType("int");
 
@@ -1392,8 +1595,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("ReferenceNumber")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("RegDate")
                         .HasColumnType("datetime2");
@@ -1407,10 +1609,19 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
+                    b.Property<string>("TimeZoneIdUsed")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasDefaultValue("UTC");
+
                     b.Property<int>("Type")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("LocalOccurredAt");
 
                     b.HasIndex("LoyaltyCardId");
 
@@ -2201,6 +2412,17 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.City", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Country", "Country")
+                        .WithMany("Cities")
+                        .HasForeignKey("countryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Country");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Customer", b =>
                 {
                     b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
@@ -2403,6 +2625,37 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantLocation", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.City", "City")
+                        .WithMany()
+                        .HasForeignKey("cityId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Country", "Country")
+                        .WithMany()
+                        .HasForeignKey("countryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                        .WithOne("TenantLocation")
+                        .HasForeignKey("Loyalty.DataAccess.Entities.Main.TenantLocation", "tenantId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.TimeZone", "TimeZone")
+                        .WithMany()
+                        .HasForeignKey("timeZoneId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("City");
+
+                    b.Navigation("Country");
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("TimeZone");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Transaction", b =>
                 {
                     b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyCard", "LoyaltyCard")
@@ -2573,6 +2826,11 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("Tenants");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Country", b =>
+                {
+                    b.Navigation("Cities");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Customer", b =>
                 {
                     b.Navigation("LoyaltyCards");
@@ -2606,6 +2864,8 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("Customers");
 
                     b.Navigation("LoyaltyPrograms");
+
+                    b.Navigation("TenantLocation");
 
                     b.Navigation("WalletCredentials");
                 });

@@ -32,6 +32,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? FacebookUrl { get; set; } = string.Empty;
         public string? WhatsAppUrl { get; set; } = string.Empty;
         public string? TeleqramUrl { get; set; } = string.Empty;
+        public string? MenuUrl { get; set; } = string.Empty;
 
         // Navigation Properties
         public TenantLocation? TenantLocation { get; set; }

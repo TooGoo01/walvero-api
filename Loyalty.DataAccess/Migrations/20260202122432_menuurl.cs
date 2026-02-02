@@ -2,19 +2,18 @@
 
 #nullable disable
 
-namespace LoyaltyWalletApp.DataAccess.Migrations
+namespace Loyalty.DataAccess.Migrations
 {
     /// <inheritdoc />
-    public partial class posservicebarcode : Migration
+    public partial class menuurl : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<string>(
-                name: "Barcode",
-                table: "PosSessions",
-                type: "nvarchar(500)",
-                maxLength: 500,
+                name: "MenuUrl",
+                table: "Tenants",
+                type: "nvarchar(max)",
                 nullable: true);
         }
 
@@ -22,8 +21,8 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "Barcode",
-                table: "PosSessions");
+                name: "MenuUrl",
+                table: "Tenants");
         }
     }
 }

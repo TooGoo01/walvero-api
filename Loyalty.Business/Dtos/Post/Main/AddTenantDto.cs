@@ -18,6 +18,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? FacebookUrl { get; set; } = string.Empty;
         public string? WhatsAppUrl { get; set; } = string.Empty;
         public string? TelegramUrl { get; set; } = string.Empty;
+        public string? MenuUrl { get; set; } = string.Empty;
         public bool ShowOnHome { get; set; } = false;
         public int? tenantLocationId { get; set; }
         public int? countryId { get; set; }

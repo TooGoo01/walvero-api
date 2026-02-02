@@ -9,11 +9,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace LoyaltyWalletApp.DataAccess.Migrations
+namespace Loyalty.DataAccess.Migrations
 {
     [DbContext(typeof(LoyaltyWalletDbContext))]
-    [Migration("20251206080825_appconfig")]
-    partial class appconfig
+    [Migration("20260202122432_menuurl")]
+    partial class menuurl
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -25,7 +25,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.AppVersionConfig", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.AppVersionConfig", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -76,7 +76,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("AppVersionConfigs");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.CardTemplate", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.CardTemplate", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -110,6 +110,13 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Property<int?>("BronzeThreshold")
                         .HasColumnType("int");
 
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("AZN");
+
                     b.Property<DateTime?>("EditDate")
                         .HasColumnType("datetime2");
 
@@ -120,6 +127,10 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("FreeRewardLabel")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("GoldColor")
                         .IsRequired()
@@ -244,7 +255,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("CardTemplates", (string)null);
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Category", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Category", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -284,7 +295,55 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("Categories");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Contact", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.City", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AzName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EnName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RuName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("countryId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("countryId");
+
+                    b.ToTable("Cities", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Contact", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -328,13 +387,60 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("Contacts");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Customer", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Country", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AzName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EnName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RuName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Countries", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Customer", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CardNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime?>("DateOfBirth")
                         .HasColumnType("datetime2");
@@ -412,6 +518,10 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CardNumber")
+                        .IsUnique()
+                        .HasFilter("[CardNumber] IS NOT NULL");
+
                     b.HasIndex("applicationUserId");
 
                     b.HasIndex("TenantId", "PhoneNumber")
@@ -420,7 +530,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("Customers", (string)null);
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.DeviceToken", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.DeviceToken", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -461,7 +571,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("DeviceTokens");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Icon", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Icon", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -511,7 +621,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("Icon");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyCard", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyCard", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -605,7 +715,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("LoyaltyCards", (string)null);
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyProgram", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -673,7 +783,125 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("LoyaltyPrograms", (string)null);
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.PassDeviceRegistration", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Notification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RelatedFeedbackId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("IsRead");
+
+                    b.HasIndex("RelatedFeedbackId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Notifications", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Offer", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AzDescription")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AzTitle")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EnDescription")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EnTitle")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PhotoUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RuDescription")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RuTitle")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("TenantId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("Offers");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PassDeviceRegistration", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -741,7 +969,69 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("PassDeviceRegistrations");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.RedeemRequest", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosSession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Barcode")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SessionToken")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("orderId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("scannerDeviceId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("tableId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("userId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionToken");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("userId");
+
+                    b.ToTable("PosSessions", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.RedeemRequest", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -803,7 +1093,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("RedeemRequests");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Reward", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Reward", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -855,7 +1145,166 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("Rewards", (string)null);
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.StoreFeedback", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<decimal?>("Rating")
+                        .HasColumnType("decimal(3,2)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("SharePhoneNumber")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("StoreFeedbacks", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.StoreFeedbackReply", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SenderType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreFeedbackId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("StoreFeedbackId");
+
+                    b.ToTable("StoreFeedbackReplies", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Story", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AzTitle")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EnTitle")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RuTitle")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SmallImageUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("TenantId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("Stories");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Tenant", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -893,8 +1342,25 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Property<int?>("EditUserId")
                         .HasColumnType("int");
 
+                    b.Property<string>("FacebookUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("InstagramUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
+
+                    b.Property<bool>("IsHidden")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("LocationUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("MenuUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("RegDate")
                         .HasColumnType("datetime2");
@@ -905,6 +1371,9 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Property<bool>("RequireConfirmation")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("ShowOnHome")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Subdomain")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -913,7 +1382,16 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Property<DateTime?>("SubscriptionExpiryDate")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("TeleqramUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("WhatsAppUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int?>("categoryId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("tenantLocationId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -926,7 +1404,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("Tenants", (string)null);
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.TenantBranding", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantBranding", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -997,7 +1475,90 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("TenantBrandings", (string)null);
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Transaction", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantLocation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("cityId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("countryId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("tenantId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("timeZoneId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("cityId");
+
+                    b.HasIndex("countryId");
+
+                    b.HasIndex("tenantId")
+                        .IsUnique()
+                        .HasFilter("[tenantId] IS NOT NULL");
+
+                    b.HasIndex("timeZoneId");
+
+                    b.ToTable("TenantLocations", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TimeZone", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TimeZones", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Transaction", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1024,6 +1585,9 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<DateTimeOffset>("LocalOccurredAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<int>("LoyaltyCardId")
                         .HasColumnType("int");
 
@@ -1034,8 +1598,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("ReferenceNumber")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("RegDate")
                         .HasColumnType("datetime2");
@@ -1043,10 +1606,25 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Property<int>("RegUserId")
                         .HasColumnType("int");
 
+                    b.Property<string>("ReverseReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TimeZoneIdUsed")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasDefaultValue("UTC");
+
                     b.Property<int>("Type")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("LocalOccurredAt");
 
                     b.HasIndex("LoyaltyCardId");
 
@@ -1055,7 +1633,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("Transactions", (string)null);
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.WalletCredential", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.WalletCredential", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1135,7 +1713,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("WalletCredentials", (string)null);
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.WalletPass", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.WalletPass", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1198,7 +1776,145 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("WalletPasses", (string)null);
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationRole", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.WalveroWalletPass", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ApplePassUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("AppleSerialNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("ApplicationUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("GoogleObjectId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("GoogleSaveUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("HasAndroidPass")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("HasIosPass")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastGeneratedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("WalveroIdMasked")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationUserId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("ApplicationUserId", "TenantId")
+                        .IsUnique();
+
+                    b.ToTable("WalveroWalletPasses", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Sequences.CardPrefixSequence", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LastPrefix")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("CardPrefixSequences", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Sequences.CountrySequence", b =>
+                {
+                    b.Property<int>("CountryCode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Code")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Flag")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("LastNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("CountryCode");
+
+                    b.ToTable("CountrySequences", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Sequences.TenantCustomerSequence", b =>
+                {
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LastNumber")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)")
+                        .HasDefaultValue("789");
+
+                    b.Property<byte[]>("RowVersion")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantCustomerSequences", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.ApplicationRole", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1228,7 +1944,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("AspNetRoles", (string)null);
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.ApplicationUser", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -1255,6 +1971,26 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.Property<int?>("Gender")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("GuestCreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("GuestDeviceId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsGuest")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPhoneVerified")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsProfileCompleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastProfileReminderAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("bit");
@@ -1287,8 +2023,14 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTime?>("ProfileCompletedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
 
                     b.Property<string>("Surname")
                         .IsRequired()
@@ -1304,6 +2046,9 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<long?>("WalveroId")
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
@@ -1316,7 +2061,251 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.HasIndex("TenantId");
 
+                    b.HasIndex("WalveroId")
+                        .IsUnique()
+                        .HasFilter("[WalveroId] IS NOT NULL");
+
                     b.ToTable("AspNetUsers", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.DeviceSession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ApplicationUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DeviceId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsGuest")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRevoked")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationUserId");
+
+                    b.HasIndex("DeviceId");
+
+                    b.HasIndex("IsRevoked");
+
+                    b.HasIndex("DeviceId", "IsRevoked");
+
+                    b.ToTable("DeviceSessions", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.Otp", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ApplicationUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AttemptsCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("CodeSalt")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsUsed")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Purpose")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationUserId");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("ApplicationUserId", "Purpose", "IsUsed");
+
+                    b.ToTable("Otps", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.PasswordResetToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ApplicationUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsUsed")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationUserId");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.ToTable("PasswordResetTokens", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.RefreshToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ApplicationUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ReasonRevoked")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReplacedByToken")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RevokedByIp")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationUserId");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.ToTable("RefreshTokens", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>
@@ -1426,15 +2415,26 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Customer", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.City", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", "Tenant")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Country", "Country")
+                        .WithMany("Cities")
+                        .HasForeignKey("countryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Country");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Customer", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany("Customers")
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", "applicationUser")
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", "applicationUser")
                         .WithMany("Customers")
                         .HasForeignKey("applicationUserId")
                         .OnDelete(DeleteBehavior.Cascade);
@@ -1444,9 +2444,9 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("applicationUser");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.DeviceToken", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.DeviceToken", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", "User")
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", "User")
                         .WithMany("DeviceTokens")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1455,9 +2455,9 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Icon", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Icon", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.CardTemplate", "CardTemplate")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.CardTemplate", "CardTemplate")
                         .WithMany("Icons")
                         .HasForeignKey("CardTemplateId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1466,21 +2466,21 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("CardTemplate");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyCard", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyCard", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Customer", "Customer")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Customer", "Customer")
                         .WithMany("LoyaltyCards")
                         .HasForeignKey("CustomerId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyProgram", "LoyaltyProgram")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", "LoyaltyProgram")
                         .WithMany("LoyaltyCards")
                         .HasForeignKey("LoyaltyProgramId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", "Tenant")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany()
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1493,14 +2493,14 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("Tenant");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyProgram", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.CardTemplate", "CardTemplate")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.CardTemplate", "CardTemplate")
                         .WithOne("LoyaltyProgram")
-                        .HasForeignKey("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyProgram", "CardTemplateId")
+                        .HasForeignKey("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", "CardTemplateId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", "Tenant")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany("LoyaltyPrograms")
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1511,9 +2511,55 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("Tenant");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Reward", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Notification", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyProgram", "LoyaltyProgram")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.StoreFeedback", "RelatedFeedback")
+                        .WithMany()
+                        .HasForeignKey("RelatedFeedbackId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RelatedFeedback");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Offer", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosSession", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", "applicationUser")
+                        .WithMany()
+                        .HasForeignKey("userId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("applicationUser");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Reward", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", "LoyaltyProgram")
                         .WithMany("Rewards")
                         .HasForeignKey("LoyaltyProgramId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1522,9 +2568,48 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("LoyaltyProgram");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.StoreFeedback", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Category", "Category")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.StoreFeedbackReply", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.StoreFeedback", "StoreFeedback")
+                        .WithMany("Replies")
+                        .HasForeignKey("StoreFeedbackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StoreFeedback");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Story", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Tenant", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Category", "Category")
                         .WithMany("Tenants")
                         .HasForeignKey("categoryId")
                         .OnDelete(DeleteBehavior.Cascade);
@@ -1532,20 +2617,51 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("Category");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.TenantBranding", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantBranding", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", "Tenant")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithOne("Branding")
-                        .HasForeignKey("LoyaltyWalletApp.DataAccess.Entities.Main.TenantBranding", "TenantId")
+                        .HasForeignKey("Loyalty.DataAccess.Entities.Main.TenantBranding", "TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Tenant");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Transaction", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantLocation", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyCard", "LoyaltyCard")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.City", "City")
+                        .WithMany()
+                        .HasForeignKey("cityId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Country", "Country")
+                        .WithMany()
+                        .HasForeignKey("countryId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                        .WithOne("TenantLocation")
+                        .HasForeignKey("Loyalty.DataAccess.Entities.Main.TenantLocation", "tenantId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.TimeZone", "TimeZone")
+                        .WithMany()
+                        .HasForeignKey("timeZoneId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("City");
+
+                    b.Navigation("Country");
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("TimeZone");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Transaction", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyCard", "LoyaltyCard")
                         .WithMany("Transactions")
                         .HasForeignKey("LoyaltyCardId")
                         .OnDelete(DeleteBehavior.Restrict)
@@ -1554,9 +2670,9 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("LoyaltyCard");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.WalletCredential", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.WalletCredential", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", "Tenant")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany("WalletCredentials")
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1565,9 +2681,9 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("Tenant");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.WalletPass", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.WalletPass", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyCard", "LoyaltyCard")
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyCard", "LoyaltyCard")
                         .WithMany("WalletPasses")
                         .HasForeignKey("LoyaltyCardId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1576,9 +2692,28 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("LoyaltyCard");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.WalveroWalletPass", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", "Tenant")
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", "ApplicationUser")
+                        .WithMany()
+                        .HasForeignKey("ApplicationUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ApplicationUser");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.ApplicationUser", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany("Admins")
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict);
@@ -1586,9 +2721,53 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.DeviceSession", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", "User")
+                        .WithMany("DeviceSessions")
+                        .HasForeignKey("ApplicationUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.Otp", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", "User")
+                        .WithMany("Otps")
+                        .HasForeignKey("ApplicationUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.PasswordResetToken", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", "User")
+                        .WithMany("PasswordResetTokens")
+                        .HasForeignKey("ApplicationUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.RefreshToken", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", "User")
+                        .WithMany("RefreshTokens")
+                        .HasForeignKey("ApplicationUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<int>", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationRole", null)
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationRole", null)
                         .WithMany()
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1597,7 +2776,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<int>", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", null)
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1606,7 +2785,7 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<int>", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", null)
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1615,13 +2794,13 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserRole<int>", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationRole", null)
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationRole", null)
                         .WithMany()
                         .HasForeignKey("RoleId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", null)
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -1630,14 +2809,14 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<int>", b =>
                 {
-                    b.HasOne("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", null)
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.CardTemplate", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.CardTemplate", b =>
                 {
                     b.Navigation("Icons");
 
@@ -1645,31 +2824,41 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Category", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Category", b =>
                 {
                     b.Navigation("Tenants");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Customer", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Country", b =>
+                {
+                    b.Navigation("Cities");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Customer", b =>
                 {
                     b.Navigation("LoyaltyCards");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyCard", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyCard", b =>
                 {
                     b.Navigation("Transactions");
 
                     b.Navigation("WalletPasses");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.LoyaltyProgram", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", b =>
                 {
                     b.Navigation("LoyaltyCards");
 
                     b.Navigation("Rewards");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Main.Tenant", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.StoreFeedback", b =>
+                {
+                    b.Navigation("Replies");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Tenant", b =>
                 {
                     b.Navigation("Admins");
 
@@ -1679,14 +2868,24 @@ namespace LoyaltyWalletApp.DataAccess.Migrations
 
                     b.Navigation("LoyaltyPrograms");
 
+                    b.Navigation("TenantLocation");
+
                     b.Navigation("WalletCredentials");
                 });
 
-            modelBuilder.Entity("LoyaltyWalletApp.DataAccess.Entities.Users.ApplicationUser", b =>
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.ApplicationUser", b =>
                 {
                     b.Navigation("Customers");
 
+                    b.Navigation("DeviceSessions");
+
                     b.Navigation("DeviceTokens");
+
+                    b.Navigation("Otps");
+
+                    b.Navigation("PasswordResetTokens");
+
+                    b.Navigation("RefreshTokens");
                 });
 #pragma warning restore 612, 618
         }

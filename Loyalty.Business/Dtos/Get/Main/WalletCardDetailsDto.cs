@@ -38,6 +38,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? FacebookUrl { get; set; }
         public string? WhatsAppUrl { get; set; }
         public string? TelegramUrl { get; set; }
+        public string? MenuUrl { get; set; }
         public string BackgroundColor { get; set; } = "#FFFFFF";
         public string ForegroundColor { get; set; } = "#000000";
         public decimal? CashbackPercent { get; set; }

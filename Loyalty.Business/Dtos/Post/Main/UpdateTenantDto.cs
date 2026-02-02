@@ -19,6 +19,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? FacebookUrl { get; set; } = string.Empty;
         public string? WhatsAppUrl { get; set; } = string.Empty;
         public string? TelegramUrl { get; set; } = string.Empty;
+        public string? MenuUrl { get; set; } = string.Empty;
         public bool ShowOnHome { get; set; } = false;
         public List<int> admins { get; set; }
         public int categoryId { get; set; }

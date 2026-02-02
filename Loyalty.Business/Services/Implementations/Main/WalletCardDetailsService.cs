@@ -196,6 +196,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 FacebookUrl = tenant.FacebookUrl,
                 WhatsAppUrl = tenant.WhatsAppUrl,
                 TelegramUrl = tenant.TeleqramUrl,
+                MenuUrl = tenant.MenuUrl,
                 BackgroundColor = cardTemplate?.BackgroundColor ?? tenant.Branding?.BackgroundColor ?? "#FFFFFF",
                 ForegroundColor = cardTemplate?.ForegroundColor ?? tenant.Branding?.TextColor ?? "#000000",
                 CashbackPercent = cashbackPercent,
