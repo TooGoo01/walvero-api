@@ -1586,6 +1586,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var newPhoneNumber = dto.PhoneNumber?.Trim();
                 var isPhoneChanging = !string.IsNullOrEmpty(newPhoneNumber) && 
                                      newPhoneNumber != currentPhoneNumber;
+                var phoneNumberSkipped = false; // Telefon nömrəsi skip edildiyini izlə
 
                 // Əgər telefon nömrəsi dəyişirsə, köhnə nömrəni təsdiqləmək lazımdır
                 if (isPhoneChanging)
@@ -1640,38 +1641,47 @@ namespace Loyalty.Business.Services.Implementations.Users
                     var existingUser = await _userManager.FindByNameAsync(newPhoneNumber);
                     if (existingUser != null && existingUser.Id != userId.Value)
                     {
+                        // ApplicationUser üçün error qaytar
                         return ServiceResult<UpdateProfileResponseDto>.Fail("This phone number is already registered by another user.");
                     }
 
                     // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (Customer)
-                    // Əgər user-in TenantId-si varsa, həmin tenant-da customer yoxla
-                    if (user.TenantId.HasValue)
+                    // Hər hansı tenant-da bu nömrə ilə aktiv customer varsa, telefon dəyişikliyini skip et
+                    // Tenant-lara görə qruplaşdırıb hansı tenant-larda bu nömrə ilə customer var tapırıq
+                    var tenantsWithExistingCustomers = await _dbContext.Customers
+                        .Where(c => c.PhoneNumber == newPhoneNumber &&
+                                    c.IsActive &&
+                                    (c.applicationUserId == null || c.applicationUserId != userId.Value))
+                        .Select(c => c.TenantId)
+                        .Distinct()
+                        .ToListAsync(ct);
+                    
+                    if (tenantsWithExistingCustomers.Any())
                     {
-                        var existingCustomer = await _dbContext.Customers
-                            .FirstOrDefaultAsync(c => c.TenantId == user.TenantId.Value &&
-                                                      c.PhoneNumber == newPhoneNumber &&
-                                                      c.IsActive &&
-                                                      (c.applicationUserId == null || c.applicationUserId != userId.Value), ct);
-                        if (existingCustomer != null)
+                        // Telefon nömrəsi artıq istifadə olunur, telefon dəyişikliyini skip et
+                        // Digər məlumatları yenilə və davam et
+                        isPhoneChanging = false;
+                        phoneNumberSkipped = true;
+                    }
+
+                    // Əgər telefon nömrəsi dəyişikliyi mümkündürsə, OTP göndər
+                    if (isPhoneChanging)
+                    {
+                        // Yeni telefon nömrəsinə OTP göndər
+                        var sendResult = await SendOtpToNewPhoneAsync(userId.Value, newPhoneNumber, ct);
+                        if (!sendResult.Success)
                         {
-                            return ServiceResult<UpdateProfileResponseDto>.Fail("This phone number is already registered by another customer.");
+                            return ServiceResult<UpdateProfileResponseDto>.Fail(sendResult.Message ?? "Failed to send OTP to new phone number");
                         }
-                    }
 
-                    // Yeni telefon nömrəsinə OTP göndər
-                    var sendResult = await SendOtpToNewPhoneAsync(userId.Value, newPhoneNumber, ct);
-                    if (!sendResult.Success)
-                    {
-                        return ServiceResult<UpdateProfileResponseDto>.Fail(sendResult.Message ?? "Failed to send OTP to new phone number");
+                        return ServiceResult<UpdateProfileResponseDto>.Ok(new UpdateProfileResponseDto
+                        {
+                            RequiresOldPhoneVerification = false,
+                            RequiresNewPhoneVerification = true,
+                            Message = "OTP has been sent to your new phone number. Please verify to complete the update.",
+                            PendingNewPhoneNumber = newPhoneNumber // Yeni telefon nömrəsini qaytar ki, istifadəçi bilir hansı nömrəyə OTP göndərilib
+                        });
                     }
-
-                    return ServiceResult<UpdateProfileResponseDto>.Ok(new UpdateProfileResponseDto
-                    {
-                        RequiresOldPhoneVerification = false,
-                        RequiresNewPhoneVerification = true,
-                        Message = "OTP has been sent to your new phone number. Please verify to complete the update.",
-                        PendingNewPhoneNumber = newPhoneNumber // Yeni telefon nömrəsini qaytar ki, istifadəçi bilir hansı nömrəyə OTP göndərilib
-                    });
                 }
 
                 // Telefon nömrəsi dəyişmir və ya telefon dəyişikliyi tamamlanıb, məlumatları yenilə
@@ -1695,6 +1705,12 @@ namespace Loyalty.Business.Services.Implementations.Users
                         customer.LastName = dto.Surname;
                     if (!string.IsNullOrEmpty(dto.Email))
                         customer.Email = dto.Email;
+                    
+                    // Əgər customer.applicationUserId null-dursa, set et
+                    if (customer.applicationUserId == null)
+                    {
+                        customer.applicationUserId = userId.Value;
+                    }
                 }
 
                 if (customers.Any())
@@ -1703,11 +1719,17 @@ namespace Loyalty.Business.Services.Implementations.Users
                     await _dbContext.SaveChangesAsync(ct);
                 }
 
+                var message = "Profile updated successfully.";
+                if (phoneNumberSkipped)
+                {
+                    message = "Profile updated successfully. Phone number was not changed as it is already registered by another user or customer.";
+                }
+
                 return ServiceResult<UpdateProfileResponseDto>.Ok(new UpdateProfileResponseDto
                 {
                     RequiresOldPhoneVerification = false,
                     RequiresNewPhoneVerification = false,
-                    Message = "Profile updated successfully."
+                    Message = message
                 });
             }
             catch (Exception ex)
@@ -1785,19 +1807,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                 }
 
                 // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (Customer)
-                // Əgər user-in TenantId-si varsa, həmin tenant-da customer yoxla
-                if (user.TenantId.HasValue)
-                {
-                    var existingCustomer = await _dbContext.Customers
-                        .FirstOrDefaultAsync(c => c.TenantId == user.TenantId.Value &&
-                                                  c.PhoneNumber == newPhoneNumber &&
-                                                  c.IsActive &&
-                                                  (c.applicationUserId == null || c.applicationUserId != userId.Value), ct);
-                    if (existingCustomer != null)
-                    {
-                        return new ServiceResult(false, "This phone number is already registered by another customer.");
-                    }
-                }
+                // Hər hansı tenant-da bu nömrə ilə aktiv customer varsa, istifadə etmək olmaz
+               
 
                 // Müvəqqəti olaraq telefon nömrəsini dəyişdirib OTP yoxlayırıq
                 var tempPhone = user.PhoneNumber;
@@ -1830,18 +1841,36 @@ namespace Loyalty.Business.Services.Implementations.Users
                 }
 
                 // Customer entity-ləri də yenilə
-                var customers = await _dbContext.Customers
+                // Yeni telefon nömrəsi ilə hansı tenant-larda customer var tapırıq
+                var tenantsWithNewPhoneCustomers = await _dbContext.Customers
+                    .Where(c => c.PhoneNumber == newPhoneNumber && c.IsActive)
+                    .Select(c => c.TenantId)
+                    .Distinct()
+                    .ToListAsync(ct);
+
+                // User-ə bağlı customer-ləri tapırıq
+                var userCustomers = await _dbContext.Customers
                     .Where(c => c.applicationUserId == userId.Value)
                     .ToListAsync(ct);
 
-                foreach (var customer in customers)
+                foreach (var customer in userCustomers)
                 {
-                    customer.PhoneNumber = newPhoneNumber;
+                    // Əgər bu customer-in tenant-ında yeni telefon nömrəsi ilə customer varsa, telefon nömrəsini dəyişdirmə
+                    if (!tenantsWithNewPhoneCustomers.Contains(customer.TenantId))
+                    {
+                        customer.PhoneNumber = newPhoneNumber;
+                    }
+                    
+                    // Əgər customer.applicationUserId null-dursa, set et
+                    if (customer.applicationUserId == null)
+                    {
+                        customer.applicationUserId = userId.Value;
+                    }
                 }
 
-                if (customers.Any())
+                if (userCustomers.Any())
                 {
-                    _dbContext.Customers.UpdateRange(customers);
+                    _dbContext.Customers.UpdateRange(userCustomers);
                     await _dbContext.SaveChangesAsync(ct);
                 }
 
@@ -1915,19 +1944,15 @@ namespace Loyalty.Business.Services.Implementations.Users
                     }
 
                     // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (Customer)
-                    // Əgər user-in TenantId-si varsa, həmin tenant-da customer yoxla
-                    if (user.TenantId.HasValue)
-                    {
-                        var existingCustomer = await _dbContext.Customers
-                            .FirstOrDefaultAsync(c => c.TenantId == user.TenantId.Value &&
-                                                      c.PhoneNumber == dto.NewPhoneNumber &&
-                                                      c.IsActive &&
-                                                      (c.applicationUserId == null || c.applicationUserId != userId.Value), ct);
-                        if (existingCustomer != null)
-                        {
-                            return new ServiceResult(false, "This phone number is already registered by another customer.");
-                        }
-                    }
+                    // Hər hansı tenant-da bu nömrə ilə aktiv customer varsa, istifadə etmək olmaz
+                    //var existingCustomer = await _dbContext.Customers
+                    //    .FirstOrDefaultAsync(c => c.PhoneNumber == dto.NewPhoneNumber &&
+                    //                              c.IsActive &&
+                    //                              (c.applicationUserId == null || c.applicationUserId != userId.Value), ct);
+                    //if (existingCustomer != null)
+                    //{
+                    //    return new ServiceResult(false, "This phone number is already registered by another customer.");
+                    //}
 
                     // Yeni telefon nömrəsinə OTP göndər
                     var sendResult = await SendOtpToNewPhoneAsync(userId.Value, dto.NewPhoneNumber, ct);
