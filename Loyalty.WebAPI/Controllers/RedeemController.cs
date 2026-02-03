@@ -82,10 +82,10 @@ namespace Loyalty.WebAPI.Controllers
 
             if (tpl.TemplateType == CardTemplateType.TierBased)
             {
-                dto.Tiers.Add(new ProgramUiConfigDto.TierRow { Name = "Bronze", Threshold = tpl.SilverThreshold, Percent = tpl.BronzePercent, IconUrl = AbsHttps(tpl.BronzeIconUrl) });
-                dto.Tiers.Add(new ProgramUiConfigDto.TierRow { Name = "Silver", Threshold = tpl.GoldThreshold, Percent = tpl.SilverPercent, IconUrl = AbsHttps(tpl.SilverIconUrl) });
-                dto.Tiers.Add(new ProgramUiConfigDto.TierRow { Name = "Gold", Threshold = tpl.PlatinumThreshold, Percent = tpl.GoldPercent, IconUrl = AbsHttps(tpl.GoldIconUrl) });
-                dto.Tiers.Add(new ProgramUiConfigDto.TierRow { Name = "Platinum", Threshold = null, Percent = tpl.PlatinumPercent, IconUrl = AbsHttps(tpl.PlatinumIconUrl) });
+                dto.Tiers.Add(new ProgramUiConfigDto.TierRow { Name = "Bronze", Threshold = tpl.SilverThreshold, Percent = tpl.BronzePercent });
+                dto.Tiers.Add(new ProgramUiConfigDto.TierRow { Name = "Silver", Threshold = tpl.GoldThreshold, Percent = tpl.SilverPercent });
+                dto.Tiers.Add(new ProgramUiConfigDto.TierRow { Name = "Gold", Threshold = tpl.PlatinumThreshold, Percent = tpl.GoldPercent });
+                dto.Tiers.Add(new ProgramUiConfigDto.TierRow { Name = "Platinum", Threshold = null, Percent = tpl.PlatinumPercent });
             }
 
             return Ok(dto);
@@ -283,9 +283,9 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             if (tpl.TemplateType == CardTemplateType.TierBased)
             {
                 if (tpl.OneRedeem == true)
-                    (tierName, tierPercent,tierPercentCash, tierIconUrl) = TierResolverDouble(currentPoints, tpl, AbsHttps);
+                    (tierName, tierPercent,tierPercentCash, tierIconUrl) = TierResolverDouble(currentPoints, tpl);
                 else
-                    (tierName, tierPercent,tierPercentCash, tierIconUrl) = TierResolver(card.CurrentPoints, tpl, AbsHttps);
+                    (tierName, tierPercent,tierPercentCash, tierIconUrl) = TierResolver(card.CurrentPoints, tpl);
             }
 
             // Get completedCycles from card (AvailableRewardCount is populated by PopulateFreeRewardFieldsAsync)
@@ -424,9 +424,9 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             if (tpl.TemplateType != CardTemplateType.ProgressBased)
             {
                 if (tpl.OneRedeem == true)
-                    (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolverDouble(delta, tpl, AbsHttps);
+                    (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolverDouble(delta, tpl);
                 else
-                    (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolver(card.CurrentPoints, tpl, AbsHttps);
+                    (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolver(card.CurrentPoints, tpl);
             }
            
             int? percent=model.paymentMethod=="cash" ? tierPercentCash : tierPercent;
@@ -464,46 +464,46 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
         }
 
         // helper-lər eyni qala bilər:
-        private string? AbsHttps(string? urlOrPath)
-        {
-            if (string.IsNullOrWhiteSpace(urlOrPath))
-                return null;
+        //private string? AbsHttps(string? urlOrPath)
+        //{
+        //    if (string.IsNullOrWhiteSpace(urlOrPath))
+        //        return null;
 
-            // scheme-relative: //example.com/path
-            if (urlOrPath.StartsWith("//", StringComparison.Ordinal))
-                urlOrPath = "https:" + urlOrPath;
+        //    // scheme-relative: //example.com/path
+        //    if (urlOrPath.StartsWith("//", StringComparison.Ordinal))
+        //        urlOrPath = "https:" + urlOrPath;
 
-            // Absolute URL -> force https
-            if (Uri.TryCreate(urlOrPath, UriKind.Absolute, out var absolute))
-            {
-                if (absolute.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
-                    return absolute.ToString();
+        //    // Absolute URL -> force https
+        //    if (Uri.TryCreate(urlOrPath, UriKind.Absolute, out var absolute))
+        //    {
+        //        if (absolute.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+        //            return absolute.ToString();
 
-                return new UriBuilder(absolute) { Scheme = "https", Port = -1 }.Uri.ToString();
-            }
+        //        return new UriBuilder(absolute) { Scheme = "https", Port = -1 }.Uri.ToString();
+        //    }
 
-            // Relative -> build from PublicBaseUrl
-            var publicBaseUrl = "https://walvero.com"; // inject IConfiguration _configuration
+        //    // Relative -> build from PublicBaseUrl
+        //    var publicBaseUrl = "https://walvero.com"; // inject IConfiguration _configuration
 
-            if (string.IsNullOrWhiteSpace(publicBaseUrl) ||
-                !Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out var baseUri))
-            {
-                // fallback (istəsən tamamilə throw da edə bilərsən)
-                var host = Request.Headers["X-Forwarded-Host"].ToString();
-                if (string.IsNullOrWhiteSpace(host))
-                    host = Request.Host.Value;
+        //    if (string.IsNullOrWhiteSpace(publicBaseUrl) ||
+        //        !Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out var baseUri))
+        //    {
+        //        // fallback (istəsən tamamilə throw da edə bilərsən)
+        //        var host = Request.Headers["X-Forwarded-Host"].ToString();
+        //        if (string.IsNullOrWhiteSpace(host))
+        //            host = Request.Host.Value;
 
-                host = host.Split(',')[0].Trim();
+        //        host = host.Split(',')[0].Trim();
 
-                if (string.IsNullOrWhiteSpace(host) || host.Contains(" ") || host.Contains("|") || host.Contains("/") || host.Contains("\\"))
-                    throw new InvalidOperationException($"Invalid host for URL building: '{host}'");
+        //        if (string.IsNullOrWhiteSpace(host) || host.Contains(" ") || host.Contains("|") || host.Contains("/") || host.Contains("\\"))
+        //            throw new InvalidOperationException($"Invalid host for URL building: '{host}'");
 
-                baseUri = new Uri($"https://{host}");
-            }
+        //        baseUri = new Uri($"https://{host}");
+        //    }
 
-            var rel = urlOrPath.TrimStart('/', '\\');
-            return new Uri(baseUri, rel).ToString();
-        }
+        //    var rel = urlOrPath.TrimStart('/', '\\');
+        //    return new Uri(baseUri, rel).ToString();
+        //}
 
         private static string? EnsureHttpsOrNull(string? url)
         {
