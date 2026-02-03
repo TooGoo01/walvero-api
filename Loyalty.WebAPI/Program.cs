@@ -12,6 +12,7 @@ using Loyalty.Infrastructure.Utilities.Security.Encryption;
 using Loyalty.Infrastructure.Utilities.Security.Jwt;
 using Loyalty.WebAPI.Tenancy;
 using LoyaltyWalletApp.WEBUI.Tenancy;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
@@ -19,7 +20,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
-using Serilog.Debugging;
+using Serilog.Sinks.ApplicationInsights.TelemetryConverters;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -203,7 +204,14 @@ builder.Services.AddSwaggerGen(c =>
 //    .Enrich.FromLogContext()
 //    .CreateLogger();
 
-//builder.Host.UseSerilog();
+builder.Services.AddApplicationInsightsTelemetry();
+
+builder.Host.UseSerilog((ctx, services, lc) =>
+{
+    lc.ReadFrom.Configuration(ctx.Configuration)
+      .ReadFrom.Services(services)
+      .Enrich.FromLogContext();
+});
 
 var app = builder.Build();
 
