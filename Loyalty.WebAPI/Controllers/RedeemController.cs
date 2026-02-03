@@ -466,24 +466,45 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
         // helper-lər eyni qala bilər:
         private string? AbsHttps(string? urlOrPath)
         {
-            // eyni implementasiya, amma API controllerdə Request.Host-dan istifadə edirsənsə,
-            // burası da işləyəcək
-            if (string.IsNullOrWhiteSpace(urlOrPath)) return null;
-            if (Uri.TryCreate(urlOrPath, UriKind.Absolute, out var u))
+            if (string.IsNullOrWhiteSpace(urlOrPath))
+                return null;
+
+            // scheme-relative: //example.com/path
+            if (urlOrPath.StartsWith("//", StringComparison.Ordinal))
+                urlOrPath = "https:" + urlOrPath;
+
+            // Absolute URL -> force https
+            if (Uri.TryCreate(urlOrPath, UriKind.Absolute, out var absolute))
             {
-                if (u.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
-                    return urlOrPath;
-                var https = new UriBuilder(u) { Scheme = "https", Port = -1 }.Uri.ToString();
-                return https;
+                if (absolute.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+                    return absolute.ToString();
+
+                return new UriBuilder(absolute) { Scheme = "https", Port = -1 }.Uri.ToString();
             }
 
-            var baseUrl = $"{Request.Scheme}://{Request.Host}";
-            if (!baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                baseUrl = "https://" + Request.Host;
+            // Relative -> build from PublicBaseUrl
+            var publicBaseUrl = "https://walvero.com"; // inject IConfiguration _configuration
 
-            var rel = "/" + urlOrPath.TrimStart('/', '\\');
-            return baseUrl + rel;
+            if (string.IsNullOrWhiteSpace(publicBaseUrl) ||
+                !Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out var baseUri))
+            {
+                // fallback (istəsən tamamilə throw da edə bilərsən)
+                var host = Request.Headers["X-Forwarded-Host"].ToString();
+                if (string.IsNullOrWhiteSpace(host))
+                    host = Request.Host.Value;
+
+                host = host.Split(',')[0].Trim();
+
+                if (string.IsNullOrWhiteSpace(host) || host.Contains(" ") || host.Contains("|") || host.Contains("/") || host.Contains("\\"))
+                    throw new InvalidOperationException($"Invalid host for URL building: '{host}'");
+
+                baseUri = new Uri($"https://{host}");
+            }
+
+            var rel = urlOrPath.TrimStart('/', '\\');
+            return new Uri(baseUri, rel).ToString();
         }
+
         private static string? EnsureHttpsOrNull(string? url)
         {
             if (string.IsNullOrWhiteSpace(url)) return null;    
