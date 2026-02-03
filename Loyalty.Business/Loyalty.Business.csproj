@@ -10,6 +10,7 @@
 		<PackageReference Include="dotAPNS" Version="4.6.0" />
 		<PackageReference Include="Google.Apis.Auth" Version="1.71.0" />
 		<PackageReference Include="Google.Apis.Walletobjects.v1" Version="1.70.0.3904" />
+		<PackageReference Include="Microsoft.ApplicationInsights" Version="2.23.0" />
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.17" />
 		<PackageReference Include="Microsoft.AspNetCore.Hosting.Abstractions" Version="2.3.0" />
 		<PackageReference Include="Microsoft.AspNetCore.StaticFiles" Version="2.3.0" />

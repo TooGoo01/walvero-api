@@ -1,4 +1,5 @@
-﻿using Loyalty.Business.Hubs;
+﻿using Loyalty.Business.Exceptions;
+using Loyalty.Business.Hubs;
 using Loyalty.Business.Services;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.Business.Services.Implementations.Main;
@@ -232,6 +233,7 @@ else
     app.UseHttpsRedirection();
     app.UseSwagger();
     app.UseSwaggerUI();
+    app.UseExceptionHandler(builder => builder.Run(DefaultExceptionHandler.HandleExceptionAsync));
 }
 
 app.UseCors("AllowAll");
