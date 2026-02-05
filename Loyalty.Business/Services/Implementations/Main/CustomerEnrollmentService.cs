@@ -17,6 +17,7 @@ using Loyalty.DataAccess.UnitOfWorks;
 using Loyalty.Infrastructure.Extensions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Data.Entity.Core.Metadata.Edm;
 using static System.Net.WebRequestMethods;
@@ -39,6 +40,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IMapper _mapper;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ICardNumberGenerator _cardNumberGenerator;
+        private readonly ILogger<CustomerEnrollmentService> _logger;
         public CustomerEnrollmentService(
             ITenantProvider tp,
             ICustomerRepository customerRepo,
@@ -55,7 +57,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             IMapper mapper
 ,
 UserManager<ApplicationUser> userManager,
-            ICardNumberGenerator cardNumberGenerator)
+            ICardNumberGenerator cardNumberGenerator,
+            ILogger<CustomerEnrollmentService> logger)
         {
             _tp = tp; _customerRepo = customerRepo; _programRepo = programRepo;
             _cardRepo = cardRepo; _cardSvc = cardSvc; _credSvc = credSvc;
@@ -65,9 +68,7 @@ UserManager<ApplicationUser> userManager,
             _mapper = mapper;
             _userManager = userManager;
             _cardNumberGenerator = cardNumberGenerator;
-            _tenantBrandingRepository = tenantBrandingRepository;
-            _mapper = mapper;
-            _userManager = userManager;
+            _logger = logger;
         }
 
 
@@ -260,57 +261,80 @@ UserManager<ApplicationUser> userManager,
             // 5) Platforma görə Google / Apple pass yarad
             if (string.Equals(dto.DevicePlatform, "android", StringComparison.OrdinalIgnoreCase))
             {
-                var gw = await _googleFactory.CreateForTenantAsync(tenantId, program.Id, ct);
-
-                await gw.EnsureClassAsync(snapshot, program.ProgramName, ct);
-
-                await gw.CreateOrGetObjectByCardIdAsync(
-                    loyaltyCardId: card.Id,
-                    tpl: snapshot,
-                    accountName: $"{customer.FirstName} {customer.LastName}".Trim(),
-                    barcodeValue: card.BarcodeValue,
-                    currentPoints: card.CurrentPoints,
-                    ct: ct
-                );
-
-                var save = await gw.GenerateSaveLinkByCardIdAsync(card.Id, ct);
-                if (save.Success)
-                    googleUrl = save.Data as string ?? save.Message as string;
-
-                card.IsAndroid = true;
-                platformUpdated = true;
-            }
-            else if (string.Equals(dto.DevicePlatform, "ios", StringComparison.OrdinalIgnoreCase))
-            {
-                var acred = await _credSvc.GetByProgram(tenantId, WalletPlatform.AppleWallet);
-                if (acred?.Success == true && acred.Data is GetWalletCredentialDto c)
+                try
                 {
-                    var appleCreds = new AppleWalletRuntimeCreds
-                    {
-                        TeamIdentifier = c.TeamIdentifier!,
-                        PassTypeIdentifier = c.PassTypeIdentifier!,
-                        CertP12Path = ToAbs(c.AppleCertificateUrl),
-                        CertPassword = c.CertificatePassword,
-                        WwdrCertPath = ToAbs(c.AppleWwdrCertUrl),
-                        WebServiceUrl = c.PassKitServiceUrl,
-                        AuthToken = c.PassKitAuthToken
-                    };
+                    var gw = await _googleFactory.CreateForTenantAsync(tenantId, program.Id, ct);
 
-                    var appleRes = await _appleService.GeneratePassUrlByCardIdAsync(
+                    await gw.EnsureClassAsync(snapshot, program.ProgramName, ct);
+
+                    await gw.CreateOrGetObjectByCardIdAsync(
                         loyaltyCardId: card.Id,
-                        creds: appleCreds,
-                        snapshot: snapshot,
-                        customerFullName: $"{customer.FirstName} {customer.LastName}".Trim(),
-                        barcodeValue: card.BarcodeValue ?? card.CardNumber,
+                        tpl: snapshot,
+                        accountName: $"{customer.FirstName} {customer.LastName}".Trim(),
+                        barcodeValue: card.BarcodeValue,
+                        currentPoints: card.CurrentPoints,
                         ct: ct
                     );
 
-                    if (appleRes.Success)
-                        appleUrl = appleRes.Data as string ?? appleRes.Message as string;
-                }
+                    var save = await gw.GenerateSaveLinkByCardIdAsync(card.Id, ct);
+                    if (save.Success)
+                        googleUrl = save.Data as string ?? save.Message as string;
 
-                card.IsIOS = true;
-                platformUpdated = true;
+                    card.IsAndroid = true;
+                    platformUpdated = true;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Google Wallet credentials missing or error occurred during enrollment. TenantId={TenantId}, ProgramId={ProgramId}, CardId={CardId}, CustomerId={CustomerId}", 
+                        tenantId, program.Id, card.Id, customer.Id);
+                    // Continue without Google wallet URL - do not set IsAndroid flag
+                }
+            }
+            else if (string.Equals(dto.DevicePlatform, "ios", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var acred = await _credSvc.GetByProgram(tenantId, WalletPlatform.AppleWallet);
+                    if (acred?.Success == true && acred.Data is GetWalletCredentialDto c)
+                    {
+                        var appleCreds = new AppleWalletRuntimeCreds
+                        {
+                            TeamIdentifier = c.TeamIdentifier!,
+                            PassTypeIdentifier = c.PassTypeIdentifier!,
+                            CertP12Path = ToAbs(c.AppleCertificateUrl),
+                            CertPassword = c.CertificatePassword,
+                            WwdrCertPath = ToAbs(c.AppleWwdrCertUrl),
+                            WebServiceUrl = c.PassKitServiceUrl,
+                            AuthToken = c.PassKitAuthToken
+                        };
+
+                        var appleRes = await _appleService.GeneratePassUrlByCardIdAsync(
+                            loyaltyCardId: card.Id,
+                            creds: appleCreds,
+                            snapshot: snapshot,
+                            customerFullName: $"{customer.FirstName} {customer.LastName}".Trim(),
+                            barcodeValue: card.BarcodeValue ?? card.CardNumber,
+                            ct: ct
+                        );
+
+                        if (appleRes.Success)
+                            appleUrl = appleRes.Data as string ?? appleRes.Message as string;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Apple Wallet credentials not found. TenantId={TenantId}, ProgramId={ProgramId}, CardId={CardId}, CustomerId={CustomerId}", 
+                            tenantId, program.Id, card.Id, customer.Id);
+                    }
+
+                    card.IsIOS = true;
+                    platformUpdated = true;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Apple Wallet credentials missing or error occurred during enrollment. TenantId={TenantId}, ProgramId={ProgramId}, CardId={CardId}, CustomerId={CustomerId}", 
+                        tenantId, program.Id, card.Id, customer.Id);
+                    // Continue without Apple wallet URL - do not set IsIOS flag
+                }
             }
 
             var needsFinalUpdate = hasPendingCardUpdate || platformUpdated;
@@ -390,54 +414,76 @@ UserManager<ApplicationUser> userManager,
             string? googleUrl = null, appleUrl = null;
             if(dto.DevicePlatform == "android")
             {
-                var gw = await _googleFactory.CreateForTenantAsync(tenantId, program.Id, ct);
-                await gw.EnsureClassAsync(snapshot, program.ProgramName, ct);
-                await gw.CreateOrGetObjectByCardIdAsync(
-                    loyaltyCardId: card.Id,
-                    tpl: snapshot,
-                    accountName: $"{customer.FirstName} {customer.LastName}".Trim(),
-                    barcodeValue: card.BarcodeValue,
-                    currentPoints:card.CurrentPoints,
-                    ct: ct
-                );
-                var save = await gw.GenerateSaveLinkByCardIdAsync(card.Id, ct);
-                if (save.Success) googleUrl = (string?)save.Data ?? save.Message as string;
-                card.IsAndroid = true;
-
+                try
+                {
+                    var gw = await _googleFactory.CreateForTenantAsync(tenantId, program.Id, ct);
+                    await gw.EnsureClassAsync(snapshot, program.ProgramName, ct);
+                    await gw.CreateOrGetObjectByCardIdAsync(
+                        loyaltyCardId: card.Id,
+                        tpl: snapshot,
+                        accountName: $"{customer.FirstName} {customer.LastName}".Trim(),
+                        barcodeValue: card.BarcodeValue,
+                        currentPoints:card.CurrentPoints,
+                        ct: ct
+                    );
+                    var save = await gw.GenerateSaveLinkByCardIdAsync(card.Id, ct);
+                    if (save.Success) googleUrl = (string?)save.Data ?? save.Message as string;
+                    card.IsAndroid = true;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Google Wallet credentials missing or error occurred during verification. TenantId={TenantId}, ProgramId={ProgramId}, CardId={CardId}, CustomerId={CustomerId}", 
+                        tenantId, program.Id, card.Id, customer.Id);
+                    // Continue without Google wallet URL - do not set IsAndroid flag
+                }
             }
             else if(dto.DevicePlatform == "ios")
             {
-                var acred = await _credSvc.GetByProgram(tenantId, WalletPlatform.AppleWallet);
-                if (acred?.Success == true && acred.Data is GetWalletCredentialDto c)
+                try
                 {
-                    // WWDR / P12 yollarını absolute et
-
-
-                    var appleCreds = new AppleWalletRuntimeCreds
+                    var acred = await _credSvc.GetByProgram(tenantId, WalletPlatform.AppleWallet);
+                    if (acred?.Success == true && acred.Data is GetWalletCredentialDto c)
                     {
-                        TeamIdentifier = c.TeamIdentifier!,          // DB
-                        PassTypeIdentifier = c.PassTypeIdentifier!,      // DB
-                        CertP12Path = ToAbs(c.AppleCertificateUrl),        // DB-də saxladığın nisbi yol
-                        CertPassword = c.CertificatePassword,      // DB
-                        WwdrCertPath = ToAbs(c.AppleWwdrCertUrl),   // DB (WWDR .cer)
-                        WebServiceUrl = c.PassKitServiceUrl,        // DB (opsional – push update üçün)
-                        AuthToken = c.PassKitAuthToken          // DB (opsional)
-                    };
+                        // WWDR / P12 yollarını absolute et
 
-                    // Apple pass yarat/yaxud mövcudu reuse et → URL
-                    var appleRes = await _appleService.GeneratePassUrlByCardIdAsync(
-                         loyaltyCardId: card.Id,
-                         creds: appleCreds,
-                         snapshot: snapshot,
-                         customerFullName: $"{customer.FirstName} {customer.LastName}".Trim(),
-                         barcodeValue: card.BarcodeValue ?? card.CardNumber,
-                         ct: ct
-                     );
 
-                    if (appleRes.Success)
-                        appleUrl = appleRes.Data as string ?? appleRes.Message as string;
+                        var appleCreds = new AppleWalletRuntimeCreds
+                        {
+                            TeamIdentifier = c.TeamIdentifier!,          // DB
+                            PassTypeIdentifier = c.PassTypeIdentifier!,      // DB
+                            CertP12Path = ToAbs(c.AppleCertificateUrl),        // DB-də saxladığın nisbi yol
+                            CertPassword = c.CertificatePassword,      // DB
+                            WwdrCertPath = ToAbs(c.AppleWwdrCertUrl),   // DB (WWDR .cer)
+                            WebServiceUrl = c.PassKitServiceUrl,        // DB (opsional – push update üçün)
+                            AuthToken = c.PassKitAuthToken          // DB (opsional)
+                        };
+
+                        // Apple pass yarat/yaxud mövcudu reuse et → URL
+                        var appleRes = await _appleService.GeneratePassUrlByCardIdAsync(
+                             loyaltyCardId: card.Id,
+                             creds: appleCreds,
+                             snapshot: snapshot,
+                             customerFullName: $"{customer.FirstName} {customer.LastName}".Trim(),
+                             barcodeValue: card.BarcodeValue ?? card.CardNumber,
+                             ct: ct
+                         );
+
+                        if (appleRes.Success)
+                            appleUrl = appleRes.Data as string ?? appleRes.Message as string;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Apple Wallet credentials not found. TenantId={TenantId}, ProgramId={ProgramId}, CardId={CardId}, CustomerId={CustomerId}", 
+                            tenantId, program.Id, card.Id, customer.Id);
+                    }
+                    card.IsIOS = true;
                 }
-                card.IsIOS = true;
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Apple Wallet credentials missing or error occurred during verification. TenantId={TenantId}, ProgramId={ProgramId}, CardId={CardId}, CustomerId={CustomerId}", 
+                        tenantId, program.Id, card.Id, customer.Id);
+                    // Continue without Apple wallet URL - do not set IsIOS flag
+                }
             }
             _uow.Repository<LoyaltyCard>().Update(card);
             _uow.Commit();

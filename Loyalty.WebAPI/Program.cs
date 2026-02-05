@@ -94,6 +94,8 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("TenantAdminOrModerator", policy =>
         policy.RequireRole("Tenant Admin", "Moderator"));
+    options.AddPolicy("SuperAdminOnly", policy =>
+       policy.RequireRole("Super Admin"));
 
     options.AddPolicy("TenantAdminOnly", policy =>
         policy.RequireRole("Tenant Admin"));

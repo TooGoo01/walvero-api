@@ -49,7 +49,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             var response = _mapper.Map<List<GetTransactionDto>>(respose);
             return new ServiceResult(true, response);
         }
+        public async Task<ServiceResult> GetByTenantIdAndDate(int tenantId, DateOnly startDate, DateOnly endDate)
+        {
+            var respose = await _transactionRepository.GetByTenantIdDateAsync(tenantId, startDate, endDate);
 
+            var response = _mapper.Map<List<GetTransactionDto>>(respose);
+            return new ServiceResult(true, response);
+        }
         public Task<ServiceResult> GetLast()
         {
             throw new NotImplementedException();

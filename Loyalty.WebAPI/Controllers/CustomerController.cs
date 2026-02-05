@@ -1,4 +1,5 @@
-﻿using Loyalty.Business.Dtos.Post.Main;
+﻿using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Dtos.Post.Users;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
@@ -18,10 +19,11 @@ namespace Loyalty.WebAPI.Controllers
     public class CustomerController : ControllerBase
     {
         private readonly ICustomerEnrollmentService _customerEnrollmentService;
-
-        public CustomerController(ICustomerEnrollmentService customerEnrollmentService)
+        private readonly ITenantProvider _tenantProvider;
+        public CustomerController(ICustomerEnrollmentService customerEnrollmentService, ITenantProvider tenantProvider)
         {
             _customerEnrollmentService = customerEnrollmentService;
+            _tenantProvider = tenantProvider;
         }
 
         [HttpPost]
@@ -63,6 +65,18 @@ namespace Loyalty.WebAPI.Controllers
                 return StatusCode(500, new ServiceResult(false, $"Server error: {ex.Message}"));
             }
         }
-      
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult<List<GetCustomerDto>>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult<WalletCardDetailsResponseDto>), (int)HttpStatusCode.NotFound)]
+        [ProducesResponseType(typeof(ServiceResult<WalletCardDetailsResponseDto>), (int)HttpStatusCode.Unauthorized)]
+        [ProducesResponseType(typeof(ServiceResult<WalletCardDetailsResponseDto>), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> List()
+        {
+            var id = _tenantProvider.CurrentTenantId ?? 0;
+            var result = await _customerEnrollmentService.GetTenantCustomers(id, "cc");
+            return Ok(result);
+        }
+
     }
 }

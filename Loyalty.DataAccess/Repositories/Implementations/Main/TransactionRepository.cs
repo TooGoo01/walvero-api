@@ -56,6 +56,23 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Take(limit)
                 .ToListAsync(cancellationToken);
         }
+        public async Task<IEnumerable<Transaction>> GetByTenantIdDateAsync(int tenantId, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default)
+        {
+            // Convert DateOnly to DateTimeOffset for comparison with LocalOccurredAt
+            // Use UTC offset for the comparison boundaries
+            var startDateTime = new DateTimeOffset(startDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero); // 00:00:00
+            var endDateTime = new DateTimeOffset(endDate.ToDateTime(TimeOnly.MaxValue), TimeSpan.Zero);   // 23:59:59.9999999
+
+            return await GetAsQueryable()
+                .Include(t => t.LoyaltyCard)
+                    .ThenInclude(lc => lc.Customer)
+                .Where(t =>
+                    t.LoyaltyCard.TenantId == tenantId &&
+                    t.LocalOccurredAt.Date >= startDate.ToDateTime(TimeOnly.MinValue) &&
+                    t.LocalOccurredAt.Date <= endDate.ToDateTime(TimeOnly.MaxValue))
+                .OrderByDescending(t => t.LocalOccurredAt)
+                .ToListAsync(cancellationToken);
+        }
 
         public async Task<int> GetTotalPointsEarnedAsync(int cardId, CancellationToken cancellationToken = default)
         {
