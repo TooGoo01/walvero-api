@@ -242,10 +242,13 @@ UserManager<ApplicationUser> userManager,
             string ToAbs(string? dbPath)
             {
                 if (string.IsNullOrWhiteSpace(dbPath)) return string.Empty;
-                if (dbPath.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return dbPath;
-
-                var rel = "/" + dbPath.TrimStart('/', '\\');
-                return baseUrl + rel;
+                if (dbPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+                    dbPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return dbPath;
+                
+                var normalizedBaseUrl = baseUrl.TrimEnd('/', '\\');
+                var normalizedPath = dbPath.TrimStart('~').TrimStart('/', '\\');
+                normalizedPath = string.IsNullOrWhiteSpace(normalizedPath) ? "/" : "/" + normalizedPath;
+                return normalizedBaseUrl + normalizedPath;
             }
 
             var snapshot = CardTemplateSnapshotFactory.From(

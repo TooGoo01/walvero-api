@@ -310,17 +310,36 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         /// <summary>
         /// Convert database path to absolute URL.
+        /// Handles Azure paths correctly by ensuring proper URL construction.
         /// </summary>
         private static string? ToAbsoluteUrl(string? dbPath, string baseUrl)
         {
             if (string.IsNullOrWhiteSpace(dbPath)) 
                 return null;
             
-            if (dbPath.StartsWith("http", StringComparison.OrdinalIgnoreCase)) 
+            // If already an absolute URL, return as-is
+            if (dbPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+                dbPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) 
                 return dbPath;
             
-            var relativePath = "/" + dbPath.TrimStart('/', '\\');
-            return baseUrl + relativePath;
+            // Normalize baseUrl - remove trailing slash if present
+            var normalizedBaseUrl = baseUrl.TrimEnd('/', '\\');
+            
+            // Normalize path - remove leading "~/" if present, then trim leading slashes/backslashes
+            var normalizedPath = dbPath.TrimStart('~');
+            normalizedPath = normalizedPath.TrimStart('/', '\\');
+            
+            // Ensure path starts with "/" for proper URL construction
+            if (!string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                normalizedPath = "/" + normalizedPath;
+            }
+            else
+            {
+                normalizedPath = "/";
+            }
+            
+            return normalizedBaseUrl + normalizedPath;
         }
     }
 }
