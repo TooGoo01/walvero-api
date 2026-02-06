@@ -218,6 +218,20 @@ builder.Host.UseSerilog((ctx, services, lc) =>
 
 var app = builder.Build();
 
+// === Forwarded Headers (MUST be before UseHttpsRedirection for Azure/reverse proxy) ===
+// This is critical for Apple PassKit Web Service to work correctly in Azure
+// Without this, requests from Apple servers behind load balancer may get 301/405 errors
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor |
+                       ForwardedHeaders.XForwardedProto |
+                       ForwardedHeaders.XForwardedHost,
+    // Azure App Service uses these IP ranges - trust them
+    // For production, you may want to restrict this further
+    RequireHeaderSymmetry = false,
+    ForwardLimit = null // Allow all forwarded headers
+});
+
 // === Static files ===
 var contentTypes = new FileExtensionContentTypeProvider();
 contentTypes.Mappings[".cer"] = "application/pkix-cert";
@@ -227,12 +241,6 @@ contentTypes.Mappings[".pem"] = "application/x-pem-file";
 contentTypes.Mappings[".p12"] = "application/x-pkcs12";
 contentTypes.Mappings[".pfx"] = "application/x-pkcs12";
 contentTypes.Mappings[".pkpass"] = "application/vnd.apple.pkpass";
-app.UseForwardedHeaders(new ForwardedHeadersOptions
-{
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor |
-                       ForwardedHeaders.XForwardedProto |
-                       ForwardedHeaders.XForwardedHost
-});
 app.UseStaticFiles(new StaticFileOptions
 {
     ContentTypeProvider = contentTypes
@@ -246,7 +254,14 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    app.UseHttpsRedirection();
+    // UseHttpsRedirection MUST come after UseForwardedHeaders
+    // so it can read X-Forwarded-Proto header correctly
+    // BUT: Apple PassKit Web Service sends HTTP requests, so we need to bypass HTTPS redirect for /v1/* paths
+    // UseWhen allows conditional middleware execution - skip HTTPS redirect for Apple PassKit endpoints
+    app.UseWhen(context => !context.Request.Path.StartsWithSegments("/v1"), branch =>
+    {
+        branch.UseHttpsRedirection();
+    });
     app.UseSwagger();
     app.UseSwaggerUI();
     app.UseExceptionHandler(builder => builder.Run(DefaultExceptionHandler.HandleExceptionAsync));

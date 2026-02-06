@@ -120,7 +120,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             };
 
             if (!string.IsNullOrWhiteSpace(req.WebServiceURL))
-                root["webServiceURL"] = "https://toogoo-003-site2.ntempurl.com";
+                root["webServiceURL"] = "https://appapi.walvero.com";
             if (!string.IsNullOrWhiteSpace(req.AuthenticationToken))
                 root["authenticationToken"] = req.AuthenticationToken;
 
