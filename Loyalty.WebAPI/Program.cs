@@ -14,6 +14,7 @@ using Loyalty.WebAPI.Tenancy;
 using LoyaltyWalletApp.WEBUI.Tenancy;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
@@ -226,7 +227,12 @@ contentTypes.Mappings[".pem"] = "application/x-pem-file";
 contentTypes.Mappings[".p12"] = "application/x-pkcs12";
 contentTypes.Mappings[".pfx"] = "application/x-pkcs12";
 contentTypes.Mappings[".pkpass"] = "application/vnd.apple.pkpass";
-
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor |
+                       ForwardedHeaders.XForwardedProto |
+                       ForwardedHeaders.XForwardedHost
+});
 app.UseStaticFiles(new StaticFileOptions
 {
     ContentTypeProvider = contentTypes
