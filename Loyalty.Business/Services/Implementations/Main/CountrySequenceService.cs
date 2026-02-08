@@ -1,8 +1,8 @@
-using Dapper;
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Context;
+using Loyalty.DataAccess.Entities.Sequences;
 using Microsoft.EntityFrameworkCore;
 
 namespace Loyalty.Business.Services.Implementations.Main
@@ -23,31 +23,19 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             try
             {
-                // Use raw SQL to query with IsActive filter since IsActive is ignored in DbContext configuration
-                var sql = @"
-                    SELECT 
-                        CountryCode,
-                        Name,
-                        Code,
-                        Flag
-                    FROM CountrySequences
-                    WHERE IsActive = 1
-                    ORDER BY CountryCode
-                ";
+              
+                var countries = await _dbContext.CountrySequences.Where(x => x.IsActive)
+                    .Select(cs => new GetCountrySequenceDto
+                    {
+                        CountryCode = cs.CountryCode,
+                        Name = cs.Name,
+                        Code = cs.Code,
+                        Flag = cs.Flag
+                    })
+                    .OrderBy(cs => cs.CountryCode)
+                    .ToListAsync(ct);
 
-                var connection = _dbContext.Database.GetDbConnection();
-                if (connection.State != System.Data.ConnectionState.Open)
-                    await connection.OpenAsync(ct);
-
-                var countries = await connection.QueryAsync<GetCountrySequenceDto>(
-                    new CommandDefinition(
-                        sql,
-                        commandTimeout: 30,
-                        cancellationToken: ct
-                    )
-                );
-
-                return new ServiceResult<List<GetCountrySequenceDto>>(true, countries.ToList());
+                return new ServiceResult<List<GetCountrySequenceDto>>(true, countries);
             }
             catch (Exception ex)
             {

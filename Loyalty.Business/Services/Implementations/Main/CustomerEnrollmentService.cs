@@ -135,7 +135,7 @@ UserManager<ApplicationUser> userManager,
 
             if (!string.IsNullOrWhiteSpace(phone))
                 customer = await _customerRepo.GetByPhoneAsync(tenantId, phone, ct);
-
+           
             if (customer is null)
             {
                 // Generate CardNumber before creating customer
@@ -170,12 +170,12 @@ UserManager<ApplicationUser> userManager,
                     _uow.Commit();
                 }
             }
-
+            customer.applicationUserId = int.Parse(userId);
             // 3) Son aktiv kartı reuse et / yoxdursa deactive kartı aktivləşdir / yoxdursa yarat
             var card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
             var hasPendingCardUpdate = false;
             var platformUpdated = false;
-            
+           
             // Əgər aktiv kart yoxdursa, deactive edilmiş kartı tap
             if (card is null)
             {
@@ -192,6 +192,7 @@ UserManager<ApplicationUser> userManager,
                     deactiveCard.Status = CardStatus.Active;
                     deactiveCard.ActivatedAt = DateTime.UtcNow;
                     deactiveCard.EditDate = DateTime.UtcNow;
+                  
                     deactiveCard.EditUserId = int.Parse(userId);
 
                     _uow.Repository<LoyaltyCard>().Update(deactiveCard);
