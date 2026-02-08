@@ -508,7 +508,7 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(cs => cs.UpdatedAt).IsRequired();
                 entity.Ignore(cs => cs.Id);
                 entity.Ignore(cs => cs.RegUserId);
-                entity.Ignore(cs => cs.IsActive);
+                // IsActive is now mapped so we can use it in LINQ queries
                 entity.Ignore(cs => cs.RegDate);
                 entity.Ignore(cs => cs.EditUserId);
                 entity.Ignore(cs => cs.EditDate);

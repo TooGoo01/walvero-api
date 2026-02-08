@@ -23,8 +23,8 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             try
             {
-              
-                var countries = await _dbContext.CountrySequences.Where(x => x.IsActive)
+                var countries = await _dbContext.CountrySequences
+                    .Where(cs => cs.IsActive)
                     .Select(cs => new GetCountrySequenceDto
                     {
                         CountryCode = cs.CountryCode,
