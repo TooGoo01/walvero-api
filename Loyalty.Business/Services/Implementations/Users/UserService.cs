@@ -623,7 +623,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 // Generate WalveroId before saving (if generator is available and phone number exists)
                 if (_walveroIdGenerator != null && !string.IsNullOrEmpty(user.PhoneNumber))
                 {
-                    var countryCode = _walveroIdGenerator.ExtractCountryCode(user.PhoneNumber);
+                    var countryCode = await _walveroIdGenerator.ExtractCountryCodeAsync(user.PhoneNumber, ct);
                     if (countryCode.HasValue)
                     {
                         try
@@ -649,7 +649,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     if (hasUniqueError)
                     {
                         // Regenerate WalveroId and retry once
-                        var countryCode = _walveroIdGenerator.ExtractCountryCode(user.PhoneNumber);
+                        var countryCode = await _walveroIdGenerator.ExtractCountryCodeAsync(user.PhoneNumber, ct);
                         if (countryCode.HasValue)
                         {
                             user.WalveroId = await _walveroIdGenerator.GenerateWalveroIdAsync(countryCode.Value, ct);
@@ -1182,7 +1182,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     // Generate WalveroId before saving (if generator is available and phone number exists)
                     if (_walveroIdGenerator != null && !string.IsNullOrEmpty(user.PhoneNumber))
                     {
-                        var countryCode = _walveroIdGenerator.ExtractCountryCode(user.PhoneNumber);
+                        var countryCode = await _walveroIdGenerator.ExtractCountryCodeAsync(user.PhoneNumber, ct);
                         if (countryCode.HasValue)
                         {
                             try
@@ -1207,7 +1207,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                         if (hasUniqueError)
                         {
                             // Regenerate WalveroId and retry once
-                            var countryCode = _walveroIdGenerator.ExtractCountryCode(user.PhoneNumber);
+                            var countryCode = await _walveroIdGenerator.ExtractCountryCodeAsync(user.PhoneNumber, ct);
                             if (countryCode.HasValue)
                             {
                                 user.WalveroId = await _walveroIdGenerator.GenerateWalveroIdAsync(countryCode.Value, ct);

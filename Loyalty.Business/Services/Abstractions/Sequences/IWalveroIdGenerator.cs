@@ -16,12 +16,13 @@ namespace Loyalty.Business.Services.Abstractions.Sequences
         Task<long> GenerateWalveroIdAsync(int countryCode, CancellationToken ct = default);
 
         /// <summary>
-        /// Extracts country code from phone number
+        /// Extracts country code from phone number and validates it against database
         /// Supports formats: +994, 994, 0 (with country code)
         /// </summary>
         /// <param name="phoneNumber">Phone number</param>
-        /// <returns>Country code or null if not found</returns>
-        int? ExtractCountryCode(string? phoneNumber);
+        /// <param name="ct">Cancellation token</param>
+        /// <returns>Country code or null if not found or not valid in database</returns>
+        Task<int?> ExtractCountryCodeAsync(string? phoneNumber, CancellationToken ct = default);
     }
 }
 

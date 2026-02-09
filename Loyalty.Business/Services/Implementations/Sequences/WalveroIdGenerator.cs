@@ -1,7 +1,8 @@
 using Loyalty.Business.Services.Abstractions.Sequences;
+using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Repositories.Abstractions.Sequences;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using System.Text.RegularExpressions;
 
 namespace Loyalty.Business.Services.Implementations.Sequences
 {
@@ -12,13 +13,16 @@ namespace Loyalty.Business.Services.Implementations.Sequences
     public class WalveroIdGenerator : IWalveroIdGenerator
     {
         private readonly ISequenceRepository _sequenceRepository;
+        private readonly LoyaltyWalletDbContext _dbContext;
         private readonly ILogger<WalveroIdGenerator>? _logger;
 
         public WalveroIdGenerator(
             ISequenceRepository sequenceRepository,
+            LoyaltyWalletDbContext dbContext,
             ILogger<WalveroIdGenerator>? logger = null)
         {
             _sequenceRepository = sequenceRepository ?? throw new ArgumentNullException(nameof(sequenceRepository));
+            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             _logger = logger;
         }
 
@@ -48,52 +52,109 @@ namespace Loyalty.Business.Services.Implementations.Sequences
             }
         }
 
-        public int? ExtractCountryCode(string? phoneNumber)
+        public async Task<int?> ExtractCountryCodeAsync(string? phoneNumber, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(phoneNumber))
                 return null;
 
-            // Remove all non-digit characters except +
-            var cleaned = phoneNumber.Trim();
-
-            // Patterns:
-            // +994501234567 -> 994
-            // 994501234567 -> 994
-            // 0501234567 (Azerbaijan) -> 994
-            // 336123456789 (France) -> 336
-
-            // Try +countryCode pattern first
-            if (cleaned.StartsWith("+"))
+            try
             {
-                // Extract first 1-3 digits after +
-                var match = Regex.Match(cleaned.Substring(1), @"^(\d{1,3})");
-                if (match.Success && int.TryParse(match.Groups[1].Value, out var code))
-                {
-                    return code;
-                }
-            }
+                // Remove all non-digit characters except +
+                var cleaned = phoneNumber.Trim();
 
-            // Try countryCode pattern (2-3 digits at start)
-            var countryMatch = Regex.Match(cleaned, @"^(\d{2,3})");
-            if (countryMatch.Success && int.TryParse(countryMatch.Groups[1].Value, out var countryCode))
-            {
-                // Common country codes
-                if (countryCode >= 1 && countryCode <= 999)
+                // Patterns:
+                // +994501234567 -> 994
+                // 994501234567 -> 994
+                // +447911123456 (UK) -> 44
+                // 447911123456 (UK) -> 44
+                // +12025551234 (USA) -> 1
+                // 12025551234 (USA) -> 1
+                // 0501234567 (Azerbaijan) -> 994
+                // 336123456789 (France) -> 336
+
+                int? extractedCode = null;
+
+                // Try +countryCode pattern first
+                if (cleaned.StartsWith("+"))
                 {
-                    // Special case: Azerbaijan local numbers starting with 0
-                    if (cleaned.StartsWith("0") && cleaned.Length >= 9)
+                    // Try 1-3 digits after + (check 1-digit codes first for better performance)
+                    // USA: +1, UK: +44, Azerbaijan: +994, France: +33, etc.
+                    // Start with 1-digit codes first (USA - 1) for better performance
+                    for (int len = 1; len <= 3; len++)
                     {
-                        return 994; // Azerbaijan country code
+                        if (cleaned.Length > len)
+                        {
+                            var potentialCode = cleaned.Substring(1, len);
+                            if (int.TryParse(potentialCode, out var code) && code > 0)
+                            {
+                                // Check if this code exists in database
+                                var exists = await _dbContext.CountrySequences
+                                    .AnyAsync(cs => cs.CountryCode == code && cs.IsActive, ct);
+                                
+                                if (exists)
+                                {
+                                    extractedCode = code;
+                                    _logger?.LogDebug("Extracted country code {CountryCode} from phone number (with + prefix)", code);
+                                    break;
+                                }
+                            }
+                        }
                     }
-
-                    return countryCode;
                 }
+
+                // If not found with + prefix, try without +
+                if (!extractedCode.HasValue)
+                {
+                    // Try 1-3 digits at start (check 1-digit codes first for better performance)
+                    for (int len = 1; len <= 3; len++)
+                    {
+                        if (cleaned.Length >= len)
+                        {
+                            var potentialCode = cleaned.Substring(0, len);
+                            if (int.TryParse(potentialCode, out var code) && code > 0)
+                            {
+                                // Check if this code exists in database
+                                var exists = await _dbContext.CountrySequences
+                                    .AnyAsync(cs => cs.CountryCode == code && cs.IsActive, ct);
+                                
+                                if (exists)
+                                {
+                                    extractedCode = code;
+                                    _logger?.LogDebug("Extracted country code {CountryCode} from phone number (without + prefix)", code);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Special case: Azerbaijan local numbers starting with 0
+                if (!extractedCode.HasValue && cleaned.StartsWith("0") && cleaned.Length >= 9)
+                {
+                    var exists = await _dbContext.CountrySequences
+                        .AnyAsync(cs => cs.CountryCode == 994 && cs.IsActive, ct);
+                    
+                    if (exists)
+                    {
+                        extractedCode = 994; // Azerbaijan country code
+                        _logger?.LogDebug("Extracted Azerbaijan country code (994) from local number starting with 0");
+                    }
+                }
+
+                if (!extractedCode.HasValue)
+                {
+                    _logger?.LogWarning("Could not extract valid country code from phone number: {Phone}", 
+                        phoneNumber?.Substring(0, Math.Min(10, phoneNumber.Length)));
+                }
+
+                return extractedCode;
             }
-
-            _logger?.LogWarning("Could not extract country code from phone number: {Phone}", 
-                phoneNumber?.Substring(0, Math.Min(10, phoneNumber.Length)));
-
-            return null;
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error extracting country code from phone number: {Phone}", 
+                    phoneNumber?.Substring(0, Math.Min(10, phoneNumber.Length)));
+                return null;
+            }
         }
     }
 }
