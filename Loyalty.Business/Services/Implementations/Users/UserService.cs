@@ -1840,6 +1840,20 @@ namespace Loyalty.Business.Services.Implementations.Users
                         $"Failed to update phone number: {string.Join(", ", updateResult.Errors.Select(e => e.Description))}");
                 }
 
+                // Link any existing Customer rows (across tenants) that already have this new phone number
+                // but are not linked to an application user yet.
+                // This prevents "Discover shows added but MyCards is empty" inconsistency.
+                var newPhoneCustomersToLink = await _dbContext.Customers
+                    .Where(c => c.IsActive &&
+                                c.PhoneNumber == newPhoneNumber &&
+                                c.applicationUserId == null)
+                    .ToListAsync(ct);
+
+                foreach (var c in newPhoneCustomersToLink)
+                {
+                    c.applicationUserId = userId.Value;
+                }
+
                 // Customer entity-ləri də yenilə
                 // Yeni telefon nömrəsi ilə hansı tenant-larda customer var tapırıq
                 var tenantsWithNewPhoneCustomers = await _dbContext.Customers
@@ -1868,9 +1882,15 @@ namespace Loyalty.Business.Services.Implementations.Users
                     }
                 }
 
+                var customersToUpdate = new List<Customer>();
+                if (newPhoneCustomersToLink.Any())
+                    customersToUpdate.AddRange(newPhoneCustomersToLink);
                 if (userCustomers.Any())
+                    customersToUpdate.AddRange(userCustomers);
+
+                if (customersToUpdate.Any())
                 {
-                    _dbContext.Customers.UpdateRange(userCustomers);
+                    _dbContext.Customers.UpdateRange(customersToUpdate);
                     await _dbContext.SaveChangesAsync(ct);
                 }
 

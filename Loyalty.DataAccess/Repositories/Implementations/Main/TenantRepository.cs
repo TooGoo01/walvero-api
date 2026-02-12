@@ -1,5 +1,6 @@
 ﻿using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Models;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Microsoft.EntityFrameworkCore;
@@ -135,6 +136,46 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             if (cityId != null)
                 query = query.Where(x => x.TenantLocation != null && x.TenantLocation.cityId == cityId);
             
+            return query.OrderBy(x => x.Id);
+        }
+
+        public IQueryable<Tenant> GetActiveWithApplicationUser(string? name, int applicationUserId, int? categoryId, int? countryId, int? cityId)
+        {
+            // PERFORMANCE: Use AsNoTracking for read-only queries
+            var query = GetAsQueryable()
+                .AsNoTracking()
+                .Include(x => x.Category)
+                .Include(x => x.LoyaltyPrograms)
+                    .ThenInclude(x => x.CardTemplate)
+                .Include(x => x.TenantLocation)
+                    .ThenInclude(tl => tl.Country)
+                .Include(x => x.TenantLocation)
+                    .ThenInclude(tl => tl.City)
+                .Where(x => x.IsActive && !x.IsHidden);
+
+            // Include only the requesting user's customers and only active cards (same as MyCards expectations)
+            query = query.Include(x => x.Customers
+                    .Where(c => c.applicationUserId == applicationUserId &&
+                                c.IsActive &&
+                                c.LoyaltyCards.Any(lc => lc.IsActive && lc.Status == CardStatus.Active)))
+                .ThenInclude(c => c.LoyaltyCards.Where(lc => lc.IsActive && lc.Status == CardStatus.Active));
+
+            // Text search filter
+            if (name != null)
+                query = query.Where(x => EF.Functions.Like(x.CompanyName, $"%{name}%"));
+
+            // Category filter
+            if (categoryId != null)
+                query = query.Where(x => x.categoryId == categoryId);
+
+            // FEATURE: Country filter
+            if (countryId != null)
+                query = query.Where(x => x.TenantLocation != null && x.TenantLocation.countryId == countryId);
+
+            // FEATURE: City filter
+            if (cityId != null)
+                query = query.Where(x => x.TenantLocation != null && x.TenantLocation.cityId == cityId);
+
             return query.OrderBy(x => x.Id);
         }
         public async Task<IReadOnlyList<HomeTenantProjection>> ListHomeTenantsAsync(int? countryId = null, int? cityId = null, CancellationToken ct = default)

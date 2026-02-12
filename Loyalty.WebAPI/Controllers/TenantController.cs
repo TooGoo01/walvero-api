@@ -33,6 +33,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         [ResponseCache(
             Duration = 60, 
+            VaryByHeader = "Authorization",
             VaryByQueryKeys = new[] { "currentPage", "pageSize", "categoryId", "countryId", "cityId", "name", "userName" })]
         public async Task<ActionResult<ServiceResult>> GetTenants(
             [FromQuery] TenantSearchDto? model, 

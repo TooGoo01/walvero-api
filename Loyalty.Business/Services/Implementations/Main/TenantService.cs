@@ -7,6 +7,7 @@ using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Entities.Users;
+using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.Repositories.Implementations.Main;
 using Loyalty.DataAccess.UnitOfWorks;
@@ -29,13 +30,22 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ITenantRepository _tenantRepository;
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly UserManager<ApplicationUser> _userManager;
-        public TenantService(ITenantRepository tenantRepository, IMapper mapper, IUnitOfWork unitOfWork, LoyaltyWalletDbContext dbContext, UserManager<ApplicationUser> userManager)
+        private readonly ITenantProvider _tenantProvider;
+
+        public TenantService(
+            ITenantRepository tenantRepository,
+            IMapper mapper,
+            IUnitOfWork unitOfWork,
+            LoyaltyWalletDbContext dbContext,
+            UserManager<ApplicationUser> userManager,
+            ITenantProvider tenantProvider)
         {
             _tenantRepository = tenantRepository;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _dbContext = dbContext;
             _userManager = userManager;
+            _tenantProvider = tenantProvider;
         }
 
         public async Task<ServiceResult> Add(AddTenantDto Dto)
@@ -101,13 +111,45 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (pageSize > 100)
                 pageSize = 100;
             
+            // Resolve user context for personalized "IsCustomer":
+            // 1) Prefer authenticated JWT user id (ClaimTypes.NameIdentifier via ITenantProvider)
+            // 2) If not authenticated but client passed phone in model.userName, resolve ApplicationUser by that phone
+            //    and compute "IsCustomer" for that user (prevents "isCustomer=true but MyCards empty" drift).
+            int? applicationUserId = null;
+
+            var currentUserIdStr = _tenantProvider.CurrentUserId;
+            if (!string.IsNullOrWhiteSpace(currentUserIdStr) && int.TryParse(currentUserIdStr, out var parsedUserId))
+            {
+                applicationUserId = parsedUserId;
+            }
+            else if (!string.IsNullOrWhiteSpace(model?.userName))
+            {
+                var phoneOrUserName = model.userName.Trim();
+
+                // Most of the system uses phone as UserName; still, check both PhoneNumber and UserName to be safe.
+                var resolvedUser = await _dbContext.Users
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(u => u.UserName == phoneOrUserName || u.PhoneNumber == phoneOrUserName);
+
+                if (resolvedUser != null)
+                    applicationUserId = resolvedUser.Id;
+            }
+
             // OPTIMIZATION: Get IQueryable and count BEFORE pagination
-            var query = _tenantRepository.GetActiveWithUser(
-                model.Name, 
-                model.userName, 
-                model.categoryId,
-                model.countryId,
-                model.cityId);
+            // Backward compatibility: if unauthenticated, fall back to the existing phone-based discover logic.
+            var query = applicationUserId.HasValue
+                ? _tenantRepository.GetActiveWithApplicationUser(
+                    model.Name,
+                    applicationUserId.Value,
+                    model.categoryId,
+                    model.countryId,
+                    model.cityId)
+                : _tenantRepository.GetActiveWithUser(
+                    model.Name,
+                    model.userName,
+                    model.categoryId,
+                    model.countryId,
+                    model.cityId);
             
             // Execute count query first (single database call)
             var totalCount = await query.CountAsync();
@@ -120,9 +162,11 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var mappedTenants = page.Select(tenant =>
             {
+                // When authenticated: repo already filtered Customers+Cards for the current user and active cards only.
+                // When unauthenticated: repo filtered by phone number (legacy).
                 var isCustomer = tenant.Customers != null &&
                                  tenant.Customers.Any(c => c.LoyaltyCards != null &&
-                                                           c.LoyaltyCards.Any(lc => lc.IsActive));
+                                                           c.LoyaltyCards.Any(lc => lc.IsActive && lc.Status == CardStatus.Active));
 
                 var loyaltyPrograms = tenant.LoyaltyPrograms?
                     .Where(lp => lp.IsActive)

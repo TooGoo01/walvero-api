@@ -249,6 +249,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (category != null)
             {
                 category.IsActive = false;
+                // Keep Status consistent with deactivated state (MyCards filters Status == Active)
+                category.Status = CardStatus.Cancelled;
+                category.EditDate = DateTime.UtcNow;
                 _unitOfWork.Repository<LoyaltyCard>().Update(category);
                 _unitOfWork.Commit();
                 return new ServiceResult(true);
