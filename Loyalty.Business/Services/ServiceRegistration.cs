@@ -5,6 +5,7 @@ using Loyalty.Business.Mappings; // Profil(lər)inizin namespace-i (məs: Tenant
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.Business.Services.Abstractions.Sequences;
 using Loyalty.Business.Services.Abstractions.Storage;
+using Loyalty.Business.Services.Abstractions.Storage.Azure;
 using Loyalty.Business.Services.Abstractions.Users;
 using Loyalty.Business.Services.Implementations;
 using Loyalty.Business.Services.Implementations.Main;
@@ -34,6 +35,7 @@ namespace Loyalty.Business.Services
             services.Configure<GoogleWalletOptions>(configuration.GetSection("GoogleWallet"));
 
             // 3) Servis lifetimeləri (Scoped)
+            services.AddScoped<IAzureStorage, AzureStorage>();
             services.AddScoped<IContactService, ContactService>();
             services.AddScoped<ITenantService, TenantService>();
             services.AddScoped<ITenantBrandingService, TenantBrandingService>();

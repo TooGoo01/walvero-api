@@ -107,7 +107,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult<GetMenuItemDto>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
-        public async Task<IActionResult> Add([FromBody] AddMenuItemDto dto)
+        public async Task<IActionResult> Add([FromForm] AddMenuItemDto dto)
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);

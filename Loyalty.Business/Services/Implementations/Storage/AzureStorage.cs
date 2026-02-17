@@ -49,7 +49,7 @@ namespace Loyalty.Business.Services.Implementations.Storage
 
                 BlobClient blobClient = _blobContainerClient.GetBlobClient(name);
                 await blobClient.UploadAsync(file.OpenReadStream());
-                datas.Add((name, $"https://walvero.blob.core.windows.net/{pathOrContainerName}/{name}"));
+                datas.Add((name, $"https://walverostorage.blob.core.windows.net/{pathOrContainerName}/{name}"));
             }
             return datas;
         }

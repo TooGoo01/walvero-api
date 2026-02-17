@@ -39,6 +39,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", policy => policy
         .WithOrigins(
             "http://10.0.2.2:5025",
+            "http://localhost:3000",
             "http://localhost:7285",
             "https://10.0.2.2:7285",
             "https://localhost:7285")

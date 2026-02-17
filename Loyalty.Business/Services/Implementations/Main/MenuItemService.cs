@@ -37,7 +37,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _unitOfWork.Commit();
 
             var response = _mapper.Map<GetMenuItemDto>(entity);
-            return new ServiceResult(true, response, "Menyu elementi uğurla əlavə edildi");
+            return new ServiceResult(true, response.Id, "Menyu elementi uğurla əlavə edildi");
         }
 
         public async Task<ServiceResult> Update(UpdateMenuItemDto dto)
@@ -51,7 +51,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _unitOfWork.Commit();
 
             var response = _mapper.Map<GetMenuItemDto>(entity);
-            return new ServiceResult(true, response, "Menyu elementi uğurla yeniləndi");
+            return new ServiceResult(true, response.Id, "Menyu elementi uğurla yeniləndi");
         }
 
         public async Task<ServiceResult> Delete(int id)
