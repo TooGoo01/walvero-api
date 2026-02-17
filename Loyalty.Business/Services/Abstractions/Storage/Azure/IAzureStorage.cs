@@ -1,4 +1,6 @@
-﻿namespace Loyalty.Business.Services.Abstractions.Storage.Azure
+﻿using Microsoft.AspNetCore.Http;
+
+namespace Loyalty.Business.Services.Abstractions.Storage.Azure
 {
     public interface IAzureStorage : IStorage
     {

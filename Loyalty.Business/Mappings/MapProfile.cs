@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Get.Users;
 using Loyalty.Business.Dtos.Post.Main;
@@ -111,6 +111,22 @@ namespace Loyalty.Business.Mappings
                   .ForMember(dest => dest.CountryName, opt => opt.MapFrom(src => src.Country != null ? src.Country.AzName : null))
                   .ForMember(dest => dest.CityName, opt => opt.MapFrom(src => src.City != null ? src.City.AzName : null))
                   .ForMember(dest => dest.TimeZoneName, opt => opt.MapFrom(src => src.TimeZone != null ? src.TimeZone.Name : null));
+
+            // Menu related mappings
+            CreateMap<MenuCategory, AddMenuCategoryDto>().ReverseMap();
+            CreateMap<MenuCategory, UpdateMenuCategoryDto>().ReverseMap();
+            CreateMap<MenuCategory, GetMenuCategoryDto>().ReverseMap();
+
+            CreateMap<MenuItem, AddMenuItemDto>().ReverseMap();
+            CreateMap<MenuItem, UpdateMenuItemDto>().ReverseMap();
+            CreateMap<MenuItem, GetMenuItemDto>().ReverseMap();
+
+            CreateMap<MenuItemImage, AddMenuItemImageDto>().ReverseMap();
+            CreateMap<MenuItemImage, GetMenuItemImageDto>().ReverseMap();
+
+            CreateMap<RestorantWifiInformation, AddRestorantWifiInformationDto>().ReverseMap();
+            CreateMap<RestorantWifiInformation, UpdateRestorantWifiInformationDto>().ReverseMap();
+            CreateMap<RestorantWifiInformation, GetRestorantWifiInformationDto>().ReverseMap();
 
 
             #endregion

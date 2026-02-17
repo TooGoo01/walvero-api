@@ -1,4 +1,4 @@
-﻿using Loyalty.DataAccess.Entities.Base;
+using Loyalty.DataAccess.Entities.Base;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Entities.Sequences;
 using Loyalty.DataAccess.Entities.Users;
@@ -55,6 +55,12 @@ namespace Loyalty.DataAccess.Context
         public DbSet<City> Cities { get; set; }
         public DbSet<Entities.Main.TimeZone> TimeZones { get; set; }
         public DbSet<TenantLocation> TenantLocations { get; set; }
+        
+        // Menu related tables
+        public DbSet<MenuCategory> MenuCategories { get; set; }
+        public DbSet<MenuItem> MenuItems { get; set; }
+        public DbSet<MenuItemImage> MenuItemImages { get; set; }
+        public DbSet<RestorantWifiInformation> RestorantWifiInformations { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -91,6 +97,10 @@ namespace Loyalty.DataAccess.Context
                     .OnDelete(DeleteBehavior.Restrict);
 
                 entity.Property(t => t.IsHidden)
+                    .IsRequired()
+                    .HasDefaultValue(false);
+
+                entity.Property(t => t.IsHasMenu)
                     .IsRequired()
                     .HasDefaultValue(false);
                   entity.HasOne(t => t.TenantLocation)
@@ -628,6 +638,85 @@ namespace Loyalty.DataAccess.Context
                     .WithMany()
                     .HasForeignKey(tl => tl.timeZoneId)
                     .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            // ==== MENU CATEGORY ====
+            modelBuilder.Entity<MenuCategory>(entity =>
+            {
+                entity.ToTable("MenuCategories");
+                entity.HasKey(mc => mc.Id);
+                entity.Property(mc => mc.AzName).IsRequired().HasMaxLength(200);
+                entity.Property(mc => mc.EnName).IsRequired().HasMaxLength(200);
+                entity.Property(mc => mc.RuName).IsRequired().HasMaxLength(200);
+                entity.Property(mc => mc.AzDescription).HasMaxLength(1000);
+                entity.Property(mc => mc.EnDescription).HasMaxLength(1000);
+                entity.Property(mc => mc.RuDescription).HasMaxLength(1000);
+
+                entity.HasOne(mc => mc.Tenant)
+                    .WithMany()
+                    .HasForeignKey(mc => mc.TenantId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasMany(mc => mc.MenuItems)
+                    .WithOne(mi => mi.MenuCategory)
+                    .HasForeignKey(mi => mi.MenuCategoryId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // ==== MENU ITEM ====
+            modelBuilder.Entity<MenuItem>(entity =>
+            {
+                entity.ToTable("MenuItems");
+                entity.HasKey(mi => mi.Id);
+                entity.Property(mi => mi.Currency).IsRequired().HasMaxLength(10);
+                entity.Property(mi => mi.AzName).IsRequired().HasMaxLength(200);
+                entity.Property(mi => mi.EnName).IsRequired().HasMaxLength(200);
+                entity.Property(mi => mi.RuName).IsRequired().HasMaxLength(200);
+                entity.Property(mi => mi.AzDescription).HasMaxLength(1000);
+                entity.Property(mi => mi.EnDescription).HasMaxLength(1000);
+                entity.Property(mi => mi.RuDescription).HasMaxLength(1000);
+                entity.Property(mi => mi.PrepTimeMinutes).HasMaxLength(50);
+                entity.Property(mi => mi.CurrencySign).IsRequired().HasMaxLength(10);
+                entity.Property(mi => mi.Price).IsRequired();
+                entity.Property(mi => mi.DiscountPrice);
+
+                entity.HasOne(mi => mi.MenuCategory)
+                    .WithMany(mc => mc.MenuItems)
+                    .HasForeignKey(mi => mi.MenuCategoryId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasMany(mi => mi.MenuItemImages)
+                    .WithOne(mii => mii.MenuItem)
+                    .HasForeignKey(mii => mii.MenuItemId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== MENU ITEM IMAGE ====
+            modelBuilder.Entity<MenuItemImage>(entity =>
+            {
+                entity.ToTable("MenuItemImages");
+                entity.HasKey(mii => mii.Id);
+                entity.Property(mii => mii.FileName).IsRequired().HasMaxLength(500);
+                entity.Property(mii => mii.Path).IsRequired().HasMaxLength(1000);
+
+                entity.HasOne(mii => mii.MenuItem)
+                    .WithMany(mi => mi.MenuItemImages)
+                    .HasForeignKey(mii => mii.MenuItemId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== RESTORANT WIFI INFORMATION ====
+            modelBuilder.Entity<RestorantWifiInformation>(entity =>
+            {
+                entity.ToTable("RestorantWifiInformations");
+                entity.HasKey(rwi => rwi.Id);
+                entity.Property(rwi => rwi.Password).IsRequired().HasMaxLength(200);
+                entity.Property(rwi => rwi.SSID).IsRequired().HasMaxLength(200);
+
+                entity.HasOne(rwi => rwi.Tenant)
+                    .WithMany(t => t.RestorantWifiInformation)
+                    .HasForeignKey(rwi => rwi.TenantId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
 
         }

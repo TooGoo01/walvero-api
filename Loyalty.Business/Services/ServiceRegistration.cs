@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Mappings; // Profil(lər)inizin namespace-i (məs: TenantMappingProfile)
@@ -82,6 +82,16 @@ namespace Loyalty.Business.Services
             services.AddScoped<ICountryService, CountryService>();
             services.AddScoped<ICityService, CityService>();
             services.AddScoped<ITimeZoneService, TimeZoneService>();
+            
+            // Public tenant data service
+            services.AddScoped<IPublicTenantDataService, PublicTenantDataService>();
+
+            // Menu related services
+            services.AddScoped<IMenuCategoryService, MenuCategoryService>();
+            services.AddScoped<IMenuItemService, MenuItemService>();
+            services.AddScoped<IMenuItemImageService, MenuItemImageService>();
+            services.AddScoped<IRestorantWifiInformationService, RestorantWifiInformationService>();
+            
             services.AddSignalR();
             return services;
         }

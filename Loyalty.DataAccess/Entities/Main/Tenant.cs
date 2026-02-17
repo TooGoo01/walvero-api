@@ -1,4 +1,4 @@
-﻿
+
 using Loyalty.DataAccess.Abstractions;
 using Loyalty.DataAccess.Entities.Base;
 using Loyalty.DataAccess.Entities.Main;
@@ -24,6 +24,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool AcceptAnonymus { get; set; } = false;
         public bool ShowOnHome { get; set; } = false;
         public bool IsHidden { get; set; } = false; // Hidden tenants (e.g., Walvero shadow tenant) never appear in listings
+        public bool IsHasMenu { get; set; } = false; // Menyusu olan tenant-lar public siyahıda görünür
 
         // (Opsional) OTP kanal konfiqi
         public string? ConfirmationChannel { get; set; }
@@ -32,6 +33,9 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? FacebookUrl { get; set; } = string.Empty;
         public string? WhatsAppUrl { get; set; } = string.Empty;
         public string? TeleqramUrl { get; set; } = string.Empty;
+        public string? LinkedInUrl { get; set; } = string.Empty;
+        public string? WazeLocationUrl { get; set; } = string.Empty;
+        
         public string? MenuUrl { get; set; } = string.Empty;
 
         // Navigation Properties
@@ -44,5 +48,6 @@ namespace Loyalty.DataAccess.Entities.Main
         public ICollection<Customer> Customers { get; set; } = new List<Customer>(); // YENİ (əvvəlki Users)
         public ICollection<LoyaltyProgram> LoyaltyPrograms { get; set; } = new List<LoyaltyProgram>();
         public ICollection<WalletCredential> WalletCredentials { get; set; } = new List<WalletCredential>();
+        public ICollection<RestorantWifiInformation>? RestorantWifiInformation { get; set; } = new List<RestorantWifiInformation>();
     }
 }

@@ -12,13 +12,16 @@ namespace Loyalty.WebAPI.Controllers
     {
         private readonly IHomeService _homeService;
         private readonly ICountrySequenceService _countrySequenceService;
+        private readonly IPublicTenantDataService _publicTenantDataService;
 
         public PublicController(
             IHomeService homeService,
-            ICountrySequenceService countrySequenceService)
+            ICountrySequenceService countrySequenceService,
+            IPublicTenantDataService publicTenantDataService)
         {
             _homeService = homeService;
             _countrySequenceService = countrySequenceService;
+            _publicTenantDataService = publicTenantDataService;
         }
 
         /// <summary>
@@ -91,6 +94,70 @@ namespace Loyalty.WebAPI.Controllers
             }
 
             return BadRequest(result);
+        }
+
+        // ========== PUBLIC TENANT DATA ENDPOINTS ==========
+
+        /// <summary>
+        /// Bütün aktiv tenant-ları siyahıla (ad + təsvir). Sitemap və admin panel üçün.
+        /// </summary>
+        [HttpGet("tenants")]
+        [ProducesResponseType(typeof(ServiceResult<List<TenantListItemDto>>), (int)HttpStatusCode.OK)]
+        [ResponseCache(Duration = 120)]
+        public async Task<ActionResult<ServiceResult<List<TenantListItemDto>>>> GetTenants(CancellationToken ct)
+        {
+            var result = await _publicTenantDataService.GetAllTenantsAsync(ct);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Tək tenant konfiqurasiyası slug ilə. Layout tərəfindən çağırılır.
+        /// 200 → tenant config, 404 → tenant yoxdur
+        /// </summary>
+        [HttpGet("tenants/{slug}")]
+        [ProducesResponseType(typeof(ServiceResult<TenantConfigDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult<TenantConfigDto>), (int)HttpStatusCode.NotFound)]
+        [ResponseCache(Duration = 60, VaryByQueryKeys = new[] { "slug" })]
+        public async Task<ActionResult<ServiceResult<TenantConfigDto>>> GetTenantBySlug(string slug, CancellationToken ct)
+        {
+            var result = await _publicTenantDataService.GetTenantBySlugAsync(slug, ct);
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Restoran datası: sosial media, location, branding.
+        /// URL tenant config-dəki menuApiUrl-dən gəlir.
+        /// </summary>
+        [HttpGet("restaurants/{slug}")]
+        [ProducesResponseType(typeof(ServiceResult<RestaurantDataDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult<RestaurantDataDto>), (int)HttpStatusCode.NotFound)]
+        [ResponseCache(Duration = 60)]
+        public async Task<ActionResult<ServiceResult<RestaurantDataDto>>> GetRestaurantBySlug(string slug, CancellationToken ct)
+        {
+            var result = await _publicTenantDataService.GetRestaurantBySlugAsync(slug, ct);
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Menyu datası kateqoriyaya görə qruplaşdırılmış.
+        /// </summary>
+        [HttpGet("menu/{slug}")]
+        [ProducesResponseType(typeof(ServiceResult<List<MenuCategoryGroupDto>>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult<List<MenuCategoryGroupDto>>), (int)HttpStatusCode.NotFound)]
+        [ResponseCache(Duration = 60)]
+        public async Task<ActionResult<ServiceResult<List<MenuCategoryGroupDto>>>> GetMenuBySlug(string slug, CancellationToken ct)
+        {
+            var result = await _publicTenantDataService.GetMenuBySlugAsync(slug, ct);
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
         }
     }
 }

@@ -1,0 +1,18 @@
+﻿using Loyalty.DataAccess.Abstractions;
+using Loyalty.DataAccess.Entities.Base;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Loyalty.DataAccess.Entities.Main
+{
+    public class RestorantWifiInformation:EntityBase,IEntity
+    {
+        public string Password { get; set; }
+        public string SSID { get; set; }
+        public int TenantId { get; set; }
+        public Tenant Tenant { get; set; }
+    }
+}

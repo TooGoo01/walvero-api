@@ -1,4 +1,4 @@
-﻿using Loyalty.DataAccess.Repositories;
+using Loyalty.DataAccess.Repositories;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.Repositories.Abstractions.Sequences;
 using Loyalty.DataAccess.Repositories.Implementations.Main;
@@ -38,6 +38,12 @@ namespace Loyalty.DataAccess
             services.AddScoped<IOfferRepository, OfferRepository>();
             services.AddScoped<IStoryRepository, StoryRepository>();
             services.AddScoped<ISequenceRepository, SequenceRepository>();
+            
+            // Menu related repositories
+            services.AddScoped<IMenuCategoryRepository, MenuCategoryRepository>();
+            services.AddScoped<IMenuItemRepository, MenuItemRepository>();
+            services.AddScoped<IMenuItemImageRepository, MenuItemImageRepository>();
+            services.AddScoped<IRestorantWifiInformationRepository, RestorantWifiInformationRepository>();
 
         }
     }
