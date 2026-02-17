@@ -19,11 +19,21 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? EnDescription { get; set; }
         public string? PrepTimeMinutes { get; set; }
         public string CurrencySign { get; set; }
+
+        /// <summary>
+        /// [DEPRECATED] Use Variants for pricing. Kept for backward compatibility during migration.
+        /// All pricing should come from MenuItemVariant.
+        /// </summary>
         public double Price { get; set; }
+
+        /// <summary>
+        /// [DEPRECATED] Use Variants for pricing. Kept for backward compatibility during migration.
+        /// </summary>
         public double DiscountPrice { get; set; }
-        
+
         public int MenuCategoryId { get; set; }
         public MenuCategory MenuCategory { get; set; }
         public ICollection<MenuItemImage> MenuItemImages { get; set; } = new List<MenuItemImage>();
+        public ICollection<MenuItemVariant> Variants { get; set; } = new List<MenuItemVariant>();
     }
 }

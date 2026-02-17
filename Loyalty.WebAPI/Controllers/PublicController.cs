@@ -146,6 +146,7 @@ namespace Loyalty.WebAPI.Controllers
 
         /// <summary>
         /// Menyu datası kateqoriyaya görə qruplaşdırılmış.
+        /// Items include Variants and DefaultVariantId. Pricing uses variant prices.
         /// </summary>
         [HttpGet("menu/{slug}")]
         [ProducesResponseType(typeof(ServiceResult<List<MenuCategoryGroupDto>>), (int)HttpStatusCode.OK)]

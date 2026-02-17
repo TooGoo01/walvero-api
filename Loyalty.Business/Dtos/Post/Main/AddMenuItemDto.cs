@@ -26,13 +26,21 @@ namespace Loyalty.Business.Dtos.Post.Main
         [Required(ErrorMessage = "Valyuta işarəsi məcburidir")]
         public string CurrencySign { get; set; }
 
-        [Required(ErrorMessage = "Qiymət məcburidir")]
+        /// <summary>
+        /// Fallback qiymət. Variants boşdursa və ya təmin edilmirsə istifadə olunur.
+        /// Variants verilərsə, hər variant öz Price/DiscountPrice ilə gəlir.
+        /// </summary>
         public double Price { get; set; }
 
         public double DiscountPrice { get; set; }
 
+        /// <summary>
+        /// Dinamik variant siyahısı (məs: S, M, L). Boşdursa bir "Regular" variant avtomatik yaradılır.
+        /// </summary>
+        public List<AddMenuItemVariantDto>? Variants { get; set; }
+
         [Required(ErrorMessage = "Menyu kateqoriyası məcburidir")]
         public int MenuCategoryId { get; set; }
-        public IFormFileCollection Files { get; set; }
+        public IFormFileCollection? Files { get; set; }
     }
 }

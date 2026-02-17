@@ -19,6 +19,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             return await GetAsQueryable()
                 .Include(mi => mi.MenuCategory)
                 .Include(mi => mi.MenuItemImages)
+                .Include(mi => mi.Variants)
                 .FirstOrDefaultAsync(mi => mi.Id == id);
         }
 
@@ -26,6 +27,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         {
             return await GetAsQueryable()
                 .Include(mi => mi.MenuItemImages)
+                .Include(mi => mi.Variants)
                 .Where(mi => mi.MenuCategoryId == categoryId && mi.IsActive)
                 .ToListAsync();
         }
@@ -35,6 +37,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             return await GetAsQueryable()
                 .Include(mi => mi.MenuCategory)
                 .Include(mi => mi.MenuItemImages)
+                .Include(mi => mi.Variants)
                 .Where(mi => mi.IsActive)
                 .ToListAsync();
         }

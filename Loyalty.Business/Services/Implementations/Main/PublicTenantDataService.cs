@@ -2,6 +2,7 @@ using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Context;
+using Loyalty.DataAccess.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace Loyalty.Business.Services.Implementations.Main
@@ -158,6 +159,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Where(mc => mc.TenantId == tenant.Id && mc.IsActive)
                 .Include(mc => mc.MenuItems.Where(mi => mi.IsActive))
                     .ThenInclude(mi => mi.MenuItemImages)
+                .Include(mc => mc.MenuItems.Where(mi => mi.IsActive))
+                    .ThenInclude(mi => mi.Variants)
                 .OrderBy(mc => mc.Id)
                 .ToListAsync(ct);
 
@@ -170,21 +173,40 @@ namespace Loyalty.Business.Services.Implementations.Main
                 AzDescription = mc.AzDescription,
                 EnDescription = mc.EnDescription,
                 RuDescription = mc.RuDescription,
-                Items = mc.MenuItems.Select(mi => new MenuItemSummaryDto
+                Items = mc.MenuItems.Select(mi =>
                 {
-                    Id = mi.Id,
-                    AzName = mi.AzName,
-                    EnName = mi.EnName,
-                    RuName = mi.RuName,
-                    AzDescription = mi.AzDescription,
-                    EnDescription = mi.EnDescription,
-                    RuDescription = mi.RuDescription,
-                    Currency = mi.Currency,
-                    CurrencySign = mi.CurrencySign,
-                    Price = mi.Price,
-                    DiscountPrice = mi.DiscountPrice,
-                    PrepTimeMinutes = mi.PrepTimeMinutes,
-                    ImageUrls = mi.MenuItemImages.Select(img => img.Path).ToList()
+                    var variants = mi.Variants.OrderBy(v => v.SortOrder).ToList();
+                    var defaultVariant = variants.FirstOrDefault(v => v.IsDefault) ?? variants.FirstOrDefault();
+                    return new MenuItemSummaryDto
+                    {
+                        Id = mi.Id,
+                        AzName = mi.AzName,
+                        EnName = mi.EnName,
+                        RuName = mi.RuName,
+                        AzDescription = mi.AzDescription,
+                        EnDescription = mi.EnDescription,
+                        RuDescription = mi.RuDescription,
+                        Currency = mi.Currency,
+                        CurrencySign = mi.CurrencySign,
+                        Price = defaultVariant?.Price ?? mi.Price,
+                        DiscountPrice = defaultVariant?.DiscountPrice ?? mi.DiscountPrice,
+                        PrepTimeMinutes = mi.PrepTimeMinutes,
+                        ImageUrls = mi.MenuItemImages.Select(img => img.Path).ToList(),
+                        Variants = variants.Select(v => new MenuItemVariantSummaryDto
+                        {
+                            Id = v.Id,
+                            VariantType = (int)v.VariantType,  // Size=1
+                            Code = v.Code,
+                            AzName = v.AzName,
+                            EnName = v.EnName,
+                            RuName = v.RuName,
+                            SortOrder = v.SortOrder,
+                            IsDefault = v.IsDefault,
+                            Price = v.Price,
+                            DiscountPrice = v.DiscountPrice
+                        }).ToList(),
+                        DefaultVariantId = defaultVariant?.Id
+                    };
                 }).ToList()
             }).ToList();
 

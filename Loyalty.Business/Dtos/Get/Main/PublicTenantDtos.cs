@@ -107,9 +107,29 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? RuDescription { get; set; }
         public string Currency { get; set; } = string.Empty;
         public string CurrencySign { get; set; } = string.Empty;
+        /// <summary>Price from default variant. Use Variants for full pricing.</summary>
         public double Price { get; set; }
+        /// <summary>Discount price from default variant. Use Variants for full pricing.</summary>
         public double DiscountPrice { get; set; }
         public string? PrepTimeMinutes { get; set; }
         public List<string> ImageUrls { get; set; } = new();
+        /// <summary>Size and other variants. Single-price items have one "Regular" variant.</summary>
+        public List<MenuItemVariantSummaryDto> Variants { get; set; } = new();
+        /// <summary>ID of the default variant. UI hides selector when only one variant.</summary>
+        public int? DefaultVariantId { get; set; }
+    }
+
+    public class MenuItemVariantSummaryDto
+    {
+        public int Id { get; set; }
+        public int VariantType { get; set; }  // 1=Size
+        public string Code { get; set; } = string.Empty;
+        public string? AzName { get; set; }
+        public string? EnName { get; set; }
+        public string? RuName { get; set; }
+        public int SortOrder { get; set; }
+        public bool IsDefault { get; set; }
+        public double Price { get; set; }
+        public double DiscountPrice { get; set; }
     }
 }

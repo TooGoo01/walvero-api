@@ -40,6 +40,9 @@ namespace Loyalty.WebAPI.Controllers
             return BadRequest(result);
         }
 
+        /// <summary>
+        /// Get all menu items with details (category, images, variants).
+        /// </summary>
         [HttpGet]
         [ProducesResponseType(typeof(ServiceResult<List<GetMenuItemDto>>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
@@ -64,19 +67,25 @@ namespace Loyalty.WebAPI.Controllers
             return BadRequest(result);
         }
 
+        /// <summary>
+        /// Get menu item by ID. Includes Variants and DefaultVariantId for variant-aware clients.
+        /// </summary>
         [HttpGet("{id}")]
         [ProducesResponseType(typeof(ServiceResult<GetMenuItemDto>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> GetById(int id)
         {
-            var result = await _menuItemService.GetById(id);
+            var result = await _menuItemService.GetByIdWithDetails(id);
             if (result.Success)
                 return Ok(result);
             
             return NotFound(result);
         }
 
+        /// <summary>
+        /// Get menu item by ID with full details (category, images, variants). Variants include DefaultVariantId.
+        /// </summary>
         [HttpGet("{id}")]
         [ProducesResponseType(typeof(ServiceResult<GetMenuItemDto>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
@@ -90,6 +99,9 @@ namespace Loyalty.WebAPI.Controllers
             return NotFound(result);
         }
 
+        /// <summary>
+        /// Get menu items by category. Includes Variants and DefaultVariantId.
+        /// </summary>
         [HttpGet("{categoryId}")]
         [ProducesResponseType(typeof(ServiceResult<List<GetMenuItemDto>>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
@@ -115,18 +127,14 @@ namespace Loyalty.WebAPI.Controllers
             var result = await _menuItemService.Add(dto);
             if (result.Success)
             {
-               
+                if (dto.Files != null && dto.Files.Count > 0)
+                {
                     var compressedFiles = CompressImages(dto.Files);
-
-                    // Update model with compressed images
                     var compressedFileCollection = new FormFileCollection(compressedFiles);
                     dto.Files = compressedFileCollection;
-
-                    // Add product and files
                     await _menuItemImageService.AddRangeAsync(dto, (int)result.Data);
-
-                    return Ok(result);
-                
+                }
+                return Ok(result);
             }
               
 

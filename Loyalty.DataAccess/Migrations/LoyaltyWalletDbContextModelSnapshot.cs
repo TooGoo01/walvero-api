@@ -963,6 +963,72 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("MenuItemImages", (string)null);
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.MenuItemVariant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AzName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<double>("DiscountPrice")
+                        .HasColumnType("float");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EnName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MenuItemId")
+                        .HasColumnType("int");
+
+                    b.Property<double>("Price")
+                        .HasColumnType("float");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RuName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VariantType")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MenuItemId", "VariantType", "Code")
+                        .IsUnique();
+
+                    b.ToTable("MenuItemVariants", (string)null);
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Notification", b =>
                 {
                     b.Property<int>("Id")
@@ -2781,6 +2847,17 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("MenuItem");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.MenuItemVariant", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.MenuItem", "MenuItem")
+                        .WithMany("Variants")
+                        .HasForeignKey("MenuItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MenuItem");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Notification", b =>
                 {
                     b.HasOne("Loyalty.DataAccess.Entities.Main.StoreFeedback", "RelatedFeedback")
@@ -3142,6 +3219,8 @@ namespace Loyalty.DataAccess.Migrations
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.MenuItem", b =>
                 {
                     b.Navigation("MenuItemImages");
+
+                    b.Navigation("Variants");
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.StoreFeedback", b =>

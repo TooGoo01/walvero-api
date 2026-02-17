@@ -59,6 +59,7 @@ namespace Loyalty.DataAccess.Context
         // Menu related tables
         public DbSet<MenuCategory> MenuCategories { get; set; }
         public DbSet<MenuItem> MenuItems { get; set; }
+        public DbSet<MenuItemVariant> MenuItemVariants { get; set; }
         public DbSet<MenuItemImage> MenuItemImages { get; set; }
         public DbSet<RestorantWifiInformation> RestorantWifiInformations { get; set; }
         #endregion
@@ -688,6 +689,32 @@ namespace Loyalty.DataAccess.Context
                 entity.HasMany(mi => mi.MenuItemImages)
                     .WithOne(mii => mii.MenuItem)
                     .HasForeignKey(mii => mii.MenuItemId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(mi => mi.Variants)
+                    .WithOne(v => v.MenuItem)
+                    .HasForeignKey(v => v.MenuItemId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== MENU ITEM VARIANT ====
+            modelBuilder.Entity<MenuItemVariant>(entity =>
+            {
+                entity.ToTable("MenuItemVariants");
+                entity.HasKey(miv => miv.Id);
+                entity.Property(miv => miv.VariantType).HasConversion<int>();
+                entity.Property(miv => miv.Code).IsRequired().HasMaxLength(50);
+                entity.Property(miv => miv.AzName).HasMaxLength(200);
+                entity.Property(miv => miv.EnName).HasMaxLength(200);
+                entity.Property(miv => miv.RuName).HasMaxLength(200);
+                entity.Property(miv => miv.Price).IsRequired();
+                entity.Property(miv => miv.DiscountPrice);
+
+                entity.HasIndex(miv => new { miv.MenuItemId, miv.VariantType, miv.Code }).IsUnique();
+
+                entity.HasOne(miv => miv.MenuItem)
+                    .WithMany(mi => mi.Variants)
+                    .HasForeignKey(miv => miv.MenuItemId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
 

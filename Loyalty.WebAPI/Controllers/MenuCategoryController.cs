@@ -34,6 +34,9 @@ namespace Loyalty.WebAPI.Controllers
             return BadRequest(result);
         }
 
+        /// <summary>
+        /// Get all categories with menu items. Items include Variants and DefaultVariantId.
+        /// </summary>
         [HttpGet]
         [ProducesResponseType(typeof(ServiceResult<List<GetMenuCategoryDto>>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
@@ -71,6 +74,9 @@ namespace Loyalty.WebAPI.Controllers
             return NotFound(result);
         }
 
+        /// <summary>
+        /// Get category by ID with menu items. Items include Variants and DefaultVariantId.
+        /// </summary>
         [HttpGet("{id}")]
         [ProducesResponseType(typeof(ServiceResult<GetMenuCategoryDto>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]

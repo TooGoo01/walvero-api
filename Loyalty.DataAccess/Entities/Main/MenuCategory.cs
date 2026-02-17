@@ -20,6 +20,6 @@ namespace Loyalty.DataAccess.Entities.Main
         public int TenantId { get; set; }
         public Tenant Tenant { get; set; } = null!;
 
-        public ICollection<MenuItem> MenuItems { get; set; } = new List<MenuItem>();
+        public ICollection<MenuItem> MenuItems { get; set; } = new List<MenuItem>();    
     }
 }

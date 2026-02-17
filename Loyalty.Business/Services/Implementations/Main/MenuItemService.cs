@@ -4,6 +4,7 @@ using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 using System.Collections.Generic;
@@ -32,7 +33,49 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             var entity = _mapper.Map<MenuItem>(dto);
             entity.IsActive = true;
-            
+
+            if (dto.Variants != null && dto.Variants.Count > 0)
+            {
+                // Dinamik variant siyahısından yarat
+                var hasDefault = dto.Variants.Any(v => v.IsDefault);
+                var sortOrder = 0;
+                foreach (var v in dto.Variants.OrderBy(x => x.SortOrder).ThenBy(x => x.Code))
+                {
+                    entity.Variants.Add(new MenuItemVariant
+                    {
+                        VariantType = VariantType.Size,
+                        Code = v.Code.Trim(),
+                        AzName = v.AzName,
+                        EnName = v.EnName,
+                        RuName = v.RuName,
+                        SortOrder = ++sortOrder,
+                        IsDefault = v.IsDefault || (!hasDefault && sortOrder == 1),
+                        Price = v.Price,
+                        DiscountPrice = v.DiscountPrice,
+                        RegUserId = 1,
+                        IsActive = true
+                    });
+                }
+            }
+            else
+            {
+                // Geri uyğunluq: bir "Regular" variant
+                entity.Variants.Add(new MenuItemVariant
+                {
+                    VariantType = VariantType.Size,
+                    Code = "Regular",
+                    AzName = "Standart",
+                    EnName = "Regular",
+                    RuName = "Стандарт",
+                    SortOrder = 1,
+                    IsDefault = true,
+                    Price = dto.Price,
+                    DiscountPrice = dto.DiscountPrice,
+                    RegUserId = 1,
+                    IsActive = true
+                });
+            }
+
             await _unitOfWork.Repository<MenuItem>().AddAsync(entity);
             _unitOfWork.Commit();
 

@@ -117,9 +117,35 @@ namespace Loyalty.Business.Mappings
             CreateMap<MenuCategory, UpdateMenuCategoryDto>().ReverseMap();
             CreateMap<MenuCategory, GetMenuCategoryDto>().ReverseMap();
 
-            CreateMap<MenuItem, AddMenuItemDto>().ReverseMap();
+            CreateMap<MenuItem, AddMenuItemDto>()
+                .ForMember(d => d.Variants, opt => opt.Ignore())
+                .ReverseMap()
+                .ForMember(d => d.Variants, opt => opt.Ignore()); // Variants servis tərəfindən manuel əlavə olunur
             CreateMap<MenuItem, UpdateMenuItemDto>().ReverseMap();
-            CreateMap<MenuItem, GetMenuItemDto>().ReverseMap();
+            CreateMap<MenuItem, GetMenuItemDto>()
+                .ForMember(d => d.Variants, opt => opt.MapFrom(s => s.Variants.OrderBy(v => v.SortOrder)))
+                .ForMember(d => d.DefaultVariantId, opt => opt.MapFrom(s =>
+                    s.Variants.FirstOrDefault(v => v.IsDefault) != null
+                        ? (int?)s.Variants.FirstOrDefault(v => v.IsDefault)!.Id
+                        : s.Variants.OrderBy(v => v.SortOrder).FirstOrDefault() != null
+                            ? (int?)s.Variants.OrderBy(v => v.SortOrder).First().Id
+                            : null))
+                .ForMember(d => d.Price, opt => opt.MapFrom(s =>
+                    s.Variants.FirstOrDefault(v => v.IsDefault) != null
+                        ? s.Variants.FirstOrDefault(v => v.IsDefault)!.Price
+                        : (s.Variants.OrderBy(v => v.SortOrder).FirstOrDefault() != null
+                            ? s.Variants.OrderBy(v => v.SortOrder).First().Price
+                            : s.Price)))
+                .ForMember(d => d.DiscountPrice, opt => opt.MapFrom(s =>
+                    s.Variants.FirstOrDefault(v => v.IsDefault) != null
+                        ? s.Variants.FirstOrDefault(v => v.IsDefault)!.DiscountPrice
+                        : (s.Variants.OrderBy(v => v.SortOrder).FirstOrDefault() != null
+                            ? s.Variants.OrderBy(v => v.SortOrder).First().DiscountPrice
+                            : s.DiscountPrice)))
+                .ReverseMap();
+
+            CreateMap<MenuItemVariant, GetMenuItemVariantDto>()
+                .ForMember(d => d.VariantType, opt => opt.MapFrom(s => (int)s.VariantType));
 
             CreateMap<MenuItemImage, AddMenuItemImageDto>().ReverseMap();
             CreateMap<MenuItemImage, GetMenuItemImageDto>().ReverseMap();
