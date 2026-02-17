@@ -133,35 +133,56 @@ namespace Loyalty.WebAPI.Controllers
             return BadRequest(result);
         }
 
-        //[HttpPut]
-        //[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        //[ProducesResponseType(typeof(ServiceResult<GetMenuItemDto>), (int)HttpStatusCode.OK)]
-        //[ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
-        //[ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
-        //[ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
-        //public async Task<IActionResult> Update([FromBody] UpdateMenuItemDto dto)
-        //{
-        //    if (!ModelState.IsValid)
-        //        return BadRequest(ModelState);
+        [HttpPut("{id}")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+        [ProducesResponseType(typeof(ServiceResult<GetMenuItemDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
+        public async Task<IActionResult> Update(int id, [FromForm] AddMenuItemDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
 
-        //    var result = await _menuItemService.Update(dto);
-        //    if (result.Success && dto.Files != null)
-        //    {
-        //        var compressedFiles = CompressImages(dto.Files);
+            // Convert AddMenuItemDto to UpdateMenuItemDto
+            var updateDto = new UpdateMenuItemDto
+            {
+                Id = id,
+                Currency = dto.Currency,
+                AzName = dto.AzName,
+                EnName = dto.EnName,
+                RuName = dto.RuName,
+                AzDescription = dto.AzDescription,
+                RuDescription = dto.RuDescription,
+                EnDescription = dto.EnDescription,
+                PrepTimeMinutes = dto.PrepTimeMinutes,
+                CurrencySign = dto.CurrencySign,
+                Price = dto.Price,
+                DiscountPrice = dto.DiscountPrice,
+                MenuCategoryId = dto.MenuCategoryId,
+                Files = dto.Files
+            };
 
-        //        // Update model with compressed images
-        //        var compressedFileCollection = new FormFileCollection(compressedFiles);
-        //        dto.Files = compressedFileCollection;
+            var result = await _menuItemService.Update(updateDto);
+            if (result.Success)
+            {
+                if (dto.Files != null && dto.Files.Count > 0)
+                {
+                    var compressedFiles = CompressImages(dto.Files);
 
-        //        // Add product and files
-        //        await _menuItemImageService.UpdateRangeAsync(dto, (int)result.Data);
+                    // Update model with compressed images
+                    var compressedFileCollection = new FormFileCollection(compressedFiles);
+                    dto.Files = compressedFileCollection;
 
-        //        return Ok(result);
-        //    }
-               
+                    // Update product and files
+                    await _menuItemImageService.UpdateRangeAsync(dto, id);
+                }
 
-        //    return BadRequest(result);
-        //}
+                return Ok(result);
+            }
+
+            return NotFound(result);
+        }
         private List<IFormFile> CompressImages(IFormFileCollection files)
         {
             var compressedFiles = new List<IFormFile>();
