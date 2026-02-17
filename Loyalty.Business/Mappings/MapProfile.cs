@@ -116,6 +116,7 @@ namespace Loyalty.Business.Mappings
             CreateMap<MenuCategory, AddMenuCategoryDto>().ReverseMap();
             CreateMap<MenuCategory, UpdateMenuCategoryDto>().ReverseMap();
             CreateMap<MenuCategory, GetMenuCategoryDto>().ReverseMap();
+            CreateMap<MenuCategory, GetMenuCategorySummaryDto>(); // No MenuItems - used in GetMenuItemDto to avoid JSON cycle
 
             CreateMap<MenuItem, AddMenuItemDto>().ReverseMap();
             CreateMap<MenuItem, UpdateMenuItemDto>().ReverseMap();
