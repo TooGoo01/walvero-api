@@ -41,8 +41,8 @@ builder.Services.AddCors(options =>
             "http://10.0.2.2:5025",
             "http://localhost:3000",
             "http://localhost:7285",
-            "https://10.0.2.2:7285",
-            "https://localhost:7285")
+            "https://www.qrwithmenu.com",
+            "https://qrwithmenu.com")
         .AllowCredentials()
         .AllowAnyHeader()
         .AllowAnyMethod()));

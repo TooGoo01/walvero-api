@@ -33,6 +33,6 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         [Required(ErrorMessage = "Menyu kateqoriyası məcburidir")]
         public int MenuCategoryId { get; set; }
-        public IFormFileCollection Files { get; set; }
+        public IFormFileCollection? Files { get; set; }
     }
 }
