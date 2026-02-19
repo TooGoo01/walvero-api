@@ -42,6 +42,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         public async Task<IEnumerable<MenuItem>> GetActiveAsync()
         {
             return await GetAsQueryable()
+                .Include(mi => mi.MenuItemImages)
                 .Where(mi => mi.IsActive)
                 .ToListAsync();
         }
