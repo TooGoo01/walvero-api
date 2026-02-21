@@ -42,16 +42,38 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> UpdateRangeAsync(AddMenuItemDto aboutDto, int aboutId)
         {
-            List<(string fileName, string pathOrContainerName)> result = await _storage.UploadAsync("photo-menu", aboutDto.Files);
+            const string containerName = "photo-menu";
             var about = _unitOfWork.Repository<MenuItem>().Get(x => x.Id == aboutId);
-            var entity = await _unitOfWork.Repository<MenuItemImage>().GetAllAsync(x => x.MenuItem.Id == aboutId);
-            _unitOfWork.Repository<MenuItemImage>().DeleteRange(entity);
-            _unitOfWork.Repository<MenuItemImage>().UpdateRange(result.Select(x => new MenuItemImage
+            var existingImages = await _unitOfWork.Repository<MenuItemImage>().GetAllAsync(x => x.MenuItemId == aboutId);
+
+            // Köhnə şəkilləri storage-dan sil
+            if (_storage != null)
+            {
+                foreach (var img in existingImages)
+                {
+                    if (!string.IsNullOrWhiteSpace(img.FileName))
+                    {
+                        try
+                        {
+                            await _storage.DeleteAsync(containerName, img.FileName);
+                        }
+                        catch { /* şəkil tapılmadı və ya silinə bilmədi - davam et */ }
+                    }
+                }
+            }
+
+            // Köhnə şəkilləri DB-dən sil
+            _unitOfWork.Repository<MenuItemImage>().DeleteRange(existingImages);
+
+            // Yeni şəkilləri yüklə və əlavə et
+            List<(string fileName, string pathOrContainerName)> result = await _storage.UploadAsync(containerName, aboutDto.Files);
+            _unitOfWork.Repository<MenuItemImage>().AddRange(result.Select(x => new MenuItemImage
             {
                 FileName = x.fileName,
                 Path = x.pathOrContainerName,
                 MenuItem = about
             }));
+
             _unitOfWork.Commit();
             return new ServiceResult(true);
         }
