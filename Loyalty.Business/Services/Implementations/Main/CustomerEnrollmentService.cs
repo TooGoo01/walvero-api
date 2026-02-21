@@ -1,4 +1,4 @@
-﻿using AutoMapper;
+using AutoMapper;
 using Azure.Core;
 using Google.Apis.Walletobjects.v1.Data;
 using Loyalty.Business.Dtos.Get.Main;
@@ -40,6 +40,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IMapper _mapper;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ICardNumberGenerator _cardNumberGenerator;
+        private readonly ICustomerSyncService _customerSyncService;
         private readonly ILogger<CustomerEnrollmentService> _logger;
         public CustomerEnrollmentService(
             ITenantProvider tp,
@@ -58,6 +59,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 ,
 UserManager<ApplicationUser> userManager,
             ICardNumberGenerator cardNumberGenerator,
+            ICustomerSyncService customerSyncService,
             ILogger<CustomerEnrollmentService> logger)
         {
             _tp = tp; _customerRepo = customerRepo; _programRepo = programRepo;
@@ -68,6 +70,7 @@ UserManager<ApplicationUser> userManager,
             _mapper = mapper;
             _userManager = userManager;
             _cardNumberGenerator = cardNumberGenerator;
+            _customerSyncService = customerSyncService;
             _logger = logger;
         }
 
@@ -234,6 +237,16 @@ UserManager<ApplicationUser> userManager,
                 card.EditUserId = int.Parse(userId);
                 _uow.Repository<LoyaltyCard>().Update(card);
                 hasPendingCardUpdate = true;
+            }
+
+            // Auto-sync customer to Monyo POS if integration is configured (after card exists for barcode)
+            try
+            {
+                await _customerSyncService.SyncCustomerToPosAsync(tenantId, customer.Id, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Monyo POS sync failed for CustomerId={CustomerId}, TenantId={TenantId}", customer.Id, tenantId);
             }
 
             // 4) Program / branding / snapshot (VerifyEnrollment-dan götürdük)

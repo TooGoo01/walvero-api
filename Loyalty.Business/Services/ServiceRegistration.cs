@@ -93,6 +93,12 @@ namespace Loyalty.Business.Services
             services.AddScoped<IMenuItemService, MenuItemService>();
             services.AddScoped<IMenuItemImageService, MenuItemImageService>();
             services.AddScoped<IRestorantWifiInformationService, RestorantWifiInformationService>();
+            services.AddScoped<ITenantIntegrationResolver, TenantIntegrationResolver>();
+            services.AddScoped<ITenantIntegrationService, TenantIntegrationService>();
+            services.AddScoped<IPosProductEarnRuleService, PosProductEarnRuleService>();
+            services.AddScoped<IWalletWebhookService, WalletWebhookService>();
+            services.AddScoped<IMonyoPosApiClient, MonyoPosApiClient>();
+            services.AddScoped<ICustomerSyncService, CustomerSyncService>();
             
             services.AddSignalR();
             return services;

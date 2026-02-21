@@ -1,6 +1,7 @@
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.WebAPI.Tenancy;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,15 +18,21 @@ namespace Loyalty.WebAPI.Controllers
     {
         private readonly ITransactionReverseService _transactionReverseService;
         private readonly IPosSessionService _posSessionService;
+        private readonly ICustomerSyncService _customerSyncService;
+        private readonly ITenantProvider _tenantProvider;
         private readonly ILogger<PosController> _logger;
 
         public PosController(
             ITransactionReverseService transactionReverseService,
             IPosSessionService posSessionService,
+            ICustomerSyncService customerSyncService,
+            ITenantProvider tenantProvider,
             ILogger<PosController> logger)
         {
             _transactionReverseService = transactionReverseService;
             _posSessionService = posSessionService;
+            _customerSyncService = customerSyncService;
+            _tenantProvider = tenantProvider;
             _logger = logger;
         }
 
@@ -79,6 +86,35 @@ namespace Loyalty.WebAPI.Controllers
             }
 
             return BadRequest(result);
+        }
+
+        /// <summary>
+        /// Sync all customers for the current tenant to Monyo POS.
+        /// </summary>
+        [HttpPost("sync-customers")]
+        [ProducesResponseType(typeof(object), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> SyncAllCustomers([FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            if (!tid.HasValue || tid <= 0)
+                return BadRequest("TenantId required.");
+            var count = await _customerSyncService.SyncAllCustomersToPosAsync(tid.Value, ct);
+            return Ok(new { syncedCount = count });
+        }
+
+        /// <summary>
+        /// Sync a single customer to Monyo POS.
+        /// </summary>
+        [HttpPost("sync-customers/{customerId:int}")]
+        [ProducesResponseType(typeof(object), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> SyncCustomer(int customerId, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            if (!tid.HasValue || tid <= 0)
+                return BadRequest("TenantId required.");
+            var ok = await _customerSyncService.SyncCustomerToPosAsync(tid.Value, customerId, ct);
+            if (!ok) return BadRequest("Sync failed.");
+            return Ok(new { success = true });
         }
     }
 }

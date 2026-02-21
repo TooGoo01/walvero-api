@@ -1,4 +1,4 @@
-﻿using Loyalty.DataAccess.Abstractions;
+using Loyalty.DataAccess.Abstractions;
 using Loyalty.DataAccess.Entities.Base;
 using System;
 using System.Collections.Generic;
@@ -17,6 +17,8 @@ namespace Loyalty.DataAccess.Entities.Main
         public int PointsCost { get; set; }
 
         public string? ImageUrl { get; set; }
+        /// <summary>External product ID (e.g. Monyo POS product ID) for reward redemption.</summary>
+        public string? ExternalProductId { get; set; }
 
         public bool IsActive { get; set; } = true;
         public int? StockQuantity { get; set; } // null = unlimited

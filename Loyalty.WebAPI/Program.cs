@@ -1,4 +1,4 @@
-﻿using Loyalty.Business.Exceptions;
+using Loyalty.Business.Exceptions;
 using Loyalty.Business.Hubs;
 using Loyalty.Business.Services;
 using Loyalty.Business.Services.Abstractions.Main;
@@ -143,6 +143,9 @@ builder.Services.AddSession(conf =>
 builder.Services.AddDbContext<LoyaltyWalletDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("LoyaltyDbConnection")));
 
+// DataProtection (for encrypting POS tokens)
+builder.Services.AddDataProtection();
+
 // HttpClientFactory
 builder.Services.AddHttpClient();
 
@@ -164,6 +167,9 @@ builder.Services.AddIdentity<ApplicationUser, ApplicationRole>(config =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantProvider, HttpContextTenantProvider>();
 builder.Services.AddSingleton<IAppEnvironment, WebAppEnvironment>();
+
+// Wallet webhook auth filter
+builder.Services.AddScoped<Loyalty.WebAPI.Filters.WalletWebhookAuthFilter>();
 
 // === Business / DataAccess / Infrastructure ===
 builder.Services.AddScoped<IGoogleWalletServiceFactory, GoogleWalletServiceFactory>();
