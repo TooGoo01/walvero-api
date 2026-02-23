@@ -47,12 +47,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ApiTokenEncrypted = !string.IsNullOrEmpty(dto.ApiToken) ? _protector.Encrypt(dto.ApiToken) : null,
                 WalletTokenHash = hash,
                 IsActive = true,
-                CreatedAt = DateTime.UtcNow,
                 RegUserId = 1,
                 RegDate = DateTime.UtcNow
             };
             await _repo.AddAsync(entity);
-            _uow.Commit();
+            await _uow.CommitAsync(ct);
 
             var saved = await _repo.GetActiveByTenantAndTypeAsync(dto.TenantId, dto.IntegrationTypeId, ct);
             if (saved == null) return ServiceResult<TenantIntegrationCreateResult>.Fail("Yaradıla bilmədi.");
@@ -121,9 +120,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.ApiBaseUrl != null) ti.ApiBaseUrl = dto.ApiBaseUrl.Trim();
             if (!string.IsNullOrEmpty(dto.ApiToken)) ti.ApiTokenEncrypted = _protector.Encrypt(dto.ApiToken);
             if (dto.IsActive.HasValue) ti.IsActive = dto.IsActive.Value;
-            ti.UpdatedAt = DateTime.UtcNow;
             _repo.Update(ti);
-            _uow.Commit();
+            await _uow.CommitAsync(ct);
             return ServiceResult<bool>.Ok(true);
         }
 
@@ -134,9 +132,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (tenantId.HasValue && ti.TenantId != tenantId.Value)
                 return ServiceResult<bool>.Fail("Yetkisiz.");
             ti.IsActive = false;
-            ti.UpdatedAt = DateTime.UtcNow;
             _repo.Update(ti);
-            _uow.Commit();
+            await _uow.CommitAsync(ct);
             return ServiceResult<bool>.Ok(true);
         }
 
@@ -148,9 +145,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return ServiceResult<string?>.Fail("Yetkisiz.");
             var (token, hash) = _tokenGenerator.Generate();
             ti.WalletTokenHash = hash;
-            ti.UpdatedAt = DateTime.UtcNow;
             _repo.Update(ti);
-            _uow.Commit();
+            await _uow.CommitAsync(ct);
             return ServiceResult<string?>.Ok(token);
         }
     }

@@ -93,7 +93,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 IsActive = true
             };
             await _mappingRepo.AddAsync(mapping);
-            _uow.Commit();
+            await _uow.CommitAsync(ct);
             return true;
         }
 

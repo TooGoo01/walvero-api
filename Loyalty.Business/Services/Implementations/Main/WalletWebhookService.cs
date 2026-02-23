@@ -1,11 +1,9 @@
 using Loyalty.Business.Models.TenantIntegration;
 using Loyalty.Business.Services.Abstractions.Main;
-using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
-using Microsoft.EntityFrameworkCore;
 
 namespace Loyalty.Business.Services.Implementations.Main
 {
@@ -14,30 +12,30 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILoyaltyCardRepository _loyaltyCardRepo;
         private readonly ILoyaltyProgramRepository _loyaltyProgramRepo;
         private readonly IRewardRepository _rewardRepo;
+        private readonly ICardTemplateRepository _cardTemplateRepo;
         private readonly IPosProductEarnRuleRepository _earnRuleRepo;
         private readonly IPosCustomerMappingRepository _customerMappingRepo;
         private readonly IRedeemService _redeemService;
         private readonly IUnitOfWork _uow;
-        private readonly LoyaltyWalletDbContext _dbContext;
 
         public WalletWebhookService(
             ILoyaltyCardRepository loyaltyCardRepo,
             ILoyaltyProgramRepository loyaltyProgramRepo,
             IRewardRepository rewardRepo,
+            ICardTemplateRepository cardTemplateRepo,
             IPosProductEarnRuleRepository earnRuleRepo,
             IPosCustomerMappingRepository customerMappingRepo,
             IRedeemService redeemService,
-            IUnitOfWork uow,
-            LoyaltyWalletDbContext dbContext)
+            IUnitOfWork uow)
         {
             _loyaltyCardRepo = loyaltyCardRepo;
             _loyaltyProgramRepo = loyaltyProgramRepo;
             _rewardRepo = rewardRepo;
+            _cardTemplateRepo = cardTemplateRepo;
             _earnRuleRepo = earnRuleRepo;
             _customerMappingRepo = customerMappingRepo;
             _redeemService = redeemService;
             _uow = uow;
-            _dbContext = dbContext;
         }
 
         public async Task<GetWalletResponse> GetWalletAsync(WalletWebhookResolvedContext context, string barcode, CancellationToken ct = default)
@@ -53,14 +51,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new GetWalletResponse { Success = false, Message = "No loyalty program configured" };
 
             var program = await _loyaltyProgramRepo.GetByIdAsync(programId.Value, ct);
-            if (program == null || program.Id != programId)
+            if (program == null)
                 return new GetWalletResponse { Success = false, Message = "Program not found" };
 
             var cardInProgram = card.LoyaltyProgramId == programId.Value ? card : null;
             if (cardInProgram == null)
             {
-                var cardForProgram = await _loyaltyCardRepo.GetLastActiveByCustomerAsync(tenantId, programId.Value, card.CustomerId, ct);
-                cardInProgram = cardForProgram;
+                cardInProgram = await _loyaltyCardRepo.GetLastActiveByCustomerAsync(tenantId, programId.Value, card.CustomerId, ct);
             }
 
             var loyalty = new List<LoyaltyCampaignItem>();
@@ -69,7 +66,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 CardTemplate? template = null;
                 if (program.CardTemplateId.HasValue)
                 {
-                    template = await _dbContext.Set<CardTemplate>().FindAsync(new object[] { program.CardTemplateId.Value }, ct);
+                    template = await _cardTemplateRepo.GetByIdAsync(program.CardTemplateId.Value, ct);
                 }
                 var totalSteps = template?.TotalSteps ?? 10;
                 var rewardsEnum = await _rewardRepo.GetAllAsync(r => r.LoyaltyProgramId == programId.Value && r.IsActive);
@@ -85,7 +82,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 });
             }
 
-            var cashbackBalans = (double)(card.CurrentPoints * program.CurrencyPerPoint);
+            // cashbackBalans: cardInProgram-ın balansı istifadə et (barcode-la tapılan card yox)
+            var cashbackBalans = (double)((cardInProgram?.CurrentPoints ?? 0) * program.CurrencyPerPoint);
 
             return new GetWalletResponse
             {
@@ -133,18 +131,20 @@ namespace Loyalty.Business.Services.Implementations.Main
             var tenantId = context.TenantId;
             var programId = context.LoyaltyProgramId;
 
+            if (!programId.HasValue)
+                return new SetVerifyResponse { Status = false };
+
             var card = await _loyaltyCardRepo.GetByBarcodeValueAsync(tenantId, request.Barcode, ct);
             if (card == null)
                 return new SetVerifyResponse { Status = false };
 
-            var cardForProgram = card.LoyaltyProgramId == programId ? card : await _loyaltyCardRepo.GetLastActiveByCustomerAsync(tenantId, programId ?? 0, card.CustomerId, ct);
+            var cardForProgram = card.LoyaltyProgramId == programId ? card : await _loyaltyCardRepo.GetLastActiveByCustomerAsync(tenantId, programId.Value, card.CustomerId, ct);
             if (cardForProgram == null)
                 return new SetVerifyResponse { Status = false };
 
-            var pendingRequest = await _dbContext.Set<RedeemRequest>()
-                .Where(rr => rr.LoyaltyCardId == cardForProgram.Id && rr.Status == RedeemStatus.Pending && rr.ExpiresUtc > DateTime.UtcNow)
-                .OrderByDescending(rr => rr.Id)
-                .FirstOrDefaultAsync(ct);
+            var allPending = await _uow.Repository<RedeemRequest>().GetAllAsync(
+                rr => rr.LoyaltyCardId == cardForProgram.Id && rr.Status == RedeemStatus.Pending && rr.ExpiresUtc > DateTime.UtcNow);
+            var pendingRequest = allPending.OrderByDescending(rr => rr.Id).FirstOrDefault();
             if (pendingRequest == null)
                 return new SetVerifyResponse { Status = false };
 
@@ -154,20 +154,20 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (request.Type == "cashback")
             {
-                var program = await _loyaltyProgramRepo.GetByIdAsync(programId ?? 0, ct);
+                var program = await _loyaltyProgramRepo.GetByIdAsync(programId.Value, ct);
                 var pointsRedeemed = (result.OldPoints ?? 0) - (result.NewPoints ?? 0);
                 if (pointsRedeemed < 0) pointsRedeemed = 0;
                 var discount = request.Amount > 0 ? request.Amount : (decimal)(pointsRedeemed * (double)(program?.CurrencyPerPoint ?? 0.1m));
                 return new SetVerifyResponse { Status = true, Type = "cashback", Discount = discount };
             }
 
-                var rewardsEnum2 = await _rewardRepo.GetAllAsync(r => r.LoyaltyProgramId == programId.Value && r.IsActive);
-                var firstReward = rewardsEnum2.FirstOrDefault();
+            var rewardsEnum = await _rewardRepo.GetAllAsync(r => r.LoyaltyProgramId == programId.Value && r.IsActive);
+            var firstReward = rewardsEnum.FirstOrDefault();
             return new SetVerifyResponse
             {
                 Status = true,
                 Type = "loyalty",
-                ProductId = firstReward?.ExternalProductId ?? programId?.ToString(),
+                ProductId = firstReward?.ExternalProductId ?? programId.Value.ToString(),
                 ProductName = firstReward?.Name
             };
         }
@@ -189,36 +189,36 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (request.Status == "deleted")
             {
-                var txns = await _dbContext.Set<Transaction>()
-                    .Where(t => t.OrderId == request.Id && t.LoyaltyCardId == card.Id)
-                    .ToListAsync(ct);
+                var txns = (await _uow.Repository<Transaction>().GetAllAsync(
+                    t => t.OrderId == request.Id && t.LoyaltyCardId == card.Id)).ToList();
+
                 foreach (var tx in txns)
                 {
-                    var cardRepo = _uow.Repository<LoyaltyCard>();
-                    var c = await cardRepo.GetByIdAsync(card.Id, ct);
+                    var c = await _uow.Repository<LoyaltyCard>().GetByIdAsync(card.Id, ct);
                     if (c != null)
                     {
                         c.CurrentSteps = Math.Max(0, c.CurrentSteps - tx.Points);
                         c.CurrentPoints = Math.Max(0, c.CurrentPoints - tx.Points);
                         _uow.Repository<LoyaltyCard>().Update(c);
+
+                        var reverseTx = new Transaction
+                        {
+                            LoyaltyCardId = card.Id,
+                            Type = TransactionType.Adjusted,
+                            Points = -tx.Points,
+                            OrderId = request.Id,
+                            Description = "POS order deleted",
+                            RegUserId = 1,
+                            RegDate = DateTime.UtcNow,
+                            IsActive = true,
+                            BalanceAfter = c.CurrentPoints,
+                            LocalOccurredAt = DateTimeOffset.UtcNow,
+                            TimeZoneIdUsed = "UTC"
+                        };
+                        _uow.Repository<Transaction>().Add(reverseTx);
                     }
-                    var reverseTx = new Transaction
-                    {
-                        LoyaltyCardId = card.Id,
-                        Type = TransactionType.Adjusted,
-                        Points = -tx.Points,
-                        OrderId = request.Id,
-                        Description = "POS order deleted",
-                        RegUserId = 1,
-                        RegDate = DateTime.UtcNow,
-                        IsActive = true,
-                        BalanceAfter = 0,
-                        LocalOccurredAt = DateTimeOffset.UtcNow,
-                        TimeZoneIdUsed = "UTC"
-                    };
-                    _uow.Repository<Transaction>().Add(reverseTx);
                 }
-                _uow.Commit();
+                await _uow.CommitAsync(ct);
                 return new CollectResponse { Success = true };
             }
 
@@ -247,8 +247,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (totalSteps > 0 || totalPoints > 0)
             {
-                var cardRepo = _uow.Repository<LoyaltyCard>();
-                var c = await cardRepo.GetByIdAsync(card.Id, ct);
+                var c = await _uow.Repository<LoyaltyCard>().GetByIdAsync(card.Id, ct);
                 if (c != null)
                 {
                     c.CurrentSteps += totalSteps;
@@ -271,7 +270,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         TimeZoneIdUsed = "UTC"
                     };
                     _uow.Repository<Transaction>().Add(tx);
-                    _uow.Commit();
+                    await _uow.CommitAsync(ct);
                 }
             }
 

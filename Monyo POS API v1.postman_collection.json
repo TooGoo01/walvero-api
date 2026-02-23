@@ -1,0 +1,366 @@
+ {
+  "info": {
+    "_postman_id": "8ea3399e-96da-4705-8953-91900da2df64",
+    "name": "Monyo POS API v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "16195733"
+  },
+  "item": [
+    {
+      "name": "1. Customer API",
+      "item": [
+        {
+          "name": "1.1 Add Customers",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{monyo_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"venue_id\": \"44\",\n    \"type\": \"add\",\n    \"data\": [\n      {\n        \"name\": \"Kamran Gasimov\",\n        \"phone\": \"+994553019857\",\n        \"address\": \"Haydar Aliyev 115\",\n        \"birthday\": \"2026-01-24\",\n        \"customer_code\": \"1\",\n        \"barcode\": \"123456789\",\n        \"discount\": \"5\",\n        \"note\": \"test\"\n      }\n    ]\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/pos/customers",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "pos",
+                "customers"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "1.2 Update Customers",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{monyo_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"venue_id\": \"44\",\n    \"type\": \"update\",\n    \"data\": [\n      {\n        \"id\": \"50\",\n        \"name\": \"Kamran Gasimov\",\n        \"phone\": \"+994553019857\",\n        \"address\": \"Haydar Aliyev 115\",\n        \"birthday\": \"2026-01-24\",\n        \"customer_code\": \"1\",\n        \"barcode\": \"123456789\",\n        \"discount\": \"0\",\n        \"note\": \"test\"\n      }\n    ]\n  }\n]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/pos/customers",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "pos",
+                "customers"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Wallet Integration API",
+      "item": [
+        {
+          "name": "4.1 Get Wallet",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{wallet_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"venue_id\": \"44\",\n  \"barcode\": \"123456789\",\n  \"source\": \"monyo_pos\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{wallet_base_url}}/get_wallet",
+              "host": [
+                "{{wallet_base_url}}"
+              ],
+              "path": [
+                "get_wallet"
+              ]
+            },
+            "description": "Sent by Monyo POS to retrieve loyalty campaigns and cashback balance for a customer."
+          },
+          "response": []
+        },
+        {
+          "name": "4.2 Set Redeem (Send OTP)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{wallet_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"venue_id\": \"44\",\n  \"barcode\": \"123456789\",\n  \"campaign_id\": \"1\",\n  \"type\": \"loyalty\",\n  \"amount\": 0,\n  \"source\": \"monyo_pos\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{wallet_base_url}}/set_redeem",
+              "host": [
+                "{{wallet_base_url}}"
+              ],
+              "path": [
+                "set_redeem"
+              ]
+            },
+            "description": "Sent by Monyo POS when a cashier initiates a redemption. The wallet platform should send an OTP to the customer. Use type=cashback and set amount for cashback redemptions."
+          },
+          "response": []
+        },
+        {
+          "name": "4.3 Verify OTP",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{wallet_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"venue_id\": \"44\",\n  \"barcode\": \"123456789\",\n  \"campaign_id\": \"1\",\n  \"otp\": \"1234\",\n  \"type\": \"loyalty\",\n  \"amount\": 0,\n  \"source\": \"monyo_pos\",\n  \"order_id\": \"1c1jf5u7a4srn\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{wallet_base_url}}/set_verify",
+              "host": [
+                "{{wallet_base_url}}"
+              ],
+              "path": [
+                "set_verify"
+              ]
+            },
+            "description": "Sent by Monyo POS after the cashier enters the OTP. The wallet platform should verify and complete the redemption. Use type=cashback for cashback redemptions."
+          },
+          "response": []
+        },
+        {
+          "name": "4.4 Collect (Order Closed)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{wallet_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"1c1jf5u7a4srn\",\n  \"venue_id\": \"44\",\n  \"customer_id\": \"5\",\n  \"source\": \"monyo_pos\",\n  \"status\": \"closed\",\n  \"total\": \"1000\",\n  \"items\": [\n    {\n      \"id\": 123,\n      \"name\": \"Kofe\",\n      \"count\": 5\n    },\n    {\n      \"id\": 124,\n      \"name\": \"Latte\",\n      \"count\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{wallet_base_url}}/collect",
+              "host": [
+                "{{wallet_base_url}}"
+              ],
+              "path": [
+                "collect"
+              ]
+            },
+            "description": "Sent by Monyo POS automatically when a receipt is closed. The wallet platform should accumulate loyalty stamps and calculate cashback."
+          },
+          "response": []
+        },
+        {
+          "name": "4.5 Collect (Order Deleted — Reverse)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{wallet_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"1c1jf5u7a4srn\",\n  \"venue_id\": \"44\",\n  \"customer_id\": \"5\",\n  \"source\": \"monyo_pos\",\n  \"status\": \"deleted\",\n  \"total\": \"1000\",\n  \"items\": [\n    {\n      \"id\": 123,\n      \"name\": \"Kofe\",\n      \"count\": 5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{wallet_base_url}}/collect",
+              "host": [
+                "{{wallet_base_url}}"
+              ],
+              "path": [
+                "collect"
+              ]
+            },
+            "description": "Sent by Monyo POS when a receipt is deleted. Same endpoint as 4.4 but with status=deleted. The wallet platform should reverse stamps and cashback for the given order id."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://monyo.az/v4",
+      "type": "string"
+    },
+    {
+      "key": "monyo_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "wallet_base_url",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "wallet_token",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

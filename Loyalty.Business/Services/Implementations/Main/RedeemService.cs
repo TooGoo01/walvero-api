@@ -468,12 +468,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                     return Fail("Kodun vaxtı keçib.");
                 }
 
-                // OTP yoxlamanı aktiv etmək istəsəniz bu hissəni açın:
-                // if (!string.Equals(rr.Code, code, StringComparison.Ordinal))
-                // {
-                //     _logger.LogWarning("OTP mismatch. Provided={Provided}, Stored={StoredMasked}", MaskOtp(code), MaskOtp(rr.Code));
-                //     return Fail("Təsdiq kodu yanlışdır.");
-                // }
+                var policy = await _tenantPolicySvc.GetByIdAsync(rr.TenantId, ct);
+                if (policy.RequireConfirmation && !string.Equals(rr.Code, code, StringComparison.Ordinal))
+                {
+                    _logger.LogWarning("OTP mismatch. Provided={Provided}, Stored={StoredMasked}", MaskOtp(code), MaskOtp(rr.Code));
+                    return Fail("Təsdiq kodu yanlışdır.");
+                }
 
                 var card = await _cardSvc.GetById(rr.LoyaltyCardId, ct);
                 if (card is null)

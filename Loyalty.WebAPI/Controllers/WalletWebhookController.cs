@@ -98,7 +98,7 @@ namespace Loyalty.WebAPI.Controllers
 
             var items = (request.Items ?? []).Select(i => new CollectItem
             {
-                Id = (i?.Id ?? 0).ToString(),
+                Id = (i?.Id ?? 0).ToString("D"),
                 Name = i?.Name ?? "",
                 Count = i?.Count ?? 0
             }).ToList();
@@ -159,7 +159,7 @@ namespace Loyalty.WebAPI.Controllers
 
     public class CollectItemDto
     {
-        public object? Id { get; set; }
+        public int? Id { get; set; }
         public string? Name { get; set; }
         public int? Count { get; set; }
     }
