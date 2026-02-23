@@ -22,6 +22,9 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? WalletTokenHash { get; set; }
         public string? WalletTokenEncrypted { get; set; }
 
+        public DateTime CreatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
+
         public Tenant Tenant { get; set; } = null!;
         public IntegrationType IntegrationType { get; set; } = null!;
         public LoyaltyProgram? LoyaltyProgram { get; set; }

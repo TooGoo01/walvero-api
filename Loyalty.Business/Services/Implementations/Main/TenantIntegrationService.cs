@@ -46,6 +46,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ApiBaseUrl = dto.ApiBaseUrl?.Trim(),
                 ApiTokenEncrypted = !string.IsNullOrEmpty(dto.ApiToken) ? _protector.Encrypt(dto.ApiToken) : null,
                 WalletTokenHash = hash,
+                CreatedAt = DateTime.UtcNow,
                 IsActive = true,
                 RegUserId = 1,
                 RegDate = DateTime.UtcNow
@@ -120,6 +121,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.ApiBaseUrl != null) ti.ApiBaseUrl = dto.ApiBaseUrl.Trim();
             if (!string.IsNullOrEmpty(dto.ApiToken)) ti.ApiTokenEncrypted = _protector.Encrypt(dto.ApiToken);
             if (dto.IsActive.HasValue) ti.IsActive = dto.IsActive.Value;
+            ti.UpdatedAt = DateTime.UtcNow;
             _repo.Update(ti);
             await _uow.CommitAsync(ct);
             return ServiceResult<bool>.Ok(true);
@@ -132,6 +134,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (tenantId.HasValue && ti.TenantId != tenantId.Value)
                 return ServiceResult<bool>.Fail("Yetkisiz.");
             ti.IsActive = false;
+            ti.UpdatedAt = DateTime.UtcNow;
             _repo.Update(ti);
             await _uow.CommitAsync(ct);
             return ServiceResult<bool>.Ok(true);
@@ -145,6 +148,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return ServiceResult<string?>.Fail("Yetkisiz.");
             var (token, hash) = _tokenGenerator.Generate();
             ti.WalletTokenHash = hash;
+            ti.UpdatedAt = DateTime.UtcNow;
             _repo.Update(ti);
             await _uow.CommitAsync(ct);
             return ServiceResult<string?>.Ok(token);
