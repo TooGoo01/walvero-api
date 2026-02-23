@@ -1,7 +1,7 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 
-name: Build and deploy container app to Azure Web App - walveroapi-dev
+name: Build and deploy ASP.Net Core app to Azure Web App - walveroapi-dev
 
 on:
   push:
@@ -18,46 +18,48 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Log in to container registry
-        uses: docker/login-action@v2
+      - name: Set up .NET Core
+        uses: actions/setup-dotnet@v4
         with:
-          registry: mcr.microsoft.com/
-          username: ${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_FFF460D7DF0E40CEA6C78824CEF7BBF6 }}
-          password: ${{ secrets.AZUREAPPSERVICE_CONTAINERPASSWORD_8EA44AA4383149CAAB05F66F2EE0B855 }}
+          dotnet-version: '8.x'
 
-      - name: Build and push container image to registry
-        uses: docker/build-push-action@v3
+      - name: Build with dotnet
+        run: dotnet build --configuration Release
+
+      - name: dotnet publish
+        run: dotnet publish -c Release -o ${{env.DOTNET_ROOT}}/myapp
+
+      - name: Upload artifact for deployment job
+        uses: actions/upload-artifact@v4
         with:
-          context: .
-          push: true
-          tags: mcr.microsoft.com/${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_FFF460D7DF0E40CEA6C78824CEF7BBF6 }}/appsvc/staticsite:${{ github.sha }}
-          file: ./Dockerfile
+          name: .net-app
+          path: ${{env.DOTNET_ROOT}}/myapp
 
   deploy:
     runs-on: ubuntu-latest
+    needs: build
     permissions:
       id-token: write #This is required for requesting the JWT
       contents: read #This is required for actions/checkout
 
-    needs: build
-    
     steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: .net-app
       
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_8895884DD20640C1BCD42347CB0F933F }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_833C81A506924C838E1978750DF47672 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_3AC1A408D2D044418278F4763CC11549 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_BEE970850DB744998E573733B22FBD57 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_C77C91263716428F8EB75E2AF48B96B0 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_604EADAA50E54E418FEFFD2381ECD1BC }}
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
-        uses: azure/webapps-deploy@v2
+        uses: azure/webapps-deploy@v3
         with:
           app-name: 'walveroapi-dev'
           slot-name: 'Production'
-          images: 'mcr.microsoft.com/${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_FFF460D7DF0E40CEA6C78824CEF7BBF6 }}/appsvc/staticsite:${{ github.sha }}'
+          package: .
           
