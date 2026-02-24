@@ -37,7 +37,7 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> Create([FromBody] TenantIntegrationCreateDto dto, CancellationToken ct)
         {
-            var tenantId = _tenantProvider.CurrentTenantId ?? dto.TenantId;
+            var tenantId = dto.TenantId > 0 ? dto.TenantId : _tenantProvider.CurrentTenantId ?? 0;
             if (tenantId <= 0) return BadRequest("TenantId required.");
             dto.TenantId = tenantId;
 

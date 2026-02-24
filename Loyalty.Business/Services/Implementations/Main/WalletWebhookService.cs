@@ -15,6 +15,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ICardTemplateRepository _cardTemplateRepo;
         private readonly IPosProductEarnRuleRepository _earnRuleRepo;
         private readonly IPosCustomerMappingRepository _customerMappingRepo;
+        private readonly ICustomerRepository _customerRepo;
         private readonly IRedeemService _redeemService;
         private readonly IUnitOfWork _uow;
 
@@ -25,6 +26,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             ICardTemplateRepository cardTemplateRepo,
             IPosProductEarnRuleRepository earnRuleRepo,
             IPosCustomerMappingRepository customerMappingRepo,
+            ICustomerRepository customerRepo,
             IRedeemService redeemService,
             IUnitOfWork uow)
         {
@@ -34,8 +36,44 @@ namespace Loyalty.Business.Services.Implementations.Main
             _cardTemplateRepo = cardTemplateRepo;
             _earnRuleRepo = earnRuleRepo;
             _customerMappingRepo = customerMappingRepo;
+            _customerRepo = customerRepo;
             _redeemService = redeemService;
             _uow = uow;
+        }
+
+        /// <summary>
+        /// Barcode "walveroId,barcode" formatında gələ bilər.
+        /// Vergüllə ayrılıbsa: əvvəlcə birinci dəyəri, tapılmazsa ikincini axtarır.
+        /// Hər dəyər üçün: BarcodeValue (kart barkodu) → WalveroId (ApplicationUser) sırası ilə yoxlanılır.
+        /// </summary>
+        private async Task<LoyaltyCard?> ResolveCardAsync(int tenantId, string rawBarcode, CancellationToken ct)
+        {
+            var parts = rawBarcode.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            foreach (var part in parts)
+            {
+                // 1) BarcodeValue ilə axtar (tracked + Customer include)
+                var card = await _loyaltyCardRepo.GetByBarcodeValueAsync(tenantId, part, ct);
+                if (card != null) return card;
+
+                // 2) WalveroId ilə axtar (ApplicationUser.WalveroId)
+                if (long.TryParse(part, out var walveroId))
+                {
+                    var customer = await _customerRepo.GetByWalveroIdAsync(tenantId, walveroId, ct);
+                    if (customer != null)
+                    {
+                        // Customer-in son aktiv kartını qaytar
+                        var activeCard = customer.LoyaltyCards?
+                            .Where(c => c.IsActive)
+                            .OrderByDescending(c => c.Id)
+                            .FirstOrDefault();
+                        if (activeCard != null)
+                            return await _loyaltyCardRepo.GetById(activeCard.Id, ct);
+                    }
+                }
+            }
+
+            return null;
         }
 
         public async Task<GetWalletResponse> GetWalletAsync(WalletWebhookResolvedContext context, string barcode, CancellationToken ct = default)
@@ -43,7 +81,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             var tenantId = context.TenantId;
             var programId = context.LoyaltyProgramId;
 
-            var card = await _loyaltyCardRepo.GetByBarcodeValueAsync(tenantId, barcode, ct);
+            var card = await ResolveCardAsync(tenantId, barcode, ct);
             if (card == null)
                 return new GetWalletResponse { Success = false, Message = "Customer not found" };
 
@@ -61,29 +99,53 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             var loyalty = new List<LoyaltyCampaignItem>();
+            double cashbackBalans = 0;
+
             if (cardInProgram != null)
             {
-                CardTemplate? template = null;
-                if (program.CardTemplateId.HasValue)
-                {
-                    template = await _cardTemplateRepo.GetByIdAsync(program.CardTemplateId.Value, ct);
-                }
-                var totalSteps = template?.TotalSteps ?? 10;
-                var rewardsEnum = await _rewardRepo.GetAllAsync(r => r.LoyaltyProgramId == programId.Value && r.IsActive);
-                var firstReward = rewardsEnum.FirstOrDefault();
-                loyalty.Add(new LoyaltyCampaignItem
-                {
-                    Id = program.Id,
-                    Count = cardInProgram.CurrentSteps,
-                    Maximum = totalSteps,
-                    Rewards = cardInProgram.CompletedCycles,
-                    ProductId = firstReward?.ExternalProductId ?? program.Id.ToString(),
-                    ProductName = firstReward?.Name ?? template?.RewardDescription
-                });
-            }
+                cashbackBalans = (double)((cardInProgram.CurrentPoints) * program.CurrencyPerPoint);
 
-            // cashbackBalans: cardInProgram-ın balansı istifadə et (barcode-la tapılan card yox)
-            var cashbackBalans = (double)((cardInProgram?.CurrentPoints ?? 0) * program.CurrencyPerPoint);
+                // Yalnız ProgressBased (stamp) proqramlarda loyalty kampaniyalarını qaytar
+                if (program.ProgramType == LoyaltyProgramType.ProgressBased)
+                {
+                    CardTemplate? template = null;
+                    if (program.CardTemplateId.HasValue)
+                    {
+                        template = await _cardTemplateRepo.GetByIdAsync(program.CardTemplateId.Value, ct);
+                    }
+                    var totalSteps = template?.TotalSteps ?? 10;
+                    var rewards = (await _rewardRepo.GetAllAsync(r => r.LoyaltyProgramId == programId.Value && r.IsActive)).ToList();
+
+                    if (rewards.Count == 0)
+                    {
+                        loyalty.Add(new LoyaltyCampaignItem
+                        {
+                            Id = program.Id,
+                            Count = cardInProgram.CurrentSteps,
+                            Maximum = totalSteps,
+                            Rewards = cardInProgram.CompletedCycles,
+                            ProductId = program.Id.ToString(),
+                            ProductName = template?.RewardDescription
+                        });
+                    }
+                    else
+                    {
+                        foreach (var reward in rewards)
+                        {
+                            loyalty.Add(new LoyaltyCampaignItem
+                            {
+                                Id = reward.Id,
+                                Count = cardInProgram.CurrentSteps,
+                                Maximum = totalSteps,
+                                Rewards = cardInProgram.CompletedCycles,
+                                ProductId = reward.ExternalProductId ?? reward.Id.ToString(),
+                                ProductName = reward.Name
+                            });
+                        }
+                    }
+                }
+                // TierBased və PointsBased — yalnız cashback_balans qaytarılır, loyalty boş olur
+            }
 
             return new GetWalletResponse
             {
@@ -100,7 +162,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!programId.HasValue)
                 return new SetRedeemResponse { Status = false, Message = "No program configured" };
 
-            var card = await _loyaltyCardRepo.GetByBarcodeValueAsync(tenantId, request.Barcode, ct);
+            var card = await ResolveCardAsync(tenantId, request.Barcode, ct);
             if (card == null)
                 return new SetRedeemResponse { Status = false, Message = "Customer not found" };
 
@@ -134,7 +196,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!programId.HasValue)
                 return new SetVerifyResponse { Status = false };
 
-            var card = await _loyaltyCardRepo.GetByBarcodeValueAsync(tenantId, request.Barcode, ct);
+            var card = await ResolveCardAsync(tenantId, request.Barcode, ct);
             if (card == null)
                 return new SetVerifyResponse { Status = false };
 
@@ -161,14 +223,22 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new SetVerifyResponse { Status = true, Type = "cashback", Discount = discount };
             }
 
-            var rewardsEnum = await _rewardRepo.GetAllAsync(r => r.LoyaltyProgramId == programId.Value && r.IsActive);
-            var firstReward = rewardsEnum.FirstOrDefault();
+            // campaign_id ilə göndərilən reward-u tap; tapılmazsa birincini götür
+            Reward? matchedReward = null;
+            if (int.TryParse(request.CampaignId, out var campaignRewardId))
+            {
+                var rewardById = await _rewardRepo.GetByIdAsync(campaignRewardId, ct);
+                if (rewardById != null && rewardById.IsActive && rewardById.LoyaltyProgramId == programId.Value)
+                    matchedReward = rewardById;
+            }
+            matchedReward ??= (await _rewardRepo.GetAllAsync(r => r.LoyaltyProgramId == programId.Value && r.IsActive)).FirstOrDefault();
+
             return new SetVerifyResponse
             {
                 Status = true,
                 Type = "loyalty",
-                ProductId = firstReward?.ExternalProductId ?? programId.Value.ToString(),
-                ProductName = firstReward?.Name
+                ProductId = matchedReward?.ExternalProductId ?? programId.Value.ToString(),
+                ProductName = matchedReward?.Name
             };
         }
 
