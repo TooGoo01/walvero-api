@@ -112,9 +112,9 @@ namespace Loyalty.WebAPI.Controllers
             var tid = tenantId ?? _tenantProvider.CurrentTenantId;
             if (!tid.HasValue || tid <= 0)
                 return BadRequest("TenantId required.");
-            var ok = await _customerSyncService.SyncCustomerToPosAsync(tid.Value, customerId, ct);
-            if (!ok) return BadRequest("Sync failed.");
-            return Ok(new { success = true });
+            var result = await _customerSyncService.SyncCustomerToPosAsync(tid.Value, customerId, ct);
+            if (!result.Success) return BadRequest("Sync failed.");
+            return Ok(new { success = true, walveroId = result.WalveroId, barcode = result.Barcode });
         }
     }
 }

@@ -53,5 +53,14 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     ti.IntegrationType.Source == source &&
                     ti.IsActive && ti.IntegrationType.IsActive, ct);
         }
+
+        public Task<TenantIntegration?> GetActiveByTenantAsync(int tenantId, CancellationToken ct = default)
+        {
+            return GetAsQueryable()
+                .Include(ti => ti.IntegrationType)
+                .FirstOrDefaultAsync(ti =>
+                    ti.TenantId == tenantId &&
+                    ti.IsActive && ti.IntegrationType.IsActive, ct);
+        }
     }
 }

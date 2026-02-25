@@ -35,6 +35,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string CampaignId { get; set; } = string.Empty;
         public string Type { get; set; } = "loyalty";
         public decimal Amount { get; set; }
+        public int Delta { get; set; } = -1;
     }
 
     public class SetRedeemResponse
@@ -71,6 +72,13 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string Status { get; set; } = "closed";
         public decimal Total { get; set; }
         public List<CollectItem> Items { get; set; } = new();
+        public CollectPayments? Payments { get; set; }
+    }
+
+    public class CollectPayments
+    {
+        public decimal Cash { get; set; }
+        public decimal Cashless { get; set; }
     }
 
     public class CollectItem

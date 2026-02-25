@@ -28,5 +28,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
     {
         public int Id { get; set; }
         public string? CustomerCode { get; set; }
+        public string? Barcode { get; set; }
+        public long? WalveroId { get; set; }
     }
 }

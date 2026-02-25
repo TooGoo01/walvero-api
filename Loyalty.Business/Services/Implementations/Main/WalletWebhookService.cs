@@ -17,6 +17,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IPosCustomerMappingRepository _customerMappingRepo;
         private readonly ICustomerRepository _customerRepo;
         private readonly IRedeemService _redeemService;
+        private readonly ITenantRepository _tenantRepo;
         private readonly IUnitOfWork _uow;
 
         public WalletWebhookService(
@@ -28,6 +29,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             IPosCustomerMappingRepository customerMappingRepo,
             ICustomerRepository customerRepo,
             IRedeemService redeemService,
+            ITenantRepository tenantRepo,
             IUnitOfWork uow)
         {
             _loyaltyCardRepo = loyaltyCardRepo;
@@ -38,7 +40,49 @@ namespace Loyalty.Business.Services.Implementations.Main
             _customerMappingRepo = customerMappingRepo;
             _customerRepo = customerRepo;
             _redeemService = redeemService;
+            _tenantRepo = tenantRepo;
             _uow = uow;
+        }
+
+        /// <summary>
+        /// CardTemplate entity-si üzərindən tier hesablayır (RedeemController.TierResolverDouble kimi).
+        /// </summary>
+        private static (string tierName, int? percent, int? percentCash, string? iconUrl) ResolveTier(
+            double points, CardTemplate tpl)
+        {
+            int bronzeTh = tpl.BronzeThreshold ?? 0;
+            int? silverTh = tpl.SilverThreshold;
+            int? goldTh = tpl.GoldThreshold;
+            int? platTh = tpl.PlatinumThreshold;
+
+            string name = "Bronze";
+            int? percent = tpl.BronzePercent;
+            int? percentCash = tpl.BronzePercentCash;
+            string? icon = tpl.BronzeIconUrl ?? tpl.LogoUrl;
+
+            if (platTh.HasValue && points >= platTh.Value)
+            {
+                name = "Platinum";
+                percent = tpl.PlatinumPercent;
+                percentCash = tpl.PlatinumPercentCash;
+                icon = tpl.PlatinumIconUrl ?? icon;
+            }
+            else if (goldTh.HasValue && points >= goldTh.Value)
+            {
+                name = "Gold";
+                percent = tpl.GoldPercent;
+                percentCash = tpl.GoldPercentCash;
+                icon = tpl.GoldIconUrl ?? icon;
+            }
+            else if (silverTh.HasValue && points >= silverTh.Value)
+            {
+                name = "Silver";
+                percent = tpl.SilverPercent;
+                percentCash = tpl.SilverPercentCash;
+                icon = tpl.SilverIconUrl ?? icon;
+            }
+
+            return (name, percent, percentCash, icon);
         }
 
         /// <summary>
@@ -103,7 +147,9 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (cardInProgram != null)
             {
-                cashbackBalans = (double)((cardInProgram.CurrentPoints) * program.CurrencyPerPoint);
+                // ProgressBased üçün cashback_balans göstərilmir
+                if (program.ProgramType != LoyaltyProgramType.ProgressBased)
+                    cashbackBalans = (double)((cardInProgram.CurrentPoints) * program.CurrencyPerPoint);
 
                 // Yalnız ProgressBased (stamp) proqramlarda loyalty kampaniyalarını qaytar
                 if (program.ProgramType == LoyaltyProgramType.ProgressBased)
@@ -170,12 +216,46 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (cardForProgram == null)
                 return new SetRedeemResponse { Status = false, Message = "No active card for program" };
 
+            int delta = request.Delta;
+
+            var program = await _loyaltyProgramRepo.GetByIdAsync(programId.Value, ct);
+            if (program != null && program.CardTemplateId.HasValue)
+            {
+                var tpl = await _cardTemplateRepo.GetByIdAsync(program.CardTemplateId.Value, ct);
+                if (tpl != null && tpl.TemplateType == CardTemplateType.ProgressBased)
+                {
+                    // ProgressBased: hər reward = TotalSteps point, pending request yaradılır
+                    int totalSteps = Math.Max(1, tpl.TotalSteps);
+                    int rewardsToSpend = (int)Math.Max(1, request.Amount);
+                    delta = -(rewardsToSpend * totalSteps);
+                }
+                else if (string.Equals(request.Type, "cashback", StringComparison.OrdinalIgnoreCase)
+                         && request.Amount > 0)
+                {
+                    // Cashback: Amount birbaşa point kimi çıxılır
+                    delta = -(int)request.Amount;
+                }
+                else
+                {
+                    if (delta > 0) delta = -delta;
+                }
+            }
+            else if (string.Equals(request.Type, "cashback", StringComparison.OrdinalIgnoreCase)
+                     && request.Amount > 0)
+            {
+                delta = -(int)request.Amount;
+            }
+            else
+            {
+                if (delta > 0) delta = -delta;
+            }
+
             var dto = new Dtos.Post.Main.RedeemRequestDto
             {
                 TenantId = tenantId,
                 LoyaltyProgramId = programId,
                 Code = request.Barcode,
-                Delta = -1,
+                Delta = delta,
                 Mode = Dtos.Post.Main.RedeemMode.ForcePending,
                 OrderId = null,
                 PreferredPlatform = WalletPlatform.Unknown
@@ -207,8 +287,43 @@ namespace Loyalty.Business.Services.Implementations.Main
             var allPending = await _uow.Repository<RedeemRequest>().GetAllAsync(
                 rr => rr.LoyaltyCardId == cardForProgram.Id && rr.Status == RedeemStatus.Pending && rr.ExpiresUtc > DateTime.UtcNow);
             var pendingRequest = allPending.OrderByDescending(rr => rr.Id).FirstOrDefault();
+
             if (pendingRequest == null)
-                return new SetVerifyResponse { Status = false };
+            {
+                // No pending request - check if RequireConfirmation is off
+                var tenant = await _tenantRepo.GetByIdAsync(tenantId, ct);
+                if (tenant == null || tenant.RequireConfirmation)
+                    return new SetVerifyResponse { Status = false };
+
+                // RequireConfirmation=false: create redeem inline then confirm
+                var inlineRedeem = new SetRedeemRequest
+                {
+                    VenueId = request.VenueId,
+                    Barcode = request.Barcode,
+                    CampaignId = request.CampaignId,
+                    Type = request.Type,
+                    Amount = request.Amount,
+                    Delta = -1
+                };
+                var redeemResp = await SetRedeemAsync(context, inlineRedeem, ct);
+                if (!redeemResp.Status)
+                    return new SetVerifyResponse { Status = false };
+
+                // Re-fetch the newly created pending request
+                allPending = await _uow.Repository<RedeemRequest>().GetAllAsync(
+                    rr => rr.LoyaltyCardId == cardForProgram.Id && rr.Status == RedeemStatus.Pending && rr.ExpiresUtc > DateTime.UtcNow);
+                pendingRequest = allPending.OrderByDescending(rr => rr.Id).FirstOrDefault();
+                if (pendingRequest == null)
+                    return new SetVerifyResponse { Status = false };
+            }
+
+            // OrderId-ni set et ki, collect delete zamanı bu transaction da tapılsın
+            if (!string.IsNullOrEmpty(request.OrderId) && string.IsNullOrEmpty(pendingRequest.OrderId))
+            {
+                pendingRequest.OrderId = request.OrderId;
+                _uow.Repository<RedeemRequest>().Update(pendingRequest);
+                await _uow.CommitAsync(ct);
+            }
 
             var result = await _redeemService.ConfirmRedeemAsync(pendingRequest.Id, request.Otp, ct);
             if (!result.Success)
@@ -259,25 +374,40 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (request.Status == "deleted")
             {
+                // Yalnız Earned və Redeemed transaction-ları al (Adjusted = artıq reverse olunub)
                 var txns = (await _uow.Repository<Transaction>().GetAllAsync(
-                    t => t.OrderId == request.Id && t.LoyaltyCardId == card.Id)).ToList();
+                    t => t.OrderId == request.Id && t.LoyaltyCardId == card.Id
+                         && t.Type != TransactionType.Adjusted))
+                    .OrderBy(t => t.Id).ToList();
 
-                foreach (var tx in txns)
+                var c = await _uow.Repository<LoyaltyCard>().GetByIdAsync(card.Id, ct);
+                if (c != null && txns.Count > 0)
                 {
-                    var c = await _uow.Repository<LoyaltyCard>().GetByIdAsync(card.Id, ct);
-                    if (c != null)
+                    foreach (var tx in txns)
                     {
-                        c.CurrentSteps = Math.Max(0, c.CurrentSteps - tx.Points);
-                        c.CurrentPoints = Math.Max(0, c.CurrentPoints - tx.Points);
+                        // BalanceAfter - əvvəlki tx-in BalanceAfter = real delta
+                        // RedeemService Points=BalanceAfter saxlayır, webhook earn Points=delta saxlayır
+                        // Ona görə BalanceAfter fərqindən istifadə edirik (TransactionReverseService kimi)
+                        var prevTx = await _uow.Repository<Transaction>().GetAllAsync(
+                            t => t.LoyaltyCardId == tx.LoyaltyCardId && t.Id < tx.Id);
+                        var prev = prevTx.OrderByDescending(t => t.Id).FirstOrDefault();
+
+                        int originalDelta = prev != null
+                            ? tx.BalanceAfter - prev.BalanceAfter
+                            : tx.BalanceAfter;
+
+                        // Reverse: əks delta tətbiq et
+                        c.CurrentSteps = Math.Max(0, c.CurrentSteps - originalDelta);
+                        c.CurrentPoints = Math.Max(0, c.CurrentPoints - originalDelta);
                         _uow.Repository<LoyaltyCard>().Update(c);
 
                         var reverseTx = new Transaction
                         {
                             LoyaltyCardId = card.Id,
                             Type = TransactionType.Adjusted,
-                            Points = -tx.Points,
+                            Points = c.CurrentPoints,
                             OrderId = request.Id,
-                            Description = "POS order deleted",
+                            Description = $"POS order deleted (reverse {tx.Type}: {originalDelta:+#;-#;0})",
                             RegUserId = 1,
                             RegDate = DateTime.UtcNow,
                             IsActive = true,
@@ -287,8 +417,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                         };
                         _uow.Repository<Transaction>().Add(reverseTx);
                     }
+                    await _uow.CommitAsync(ct);
                 }
-                await _uow.CommitAsync(ct);
                 return new CollectResponse { Success = true };
             }
 
@@ -309,9 +439,49 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (totalSteps == 0 && totalPoints == 0)
             {
                 var program = await _loyaltyProgramRepo.GetByIdAsync(programId.Value, ct);
-                if (program != null && program.PointsPerCurrency > 0)
+                if (program != null)
                 {
-                    totalPoints = (int)((double)request.Total * (double)program.PointsPerCurrency);
+                    // Tier faizini hesabla (əgər CardTemplate varsa)
+                    int? tierPercent = null;
+                    int? tierPercentCash = null;
+                    bool hasSplitPayment = false;
+
+                    if (program.CardTemplateId.HasValue)
+                    {
+                        var tpl = await _cardTemplateRepo.GetByIdAsync(program.CardTemplateId.Value, ct);
+                        if (tpl != null && tpl.PayMentType)
+                        {
+                            var (_, percent, percentCash, _) = ResolveTier((double)card.CurrentPoints, tpl);
+                            tierPercent = percent;
+                            tierPercentCash = percentCash ?? percent;
+                            hasSplitPayment = true;
+                        }
+                        else if (tpl != null && (tpl.TemplateType == CardTemplateType.TierBased || tpl.TemplateType == CardTemplateType.PointsBased))
+                        {
+                            var (_, percent, _, _) = ResolveTier((double)card.CurrentPoints, tpl);
+                            tierPercent = percent;
+                        }
+                    }
+
+                    if (hasSplitPayment && request.Payments != null)
+                    {
+                        // Payments göndərilib + PayMentType=true: cash/cashless üçün ayrı faiz
+                        var pctCard = tierPercent ?? 0;
+                        var pctCash = tierPercentCash ?? pctCard;
+                        var cashPoints = request.Payments.Cash * pctCash / 100m;
+                        var cashlessPoints = request.Payments.Cashless * pctCard / 100m;
+                        totalPoints = (int)(cashPoints + cashlessPoints);
+                    }
+                    else if (tierPercent.HasValue && tierPercent.Value > 0)
+                    {
+                        // Tier faizi var: total × percent / 100
+                        totalPoints = (int)(request.Total * tierPercent.Value / 100m);
+                    }
+                    else if (program.PointsPerCurrency > 0)
+                    {
+                        // Tier yoxdursa: total × PointsPerCurrency
+                        totalPoints = (int)((double)request.Total * (double)program.PointsPerCurrency);
+                    }
                 }
             }
 
@@ -320,16 +490,53 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var c = await _uow.Repository<LoyaltyCard>().GetByIdAsync(card.Id, ct);
                 if (c != null)
                 {
-                    c.CurrentSteps += totalSteps;
-                    c.CurrentPoints += totalPoints;
-                    c.LifetimePoints += totalPoints;
+                    var prog = await _loyaltyProgramRepo.GetByIdAsync(programId.Value, ct);
+                    var isProgressBased = false;
+                    int maxSteps = 10;
+
+                    if (prog?.CardTemplateId != null)
+                    {
+                        var tpl = await _cardTemplateRepo.GetByIdAsync(prog.CardTemplateId.Value, ct);
+                        if (tpl != null && tpl.TemplateType == CardTemplateType.ProgressBased)
+                        {
+                            isProgressBased = true;
+                            maxSteps = Math.Max(1, tpl.TotalSteps);
+                        }
+                    }
+
+                    if (isProgressBased)
+                    {
+                        // ProgressBased: yalnız steps artır, CurrentPoints artırmır
+                        // EarnRule varsa totalSteps, yoxdursa totalPoints-i step kimi istifadə et
+                        int stepsToAdd = totalSteps > 0 ? totalSteps : totalPoints;
+                        int newSteps = c.CurrentSteps + stepsToAdd;
+                        int cyclesEarned = newSteps / maxSteps;
+                        if (cyclesEarned > 0)
+                            c.CompletedCycles += cyclesEarned;
+                        c.CurrentSteps = newSteps % maxSteps;
+
+                        // CurrentPoints-i də artır (ApplyDelta kimi) - cycle tracking üçün
+                        c.CurrentPoints += stepsToAdd;
+                        c.LifetimePoints += stepsToAdd;
+                    }
+                    else
+                    {
+                        // TierBased / PointsBased: yalnız points artır
+                        c.CurrentSteps += totalSteps;
+                        c.CurrentPoints += totalPoints;
+                        c.LifetimePoints += totalPoints;
+                    }
                     _uow.Repository<LoyaltyCard>().Update(c);
+
+                    var earnedValue = isProgressBased
+                        ? (totalSteps > 0 ? totalSteps : totalPoints)
+                        : (totalSteps > 0 ? totalSteps : totalPoints);
 
                     var tx = new Transaction
                     {
                         LoyaltyCardId = card.Id,
                         Type = TransactionType.Earned,
-                        Points = totalSteps > 0 ? totalSteps : totalPoints,
+                        Points = earnedValue,
                         OrderId = request.Id,
                         Description = "POS collect",
                         RegUserId = 1,

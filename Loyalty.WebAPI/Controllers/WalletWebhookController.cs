@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.WebAPI.Extensions;
 using Loyalty.WebAPI.Filters;
@@ -103,6 +104,16 @@ namespace Loyalty.WebAPI.Controllers
                 Count = i?.Count ?? 0
             }).ToList();
 
+            CollectPayments? payments = null;
+            if (request.Payments != null)
+            {
+                payments = new CollectPayments
+                {
+                    Cash = request.Payments.Cash ?? 0,
+                    Cashless = request.Payments.Cashless ?? 0
+                };
+            }
+
             var result = await _webhookService.CollectAsync(ctx, new CollectRequest
             {
                 Id = request.Id ?? "",
@@ -110,7 +121,8 @@ namespace Loyalty.WebAPI.Controllers
                 CustomerId = request.CustomerId ?? "",
                 Status = request.Status ?? "closed",
                 Total = request.Total ?? 0,
-                Items = items
+                Items = items,
+                Payments = payments
             }, ct);
 
             return Ok(new { success = result.Success });
@@ -119,48 +131,109 @@ namespace Loyalty.WebAPI.Controllers
 
     public class GetWalletRequest
     {
+        [JsonPropertyName("venue_id")]
         public string? VenueId { get; set; }
+
+        [JsonPropertyName("barcode")]
         public string? Barcode { get; set; }
+
+        [JsonPropertyName("source")]
         public string? Source { get; set; }
     }
 
     public class SetRedeemWebhookRequest
     {
+        [JsonPropertyName("venue_id")]
         public string? VenueId { get; set; }
+
+        [JsonPropertyName("barcode")]
         public string? Barcode { get; set; }
+
+        [JsonPropertyName("campaign_id")]
         public string? CampaignId { get; set; }
+
+        [JsonPropertyName("type")]
         public string? Type { get; set; }
+
+        [JsonPropertyName("amount")]
         public decimal? Amount { get; set; }
+
+        [JsonPropertyName("source")]
         public string? Source { get; set; }
     }
 
     public class SetVerifyWebhookRequest
     {
+        [JsonPropertyName("venue_id")]
         public string? VenueId { get; set; }
+
+        [JsonPropertyName("barcode")]
         public string? Barcode { get; set; }
+
+        [JsonPropertyName("campaign_id")]
         public string? CampaignId { get; set; }
+
+        [JsonPropertyName("otp")]
         public string? Otp { get; set; }
+
+        [JsonPropertyName("type")]
         public string? Type { get; set; }
+
+        [JsonPropertyName("amount")]
         public decimal? Amount { get; set; }
+
+        [JsonPropertyName("source")]
         public string? Source { get; set; }
+
+        [JsonPropertyName("order_id")]
         public string? OrderId { get; set; }
     }
 
     public class CollectWebhookRequest
     {
+        [JsonPropertyName("id")]
         public string? Id { get; set; }
+
+        [JsonPropertyName("venue_id")]
         public string? VenueId { get; set; }
+
+        [JsonPropertyName("customer_id")]
         public string? CustomerId { get; set; }
+
+        [JsonPropertyName("source")]
         public string? Source { get; set; }
+
+        [JsonPropertyName("status")]
         public string? Status { get; set; }
+
+        [JsonPropertyName("total")]
         public decimal? Total { get; set; }
+
+        [JsonPropertyName("items")]
         public List<CollectItemDto>? Items { get; set; }
+
+        [JsonPropertyName("payments")]
+        public CollectPaymentsDto? Payments { get; set; }
+    }
+
+    public class CollectPaymentsDto
+    {
+        [JsonPropertyName("cash")]
+        public decimal? Cash { get; set; }
+
+        [JsonPropertyName("cashless")]
+        public decimal? Cashless { get; set; }
     }
 
     public class CollectItemDto
     {
+        [JsonPropertyName("id")]
         public int? Id { get; set; }
+
+        [JsonPropertyName("name")]
         public string? Name { get; set; }
+
+        [JsonPropertyName("count")]
         public int? Count { get; set; }
     }
 }

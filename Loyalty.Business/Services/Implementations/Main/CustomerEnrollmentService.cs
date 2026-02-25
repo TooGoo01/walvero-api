@@ -246,7 +246,7 @@ UserManager<ApplicationUser> userManager,
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Monyo POS sync failed for CustomerId={CustomerId}, TenantId={TenantId}", customer.Id, tenantId);
+                _logger.LogWarning(ex, " POS sync failed for CustomerId={CustomerId}, TenantId={TenantId}", customer.Id, tenantId);
             }
 
             // 4) Program / branding / snapshot (VerifyEnrollment-dan götürdük)
