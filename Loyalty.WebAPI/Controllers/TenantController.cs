@@ -27,20 +27,34 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
-        /// Get active tenants with optional filtering by category, location, name, and user
+        /// Get active tenants with optional filtering by category, location, and name.
+        /// Supports both authenticated (JWT) and anonymous requests.
+        /// Authenticated users get IsCustomer flag based on their loyalty cards.
+        /// Anonymous users get IsCustomer = false for all tenants.
+        /// Always returns 200 OK (never 401).
         /// </summary>
+        [AllowAnonymous]
         [HttpGet]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         [ResponseCache(
-            Duration = 60, 
+            Duration = 60,
             VaryByHeader = "Authorization",
-            VaryByQueryKeys = new[] { "currentPage", "pageSize", "categoryId", "countryId", "cityId", "name", "userName" })]
+            VaryByQueryKeys = new[] { "currentPage", "pageSize", "categoryId", "countryId", "cityId", "name" })]
         public async Task<ActionResult<ServiceResult>> GetTenants(
-            [FromQuery] TenantSearchDto? model, 
-            int currentPage = 1, 
+            [FromQuery] TenantSearchDto? model,
+            int currentPage = 1,
             int pageSize = 10)
         {
-            return Ok(await _tenantService.GetActiveUser(currentPage, pageSize, model));
+            // Extract userId from JWT if authenticated; null for anonymous/guest
+            int? currentUserId = null;
+            if (User.Identity?.IsAuthenticated == true)
+            {
+                var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (int.TryParse(userIdClaim, out var uid))
+                    currentUserId = uid;
+            }
+
+            return Ok(await _tenantService.GetActiveUser(currentPage, pageSize, model, currentUserId));
         }
         [HttpGet]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]

@@ -30,22 +30,19 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ITenantRepository _tenantRepository;
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly UserManager<ApplicationUser> _userManager;
-        private readonly ITenantProvider _tenantProvider;
 
         public TenantService(
             ITenantRepository tenantRepository,
             IMapper mapper,
             IUnitOfWork unitOfWork,
             LoyaltyWalletDbContext dbContext,
-            UserManager<ApplicationUser> userManager,
-            ITenantProvider tenantProvider)
+            UserManager<ApplicationUser> userManager)
         {
             _tenantRepository = tenantRepository;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _dbContext = dbContext;
             _userManager = userManager;
-            _tenantProvider = tenantProvider;
         }
 
         public async Task<ServiceResult> Add(AddTenantDto Dto)
@@ -106,103 +103,80 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, response);
         }
 
-        public async Task<ServiceResult> GetActiveUser(int currentPage, int pageSize, TenantSearchDto model)
+        public async Task<ServiceResult> GetActiveUser(int currentPage, int pageSize, TenantSearchDto model, int? currentUserId = null)
         {
             if (pageSize > 100)
                 pageSize = 100;
-            
-            // Resolve user context for personalized "IsCustomer":
-            // 1) Prefer authenticated JWT user id (ClaimTypes.NameIdentifier via ITenantProvider)
-            // 2) If not authenticated but client passed phone in model.userName, resolve ApplicationUser by that phone
-            //    and compute "IsCustomer" for that user (prevents "isCustomer=true but MyCards empty" drift).
-            int? applicationUserId = null;
 
-            var currentUserIdStr = _tenantProvider.CurrentUserId;
-            if (!string.IsNullOrWhiteSpace(currentUserIdStr) && int.TryParse(currentUserIdStr, out var parsedUserId))
-            {
-                applicationUserId = parsedUserId;
-            }
-            else if (!string.IsNullOrWhiteSpace(model?.userName))
-            {
-                var phoneOrUserName = model.userName.Trim();
+            // Build base query with Select projection (no heavy Include chains)
+            var query = _tenantRepository.GetActiveFiltered(
+                model?.Name,
+                model?.categoryId,
+                model?.countryId,
+                model?.cityId);
 
-                // Most of the system uses phone as UserName; still, check both PhoneNumber and UserName to be safe.
-                var resolvedUser = await _dbContext.Users
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(u => u.UserName == phoneOrUserName || u.PhoneNumber == phoneOrUserName);
-
-                if (resolvedUser != null)
-                    applicationUserId = resolvedUser.Id;
-            }
-
-            // OPTIMIZATION: Get IQueryable and count BEFORE pagination
-            // Backward compatibility: if unauthenticated, fall back to the existing phone-based discover logic.
-            var query = applicationUserId.HasValue
-                ? _tenantRepository.GetActiveWithApplicationUser(
-                    model.Name,
-                    applicationUserId.Value,
-                    model.categoryId,
-                    model.countryId,
-                    model.cityId)
-                : _tenantRepository.GetActiveWithUser(
-                    model.Name,
-                    model.userName,
-                    model.categoryId,
-                    model.countryId,
-                    model.cityId);
-            
-            // Execute count query first (single database call)
+            // Execute count query first (single DB call)
             var totalCount = await query.CountAsync();
-            
-            // Apply pagination at database level and materialize
-            var page = await query
+
+            // Apply pagination and project only the fields we need
+            var tenants = await query
                 .Skip((currentPage - 1) * pageSize)
                 .Take(pageSize)
+                .Select(t => new TenantDiscoverDto
+                {
+                    Id = t.Id,
+                    CompanyName = t.CompanyName,
+                    IsCustomer = false, // will be overridden below if authenticated
+                    Category = t.Category == null
+                        ? null
+                        : new TenantDiscoverCategoryDto { EnName = t.Category.EnName },
+                    LoyaltyPrograms = t.LoyaltyPrograms
+                        .Where(lp => lp.IsActive)
+                        .OrderBy(lp => lp.Id)
+                        .Select(lp => new TenantDiscoverProgramDto
+                        {
+                            Id = lp.Id,
+                            ProgramName = lp.ProgramName,
+                            Description = lp.Description,
+                            CardTemplate = lp.CardTemplate == null
+                                ? null
+                                : new TenantDiscoverCardTemplateDto
+                                {
+                                    BackgroundColor = lp.CardTemplate.BackgroundColor,
+                                    ForegroundColor = lp.CardTemplate.ForegroundColor,
+                                    LogoUrl = lp.CardTemplate.LogoUrl,
+                                    GoogleLogoUrl = lp.CardTemplate.GoogleLogoUrl
+                                }
+                        })
+                        .ToList()
+                })
                 .ToListAsync();
 
-            var mappedTenants = page.Select(tenant =>
+            // Batch isCustomer lookup — single query, no N+1
+            if (currentUserId.HasValue && tenants.Count > 0)
             {
-                // When authenticated: repo already filtered Customers+Cards for the current user and active cards only.
-                // When unauthenticated: repo filtered by phone number (legacy).
-                var isCustomer = tenant.Customers != null &&
-                                 tenant.Customers.Any(c => c.LoyaltyCards != null &&
-                                                           c.LoyaltyCards.Any(lc => lc.IsActive && lc.Status == CardStatus.Active));
+                var tenantIds = tenants.Select(t => t.Id).ToList();
 
-                var loyaltyPrograms = tenant.LoyaltyPrograms?
-                    .Where(lp => lp.IsActive)
-                    .OrderBy(lp => lp.Id)
-                    .Select(lp => new TenantDiscoverProgramDto
-                    {
-                        Id = lp.Id,
-                        ProgramName = lp.ProgramName,
-                        Description = lp.Description,
-                        CardTemplate = lp.CardTemplate == null
-                            ? null
-                            : new TenantDiscoverCardTemplateDto
-                            {
-                                BackgroundColor = lp.CardTemplate.BackgroundColor,
-                                ForegroundColor = lp.CardTemplate.ForegroundColor,
-                                LogoUrl = lp.CardTemplate.LogoUrl,
-                                GoogleLogoUrl = lp.CardTemplate.GoogleLogoUrl
-                            }
-                    })
-                    .ToList() ?? new List<TenantDiscoverProgramDto>();
+                var customerTenantIds = await _dbContext.Set<Customer>()
+                    .AsNoTracking()
+                    .Where(c => c.applicationUserId == currentUserId.Value
+                             && c.IsActive
+                             && tenantIds.Contains(c.TenantId)
+                             && c.LoyaltyCards.Any(lc => lc.IsActive && lc.Status == CardStatus.Active))
+                    .Select(c => c.TenantId)
+                    .Distinct()
+                    .ToListAsync();
 
-                return new TenantDiscoverDto
+                var customerSet = customerTenantIds.ToHashSet();
+                foreach (var tenant in tenants)
                 {
-                    Id = tenant.Id,
-                    CompanyName = tenant.CompanyName,
-                    IsCustomer = isCustomer,
-                    Category = tenant.Category == null
-                        ? null
-                        : new TenantDiscoverCategoryDto { EnName = tenant.Category.EnName },
-                    LoyaltyPrograms = loyaltyPrograms
-                };
-            });
+                    tenant.IsCustomer = customerSet.Contains(tenant.Id);
+                }
+            }
 
-            SearchResult<IEnumerable<TenantDiscoverDto>> response = new SearchResult<IEnumerable<TenantDiscoverDto>>()
+            var response = new SearchResult<IEnumerable<TenantDiscoverDto>>
             {
-                Value = mappedTenants,
+                Value = tenants,
                 DataCount = totalCount,
                 CurrentPage = currentPage,
                 PageSize = pageSize

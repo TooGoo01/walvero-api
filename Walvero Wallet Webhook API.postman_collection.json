@@ -309,7 +309,7 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "https://localhost:7285",
+      "value": "https://dev.walvero.com",
       "type": "string"
     },
     {
