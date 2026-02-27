@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../LoyaltyWalletApp"
+		},
+		{
+			"path": "../walvero-nextjs"
 		}
 	],
 	"settings": {}

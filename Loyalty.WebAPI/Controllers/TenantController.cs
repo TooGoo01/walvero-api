@@ -1,12 +1,14 @@
-﻿using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Net;
+using System.Security.Claims;
 
 namespace Loyalty.WebAPI.Controllers
 {
@@ -45,17 +47,21 @@ namespace Loyalty.WebAPI.Controllers
             int currentPage = 1,
             int pageSize = 10)
         {
-            // Extract userId from JWT if authenticated; null for anonymous/guest
+            // [AllowAnonymous] causes ASP.NET Core 8 to skip automatic JWT authentication.
+            // Manually authenticate to read the token if present.
             int? currentUserId = null;
-            if (User.Identity?.IsAuthenticated == true)
+            var authResult = await HttpContext.AuthenticateAsync(JwtBearerDefaults.AuthenticationScheme);
+            if (authResult.Succeeded && authResult.Principal != null)
             {
-                var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-                if (int.TryParse(userIdClaim, out var uid))
+                var userIdStr = authResult.Principal.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                             ?? authResult.Principal.FindFirst("Id")?.Value;
+                if (int.TryParse(userIdStr, out var uid))
                     currentUserId = uid;
             }
 
             return Ok(await _tenantService.GetActiveUser(currentPage, pageSize, model, currentUserId));
         }
+
         [HttpGet]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult<List<GetTenantDto>>), (int)HttpStatusCode.OK)]
@@ -78,8 +84,6 @@ namespace Loyalty.WebAPI.Controllers
         {
             if (!ModelState.IsValid)
             {
-              
-
                 foreach (var error in ModelState.Values.SelectMany(modelState => modelState.Errors))
                 {
                     ModelState.AddModelError("", error.ErrorMessage);
@@ -110,9 +114,6 @@ namespace Loyalty.WebAPI.Controllers
                     return NotFound();
                 }
 
-              
-
-              
                 foreach (var error in ModelState.Values.SelectMany(modelState => modelState.Errors))
                 {
                     ModelState.AddModelError("", error.ErrorMessage);
@@ -123,12 +124,7 @@ namespace Loyalty.WebAPI.Controllers
             if (result.Success)
                 return Ok(result);
 
-          
-
-         
             return BadRequest(result);
         }
-
-       
     }
 }
