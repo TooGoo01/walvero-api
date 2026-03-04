@@ -54,9 +54,24 @@ namespace Loyalty.Business.Services.Implementations.Storage
             return datas;
         }
 
-        public Task<List<(string fileName, string pathOrContainerName)>> UploadFileAsync(string pathOrContainerName, IEnumerable<IFormFile> files)
+        public async Task<List<(string fileName, string pathOrContainerName)>> UploadFileAsync(string pathOrContainerName, IEnumerable<IFormFile> files)
         {
-            throw new NotImplementedException();
+            _blobContainerClient = _blobServiceClient.GetBlobContainerClient(pathOrContainerName);
+            await _blobContainerClient.CreateIfNotExistsAsync();
+            await _blobContainerClient.SetAccessPolicyAsync(PublicAccessType.BlobContainer);
+
+            var rnd = new Random();
+            List<(string fileName, string pathOrContainerName)> datas = new();
+
+            foreach (IFormFile file in files)
+            {
+                var name = Path.GetFileNameWithoutExtension(file.FileName) + rnd.Next(1, 1000).ToString() + Path.GetExtension(file.FileName);
+                BlobClient blobClient = _blobContainerClient.GetBlobClient(name);
+                await blobClient.UploadAsync(file.OpenReadStream(), overwrite: true);
+                datas.Add((name, $"https://walverostorage.blob.core.windows.net/{pathOrContainerName}/{name}"));
+            }
+
+            return datas;
         }
     }
 }

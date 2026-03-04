@@ -25,6 +25,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// “Save to Google Wallet” linki (JWT) yaradır
         Task<ServiceResult> GenerateSaveLinkByCardIdAsync(
             int loyaltyCardId,
+            int tenantId,
+            int programId,
             CancellationToken ct = default);
 
         /// Walvero pass üçün object yaradır (xüsusi object ID formatı ilə)

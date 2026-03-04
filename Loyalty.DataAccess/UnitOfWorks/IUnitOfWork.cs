@@ -8,5 +8,6 @@ namespace Loyalty.DataAccess.UnitOfWorks
         IGenericRepository<TEntity> Repository<TEntity>() where TEntity : EntityBase;
 
         void Commit();
+        Task CommitAsync(CancellationToken ct = default);
     }
 }

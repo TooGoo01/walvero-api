@@ -49,5 +49,6 @@ namespace Loyalty.DataAccess.Entities.Main
         public ICollection<LoyaltyProgram> LoyaltyPrograms { get; set; } = new List<LoyaltyProgram>();
         public ICollection<WalletCredential> WalletCredentials { get; set; } = new List<WalletCredential>();
         public ICollection<RestorantWifiInformation>? RestorantWifiInformation { get; set; } = new List<RestorantWifiInformation>();
+        public ICollection<TenantIntegration> TenantIntegrations { get; set; } = new List<TenantIntegration>();
     }
 }

@@ -35,6 +35,18 @@ namespace Loyalty.DataAccess.UnitOfWorks
 
         public void Commit()
         {
+            SetAuditFields();
+            _MaxOilDbContext.SaveChanges();
+        }
+
+        public async Task CommitAsync(CancellationToken ct = default)
+        {
+            SetAuditFields();
+            await _MaxOilDbContext.SaveChangesAsync(ct);
+        }
+
+        private void SetAuditFields()
+        {
             var entities = _MaxOilDbContext.ChangeTracker.Entries<EntityBase>();
 
             foreach (var entityEntry in entities)
@@ -50,7 +62,6 @@ namespace Loyalty.DataAccess.UnitOfWorks
                     entityEntry.Entity.EditDate = DateTime.Now;
                 }
             }
-            _MaxOilDbContext.SaveChanges();
         }
 
         public void Dispose()

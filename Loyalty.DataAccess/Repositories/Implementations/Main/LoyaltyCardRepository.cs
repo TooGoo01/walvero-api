@@ -235,13 +235,84 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
 
             var cards = await query
                 .Include(c => c.Customer)
-                .Include(c => c.LoyaltyProgram).ThenInclude(p => p.CardTemplate).ThenInclude(x=>x.Icons)
+                .Include(c => c.LoyaltyProgram).ThenInclude(p => p.CardTemplate)
                 .Include(c => c.Tenant).ThenInclude(t => t.Category)
-                // çox JOIN şişirsə:
-                //.AsSplitQuery()
+                .AsSplitQuery()
                 .ToListAsync(ct);
 
             return cards;
+        }
+
+        /// <inheritdoc />
+        public async Task<(int totalCount, List<LoyaltyCard> cards)> GetMyCardsPaginatedAsync(
+            int applicationUserId,
+            string? name,
+            int? categoryId,
+            int? countryId,
+            int? cityId,
+            int currentPage,
+            int pageSize,
+            CancellationToken ct = default)
+        {
+            var baseQuery = GetAsQueryable()
+                .AsNoTracking()
+                .Where(c =>
+                    c.IsActive &&
+                    c.Customer != null &&
+                    c.Customer.applicationUserId == applicationUserId &&
+                    c.Customer.IsActive &&
+                    c.Status == CardStatus.Active &&
+                    !c.Tenant.IsHidden);
+
+            if (!string.IsNullOrWhiteSpace(name))
+                baseQuery = baseQuery.Where(c => EF.Functions.Like(c.Tenant.CompanyName, $"%{name}%"));
+
+            if (categoryId.HasValue)
+                baseQuery = baseQuery.Where(c => c.Tenant.categoryId == categoryId.Value);
+
+            if (countryId.HasValue)
+                baseQuery = baseQuery.Where(c =>
+                    c.Tenant.TenantLocation != null &&
+                    c.Tenant.TenantLocation.countryId == countryId.Value);
+
+            if (cityId.HasValue)
+                baseQuery = baseQuery.Where(c =>
+                    c.Tenant.TenantLocation != null &&
+                    c.Tenant.TenantLocation.cityId == cityId.Value);
+
+            // Hər (TenantId, LoyaltyProgramId) üçün son kartın Id-si
+            var lastIdsQuery =
+                from c in baseQuery
+                group c by new { c.TenantId, c.LoyaltyProgramId } into g
+                select new
+                {
+                    g.Key.TenantId,
+                    g.Key.LoyaltyProgramId,
+                    MaxId = g.Max(x => x.Id)
+                };
+
+            // Count + Paginated data tək sorğu ilə
+            var totalCount = await lastIdsQuery.CountAsync(ct);
+
+            if (totalCount == 0)
+                return (0, new List<LoyaltyCard>());
+
+            var pagedLastIds = lastIdsQuery
+                .OrderByDescending(x => x.MaxId)
+                .Skip((currentPage - 1) * pageSize)
+                .Take(pageSize);
+
+            var cards = await (
+                from c in baseQuery
+                join x in pagedLastIds on c.Id equals x.MaxId
+                select c)
+                .Include(c => c.Customer)
+                .Include(c => c.LoyaltyProgram).ThenInclude(p => p.CardTemplate)
+                .Include(c => c.Tenant).ThenInclude(t => t.Category)
+                .AsSplitQuery()
+                .ToListAsync(ct);
+
+            return (totalCount, cards);
         }
 
         /// <inheritdoc />
@@ -258,6 +329,27 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Include(c => c.Tenant)
                     .ThenInclude(t => t.Category)
                 .Where(c => c.Id == cardId)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(ct);
+        }
+
+        /// <inheritdoc />
+        public async Task<LoyaltyCard?> GetCardWithOwnerCheckAsync(int cardId, int applicationUserId, CancellationToken ct = default)
+        {
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Include(c => c.Customer)
+                .Include(c => c.LoyaltyProgram)
+                    .ThenInclude(p => p.CardTemplate)
+                        .ThenInclude(ct => ct!.Icons)
+                .Include(c => c.Tenant)
+                    .ThenInclude(t => t.Branding)
+                .Include(c => c.Tenant)
+                    .ThenInclude(t => t.Category)
+                .Where(c => c.Id == cardId &&
+                            c.Customer != null &&
+                            c.Customer.applicationUserId == applicationUserId)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(ct);
         }
 
@@ -266,10 +358,10 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         {
             return await GetAsQueryable()
                 .AsNoTracking()
-                .AnyAsync(c => 
-                    c.Id == cardId && 
-                    c.Customer != null && 
-                    c.Customer.applicationUserId == applicationUserId, 
+                .AnyAsync(c =>
+                    c.Id == cardId &&
+                    c.Customer != null &&
+                    c.Customer.applicationUserId == applicationUserId,
                     ct);
         }
 

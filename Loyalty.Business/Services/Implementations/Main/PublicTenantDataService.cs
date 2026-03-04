@@ -63,7 +63,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Logo = tenant.Branding?.LogoUrl,
                 PrimaryColor = tenant.Branding?.PrimaryColor ?? "#000000",
                 Domain = tenant.Subdomain,
-                MenuApiUrl = $"/api/public/menu/{tenant.Subdomain}",
+                MenuApiUrl = tenant.IsHasMenu && !string.IsNullOrWhiteSpace(tenant.MenuUrl) ? tenant.MenuUrl : null,
                 WifiInformation = wifiList,
                 Branding = tenant.Branding != null
                     ? new TenantConfigBrandingDto

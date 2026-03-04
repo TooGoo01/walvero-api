@@ -1,0 +1,322 @@
+{
+  "info": {
+    "name": "Walvero Wallet Webhook API",
+    "description": "Walvero Loyalty platformasi ile POS inteqrasiyasi ucun Wallet Webhook API endpoint-leri.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Get Wallet",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{wallet_token}}", "type": "string" }]
+        },
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"venue_id\": \"44\",\n  \"barcode\": \"123456789\",\n  \"source\": \"monyo_pos\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/wallet/get_wallet",
+          "host": ["{{base_url}}"],
+          "path": ["api", "wallet", "get_wallet"]
+        },
+        "description": "Musterinin loyalty kampaniyalarini ve cashback balansini qaytarir.\n\n- loyalty: ProgressBased ucun kampaniya siyahisi\n- cashback_balans: CurrentPoints x CurrencyPerPoint (AZN)\n- TierBased/PointsBased proqramlarda loyalty bos olur"
+      },
+      "response": [
+        {
+          "name": "Success - ProgressBased",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": true,\n  \"loyalty\": [\n    {\n      \"id\": 1,\n      \"count\": 5,\n      \"maximum\": 10,\n      \"rewards\": 2,\n      \"product_id\": \"101\",\n      \"product_name\": \"Pulsuz Kofe\"\n    }\n  ],\n  \"cashback_balans\": 0\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        },
+        {
+          "name": "Success - Cashback/TierBased",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": true,\n  \"loyalty\": [],\n  \"cashback_balans\": 50.0\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        },
+        {
+          "name": "Error - Customer not found",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": false,\n  \"message\": \"Customer not found\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "2. Set Redeem - Loyalty",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{wallet_token}}", "type": "string" }]
+        },
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"venue_id\": \"44\",\n  \"barcode\": \"123456789\",\n  \"campaign_id\": \"1\",\n  \"type\": \"loyalty\",\n  \"amount\": 1,\n  \"source\": \"monyo_pos\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/wallet/set_redeem",
+          "host": ["{{base_url}}"],
+          "path": ["api", "wallet", "set_redeem"]
+        },
+        "description": "ProgressBased (stamp card) ucun reward xercleme.\namount=1 → 1 reward, amount=3 → 3 reward.\nDaxili: delta=0, spendCount=amount."
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"status\": \"success\",\n  \"message\": \"OTP sent\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        },
+        {
+          "name": "Error",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"status\": \"error\",\n  \"message\": \"Customer not found\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "3. Set Redeem - Cashback",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{wallet_token}}", "type": "string" }]
+        },
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"venue_id\": \"44\",\n  \"barcode\": \"123456789\",\n  \"type\": \"cashback\",\n  \"amount\": 10,\n  \"source\": \"monyo_pos\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/wallet/set_redeem",
+          "host": ["{{base_url}}"],
+          "path": ["api", "wallet", "set_redeem"]
+        },
+        "description": "Cashback ucun point xercleme.\namount=10 → 10 point cixilir (delta=-10)."
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"status\": \"success\",\n  \"message\": \"OTP sent\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "4. Set Verify - Loyalty",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{wallet_token}}", "type": "string" }]
+        },
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"venue_id\": \"44\",\n  \"barcode\": \"123456789\",\n  \"campaign_id\": \"1\",\n  \"otp\": \"1234\",\n  \"type\": \"loyalty\",\n  \"amount\": 0,\n  \"order_id\": \"1c1jf5u7a4srn\",\n  \"source\": \"monyo_pos\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/wallet/set_verify",
+          "host": ["{{base_url}}"],
+          "path": ["api", "wallet", "set_verify"]
+        },
+        "description": "Loyalty reward OTP tesdiq.\nVACIB: order_id gonderilmelidir! Sifarish silinende bu order_id ile transaction tapilir ve geri qaytarilir."
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"status\": \"success\",\n  \"type\": \"loyalty\",\n  \"product_id\": \"101\",\n  \"product_name\": \"Pulsuz Kofe\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        },
+        {
+          "name": "Error",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"status\": \"error\"\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "5. Set Verify - Cashback",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{wallet_token}}", "type": "string" }]
+        },
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"venue_id\": \"44\",\n  \"barcode\": \"123456789\",\n  \"otp\": \"1234\",\n  \"type\": \"cashback\",\n  \"amount\": 10,\n  \"order_id\": \"1c1jf5u7a4srn\",\n  \"source\": \"monyo_pos\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/wallet/set_verify",
+          "host": ["{{base_url}}"],
+          "path": ["api", "wallet", "set_verify"]
+        },
+        "description": "Cashback OTP tesdiq. order_id vacibdir!"
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"status\": \"success\",\n  \"type\": \"cashback\",\n  \"discount\": 10.0\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "6. Collect - Closed",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{wallet_token}}", "type": "string" }]
+        },
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"1c1jf5u7a4srn\",\n  \"venue_id\": \"44\",\n  \"customer_id\": \"5\",\n  \"status\": \"closed\",\n  \"total\": 100,\n  \"items\": [\n    { \"id\": 123, \"name\": \"Kofe\", \"count\": 5 },\n    { \"id\": 124, \"name\": \"Latte\", \"count\": 2 }\n  ],\n  \"source\": \"monyo_pos\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/wallet/collect",
+          "host": ["{{base_url}}"],
+          "path": ["api", "wallet", "collect"]
+        },
+        "description": "POS cek baglananda cagirilir (payments yoxdursa).\n\nPoint hesablama:\n1. EarnRule varsa: mehsula gore StepsPerUnit x count, PointsPerUnit x count\n2. EarnRule yoxdursa: total x PointsPerCurrency"
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": true\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "7. Collect - Closed with Payments",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{wallet_token}}", "type": "string" }]
+        },
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"1c1jf5u7a4srn\",\n  \"venue_id\": \"44\",\n  \"customer_id\": \"5\",\n  \"status\": \"closed\",\n  \"total\": 100,\n  \"items\": [\n    { \"id\": 123, \"name\": \"Kofe\", \"count\": 5 },\n    { \"id\": 124, \"name\": \"Latte\", \"count\": 2 }\n  ],\n  \"payments\": {\n    \"cash\": \"30.00\",\n    \"cashless\": \"70.00\"\n  },\n  \"source\": \"monyo_pos\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/wallet/collect",
+          "host": ["{{base_url}}"],
+          "path": ["api", "wallet", "collect"]
+        },
+        "description": "POS cek baglananda payments ile cagirilir.\n\nEger tenant PayMentType=true edibse:\n- cash hissesi ucun percentCash faizi tetbiq olunur\n- cashless hissesi ucun percent faizi tetbiq olunur\n\nMeseelen: Gold tier, percent=5, percentCash=3\ncash=30, cashless=70\nPoints = 30*3/100 + 70*5/100 = 0.9 + 3.5 = 4\n\nPayMentType=false ve ya payments gonderilmese:\ntotal x PointsPerCurrency ile hesablanir."
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": true\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    },
+    {
+      "name": "8. Collect - Deleted (Reverse)",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "{{wallet_token}}", "type": "string" }]
+        },
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"1c1jf5u7a4srn\",\n  \"venue_id\": \"44\",\n  \"customer_id\": \"5\",\n  \"status\": \"deleted\",\n  \"total\": 100,\n  \"items\": [\n    { \"id\": 123, \"name\": \"Kofe\", \"count\": 5 }\n  ],\n  \"source\": \"monyo_pos\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/wallet/collect",
+          "host": ["{{base_url}}"],
+          "path": ["api", "wallet", "collect"]
+        },
+        "description": "POS sifarish silinende cagirilir.\nBu order_id ile bagli BUTUN transaction-lar (hem earn, hem redeem) geri qaytarilir."
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "body": "{\n  \"success\": true\n}",
+          "header": [{ "key": "Content-Type", "value": "application/json" }]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://dev.walvero.com",
+      "type": "string"
+    },
+    {
+      "key": "wallet_token",
+      "value": "M_-BcsMZdba1ifoKjmWNGZslk674SeiuP-yMk9KqNEk",
+      "type": "string",
+      "description": "Bearer token (TenantIntegration.WalletTokenEncrypted)"
+    }
+  ]
+}

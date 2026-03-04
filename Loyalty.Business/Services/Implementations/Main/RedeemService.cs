@@ -248,36 +248,43 @@ namespace Loyalty.Business.Services.Implementations.Main
                     _logger.LogInformation("Pending redeem created. RequestId={RequestId}, ExpiresInMin={TTL}, OtpMasked={Otp}",
                         rr.Id, policy.ConfirmationTtlMinutes, MaskOtp(otp));
 
-                    // Bildiriş (SMS/email)
-                    var destination = card.Customer.PhoneNumber; // sizdə necə saxlanırsa
-                    if (!string.IsNullOrWhiteSpace(destination))
+                    // Bildiriş (SMS/push) - yalnız RequireConfirmation=true olduqda göndər
+                    if (policy.RequireConfirmation)
                     {
-                        var text = $"Sizin OTP: {otp}\nwalvero.com #{otp}";
-                        try
+                        var destination = card.Customer.PhoneNumber;
+                        if (!string.IsNullOrWhiteSpace(destination))
                         {
-                            var data = new Dictionary<string, string>
+                            var text = $"Sizin OTP: {otp}\nwalvero.com #{otp}";
+                            try
                             {
-                                { "type", "otp" },
-                                { "otpCode", otp },
-                                { "expiryMinutes", policy.ConfirmationTtlMinutes.ToString() }
-                            };
+                                var data = new Dictionary<string, string>
+                                {
+                                    { "type", "otp" },
+                                    { "otpCode", otp },
+                                    { "expiryMinutes", policy.ConfirmationTtlMinutes.ToString() }
+                                };
 
-                            if (appUserId.HasValue)
-                                await _notificationService.SendToUserAsync(appUserId.Value, "Təsdiq", text, data);
-                            else
-                                _logger.LogWarning("appUserId is null -> skipping in-app OTP notification. CardId={CardId}", card.Id);
+                                if (appUserId.HasValue)
+                                    await _notificationService.SendToUserAsync(appUserId.Value, "Təsdiq", text, data);
+                                else
+                                    _logger.LogWarning("appUserId is null -> skipping in-app OTP notification. CardId={CardId}", card.Id);
 
-                            await Helper.SendSmsAsync(destination, text);
-                            _logger.LogInformation("OTP SMS sent. Phone={Phone}", MaskPhone(destination));
+                                await Helper.SendSmsAsync(destination, text);
+                                _logger.LogInformation("OTP SMS sent. Phone={Phone}", MaskPhone(destination));
+                            }
+                            catch (Exception smsEx)
+                            {
+                                _logger.LogError(smsEx, "OTP SMS send failed. Phone={Phone}", MaskPhone(destination));
+                            }
                         }
-                        catch (Exception smsEx)
+                        else
                         {
-                            _logger.LogError(smsEx, "OTP SMS send failed. Phone={Phone}", MaskPhone(destination));
+                            _logger.LogWarning("No phone number to send OTP. CustomerId={CustomerId}", card.CustomerId);
                         }
                     }
                     else
                     {
-                        _logger.LogWarning("No phone number to send OTP. CustomerId={CustomerId}", card.CustomerId);
+                        _logger.LogInformation("RequireConfirmation=false, OTP notification skipped. CardId={CardId}", card.Id);
                     }
 
                     return new RedeemResultDto
@@ -468,12 +475,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                     return Fail("Kodun vaxtı keçib.");
                 }
 
-                // OTP yoxlamanı aktiv etmək istəsəniz bu hissəni açın:
-                // if (!string.Equals(rr.Code, code, StringComparison.Ordinal))
-                // {
-                //     _logger.LogWarning("OTP mismatch. Provided={Provided}, Stored={StoredMasked}", MaskOtp(code), MaskOtp(rr.Code));
-                //     return Fail("Təsdiq kodu yanlışdır.");
-                // }
+                var policy = await _tenantPolicySvc.GetByIdAsync(rr.TenantId, ct);
+                if (policy.RequireConfirmation && !string.Equals(rr.Code, code, StringComparison.Ordinal))
+                {
+                    _logger.LogWarning("OTP mismatch. Provided={Provided}, Stored={StoredMasked}", MaskOtp(code), MaskOtp(rr.Code));
+                    return Fail("Təsdiq kodu yanlışdır.");
+                }
 
                 var card = await _cardSvc.GetById(rr.LoyaltyCardId, ct);
                 if (card is null)
@@ -507,7 +514,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ApplyDelta(card, snapshot, rr.PointsDelta);
                 var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(rr.TenantId, null, ct);
 
-                var tx = BuildTransaction(card, rr.PointsDelta, rr.OrderId, rr.Note, TransactionType.Redeemed, localTime, timeZoneId);
+                // ProgressBased: display delta = reward sayı, raw delta deyil
+                int displayDelta = rr.PointsDelta;
+                if (snapshot.TemplateType == CardTemplateType.ProgressBased && rr.PointsDelta < 0)
+                {
+                    int totalSteps = Math.Max(1, snapshot.TotalSteps);
+                    displayDelta = -(Math.Abs(rr.PointsDelta) / totalSteps);
+                }
+
+                var tx = BuildTransaction(card, displayDelta, rr.OrderId, rr.Note, TransactionType.Redeemed, localTime, timeZoneId);
                 rr.Status = RedeemStatus.Applied;
 
                 uow.Repository<LoyaltyCard>().Update(card);
@@ -515,8 +530,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 uow.Repository<RedeemRequest>().Update(rr);
                 uow.Commit();
 
-                _logger.LogInformation("Confirm applied. CardId={CardId}, Points {Before}->{After}, Steps {StepsBefore}->{StepsAfter}, CompletedCycles {CyclesBefore}->{CyclesAfter}, Delta={Delta}",
-                    card.Id, beforePoints, card.CurrentPoints, beforeSteps, card.CurrentSteps, beforeCompletedCycles, card.CompletedCycles, rr.PointsDelta);
+                _logger.LogInformation("Confirm applied. CardId={CardId}, Points {Before}->{After}, Steps {StepsBefore}->{StepsAfter}, CompletedCycles {CyclesBefore}->{CyclesAfter}, Delta={Delta}, DisplayDelta={DisplayDelta}",
+                    card.Id, beforePoints, card.CurrentPoints, beforeSteps, card.CurrentSteps, beforeCompletedCycles, card.CompletedCycles, rr.PointsDelta, displayDelta);
 
                 var primaryPlatform = card.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
                 var secondaryPlatform = card.IsIOS ? WalletPlatform.GooglePay : WalletPlatform.AppleWallet;
@@ -535,7 +550,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentPoints,
                         card.CurrentSteps,
                         card.CompletedCycles,
-                        rr.PointsDelta,
+                        displayDelta,
                         ct);
 
                     if (!primaryRes.Success)
@@ -563,7 +578,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentPoints,
                         card.CurrentSteps,
                         card.CompletedCycles,
-                        rr.PointsDelta,
+                        displayDelta,
                         ct);
 
                     if (!secondaryRes.Success)
@@ -591,7 +606,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         ProgramId = card.LoyaltyProgramId,
                         TenantId = card.TenantId,
                         CurrentPoints = card.CurrentPoints,
-                        LastRedeemAmount = rr.PointsDelta,
+                        LastRedeemAmount = displayDelta,
                         UpdatedAt = DateTime.UtcNow
                     };
 
@@ -603,22 +618,36 @@ namespace Loyalty.Business.Services.Implementations.Main
                         .Group(groupName)
                         .SendAsync("CardUpdated", message, cancellationToken: ct);
 
-                    var currency = snapshot.Currency ?? "AZN"; // Default: AZN
-                    var message1 = rr.PointsDelta > 0
-                        ? $"{snapshot.ProgramName} balansınıza {rr.PointsDelta} {snapshot.Currency} əlavə olundu!"
-                        : $"{snapshot.ProgramName} balansınızdan {rr.PointsDelta * -1} {snapshot.Currency} çıxıldı!";
+                    string message1;
+                    if (snapshot.TemplateType == CardTemplateType.ProgressBased)
+                    {
+                        var rewardLabel = snapshot.RewardDescription ?? "reward";
+                        var rewardCount = Math.Abs(displayDelta);
+                        message1 = displayDelta >= 0
+                            ? $"{snapshot.ProgramName}: {rewardCount} {rewardLabel} əlavə olundu!"
+                            : $"{snapshot.ProgramName}: {rewardCount} {rewardLabel} xərcləndi!";
+                    }
+                    else
+                    {
+                        var currency = snapshot.Currency ?? "AZN";
+                        message1 = displayDelta > 0
+                            ? $"{snapshot.ProgramName} balansınıza {displayDelta} {currency} əlavə olundu!"
+                            : $"{snapshot.ProgramName} balansınızdan {Math.Abs(displayDelta)} {currency} çıxıldı!";
+                    }
 
                     await _notificationService.SendToUserAsync(appUserId.Value, snapshot.ProgramName, message1, data);
                 }
 
-                _logger.LogInformation("Confirm completed successfully. CardId={CardId}, AppliedDelta={Delta}", card.Id, rr.PointsDelta);
+                _logger.LogInformation("Confirm completed successfully. CardId={CardId}, AppliedDelta={Delta}", card.Id, displayDelta);
 
                 return new RedeemResultDto
                 {
                     Success = true,
-                    Message = $"Təsdiq edildi. Kart #{card.Id} üçün {(rr.PointsDelta >= 0 ? "+" : "")}{rr.PointsDelta} tətbiq olundu.",
+                    Message = $"Təsdiq edildi. Kart #{card.Id} üçün {(displayDelta >= 0 ? "+" : "")}{displayDelta} tətbiq olundu.",
                     LoyaltyCardId = card.Id,
-                    AppliedDelta = rr.PointsDelta
+                    AppliedDelta = displayDelta,
+                    OldPoints = beforePoints,
+                    NewPoints = card.CurrentPoints
                 };
             }
             catch (Exception ex)
@@ -655,8 +684,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                     }
                     else if (delta < 0)
                     {
-                        // spending points (not free rewards)
+                        // spending points / free reward redeem
                         card.CurrentPoints = Math.Max(0, card.CurrentPoints + delta);
+                        // CompletedCycles azalt (hər cycle = TotalSteps point)
+                        int cyclesLost = Math.Abs(delta) / totalSteps;
+                        if (cyclesLost > 0)
+                            card.CompletedCycles = Math.Max(0, card.CompletedCycles - cyclesLost);
                     }
                     break;
 
@@ -735,23 +768,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 
                 dbCard.CompletedCycles = before - spendCount;
                 dbCard.CurrentPoints = Math.Max(0, beforePoints - pointsToDeduct);
-                // CurrentSteps-i yenidən hesabla: CurrentPoints % TotalSteps
-                dbCard.CurrentSteps = dbCard.CurrentPoints % totalSteps;
+                // CurrentSteps dəyişmir - reward xərcləmə stamp proqresini təsir etmir
                 dbCard.EditDate = DateTime.UtcNow;
-                if (snapshot.TemplateType == CardTemplateType.ProgressBased)
-                {
-                   
-                    int stepsToDeduct = spendCount * totalSteps;
 
-                    // CurrentPoints-i azalt (hər free reward = TotalSteps xal)
-                    dbCard.CurrentPoints = Math.Max(0, dbCard.CurrentPoints - stepsToDeduct);
-
-                    // CurrentSteps-i yenidən hesabla (yeni CurrentPoints əsasında)
-                    dbCard.CurrentSteps = dbCard.CurrentPoints % totalSteps;
-
-                    _logger.LogInformation("ProgressBased free reward redeem. CardId={CardId}, SpendCount={SpendCount}, StepsDeducted={StepsDeducted}, Points {Before}->{After}, Steps {StepsBefore}->{StepsAfter}, Cycles {CyclesBefore}->{CyclesAfter}",
-                        dbCard.Id, spendCount, stepsToDeduct, beforePoints, dbCard.CurrentPoints, beforeSteps, dbCard.CurrentSteps, dbCard.CompletedCycles);
-                }
+                _logger.LogInformation("ProgressBased free reward redeem. CardId={CardId}, SpendCount={SpendCount}, PointsDeducted={PointsDeducted}, Points {Before}->{After}, Steps {StepsBefore}->{StepsAfter}, Cycles {CyclesBefore}->{CyclesAfter}",
+                    dbCard.Id, spendCount, pointsToDeduct, beforePoints, dbCard.CurrentPoints, beforeSteps, dbCard.CurrentSteps, before, dbCard.CompletedCycles);
                 // ✅ (Opsional) idempotency
                 var idemKey = (request.OrderId ?? request.IdempotencyKey)?.Trim();
                 if (!string.IsNullOrWhiteSpace(idemKey))

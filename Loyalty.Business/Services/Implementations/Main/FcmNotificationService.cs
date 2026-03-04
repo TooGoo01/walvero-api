@@ -146,6 +146,27 @@ Payload: {json}
                 await SendToDeviceAsync(token, title, body, data);
         }
 
+        public async Task SendToTenantUsersAsync(int tenantId, string title, string body, object data = null)
+        {
+            var userIds = _db.Customers
+                .Where(c => c.TenantId == tenantId && c.IsActive && c.applicationUserId != null)
+                .Select(c => c.applicationUserId.Value)
+                .Distinct()
+                .ToList();
+
+            var tokens = _db.DeviceTokens
+                .Where(dt => userIds.Contains(dt.UserId))
+                .Select(dt => dt.Token)
+                .ToList();
+
+            if (data == null)
+            {
+                data = new { info = "none" };
+            }
+            foreach (var token in tokens)
+                await SendToDeviceAsync(token, title, body, data);
+        }
+
         public async Task SendVerificationCodeAsync(int userId, string code)
         {
             await SendToUserAsync(

@@ -19,13 +19,11 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         Task<IEnumerable<Tenant>> GetByUserId(int tenantId);
         Task<List<Tenant>> GetByIdsAsync(IEnumerable<int> tenantIds, CancellationToken ct = default);
         Task<IEnumerable<Tenant>> GetActive();
-        IQueryable<Tenant> GetActiveWithUser(string? name, string? userName, int? categoryId, int? countryId, int? cityId);
-
         /// <summary>
-        /// Discover query for an authenticated user. Filters Customers by applicationUserId and only includes active cards.
-        /// This keeps Discover "IsCustomer" in sync with MyCards logic.
+        /// Lightweight IQueryable for tenant discovery. Returns only active, non-hidden tenants
+        /// with optional filters. No Customer/Card includes — isCustomer is resolved via batch query in service layer.
         /// </summary>
-        IQueryable<Tenant> GetActiveWithApplicationUser(string? name, int applicationUserId, int? categoryId, int? countryId, int? cityId);
+        IQueryable<Tenant> GetActiveFiltered(string? name, int? categoryId, int? countryId, int? cityId);
         Task<IReadOnlyList<HomeTenantProjection>> ListHomeTenantsAsync(int? countryId = null, int? cityId = null, CancellationToken ct = default);
 
         /// <summary>

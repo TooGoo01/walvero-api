@@ -1,4 +1,5 @@
-﻿using Loyalty.Infrastructure.Utilities.Security.Jwt;
+using Loyalty.Infrastructure.Utilities.Security.Encryption;
+using Loyalty.Infrastructure.Utilities.Security.Jwt;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Loyalty.Infrastructure
@@ -8,6 +9,8 @@ namespace Loyalty.Infrastructure
         public static void AddInfrastructureServices(this IServiceCollection services)
         {
             services.AddScoped<ITokenHelper, JwtHelper>();
+            services.AddScoped<ISensitiveDataProtector, SensitiveDataProtector>();
+            services.AddScoped<IWalletTokenGenerator, WalletTokenGenerator>();
         }
     }
 }

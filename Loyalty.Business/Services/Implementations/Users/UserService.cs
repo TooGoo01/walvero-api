@@ -42,6 +42,7 @@ namespace Loyalty.Business.Services.Implementations.Users
         private readonly IOtpService _otpService;
         private readonly ICustomerRepository _customerRepository;
         private readonly IWalveroIdGenerator _walveroIdGenerator;
+        private readonly ICustomerSyncService _customerSyncService;
 
         public UserService(
             UserManager<ApplicationUser> userManager,
@@ -57,7 +58,8 @@ namespace Loyalty.Business.Services.Implementations.Users
             ILogger<UserService> logger = null,
             IOtpService otpService = null,
             ICustomerRepository customerRepository = null,
-            IWalveroIdGenerator walveroIdGenerator = null)
+            IWalveroIdGenerator walveroIdGenerator = null,
+            ICustomerSyncService customerSyncService = null)
         {
             _userManager = userManager;
             _signInManager = signInManager;
@@ -73,6 +75,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             _otpService = otpService;
             _customerRepository = customerRepository;
             _walveroIdGenerator = walveroIdGenerator;
+            _customerSyncService = customerSyncService;
         }
 
         public async Task<ServiceResult> AddUser(RegisterUserDto registerUser)
@@ -1717,6 +1720,22 @@ namespace Loyalty.Business.Services.Implementations.Users
                 {
                     _dbContext.Customers.UpdateRange(customers);
                     await _dbContext.SaveChangesAsync(ct);
+
+                    // POS-a sync et (type: "update")
+                    if (_customerSyncService != null)
+                    {
+                        foreach (var customer in customers)
+                        {
+                            try
+                            {
+                                await _customerSyncService.SyncCustomerToPosAsync(customer.TenantId, customer.Id, ct);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger?.LogWarning(ex, "POS sync failed for CustomerId={CustomerId} after profile update", customer.Id);
+                            }
+                        }
+                    }
                 }
 
                 var message = "Profile updated successfully.";

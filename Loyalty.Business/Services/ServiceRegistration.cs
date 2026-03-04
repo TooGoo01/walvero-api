@@ -39,7 +39,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IContactService, ContactService>();
             services.AddScoped<ITenantService, TenantService>();
             services.AddScoped<ITenantBrandingService, TenantBrandingService>();
-            services.AddScoped<IStorage, FileStorage>();
+            services.AddScoped<IStorage, AzureStorage>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<IOtpService, OtpService>();
             services.AddScoped<IMailService, MailService>();
@@ -93,6 +93,13 @@ namespace Loyalty.Business.Services
             services.AddScoped<IMenuItemService, MenuItemService>();
             services.AddScoped<IMenuItemImageService, MenuItemImageService>();
             services.AddScoped<IRestorantWifiInformationService, RestorantWifiInformationService>();
+            services.AddScoped<ITenantIntegrationResolver, TenantIntegrationResolver>();
+            services.AddScoped<ITenantIntegrationService, TenantIntegrationService>();
+            services.AddScoped<IPosProductEarnRuleService, PosProductEarnRuleService>();
+            services.AddScoped<IRewardCrudService, RewardCrudService>();
+            services.AddScoped<IWalletWebhookService, WalletWebhookService>();
+            services.AddScoped<IMonyoPosApiClient, MonyoPosApiClient>();
+            services.AddScoped<ICustomerSyncService, CustomerSyncService>();
             
             services.AddSignalR();
             return services;

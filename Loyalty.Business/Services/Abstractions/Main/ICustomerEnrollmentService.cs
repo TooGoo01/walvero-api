@@ -21,6 +21,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
          int customer, string username
         );
         Task<ServiceResult> VerifyEnrollmentAsync(VerifyCustomerOtpDto dto, CancellationToken ct = default);
+        Task<ServiceResult> StartPublicEnrollmentAsync(PublicEnrollmentStartDto dto, CancellationToken ct = default);
         Task<ServiceResult> GetByUserId(int userId);
     }
 }

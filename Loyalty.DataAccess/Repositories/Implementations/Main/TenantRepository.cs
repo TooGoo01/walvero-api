@@ -1,6 +1,5 @@
 ﻿using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
-using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Models;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Microsoft.EntityFrameworkCore;
@@ -89,91 +88,29 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             throw new NotImplementedException();
         }
 
-        public IQueryable<Tenant> GetActiveWithUser(string? name, string? userName, int? categoryId, int? countryId, int? cityId)
+        /// <inheritdoc />
+        public IQueryable<Tenant> GetActiveFiltered(string? name, int? categoryId, int? countryId, int? cityId)
         {
-            // PERFORMANCE: Use AsNoTracking for read-only queries
+            // Lightweight query — NO Customer/Card includes.
+            // isCustomer is resolved via batch query in service layer.
             var query = GetAsQueryable()
                 .AsNoTracking()
-                .Include(x => x.Category)
-                .Include(x => x.LoyaltyPrograms)
-                    .ThenInclude(x => x.CardTemplate)
-                // OPTIMIZATION: Include TenantLocation with City and Country to avoid N+1 queries
-                .Include(x => x.TenantLocation)
-                    .ThenInclude(tl => tl.Country)
-                .Include(x => x.TenantLocation)
-                    .ThenInclude(tl => tl.City)
-                .Where(x => x.IsActive && !x.IsHidden);
-            
-            if (userName != null)
-            {
-                // Include only customers with active loyalty cards
-                query = query.Include(x => x.Customers
-                    .Where(c => c.PhoneNumber == userName && 
-                                c.LoyaltyCards.Any(lc => lc.IsActive)))
-                    .ThenInclude(c => c.LoyaltyCards.Where(lc => lc.IsActive));
-            }
-            else
-            {
-                // Include only customers with active loyalty cards (if any)
-                query = query.Include(x => x.Customers
-                    .Where(c => c.LoyaltyCards.Any(lc => lc.IsActive)))
-                    .ThenInclude(c => c.LoyaltyCards.Where(lc => lc.IsActive));
-            }
-            
-            // Text search filter
-            if (name != null)
-                query = query.Where(x => EF.Functions.Like(x.CompanyName, $"%{name}%"));
-            
-            // Category filter
-            if (categoryId != null)
-                query = query.Where(x => x.categoryId == categoryId);
-            
-            // FEATURE: Country filter
-            if (countryId != null)
-                query = query.Where(x => x.TenantLocation != null && x.TenantLocation.countryId == countryId);
-            
-            // FEATURE: City filter
-            if (cityId != null)
-                query = query.Where(x => x.TenantLocation != null && x.TenantLocation.cityId == cityId);
-            
-            return query.OrderBy(x => x.Id);
-        }
-
-        public IQueryable<Tenant> GetActiveWithApplicationUser(string? name, int applicationUserId, int? categoryId, int? countryId, int? cityId)
-        {
-            // PERFORMANCE: Use AsNoTracking for read-only queries
-            var query = GetAsQueryable()
-                .AsNoTracking()
-                .Include(x => x.Category)
-                .Include(x => x.LoyaltyPrograms)
-                    .ThenInclude(x => x.CardTemplate)
-                .Include(x => x.TenantLocation)
-                    .ThenInclude(tl => tl.Country)
-                .Include(x => x.TenantLocation)
-                    .ThenInclude(tl => tl.City)
                 .Where(x => x.IsActive && !x.IsHidden);
 
-            // Include only the requesting user's customers and only active cards (same as MyCards expectations)
-            query = query.Include(x => x.Customers
-                    .Where(c => c.applicationUserId == applicationUserId &&
-                                c.IsActive &&
-                                c.LoyaltyCards.Any(lc => lc.IsActive && lc.Status == CardStatus.Active)))
-                .ThenInclude(c => c.LoyaltyCards.Where(lc => lc.IsActive && lc.Status == CardStatus.Active));
-
             // Text search filter
-            if (name != null)
+            if (!string.IsNullOrWhiteSpace(name))
                 query = query.Where(x => EF.Functions.Like(x.CompanyName, $"%{name}%"));
 
             // Category filter
-            if (categoryId != null)
+            if (categoryId.HasValue)
                 query = query.Where(x => x.categoryId == categoryId);
 
-            // FEATURE: Country filter
-            if (countryId != null)
+            // Country filter
+            if (countryId.HasValue)
                 query = query.Where(x => x.TenantLocation != null && x.TenantLocation.countryId == countryId);
 
-            // FEATURE: City filter
-            if (cityId != null)
+            // City filter
+            if (cityId.HasValue)
                 query = query.Where(x => x.TenantLocation != null && x.TenantLocation.cityId == cityId);
 
             return query.OrderBy(x => x.Id);
@@ -197,6 +134,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 {
                     TenantId = t.Id,
                     TenantName = t.CompanyName,
+                    TenantSlug = t.Subdomain,
                     // Get first active program's name (deterministic ordering by Id)
                     TenantProgramName = t.LoyaltyPrograms
                         .Where(lp => lp.IsActive)

@@ -77,8 +77,8 @@ namespace Loyalty.Infrastructure.Utilities.Security.Jwt
             // var. Biz üstlərinə base user claim-ləri əlavə edirik.
 
             claims.AddNameIdentifier(user.Id.ToString());
-            claims.AddEmail(user.Email);
-            claims.AddName($"{user.Name} {user.Surname}");
+            //claims.AddEmail(user.Email);
+            //claims.AddName($"{user.Name} {user.Surname}");
             claims.AddUserName(user.UserName);
             claims.AddId(user.Id.ToString());
 
@@ -93,7 +93,7 @@ namespace Loyalty.Infrastructure.Utilities.Security.Jwt
                 claims.Add(new Claim("is_profile_completed", user.IsProfileCompleted.ToString().ToLower()));
             }
 
-            // Əgər tenant / program user obyektində də varsa və əlavə etmək istəyirsənsə
+          
             if (user.TenantId != null && !claims.Any(x => x.Type == "tenant_id"))
             {
                 claims.Add(new Claim("tenant_id", user.TenantId.ToString()!));

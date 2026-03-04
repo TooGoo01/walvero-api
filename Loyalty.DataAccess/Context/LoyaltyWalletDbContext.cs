@@ -61,6 +61,10 @@ namespace Loyalty.DataAccess.Context
         public DbSet<MenuItem> MenuItems { get; set; }
         public DbSet<MenuItemImage> MenuItemImages { get; set; }
         public DbSet<RestorantWifiInformation> RestorantWifiInformations { get; set; }
+        public DbSet<IntegrationType> IntegrationTypes { get; set; }
+        public DbSet<TenantIntegration> TenantIntegrations { get; set; }
+        public DbSet<PosProductEarnRule> PosProductEarnRules { get; set; }
+        public DbSet<PosCustomerMapping> PosCustomerMappings { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -719,6 +723,85 @@ namespace Loyalty.DataAccess.Context
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
+            // ==== INTEGRATION TYPE (reference/seed) ====
+            modelBuilder.Entity<IntegrationType>(entity =>
+            {
+                entity.ToTable("IntegrationTypes");
+                entity.HasKey(it => it.Id);
+                entity.Property(it => it.Name).IsRequired().HasMaxLength(100);
+                entity.Property(it => it.Source).IsRequired().HasMaxLength(50);
+                entity.HasIndex(it => it.Source).IsUnique();
+                entity.Property(it => it.DefaultBaseUrl).HasMaxLength(500);
+                entity.Property(it => it.Description).HasMaxLength(500);
+
+                entity.HasMany(it => it.TenantIntegrations)
+                    .WithOne(ti => ti.IntegrationType)
+                    .HasForeignKey(ti => ti.IntegrationTypeId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // ==== TENANT INTEGRATION ====
+            modelBuilder.Entity<TenantIntegration>(entity =>
+            {
+                entity.ToTable("TenantIntegrations");
+                entity.HasKey(ti => ti.Id);
+                entity.Property(ti => ti.DisplayName).HasMaxLength(200);
+                entity.Property(ti => ti.ExternalVenueId).HasMaxLength(100);
+                entity.Property(ti => ti.ApiBaseUrl).HasMaxLength(500);
+                entity.Property(ti => ti.ApiTokenEncrypted).HasMaxLength(2000);
+                entity.Property(ti => ti.WalletTokenHash).HasMaxLength(128);
+                entity.Property(ti => ti.WalletTokenEncrypted).HasMaxLength(2000);
+
+                entity.HasIndex(ti => new { ti.TenantId, ti.IntegrationTypeId }).IsUnique();
+                entity.HasIndex(ti => ti.WalletTokenHash);
+
+                entity.HasOne(ti => ti.Tenant)
+                    .WithMany(t => t.TenantIntegrations)
+                    .HasForeignKey(ti => ti.TenantId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(ti => ti.IntegrationType)
+                    .WithMany(it => it.TenantIntegrations)
+                    .HasForeignKey(ti => ti.IntegrationTypeId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(ti => ti.LoyaltyProgram)
+                    .WithMany()
+                    .HasForeignKey(ti => ti.LoyaltyProgramId)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            // ==== POS PRODUCT EARN RULE ====
+            modelBuilder.Entity<PosProductEarnRule>(entity =>
+            {
+                entity.ToTable("PosProductEarnRules");
+                entity.HasKey(pr => pr.Id);
+                entity.Property(pr => pr.ExternalProductId).IsRequired().HasMaxLength(100);
+                entity.Property(pr => pr.ProductName).HasMaxLength(200);
+
+                entity.HasOne(pr => pr.TenantIntegration)
+                    .WithMany()
+                    .HasForeignKey(pr => pr.TenantIntegrationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== POS CUSTOMER MAPPING ====
+            modelBuilder.Entity<PosCustomerMapping>(entity =>
+            {
+                entity.ToTable("PosCustomerMappings");
+                entity.HasKey(pcm => pcm.Id);
+                entity.Property(pcm => pcm.ExternalCustomerId).IsRequired().HasMaxLength(100);
+                entity.HasIndex(pcm => new { pcm.TenantIntegrationId, pcm.ExternalCustomerId }).IsUnique();
+
+                entity.HasOne(pcm => pcm.TenantIntegration)
+                    .WithMany()
+                    .HasForeignKey(pcm => pcm.TenantIntegrationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(pcm => pcm.Customer)
+                    .WithMany()
+                    .HasForeignKey(pcm => pcm.CustomerId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
         }
 
         public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

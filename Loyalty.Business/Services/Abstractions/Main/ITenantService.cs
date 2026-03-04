@@ -16,7 +16,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> GetById(int id);
         Task<ServiceResult> GetAll();
         Task<ServiceResult> GetActive();
-        Task<ServiceResult> GetActiveUser(int currentPage, int pageSize, TenantSearchDto model);
+        Task<ServiceResult> GetActiveUser(int currentPage, int pageSize, TenantSearchDto model, int? currentUserId = null);
         Task<ServiceResult> GetLast();
         Task<ServiceResult> Update(UpdateTenantDto dto);
         Task<ServiceResult> Delete(int id);
