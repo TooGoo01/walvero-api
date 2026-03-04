@@ -90,7 +90,6 @@ public sealed class GoogleWalletService : IGoogleWalletService
     }
 
     private string ClassId => $"{_issuerId}.{_classSuffix}";
-    private static string ObjectIdForCard(string issuerId, int loyaltyCardId) => $"{issuerId}.lc-{loyaltyCardId}";
 
     public string GetIssuerId() => _issuerId;
 
@@ -766,7 +765,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
     }
 
     // =================== 4) SAVE LINK ===================
-    public async Task<ServiceResult> GenerateSaveLinkByCardIdAsync(int loyaltyCardId, CancellationToken ct = default)
+    public async Task<ServiceResult> GenerateSaveLinkByCardIdAsync(int loyaltyCardId, int tenantId, int programId, CancellationToken ct = default)
     {
         if (!_isInitialized)
         {
@@ -776,7 +775,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
         try
         {
-            var objectId = ObjectIdForCard(_issuerId, loyaltyCardId);
+            var objectId = ObjectIdForCard(_issuerId, tenantId, programId, loyaltyCardId);
 
             var loyaltyObject = new JObject
             {

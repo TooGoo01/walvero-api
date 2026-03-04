@@ -134,6 +134,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 {
                     TenantId = t.Id,
                     TenantName = t.CompanyName,
+                    TenantSlug = t.Subdomain,
                     // Get first active program's name (deterministic ordering by Id)
                     TenantProgramName = t.LoyaltyPrograms
                         .Where(lp => lp.IsActive)

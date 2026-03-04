@@ -167,7 +167,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         loyalty.Add(new LoyaltyCampaignItem
                         {
                             Id = program.Id,
-                            Count = cardInProgram.CurrentSteps,
+                            Count = cardInProgram.CompletedCycles * totalSteps + cardInProgram.CurrentSteps,
                             Maximum = totalSteps,
                             Rewards = cardInProgram.CompletedCycles,
                             ProductId = program.Id.ToString(),
@@ -181,7 +181,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                             loyalty.Add(new LoyaltyCampaignItem
                             {
                                 Id = reward.Id,
-                                Count = cardInProgram.CurrentSteps,
+                                Count = cardInProgram.CompletedCycles * totalSteps + cardInProgram.CurrentSteps,
                                 Maximum = totalSteps,
                                 Rewards = cardInProgram.CompletedCycles,
                                 ProductId = reward.ExternalProductId ?? reward.Id.ToString(),

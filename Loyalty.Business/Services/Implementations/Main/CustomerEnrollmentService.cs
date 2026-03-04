@@ -79,11 +79,6 @@ UserManager<ApplicationUser> userManager,
         // ——— Helpers ———
         private static string BuildTenantBaseUrl(string? subdomain)
         {
-            // Lokal mühit üçün 7gul.localhost:7199 kimi istifadə edirsinizsə, onu sabitləşdirin:
-            // Prod üçün isə məsələn: $"https://{subdomain}.domain.com"
-            // Aşağıda lokala uyğun nümunə:
-            
-            // PORT-u ehtiyacınıza görə dəyişin:
             return $"https://walvero.com";
         }
 
@@ -293,7 +288,7 @@ UserManager<ApplicationUser> userManager,
                         ct: ct
                     );
 
-                    var save = await gw.GenerateSaveLinkByCardIdAsync(card.Id, ct);
+                    var save = await gw.GenerateSaveLinkByCardIdAsync(card.Id, tenantId, program.Id, ct);
                     if (save.Success)
                         googleUrl = save.Data as string ?? save.Message as string;
 
@@ -373,6 +368,148 @@ UserManager<ApplicationUser> userManager,
         }
 
 
+        /// <summary>
+        /// Public enrollment – auth tələb etmir, DTO-dan personal info alır, OTP göndərir.
+        /// Webdəki Add.cshtml flow-u ilə eynidir.
+        /// </summary>
+        public async Task<ServiceResult> StartPublicEnrollmentAsync(PublicEnrollmentStartDto dto, CancellationToken ct = default)
+        {
+            var tenantId = dto.TenantId;
+            if (tenantId <= 0)
+                return new ServiceResult(false, "Tenant not resolved.");
+
+            if (string.IsNullOrWhiteSpace(dto.FirstName))
+                return new ServiceResult(false, "Ad tələb olunur.");
+            if (string.IsNullOrWhiteSpace(dto.PhoneNumber))
+                return new ServiceResult(false, "Telefon nömrəsi tələb olunur.");
+
+            // 1) Program tenant-ə məxsusdurmu?
+            var program = await _programRepo.GetByIdNameAsync(dto.LoyaltyProgramId, ct);
+            if (program is null || program.TenantId != tenantId)
+                return new ServiceResult(false, "Program not found for this tenant.");
+
+            var phone = dto.PhoneNumber.Trim();
+            var email = dto.Email?.Trim();
+
+            // 2) Customer tap / yarat
+            Customer? customer = await _customerRepo.GetByPhoneAsync(tenantId, phone, ct);
+
+            if (customer is null)
+            {
+                var cardNumber = await _cardNumberGenerator.GenerateCardNumberAsync(tenantId, ct);
+
+                customer = new Customer
+                {
+                    TenantId = tenantId,
+                    FirstName = dto.FirstName.Trim(),
+                    LastName = dto.LastName?.Trim() ?? "",
+                    PhoneNumber = phone,
+                    Email = email,
+                    Gender = dto.Gender.HasValue ? (Gender)dto.Gender.Value : null,
+                    DateOfBirth = dto.DateOfBirth,
+                    IsActive = true,
+                    LastActivityDate = DateTime.UtcNow,
+                    CardNumber = cardNumber
+                };
+
+                await _uow.Repository<Customer>().AddAsync(customer);
+                try
+                {
+                    _uow.Commit();
+                }
+                catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 2601 || ex.Number == 2627)
+                {
+                    customer.CardNumber = await _cardNumberGenerator.GenerateCardNumberAsync(tenantId, ct);
+                    _uow.Commit();
+                }
+            }
+            else
+            {
+                // Mövcud customer – məlumatları yenilə
+                customer.FirstName = dto.FirstName.Trim();
+                customer.LastName = dto.LastName?.Trim() ?? customer.LastName;
+                customer.Email = email;
+                customer.Gender = dto.Gender.HasValue ? (Gender)dto.Gender.Value : customer.Gender;
+                customer.DateOfBirth = dto.DateOfBirth ?? customer.DateOfBirth;
+                customer.LastActivityDate = DateTime.UtcNow;
+            }
+
+            // 3) Kart tap / yarat
+            var card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
+            if (card is null)
+            {
+                var deactiveCard = await _cardRepo.GetLastInactiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
+                if (deactiveCard != null)
+                {
+                    deactiveCard.IsActive = true;
+                    deactiveCard.Status = CardStatus.Active;
+                    deactiveCard.ActivatedAt = DateTime.UtcNow;
+                    deactiveCard.EditDate = DateTime.UtcNow;
+                    _uow.Repository<LoyaltyCard>().Update(deactiveCard);
+                    card = deactiveCard;
+                }
+                else
+                {
+                    card = new LoyaltyCard
+                    {
+                        TenantId = tenantId,
+                        CustomerId = customer.Id,
+                        LoyaltyProgramId = program.Id,
+                        BarcodeType = BarcodeType.Code128,
+                        Status = CardStatus.Active,
+                        ActivatedAt = DateTime.UtcNow,
+                        RegDate = DateTime.UtcNow,
+                        IsActive = true
+                    };
+                    await _uow.Repository<LoyaltyCard>().AddAsync(card);
+                    _uow.Commit();
+                }
+            }
+
+            // 4) OTP throttle yoxla (30 saniyə)
+            if (customer.OtpLastSentAt.HasValue &&
+                (DateTime.UtcNow - customer.OtpLastSentAt.Value).TotalSeconds < 30)
+            {
+                return new ServiceResult(false, "Zəhmət olmasa 30 saniyə gözləyin.");
+            }
+
+            // 5) OTP yarat, hash-la, saxla
+            var otp = WalletCodeHelper.NewOtp(6);
+            var salt = WalletCodeHelper.NewSalt();
+            var hash = WalletCodeHelper.HashOtp(otp, salt);
+
+            customer.OtpSalt = salt;
+            customer.OtpHash = hash;
+            customer.OtpExpiresAt = DateTime.UtcNow.AddMinutes(5);
+            customer.OtpAttempts = 0;
+            customer.OtpLastSentAt = DateTime.UtcNow;
+            customer.OtpChannel = "sms";
+            customer.OtpDestinationMasked = WalletCodeHelper.MaskPhone(phone);
+
+            _uow.Repository<Customer>().Update(customer);
+            _uow.Commit();
+
+            // 6) SMS göndər
+            try
+            {
+                var smsText = $"Sizin OTP: {otp}\nwalvero.com #{otp}";
+                await Helper.SendSmsAsync(phone, smsText, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "SMS göndərilə bilmədi. CustomerId={CustomerId}, Phone={Phone}", customer.Id, phone);
+            }
+
+            // 7) Nəticə
+            return new ServiceResult(true, new StartEnrollmentResultDto
+            {
+                CustomerId = customer.Id,
+                MaskedDestination = customer.OtpDestinationMasked,
+                CardId = card.Id,
+                ProgramId = program.Id
+            });
+        }
+
         public async Task<ServiceResult> VerifyEnrollmentAsync(VerifyCustomerOtpDto dto, CancellationToken ct = default)
         {
             var customer = await _uow.Repository<Customer>().GetByIdAsync(dto.CustomerId);
@@ -405,10 +542,20 @@ UserManager<ApplicationUser> userManager,
             _uow.Repository<Customer>().Update(customer);
             _uow.Commit();
 
+            // Auto-sync customer to POS if integration is configured
+            try
+            {
+                await _customerSyncService.SyncCustomerToPosAsync(customer.TenantId, customer.Id, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "POS sync failed for CustomerId={CustomerId}, TenantId={TenantId}", customer.Id, customer.TenantId);
+            }
+
             // Müştərinin son aktiv kartını götür
             // (və ya frontdan CardId ötürürsə, onu istifadə et)
-            var tenantId = _tp.CurrentTenantId ?? 1;
-            var programId =dto.LoyaltyProgramId;
+            var tenantId = customer.TenantId;
+            var programId = dto.LoyaltyProgramId;
             var card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, programId, customer.Id, ct);
             if (card is null) return new ServiceResult(false, "Card not found.");
 
@@ -443,7 +590,7 @@ UserManager<ApplicationUser> userManager,
                         currentPoints:card.CurrentPoints,
                         ct: ct
                     );
-                    var save = await gw.GenerateSaveLinkByCardIdAsync(card.Id, ct);
+                    var save = await gw.GenerateSaveLinkByCardIdAsync(card.Id, tenantId, program.Id, ct);
                     if (save.Success) googleUrl = (string?)save.Data ?? save.Message as string;
                     card.IsAndroid = true;
                 }

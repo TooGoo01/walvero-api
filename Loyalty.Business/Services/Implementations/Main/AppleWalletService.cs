@@ -6,6 +6,7 @@ using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 
+using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Data.Entity.ModelConfiguration.Configuration;
 using System.IO.Compression;
@@ -22,6 +23,7 @@ public sealed class AppleWalletService : IAppleWalletService
     private readonly IUnitOfWork _uow;
     private readonly IPasskitPushService _passkitPush;
     private readonly IWalletCredentialProvider _credProvider;
+    private readonly ILogger<AppleWalletService> _logger;
 
     public AppleWalletService(
         IApplePassBuilder builder,
@@ -30,7 +32,8 @@ public sealed class AppleWalletService : IAppleWalletService
         IUnitOfWork uow,
         IPasskitPushService passkitPush,
         IWalletCredentialProvider credProvider,
-        ILoyaltyCardRepository loyaltyCardRepository)
+        ILoyaltyCardRepository loyaltyCardRepository,
+        ILogger<AppleWalletService> logger)
     {
         _builder = builder;
         _signer = signer;
@@ -39,6 +42,7 @@ public sealed class AppleWalletService : IAppleWalletService
         _passkitPush = passkitPush;
         _credProvider = credProvider;
         _loyaltyCardRepository = loyaltyCardRepository;
+        _logger = logger;
     }
 
     private static readonly ConcurrentDictionary<int, SemaphoreSlim> _passLocks = new();
@@ -55,6 +59,13 @@ public sealed class AppleWalletService : IAppleWalletService
         if (card is null) return new ServiceResult(false, "Card not found.");
 
         var tenantId = card.TenantId;
+
+        if (!HasValidCreds(creds, out var credsReason))
+        {
+            _logger.LogWarning("Apple credentials missing/invalid. TenantId={TenantId}. {Reason}", tenantId, credsReason);
+            return new ServiceResult(false, "Apple credentials not found.");
+        }
+
         var outDir = Path.Combine(_env.WebRootPath, "passes", tenantId.ToString(), card.LoyaltyProgramId.ToString());
         Directory.CreateDirectory(outDir);
 
@@ -146,7 +157,7 @@ public sealed class AppleWalletService : IAppleWalletService
                         ? "bonus"
                         : snapshot.FreeRewardLabel;
 
-                    string freeDrinkText = completedCycles == 0 ? "0" : $"{completedCycles} {freeRewardLabel.ToLowerInvariant()}";
+                    string freeDrinkText = completedCycles == 0 ? "0" : $"{completedCycles}";
 
                     // Top: Reward description as uppercase rule text (headerFields for top placement)
                     if (!string.IsNullOrWhiteSpace(snapshot.RewardDescription))
@@ -262,6 +273,11 @@ public sealed class AppleWalletService : IAppleWalletService
                     await _passkitPush.NotifyUpdatedAsync(tenantId, creds.PassTypeIdentifier, serial, fileName, ct);
 
                 return new ServiceResult(true, publicUrl);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Apple pass generation failed. TenantId={TenantId}, CardId={CardId}", tenantId, card.Id);
+                return new ServiceResult(false, "Apple pass generation failed.");
             }
             finally
             {
@@ -380,5 +396,37 @@ public sealed class AppleWalletService : IAppleWalletService
     {
         if (totalSteps <= 0) return 0;
         return currentSteps / totalSteps; // Integer division = floor
+    }
+
+    private static bool HasValidCreds(AppleWalletRuntimeCreds creds, out string reason)
+    {
+        if (string.IsNullOrWhiteSpace(creds.TeamIdentifier))
+        {
+            reason = "TeamIdentifier is missing.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(creds.PassTypeIdentifier))
+        {
+            reason = "PassTypeIdentifier is missing.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(creds.CertP12Path))
+        {
+            reason = "CertP12Path is missing.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(creds.CertPassword))
+        {
+            reason = "CertPassword is missing.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(creds.WwdrCertPath))
+        {
+            reason = "WwdrCertPath is missing.";
+            return false;
+        }
+
+        reason = string.Empty;
+        return true;
     }
 }

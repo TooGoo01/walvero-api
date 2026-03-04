@@ -37,7 +37,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!string.IsNullOrWhiteSpace(req.StripImageUrl))
             {
                 await _file.DownloadToAsync(req.StripImageUrl!, Path.Combine(workingDir, "strip.png"), ct);
-              
+                await EnsurePng(Path.Combine(workingDir, "strip.png"));
             }
                
          
@@ -120,7 +120,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             };
 
             if (!string.IsNullOrWhiteSpace(req.WebServiceURL))
-                root["webServiceURL"] = "https://appapi.walvero.com";
+                root["webServiceURL"] = req.WebServiceURL;
             if (!string.IsNullOrWhiteSpace(req.AuthenticationToken))
                 root["authenticationToken"] = req.AuthenticationToken;
 

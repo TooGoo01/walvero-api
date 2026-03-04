@@ -39,7 +39,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IContactService, ContactService>();
             services.AddScoped<ITenantService, TenantService>();
             services.AddScoped<ITenantBrandingService, TenantBrandingService>();
-            services.AddScoped<IStorage, FileStorage>();
+            services.AddScoped<IStorage, AzureStorage>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<IOtpService, OtpService>();
             services.AddScoped<IMailService, MailService>();

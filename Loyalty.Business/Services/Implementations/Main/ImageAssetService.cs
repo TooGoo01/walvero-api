@@ -1,36 +1,27 @@
-﻿using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Enums;
 using Loyalty.Business.Services.Abstractions.Main;
-using Microsoft.AspNetCore.Hosting;
+using Loyalty.Business.Services.Abstractions.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Options;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace Loyalty.Business.Services.Implementations.Main
 {
     public class ImageAssetService : IImageAssetService
     {
         private readonly ITenantProvider _tp;
-        private readonly IHostingEnvironment _env;
-        private readonly IHttpContextAccessor _http;
+        private readonly IStorage _storage;
         private readonly AssetOptions _opt;
 
         public ImageAssetService(
             ITenantProvider tp,
-            IHostingEnvironment env,
-            IHttpContextAccessor http,
+            IStorage storage,
             IOptions<AssetOptions> opt)
         {
             _tp = tp;
-            _env = env;
-            _http = http;
+            _storage = storage;
             _opt = opt.Value;
         }
 
@@ -47,43 +38,30 @@ namespace Loyalty.Business.Services.Implementations.Main
             var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (!_opt.AllowedExt.Contains(ext)) throw new InvalidOperationException("Unsupported file type.");
 
-            // Sadə content-type yoxlaması (magic-bytes yoxlamasını istəsən əlavə edərsən)
             var provider = new FileExtensionContentTypeProvider();
             if (!provider.TryGetContentType($"x{ext}", out _))
                 throw new InvalidOperationException("Unknown content type.");
 
-            // Fayl adı: təhlükəsiz + unikaldır
-            var safeBase = Slugify(Path.GetFileNameWithoutExtension(file.FileName));
-            if (string.IsNullOrWhiteSpace(safeBase)) safeBase = "img";
-            var unique = $"{DateTime.UtcNow:yyyyMMddHHmmssfff}_{Guid.NewGuid():N}";
-            var finalName = $"{safeBase}_{unique}{ext}";
-
-            // Qovluq yolu: wwwroot/uploads/tenant-{id}/{category}/
+            // Container: tenant-{id}-{category}
             var categoryFolder = GetCategoryFolder(category);
-            var relativeDir = Path.Combine(_opt.RootFolder, $"tenant-{tenantId}", categoryFolder);
-            var absDir = Path.Combine(_env.WebRootPath, relativeDir);
-            Directory.CreateDirectory(absDir);
+            var container = $"tenant-{tenantId}-{categoryFolder}";
 
-            // Yaz
-            var absPath = Path.Combine(absDir, finalName);
-            using (var stream = File.Create(absPath))
-                await file.CopyToAsync(stream, ct);
+            // Azure Blob Storage-a yüklə
+            var uploaded = await _storage.UploadFileAsync(container, new[] { file });
+            if (uploaded.Count == 0) throw new InvalidOperationException("Upload failed.");
 
-            // Public URL
-            var ctx = _http.HttpContext!;
-            var baseUri = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}";
-            var publicUrl = $"{baseUri}/{relativeDir.Replace("\\", "/")}/{Uri.EscapeDataString(finalName)}";
+            var (fileName, publicUrl) = uploaded[0];
 
-            // Köhnəni sil (yalnız bizim uploads içindədirsə)
-            if (!string.IsNullOrWhiteSpace(oldUrl)) TryDeleteLocal(oldUrl);
+            // Köhnəni sil
+            if (!string.IsNullOrWhiteSpace(oldUrl))
+                TryDeleteBlob(oldUrl);
 
-            return new ImageUploadResultDto { Url = publicUrl, FileName = finalName };
+            return new ImageUploadResultDto { Url = publicUrl, FileName = fileName };
         }
 
         public Task<bool> DeleteByUrlAsync(string publicUrl, CancellationToken ct = default)
-            => Task.FromResult(TryDeleteLocal(publicUrl));
+            => Task.FromResult(TryDeleteBlob(publicUrl));
 
-        // Helpers
         private static string GetCategoryFolder(ImageCategory c) => c switch
         {
             ImageCategory.Branding => "branding",
@@ -93,42 +71,22 @@ namespace Loyalty.Business.Services.Implementations.Main
             _ => "other"
         };
 
-        private static string Slugify(string input)
-        {
-            input = input.ToLowerInvariant();
-            input = Regex.Replace(input, @"\s+", "-");
-            input = Regex.Replace(input, @"[^a-z0-9\-_]", "");
-            return input.Trim('-', '_');
-        }
-
-        private bool TryDeleteLocal(string url)
+        private bool TryDeleteBlob(string url)
         {
             try
             {
-                var local = MapUrlToLocal(url);
-                if (local is null) return false;
+                if (!url.Contains("walverostorage.blob.core.windows.net")) return false;
 
-                // Təhlükəsizlik: yalnız uploads kökü içindəki faylı sil
-                var uploadsRoot = Path.Combine(_env.WebRootPath, _opt.RootFolder);
-                if (!Path.GetFullPath(local).StartsWith(Path.GetFullPath(uploadsRoot), StringComparison.OrdinalIgnoreCase))
-                    return false;
+                var uri = new Uri(url, UriKind.Absolute);
+                var segments = uri.AbsolutePath.TrimStart('/').Split('/', 2);
+                if (segments.Length < 2) return false;
 
-                if (!File.Exists(local)) return false;
-                File.Delete(local);
+                var container = segments[0];
+                var fileName = segments[1];
+                _storage.DeleteAsync(container, fileName).GetAwaiter().GetResult();
                 return true;
             }
             catch { return false; }
-        }
-
-        private string? MapUrlToLocal(string url)
-        {
-            try
-            {
-                var uri = new Uri(url, UriKind.Absolute);
-                var localRel = uri.AbsolutePath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
-                return Path.Combine(_env.WebRootPath, localRel);
-            }
-            catch { return null; }
         }
     }
 }

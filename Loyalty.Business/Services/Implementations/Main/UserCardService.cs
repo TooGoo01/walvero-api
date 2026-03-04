@@ -1,5 +1,4 @@
-﻿using AutoMapper;
-using Loyalty.Business.Dtos.Get.Main;
+﻿using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
@@ -30,7 +29,6 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ITenantBrandingRepository _tenantBrandingRepository;
         private readonly IConfiguration _config;
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IMapper _mapper;
         public UserCardService(
             ITenantProvider tp,
             UserManager<ApplicationUser> userManager,
@@ -39,8 +37,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             ITenantRepository tenantRepo,
             ITenantBrandingRepository tenantBrandingRepository,
             IConfiguration config,
-            IUnitOfWork unitOfWork,
-            IMapper mapper)
+            IUnitOfWork unitOfWork)
         {
             _tp = tp;
             _userManager = userManager;
@@ -50,7 +47,6 @@ namespace Loyalty.Business.Services.Implementations.Main
             _tenantBrandingRepository = tenantBrandingRepository;
             _config = config;
             _unitOfWork = unitOfWork;
-            _mapper = mapper;
         }
         /// <summary>
         /// Maps LoyaltyCard entity with navigation properties to UserCardDto.
@@ -60,8 +56,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             LoyaltyCard card,
             Tenant tenant,
             LoyaltyProgram program,
-            CardTemplateSnapshot snapshot,
-            GetCardTemplateDto? template = null)
+            CardTemplateSnapshot snapshot)
         {
             string? progressText = null;
             string? freeRewardText = null;
@@ -77,7 +72,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 // Free reward text: "1 Pulsuz içki"
                 int freeRewardCount = card.CompletedCycles;
-                string freeRewardLabel = template?.FreeRewardLabel ?? snapshot.FreeRewardLabel ?? "Pulsuz içki";
+                string freeRewardLabel = snapshot.FreeRewardLabel ?? "Pulsuz içki";
                 freeRewardText = $"{freeRewardCount} {freeRewardLabel}";
             }
 
@@ -146,13 +141,15 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var applicationUserId = appUser.Id;
 
-            // 2) OPTIMIZATION: Get count first, then paginated cards in a single efficient query
-            var totalCount = await _cardRepo.GetActiveCardsCountForApplicationUserAsync(
+            // 2) OPTIMIZATION: Count + paginated data tək DB roundtrip ilə
+            var (totalCount, pagedCards) = await _cardRepo.GetMyCardsPaginatedAsync(
                 applicationUserId,
                 model?.Name,
                 model?.categoryId,
                 model?.countryId,
                 model?.cityId,
+                currentPage,
+                pageSize,
                 ct);
 
             if (totalCount == 0)
@@ -167,18 +164,6 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 return new ServiceResult(true, emptyResponse);
             }
-
-            // 2.1) OPTIMIZATION: Get paginated cards directly from database with all includes
-            // Cards query already includes: Customer, LoyaltyProgram.CardTemplate, Tenant.Category, Tenant.Branding
-            var pagedCards = await _cardRepo.GetLastActiveCardsForApplicationUserPaginatedAsync(
-                applicationUserId,
-                model?.Name,
-                model?.categoryId,
-                model?.countryId,
-                model?.cityId,
-                currentPage,
-                pageSize,
-                ct);
 
             // BaseUrl
             var baseUrl = _config["App:BaseUrl"] ?? "https://walvero.com";
@@ -221,12 +206,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     snapshotCache[key] = snapshot;
                 }
 
-                // OPTIMIZATION: Use AutoMapper for CardTemplate → GetCardTemplateDto mapping
-                var cardTemplate = program.CardTemplate;
-                var tpl = _mapper.Map<GetCardTemplateDto>(cardTemplate);
-
-                // OPTIMIZATION: Use helper method for complex mapping
-                var dto = MapToUserCardDto(card, tenant, program, snapshot, tpl);
+                // OPTIMIZATION: Use helper method - snapshot already has all needed data
+                var dto = MapToUserCardDto(card, tenant, program, snapshot);
 
                 resultList.Add(dto);
             }

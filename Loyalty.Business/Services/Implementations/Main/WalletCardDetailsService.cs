@@ -76,25 +76,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 "Fetching card details for TenantId: {TenantId}, CardId: {CardId}",
                 tenantId, cardId);
 
-            // 1. Get the card with full details
-            var card = await _cardRepository.GetCardWithFullDetailsAsync(cardId, ct);
-            if (card == null)
-            {
-                _logger.LogWarning("Card not found: {CardId}", cardId);
-                return ServiceResult<WalletCardDetailsResponseDto>.Fail("Card not found");
-            }
-
-            // 2. Validate tenant match - card must belong to requested tenant
-            if (card.TenantId != tenantId)
-            {
-                // Return 404-style message to avoid leaking card existence across tenants
-                _logger.LogWarning(
-                    "Tenant mismatch: Card {CardId} belongs to Tenant {ActualTenantId}, requested Tenant {RequestedTenantId}",
-                    cardId, card.TenantId, tenantId);
-                return ServiceResult<WalletCardDetailsResponseDto>.Fail("Card not found");
-            }
-
-            // 3. Authorization check - verify current user owns this card
+            // 1. Authorization check
             var currentUserId = _tenantProvider.CurrentUserId;
             if (string.IsNullOrEmpty(currentUserId))
             {
@@ -108,14 +90,20 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return ServiceResult<WalletCardDetailsResponseDto>.Fail("Authentication required");
             }
 
-            // Check if card belongs to the requesting user
-            var isOwner = await _cardRepository.CardBelongsToUserAsync(cardId, applicationUserId, ct);
-            if (!isOwner)
+            // 2. Single query: card + full details + ownership check
+            var card = await _cardRepository.GetCardWithOwnerCheckAsync(cardId, applicationUserId, ct);
+            if (card == null)
             {
-                // Return 404-style message to avoid leaking card existence to other users
+                _logger.LogWarning("Card not found or access denied: {CardId}", cardId);
+                return ServiceResult<WalletCardDetailsResponseDto>.Fail("Card not found");
+            }
+
+            // 3. Validate tenant match
+            if (card.TenantId != tenantId)
+            {
                 _logger.LogWarning(
-                    "Unauthorized card access attempt: User {UserId} tried to access Card {CardId}",
-                    applicationUserId, cardId);
+                    "Tenant mismatch: Card {CardId} belongs to Tenant {ActualTenantId}, requested Tenant {RequestedTenantId}",
+                    cardId, card.TenantId, tenantId);
                 return ServiceResult<WalletCardDetailsResponseDto>.Fail("Card not found");
             }
 

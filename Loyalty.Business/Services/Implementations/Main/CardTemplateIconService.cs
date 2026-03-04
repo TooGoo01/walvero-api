@@ -34,6 +34,27 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (template is null) return new ServiceResult(false, "CardTemplate not found.");
 
             var container = $"photo-{templateId}";
+
+            // Köhnə ikonları blobdan sil və DB-dən təmizlə
+            var existingIcons = (await _unitOfWork.Repository<Icon>()
+                .GetAllAsync(x => x.CardTemplateId == templateId))?.ToList();
+
+            if (existingIcons is { Count: > 0 })
+            {
+                foreach (var old in existingIcons)
+                {
+                    // Yalnız blob-da saxlanılan faylları sil (external URL-ləri yox)
+                    if (!string.IsNullOrWhiteSpace(old.FileName) &&
+                        (string.IsNullOrWhiteSpace(old.Path) || !old.Path.StartsWith("http", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        try { await _storage.DeleteAsync(container, old.FileName); }
+                        catch { /* blob yoxdursa keç */ }
+                    }
+                }
+                _unitOfWork.Repository<Icon>().DeleteRange(existingIcons);
+                _unitOfWork.Commit();
+            }
+
             var newIcons = new List<Icon>();
 
             // Sıralama (əgər IconDto.Order varsa onunla, yoxdursa gələn sıra ilə)

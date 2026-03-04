@@ -52,7 +52,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             // 2) Upload container
             var tenantId = ResolveTenantIdFromProgram(dto.LoyaltyProgramId); // öz implementasiyanız
-            var container = $"tenant-{tenantId}/program-{dto.LoyaltyProgramId}/template";
+            var container = $"tenant-{tenantId}-program-{dto.LoyaltyProgramId}-template";
 
             // 3) Şəkillər (file varsa yüklə, yoxdursa url saxla)
             entity.LogoUrl = await UpOrNullLink(container, "logo", dto.LogoFile, dto.LogoUrl, entity.LogoUrl, ct);
@@ -95,44 +95,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             entity.PlatinumColor = dto.PlatinumColor;
             entity.Currency = string.IsNullOrWhiteSpace(dto.Currency) ? "AZN" : dto.Currency.Trim();
 
-            // 5) PROGRESS ikonları: dto.Icons → Icon list (file/URL dəstəyi) → upsert
-            if (dto.TemplateType == CardTemplateType.ProgressBased)
-            {
-                // Normalize incoming icons (order: 0..N-1)
-                var ordered = (dto.Icons ?? new List<IconDto>())
-                              .OrderBy(x => x.Order).ToList();
-                for (int i = 0; i < ordered.Count; i++) ordered[i].Order = i;
-
-                var materialized = new List<Icon>();
-                foreach (var it in ordered)
-                {
-                    string? iconUrl = null;
-
-                    if (it.IconFile is not null && it.IconFile.Length > 0)
-                    {
-                        var uploaded = await _storage.UploadFileAsync(container, new[] { it.IconFile });
-                        var (_, rel) = uploaded.First();
-                        iconUrl = EnsureRelative(rel);
-                    }
-                    else if (!string.IsNullOrWhiteSpace(it.IconUrl))
-                    {
-                        iconUrl = it.IconUrl.Trim();
-                    }
-
-                    if (string.IsNullOrWhiteSpace(iconUrl)) continue;
-
-                    materialized.Add(new Icon
-                    {
-                        Id = it.Id ?? 0,                 // upsert üçün
-                        CardTemplateId = entity.Id,      // 0 ola bilər; repo upsert-də FK təyin olunacaq
-                        Name = it.Name?.Trim(),
-                        IconUrl = iconUrl,
-                        Order = it.Order
-                    });
-                }
-
-               
-            }
+            // 5) PROGRESS ikonları: AddRangeAsync köhnələri silir, yenilərini blob-a yükləyir
 
             // 6) Yadda saxla
             if (entity.Id == 0)

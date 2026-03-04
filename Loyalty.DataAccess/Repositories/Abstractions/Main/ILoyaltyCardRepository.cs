@@ -40,10 +40,29 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
             CancellationToken ct = default);
 
         /// <summary>
+        /// Count + paginated data in single method to reduce DB roundtrips.
+        /// </summary>
+        Task<(int totalCount, List<LoyaltyCard> cards)> GetMyCardsPaginatedAsync(
+            int applicationUserId,
+            string? name,
+            int? categoryId,
+            int? countryId,
+            int? cityId,
+            int currentPage,
+            int pageSize,
+            CancellationToken ct = default);
+
+        /// <summary>
         /// Get a card by ID with full details for wallet card details view.
         /// Includes: Customer, LoyaltyProgram, CardTemplate, Tenant (with Branding and Category).
         /// </summary>
         Task<LoyaltyCard?> GetCardWithFullDetailsAsync(int cardId, CancellationToken ct = default);
+
+        /// <summary>
+        /// Get card with full details + ownership check in single query.
+        /// Returns null if card doesn't exist or doesn't belong to user.
+        /// </summary>
+        Task<LoyaltyCard?> GetCardWithOwnerCheckAsync(int cardId, int applicationUserId, CancellationToken ct = default);
 
         /// <summary>
         /// Check if a card belongs to a specific application user (for authorization).
