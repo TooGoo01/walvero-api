@@ -143,9 +143,6 @@ builder.Services.AddSession(conf =>
 builder.Services.AddDbContext<LoyaltyWalletDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("LoyaltyDbConnection")));
 
-// DataProtection (for encrypting POS tokens)
-builder.Services.AddDataProtection();
-
 // HttpClientFactory
 builder.Services.AddHttpClient();
 
