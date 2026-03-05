@@ -2058,5 +2058,127 @@ namespace Loyalty.Business.Services.Implementations.Users
             return null;
         }
 
+        // ========== ADMIN USER MANAGEMENT ==========
+
+        public async Task<ServiceResult> ListUsersAsync()
+        {
+            try
+            {
+                var users = await _dbContext.Users.Include(u => u.Tenant).ToListAsync();
+                var result = new List<ApplicationUserDto>();
+
+                foreach (var user in users)
+                {
+                    var roles = await _userManager.GetRolesAsync(user);
+                    result.Add(new ApplicationUserDto
+                    {
+                        Id = user.Id.ToString(),
+                        UserName = user.UserName,
+                        Email = user.Email,
+                        PhoneNumber = user.PhoneNumber,
+                        Name = user.Name,
+                        Surname = user.Surname,
+                        IsGuest = user.IsGuest,
+                        IsProfileCompleted = user.IsProfileCompleted,
+                        TenantId = user.TenantId,
+                        Roles = roles.ToList(),
+                        CreatedAt = null
+                    });
+                }
+
+                return new ServiceResult(true, result);
+            }
+            catch (Exception ex)
+            {
+                return new ServiceResult(false, ex.Message);
+            }
+        }
+
+        public async Task<ServiceResult> GetRolesAsync()
+        {
+            try
+            {
+                var roles = await _roleManager.Roles.Select(r => r.Name).ToListAsync();
+                return new ServiceResult(true, roles);
+            }
+            catch (Exception ex)
+            {
+                return new ServiceResult(false, ex.Message);
+            }
+        }
+
+        public async Task<ServiceResult> CreateAdminUserAsync(CreateAdminUserDto dto)
+        {
+            try
+            {
+                var nameParts = (dto.FullName ?? "").Split(' ', 2);
+                var user = new ApplicationUser
+                {
+                    UserName = dto.PhoneNumber,
+                    PhoneNumber = dto.PhoneNumber,
+                    Email = dto.Email,
+                    Name = nameParts.Length > 0 ? nameParts[0] : dto.FullName,
+                    Surname = nameParts.Length > 1 ? nameParts[1] : "",
+                    TenantId = dto.TenantId,
+                    IsGuest = false,
+                    IsProfileCompleted = true,
+                    Status = Loyalty.DataAccess.Enums.UserStatus.Active
+                };
+
+                var createResult = await _userManager.CreateAsync(user, dto.Password);
+                if (!createResult.Succeeded)
+                    return new ServiceResult(false, string.Join("; ", createResult.Errors.Select(e => e.Description)));
+
+                if (!string.IsNullOrWhiteSpace(dto.Role))
+                {
+                    var roleExists = await _roleManager.RoleExistsAsync(dto.Role);
+                    if (!roleExists)
+                        return new ServiceResult(false, $"Role '{dto.Role}' not found");
+
+                    await _userManager.AddToRoleAsync(user, dto.Role);
+                }
+
+                return new ServiceResult(true, "User created successfully");
+            }
+            catch (Exception ex)
+            {
+                return new ServiceResult(false, ex.Message);
+            }
+        }
+
+        public async Task<ServiceResult> UpdateAdminUserAsync(string userId, string? role, int? tenantId)
+        {
+            try
+            {
+                var user = await _userManager.FindByIdAsync(userId);
+                if (user == null)
+                    return new ServiceResult(false, "User not found");
+
+                if (tenantId.HasValue)
+                    user.TenantId = tenantId.Value;
+
+                await _userManager.UpdateAsync(user);
+
+                if (!string.IsNullOrWhiteSpace(role))
+                {
+                    var currentRoles = await _userManager.GetRolesAsync(user);
+                    if (currentRoles.Any())
+                        await _userManager.RemoveFromRolesAsync(user, currentRoles);
+
+                    var roleExists = await _roleManager.RoleExistsAsync(role);
+                    if (!roleExists)
+                        return new ServiceResult(false, $"Role '{role}' not found");
+
+                    await _userManager.AddToRoleAsync(user, role);
+                }
+
+                return new ServiceResult(true, "User updated successfully");
+            }
+            catch (Exception ex)
+            {
+                return new ServiceResult(false, ex.Message);
+            }
+        }
+
     }
 }

@@ -1,4 +1,4 @@
-﻿using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
@@ -21,6 +21,36 @@ namespace Loyalty.WebAPI.Controllers
             _tenantBrandingService = tenantBrandingService;
             _tenantProvider = tenantProvider;
         }
+
+        /// <summary>Returns branding for the currently authenticated tenant.</summary>
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        [ProducesResponseType(typeof(ServiceResult<GetTenantBrandingDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
+        public async Task<IActionResult> Get()
+        {
+            var tenantId = _tenantProvider.CurrentTenantId;
+            if (!tenantId.HasValue) return Unauthorized(new ServiceResult(false, "Tenant not found in token"));
+            var result = await _tenantBrandingService.GetByTenantId(tenantId.Value);
+            return Ok(result);
+        }
+
+        /// <summary>Updates branding for the currently authenticated tenant.</summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
+        public async Task<IActionResult> UpdateMy([FromForm] AddTenantBrandingDto dto, CancellationToken ct)
+        {
+            var tenantId = _tenantProvider.CurrentTenantId;
+            if (!tenantId.HasValue) return Unauthorized(new ServiceResult(false, "Tenant not found in token"));
+            dto.TenantId = tenantId.Value;
+            var result = await _tenantBrandingService.AddOrUpdateAsync(dto, ct);
+            if (result.Success) return Ok(result);
+            return BadRequest(result);
+        }
+
         [HttpGet]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult<List<GetTenantBrandingDto>>), (int)HttpStatusCode.OK)]
@@ -43,7 +73,6 @@ namespace Loyalty.WebAPI.Controllers
         {
             if (!ModelState.IsValid)
             {
-
                 foreach (var error in ModelState.Values.SelectMany(modelState => modelState.Errors))
                 {
                     ModelState.AddModelError("", error.ErrorMessage);
@@ -54,7 +83,6 @@ namespace Loyalty.WebAPI.Controllers
             if (result.Success)
                 return Ok(result);
 
-            //ModelState.AddModelError("", "Butun hisselerin tam doldurulduqundan emin olun!");
             return BadRequest(result);
         }
 
@@ -68,7 +96,6 @@ namespace Loyalty.WebAPI.Controllers
         {
             if (!ModelState.IsValid)
             {
-
                 foreach (var error in ModelState.Values.SelectMany(modelState => modelState.Errors))
                 {
                     ModelState.AddModelError("", error.ErrorMessage);
@@ -79,7 +106,6 @@ namespace Loyalty.WebAPI.Controllers
             if (result.Success)
                 return Ok(result);
 
-            //ModelState.AddModelError("", "Butun hisselerin tam doldurulduqundan emin olun!");
             return BadRequest(result);
         }
 

@@ -20,12 +20,27 @@ namespace Loyalty.WebAPI.Controllers
         private readonly ICountryService _countryService;
         private readonly ICityService _cityService;
         private readonly ITimeZoneService _timeZoneService;
-        public TenantController(ITenantService tenantService, ITimeZoneService timeZoneService, ICityService cityService, ICountryService countryService)
+        private readonly ITenantProvider _tenantProvider;
+        public TenantController(ITenantService tenantService, ITimeZoneService timeZoneService, ICityService cityService, ICountryService countryService, ITenantProvider tenantProvider)
         {
             _tenantService = tenantService;
             _timeZoneService = timeZoneService;
             _cityService = cityService;
             _countryService = countryService;
+            _tenantProvider = tenantProvider;
+        }
+
+        /// <summary>Returns the current authenticated tenant's info (Tenant Admin / Moderator).</summary>
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        [ProducesResponseType(typeof(ServiceResult<GetTenantDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
+        public async Task<IActionResult> GetMy()
+        {
+            var tenantId = _tenantProvider.CurrentTenantId;
+            if (!tenantId.HasValue) return Unauthorized(new ServiceResult(false, "Tenant not found in token"));
+            var result = await _tenantService.GetById(tenantId.Value);
+            return Ok(result);
         }
 
         /// <summary>
