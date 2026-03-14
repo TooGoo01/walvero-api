@@ -12,7 +12,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
     {
         Task<ServiceResult> GeneratePassUrlByCardIdAsync(
          int loyaltyCardId, AppleWalletRuntimeCreds creds, CardTemplateSnapshot snapshot,
-         string customerFullName, string barcodeValue, CancellationToken ct = default);
+         string customerFullName, string barcodeValue, CancellationToken ct = default,
+         int lotteryTickets = 0, string? lotteryWinPrize = null, DateTime? lotteryDrawDate = null);
         Task<ServiceResult> RedeemByCardIdAsync(
         int loyaltyCardId,
         CardTemplateSnapshot tpl,
@@ -20,6 +21,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
         int currentPoints,
         int currentSteps,
         int pointsDelta,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        int lotteryTickets = 0,
+        string? lotteryWinPrize = null,
+        DateTime? lotteryDrawDate = null);
     }
 }

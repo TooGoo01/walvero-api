@@ -31,7 +31,8 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
 
         public async Task<ServiceResult> RedeemByCardIdAsync(
-          int id, CardTemplateSnapshot tpl, int pts, int steps, int delta, CancellationToken ct = default)
+          int id, CardTemplateSnapshot tpl, int pts, int steps, int delta, CancellationToken ct = default,
+          int lotteryTickets = 0, string? lotteryWinPrize = null, DateTime? lotteryDrawDate = null)
         {
             using var scope = _logger.BeginScope(new Dictionary<string, object?>
             {
@@ -70,7 +71,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _logger.LogDebug("Fetching Apple credentials for WWdr={TenantId}", creds.WwdrCertPath);
                 // 3) AppleWalletService çağırışı
                 _logger.LogInformation("Routing to AppleWalletService.RedeemByCardIdAsync...");
-                var res = await _apple.RedeemByCardIdAsync(id, tpl, creds, pts, steps, delta, ct);
+                var res = await _apple.RedeemByCardIdAsync(id, tpl, creds, pts, steps, delta, ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate);
 
                 sw.Stop();
                 if (res.Success)

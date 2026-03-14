@@ -80,6 +80,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 existingProgram.ProgramType = dto.ProgramType;
                 existingProgram.MinPointsToRedeem = dto.MinPointsToRedeem;
                 existingProgram.PointsExpiryDays = dto.PointsExpiryDays;
+                existingProgram.IsLotteryEnabled = dto.IsLotteryEnabled;
+                existingProgram.LotteryPurchaseThreshold = dto.LotteryPurchaseThreshold;
+                existingProgram.LotteryAmountThreshold = dto.LotteryAmountThreshold;
 
                 // Update entity in the database
                 _unitOfWork.Repository<LoyaltyProgram>().Update(existingProgram);
@@ -99,7 +102,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     existingProgram.CurrencyPerPoint,
                     existingProgram.ProgramType,
                     existingProgram.MinPointsToRedeem,
-                    existingProgram.PointsExpiryDays
+                    existingProgram.PointsExpiryDays,
+                    existingProgram.IsLotteryEnabled,
+                    existingProgram.LotteryPurchaseThreshold,
+                    existingProgram.LotteryAmountThreshold
                 };
 
                 return new ServiceResult(true, result);
@@ -117,7 +123,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     CurrencyPerPoint = dto.CurrencyPerPoint,
                     ProgramType = dto.ProgramType,
                     MinPointsToRedeem = dto.MinPointsToRedeem,
-                    PointsExpiryDays = dto.PointsExpiryDays
+                    PointsExpiryDays = dto.PointsExpiryDays,
+                    IsLotteryEnabled = dto.IsLotteryEnabled,
+                    LotteryPurchaseThreshold = dto.LotteryPurchaseThreshold,
+                    LotteryAmountThreshold = dto.LotteryAmountThreshold
                 };
 
                 await _unitOfWork.Repository<LoyaltyProgram>().AddAsync(entity);
@@ -137,7 +146,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     entity.CurrencyPerPoint,
                     entity.ProgramType,
                     entity.MinPointsToRedeem,
-                    entity.PointsExpiryDays
+                    entity.PointsExpiryDays,
+                    entity.IsLotteryEnabled,
+                    entity.LotteryPurchaseThreshold,
+                    entity.LotteryAmountThreshold
                 };
 
                 return new ServiceResult(true, result);
@@ -168,7 +180,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             var code = baseCode;
             int i = 0;
-            while (await _repo.GetByCodeAsync(tenantId, code, ct)==null)
+            while (await _repo.GetByCodeAsync(tenantId, code, ct)!=null)
             {
                 i++;
                 code = $"{baseCode}-{i}";

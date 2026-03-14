@@ -1,4 +1,5 @@
 ﻿using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -11,19 +12,25 @@ namespace Loyalty.WebAPI.Controllers
 {
     [Route("api/[controller]/[action]")]
     [ApiController]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
     public class TransactionController : ControllerBase
     {
         private readonly ITransactionService _transactionService;
+        private readonly ITransactionReverseService _transactionReverseService;
+        private readonly ITenantProvider _tenantProvider;
 
-        public TransactionController(ITransactionService transactionService)
+        public TransactionController(
+            ITransactionService transactionService,
+            ITransactionReverseService transactionReverseService,
+            ITenantProvider tenantProvider)
         {
             _transactionService = transactionService;
+            _transactionReverseService = transactionReverseService;
+            _tenantProvider = tenantProvider;
         }
+
         [HttpGet]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult<List<GetTransactionDto>>), (int)HttpStatusCode.OK)]
-        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
-        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> List(DateOnly? startDate, DateOnly? endDate, int? tenantId = null)
         {
@@ -43,19 +50,43 @@ namespace Loyalty.WebAPI.Controllers
                 effectiveStartDate = startDate ?? effectiveEndDate.AddDays(-30);
             }
 
-           
+            var effectiveTenantId = (tenantId.HasValue && tenantId.Value > 0)
+                ? tenantId.Value
+                : _tenantProvider.CurrentTenantId;
 
-            if (tenantId.HasValue && tenantId.Value > 0)
-            {
-                var result = await _transactionService.GetByTenantIdAndDate(
-                    tenantId.Value,
-                    effectiveStartDate,
-                    effectiveEndDate
-                );
-                return Ok(result);
-            }
+            if (!effectiveTenantId.HasValue)
+                return BadRequest(new ServiceResult(false, "Tenant not found."));
 
-            return BadRequest(false);
+            var result = await _transactionService.GetByTenantIdAndDate(
+                effectiveTenantId.Value,
+                effectiveStartDate,
+                effectiveEndDate
+            );
+            return Ok(result);
+        }
+
+        [HttpGet]
+        [ProducesResponseType(typeof(ServiceResult<List<GetTransactionDto>>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> ByCustomer(int customerId)
+        {
+            if (customerId <= 0)
+                return BadRequest(new ServiceResult(false, "Customer ID is required."));
+
+            var result = await _transactionService.GetByCustomerId(customerId);
+            return Ok(result);
+        }
+
+        [HttpPost]
+        [ProducesResponseType(typeof(ServiceResult<ReverseTransactionResponseDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> Reverse([FromBody] ReverseTransactionDto dto, CancellationToken ct)
+        {
+            var result = await _transactionReverseService.ReverseTransactionAsync(dto, ct);
+            if (!result.Success)
+                return BadRequest(result);
+
+            return Ok(result);
         }
     }
 }

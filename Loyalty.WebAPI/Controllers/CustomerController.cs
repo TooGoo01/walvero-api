@@ -13,9 +13,7 @@ namespace Loyalty.WebAPI.Controllers
 {
     [Route("api/[controller]/[action]")]
     [ApiController]
-    [Authorize(
-    AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
-    Policy = "CustomerOnly")]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     public class CustomerController : ControllerBase
     {
         private readonly ICustomerEnrollmentService _customerEnrollmentService;
@@ -27,8 +25,9 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         [HttpPost]
+        [Authorize(Policy = "CustomerOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-       
+
         public async Task<ActionResult<ServiceResult>> Add([FromBody] AddCustomerWithCardDto model)
         {
             if (!ModelState.IsValid)
@@ -66,15 +65,18 @@ namespace Loyalty.WebAPI.Controllers
             }
         }
         [HttpGet]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOnly")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
         [ProducesResponseType(typeof(ServiceResult<List<GetCustomerDto>>), (int)HttpStatusCode.OK)]
-        [ProducesResponseType(typeof(ServiceResult<WalletCardDetailsResponseDto>), (int)HttpStatusCode.NotFound)]
-        [ProducesResponseType(typeof(ServiceResult<WalletCardDetailsResponseDto>), (int)HttpStatusCode.Unauthorized)]
-        [ProducesResponseType(typeof(ServiceResult<WalletCardDetailsResponseDto>), (int)HttpStatusCode.BadRequest)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> List()
         {
-            var id = _tenantProvider.CurrentTenantId ?? 0;
-            var result = await _customerEnrollmentService.GetTenantCustomers(id, "cc");
+            var tenantId = _tenantProvider.CurrentTenantId;
+            if (!tenantId.HasValue)
+                return BadRequest(new ServiceResult(false, "Tenant not found."));
+
+            var result = await _customerEnrollmentService.GetTenantCustomers(tenantId.Value, "");
             return Ok(result);
         }
 

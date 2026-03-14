@@ -31,6 +31,10 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? AppleSerial { get; set; }
         public string? ApplePassUrl { get; set; }
         public string? AppleAuthToken { get; set; }
+        // Lottery Tracking
+        public int LotteryEarnCount { get; set; } = 0;
+        public decimal LotteryAmountAccum { get; set; } = 0;
+
         // Status
         public CardStatus Status { get; set; } = CardStatus.Active;
         public DateTime? ActivatedAt { get; set; }
@@ -42,5 +46,6 @@ namespace Loyalty.DataAccess.Entities.Main
         public LoyaltyProgram LoyaltyProgram { get; set; } = null!;
         public ICollection<WalletPass> WalletPasses { get; set; } = new List<WalletPass>();
         public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
+        public ICollection<LotteryTicket> LotteryTickets { get; set; } = new List<LotteryTicket>();
     }
 }

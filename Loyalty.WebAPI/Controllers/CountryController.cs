@@ -15,11 +15,22 @@ namespace Loyalty.WebAPI.Controllers
     public class CountryController : ControllerBase
     {
         private readonly ICountryService _countryService;
+        private readonly ICountrySequenceService _countrySequenceService;
 
-        public CountryController(ICountryService countryService)
+        public CountryController(ICountryService countryService, ICountrySequenceService countrySequenceService)
         {
             _countryService = countryService;
+            _countrySequenceService = countrySequenceService;
         }
+        [HttpGet]
+        [AllowAnonymous]
+        [ProducesResponseType(typeof(ServiceResult<List<GetCountrySequenceDto>>), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> PublicCountryCodeList()
+        {
+            var result = await _countrySequenceService.GetActiveCountriesAsync();
+            return Ok(result);
+        }
+
         [HttpGet]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult<List<GetCountryDto>>), (int)HttpStatusCode.OK)]

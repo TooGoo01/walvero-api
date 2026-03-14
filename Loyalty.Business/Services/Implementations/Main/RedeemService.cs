@@ -17,6 +17,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using WalletPlatform = Loyalty.DataAccess.Enums.WalletPlatform;
 
 namespace Loyalty.Business.Services.Implementations.Main
@@ -39,6 +40,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly INotificationService _notificationService;
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly ITimeZoneService _timeZoneService;
+        private readonly ILotteryRepository _lotteryRepository;
         public RedeemService(
             ILoyaltyCardRepository cardSvc,
             ILoyaltyProgramRepository programSvc,
@@ -53,7 +55,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             INotificationService notificationService,
             ICustomerRepository customerRepo,
             LoyaltyWalletDbContext dbContext,
-            ITimeZoneService timeZoneService)
+            ITimeZoneService timeZoneService,
+            ILotteryRepository lotteryRepository)
         {
             _cardSvc = cardSvc;
             _programSvc = programSvc;
@@ -71,6 +74,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _notificationService = notificationService;
             _dbContext = dbContext;
             _timeZoneService = timeZoneService;
+            _lotteryRepository = lotteryRepository;
         }
 
         // START (Auto / ForcePending / ForceApply)
@@ -319,8 +323,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 card.LifetimePoints += 1;
                 ApplyDelta(card, snapshot, delta);
-                // Get tenant's local time
-                var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(request.TenantId, null, ct);
+                // Get tenant's local time — CancellationToken.None: yazma mərhələsi ləğv olunmamalıdır
+                var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(request.TenantId, null, CancellationToken.None);
 
                 var tx = BuildTransaction(card, delta, request.OrderId, request.Note, TransactionType.Earned, localTime, timeZoneId);
                 uow.Repository<LoyaltyCard>().Update(card);
@@ -330,15 +334,84 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _logger.LogInformation("Delta applied. CardId={CardId}, Points {Before}->{After}, Steps {StepsBefore}->{StepsAfter}, CompletedCycles {CyclesBefore}->{CyclesAfter}, Delta={Delta}",
                     card.Id, beforePoints, card.CurrentPoints, beforeSteps, card.CurrentSteps, beforeCompletedCycles, card.CompletedCycles, delta);
 
-                // 5) Platforma → router
+                // 4b) Lottery ticket generation
+                if (program.IsLotteryEnabled && delta > 0)
+                {
+                    bool shouldGenerateTicket = false;
+
+                    // Count-based: every N purchases
+                    if (program.LotteryPurchaseThreshold > 0)
+                    {
+                        card.LotteryEarnCount++;
+                        if (card.LotteryEarnCount >= program.LotteryPurchaseThreshold)
+                        {
+                            card.LotteryEarnCount = 0;
+                            shouldGenerateTicket = true;
+                        }
+                    }
+
+                    // Amount-based: every X points spent
+                    if (program.LotteryAmountThreshold.HasValue && program.LotteryAmountThreshold > 0)
+                    {
+                        card.LotteryAmountAccum += Math.Abs(delta);
+                        while (card.LotteryAmountAccum >= program.LotteryAmountThreshold.Value)
+                        {
+                            card.LotteryAmountAccum -= program.LotteryAmountThreshold.Value;
+                            shouldGenerateTicket = true;
+                        }
+                    }
+
+                    if (shouldGenerateTicket)
+                    {
+                        var ticket = new LotteryTicket
+                        {
+                            LoyaltyCardId = card.Id,
+                            TenantId = card.TenantId,
+                            TicketCode = GenerateLotteryTicketCode(),
+                            Status = LotteryTicketStatus.Active
+                        };
+                        uow.Repository<LotteryTicket>().Add(ticket);
+                        _logger.LogInformation("Lottery ticket generated. CardId={CardId}, TicketCode={TicketCode}", card.Id, ticket.TicketCode);
+                    }
+
+                    uow.Repository<LoyaltyCard>().Update(card);
+                    uow.Commit();
+                }
+
+                // 5) Lottery data for wallet display
+                int lotteryTickets = 0;
+                string? lotteryWinPrize = null;
+                DateTime? lotteryDrawDate = null;
+                if (program.IsLotteryEnabled)
+                {
+                    try
+                    {
+                        lotteryTickets = await _lotteryRepository.GetActiveTicketCountByCardIdAsync(card.Id);
+                        var wins = await _lotteryRepository.GetWinsByCardIdAsync(card.Id);
+                        var latestWin = wins.FirstOrDefault();
+                        if (latestWin?.LotteryDraw != null)
+                            lotteryWinPrize = latestWin.LotteryDraw.PrizeName;
+
+                        var nextDraw = await _lotteryRepository.GetNextScheduledDrawAsync(card.TenantId, program.Id);
+                        if (nextDraw?.ScheduledAt != null)
+                            lotteryDrawDate = nextDraw.ScheduledAt;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to query lottery data for wallet display. CardId={CardId}", card.Id);
+                    }
+                }
+
+                // 6) Platforma → router
                 var primaryPlatform = card.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
                 var secondaryPlatform = card.IsIOS ? WalletPlatform.GooglePay : WalletPlatform.AppleWallet;
 
                 var primaryOk = false;
                 var secondaryOk = false;
 
+                // ⚠️ CancellationToken.None: DB commit tamamlandıqdan sonra wallet/notification ləğv olunmamalıdır
                 // PRIMARY - Credentials yoxdursa exception atmadan davam et
-                _logger.LogInformation("Routing after confirm to PRIMARY {Platform}.", primaryPlatform);
+                _logger.LogInformation("Routing after commit to PRIMARY {Platform}.", primaryPlatform);
                 try
                 {
                     var primaryRes = await _walletRouter.RouteAsync(
@@ -349,7 +422,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentSteps,
                         card.CompletedCycles,
                         delta,
-                        ct);
+                        CancellationToken.None,
+                        lotteryTickets,
+                        lotteryWinPrize,
+                        lotteryDrawDate);
 
                     if (!primaryRes.Success)
                         _logger.LogWarning("Wallet update FAILED on PRIMARY {Platform}. CardId={CardId}", primaryPlatform, card.Id);
@@ -377,7 +453,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentSteps,
                         card.CompletedCycles,
                         delta,
-                        ct);
+                        CancellationToken.None,
+                        lotteryTickets,
+                        lotteryWinPrize,
+                        lotteryDrawDate);
 
                     if (!secondaryRes.Success)
                         _logger.LogWarning("Wallet update FAILED on SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
@@ -411,12 +490,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                     await _hubContext
                         .Clients
                         .Group(groupName)
-                        .SendAsync("CardUpdated", message, cancellationToken: ct);
+                        .SendAsync("CardUpdated", message, cancellationToken: CancellationToken.None);
 
                     var currency = snapshot.Currency ?? "AZN"; // Default: AZN
                     var message1 = delta > 0
-                        ? $"{snapshot.ProgramName} balansınıza {delta}  əlavə olundu!"
-                        : $"{snapshot.ProgramName} balansınızdan {delta * -1} {snapshot.Currency} çıxıldı!";
+                        ? $"{snapshot.ProgramName} balansınıza {delta} {currency} əlavə olundu!"
+                        : $"{snapshot.ProgramName} balansınızdan {delta * -1} {currency} çıxıldı!";
 
                     await _notificationService.SendToUserAsync(appUserId.Value, snapshot.ProgramName, message1, data);
                 }
@@ -512,7 +591,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var beforeCompletedCycles = card.CompletedCycles;
 
                 ApplyDelta(card, snapshot, rr.PointsDelta);
-                var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(rr.TenantId, null, ct);
+                // CancellationToken.None: yazma mərhələsi ləğv olunmamalıdır
+                var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(rr.TenantId, null, CancellationToken.None);
 
                 // ProgressBased: display delta = reward sayı, raw delta deyil
                 int displayDelta = rr.PointsDelta;
@@ -539,6 +619,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var primaryOk = false;
                 var secondaryOk = false;
 
+                // ⚠️ CancellationToken.None: DB commit-dən sonra wallet/notification ləğv olunmamalıdır
                 // PRIMARY - Credentials yoxdursa exception atmadan davam et
                 _logger.LogInformation("Routing after confirm to PRIMARY {Platform}.", primaryPlatform);
                 try
@@ -551,7 +632,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentSteps,
                         card.CompletedCycles,
                         displayDelta,
-                        ct);
+                        CancellationToken.None);
 
                     if (!primaryRes.Success)
                         _logger.LogWarning("Wallet update FAILED on PRIMARY {Platform}. CardId={CardId}", primaryPlatform, card.Id);
@@ -579,7 +660,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentSteps,
                         card.CompletedCycles,
                         displayDelta,
-                        ct);
+                        CancellationToken.None);
 
                     if (!secondaryRes.Success)
                         _logger.LogWarning("Wallet update FAILED on SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
@@ -595,7 +676,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     _logger.LogWarning(ex, "Wallet update error on SECONDARY {Platform}. Continuing without wallet update. CardId={CardId}", secondaryPlatform, card.Id);
                 }
 
-                
+
 
                 var appUserId = card.Customer?.applicationUser?.Id;
                 if (appUserId.HasValue)
@@ -616,7 +697,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     await _hubContext
                         .Clients
                         .Group(groupName)
-                        .SendAsync("CardUpdated", message, cancellationToken: ct);
+                        .SendAsync("CardUpdated", message, cancellationToken: CancellationToken.None);
 
                     string message1;
                     if (snapshot.TemplateType == CardTemplateType.ProgressBased)
@@ -760,12 +841,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var before = dbCard.CompletedCycles;
                 var beforePoints = dbCard.CurrentPoints;
                 var beforeSteps = dbCard.CurrentSteps;
-                
+
                 // ProgressBased-də: Her CompletedCycle = TotalSteps kadar point deməkdir
                 // spendCount kadar CompletedCycle harcandığında, TotalSteps * spendCount kadar point azaltılmalıdır
                 int totalSteps = Math.Max(1, snapshot.TotalSteps);
                 int pointsToDeduct = spendCount * totalSteps;
-                
+
                 dbCard.CompletedCycles = before - spendCount;
                 dbCard.CurrentPoints = Math.Max(0, beforePoints - pointsToDeduct);
                 // CurrentSteps dəyişmir - reward xərcləmə stamp proqresini təsir etmir
@@ -798,7 +879,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                         };
                     }
                 }
-                var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(request.TenantId, null, ct);
+
+                // ⚠️ CancellationToken.None: yazma əməliyyatları client disconnect olsa belə tamamlanmalıdır
+                var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(request.TenantId, null, CancellationToken.None);
                 // ✅ Transaction log yaz
                 var tx = new Transaction
                 {
@@ -812,15 +895,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                 };
 
                 _dbContext.Set<Transaction>().Add(tx);
-                await _dbContext.SaveChangesAsync(ct);
+                await _dbContext.SaveChangesAsync(CancellationToken.None);
 
                 // ✅ Wallet refresh (DB-dən oxunmuş real dəyərlə)
                 var primaryPlatform = dbCard.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
                 var secondaryPlatform = dbCard.IsIOS ? WalletPlatform.GooglePay : WalletPlatform.AppleWallet;
 
+                // ⚠️ CancellationToken.None: wallet update client disconnect-dən asılı olmamalıdır
                 try
                 {
-                    _ = await _walletRouter.RouteAsync(primaryPlatform, dbCard.Id, snapshot, dbCard.CurrentPoints, dbCard.CurrentSteps, dbCard.CompletedCycles, 0, ct);
+                    _ = await _walletRouter.RouteAsync(primaryPlatform, dbCard.Id, snapshot, dbCard.CurrentPoints, dbCard.CurrentSteps, dbCard.CompletedCycles, 0, CancellationToken.None);
                 }
                 catch (InvalidOperationException ex) when (ex.Message.Contains("credential") || ex.Message.Contains("tapılmadı"))
                 {
@@ -834,7 +918,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 try
                 {
-                    _ = await _walletRouter.RouteAsync(secondaryPlatform, dbCard.Id, snapshot, dbCard.CurrentPoints, dbCard.CurrentSteps, dbCard.CompletedCycles, 0, ct);
+                    _ = await _walletRouter.RouteAsync(secondaryPlatform, dbCard.Id, snapshot, dbCard.CurrentPoints, dbCard.CurrentSteps, dbCard.CompletedCycles, 0, CancellationToken.None);
                 }
                 catch (InvalidOperationException ex) when (ex.Message.Contains("credential") || ex.Message.Contains("tapılmadı"))
                 {
@@ -873,6 +957,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             var trimmed = phone.Trim();
             if (trimmed.Length <= 4) return new string('*', trimmed.Length);
             return new string('*', trimmed.Length - 4) + trimmed[^4..];
+        }
+
+        private static string GenerateLotteryTicketCode()
+        {
+            const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            var bytes = RandomNumberGenerator.GetBytes(8);
+            return "WLV-" + string.Concat(bytes.Select(b => chars[b % chars.Length]));
         }
     }
 }

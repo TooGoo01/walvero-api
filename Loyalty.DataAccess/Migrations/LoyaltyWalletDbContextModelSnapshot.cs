@@ -667,6 +667,121 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("IntegrationTypes", (string)null);
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LotteryDraw", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("DrawName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("DrawnAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("LoyaltyProgramId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PrizeDescription")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("PrizeName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ScheduledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WinnerCount")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoyaltyProgramId");
+
+                    b.ToTable("LotteryDraws", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LotteryTicket", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("LotteryDrawId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LoyaltyCardId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TicketCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LotteryDrawId");
+
+                    b.HasIndex("LoyaltyCardId");
+
+                    b.HasIndex("TicketCode")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "Status");
+
+                    b.ToTable("LotteryTickets", (string)null);
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyCard", b =>
                 {
                     b.Property<int>("Id")
@@ -732,6 +847,12 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int>("LifetimePoints")
                         .HasColumnType("int");
 
+                    b.Property<decimal>("LotteryAmountAccum")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("LotteryEarnCount")
+                        .HasColumnType("int");
+
                     b.Property<int>("LoyaltyProgramId")
                         .HasColumnType("int");
 
@@ -791,6 +912,15 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
+
+                    b.Property<bool>("IsLotteryEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("LotteryAmountThreshold")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("LotteryPurchaseThreshold")
+                        .HasColumnType("int");
 
                     b.Property<int>("MinPointsToRedeem")
                         .HasColumnType("int");
@@ -2923,6 +3053,35 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("CardTemplate");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LotteryDraw", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", "LoyaltyProgram")
+                        .WithMany("LotteryDraws")
+                        .HasForeignKey("LoyaltyProgramId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("LoyaltyProgram");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LotteryTicket", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.LotteryDraw", "LotteryDraw")
+                        .WithMany("WinningTickets")
+                        .HasForeignKey("LotteryDrawId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyCard", "LoyaltyCard")
+                        .WithMany("LotteryTickets")
+                        .HasForeignKey("LoyaltyCardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LotteryDraw");
+
+                    b.Navigation("LoyaltyCard");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyCard", b =>
                 {
                     b.HasOne("Loyalty.DataAccess.Entities.Main.Customer", "Customer")
@@ -3401,8 +3560,15 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("TenantIntegrations");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LotteryDraw", b =>
+                {
+                    b.Navigation("WinningTickets");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyCard", b =>
                 {
+                    b.Navigation("LotteryTickets");
+
                     b.Navigation("Transactions");
 
                     b.Navigation("WalletPasses");
@@ -3410,6 +3576,8 @@ namespace Loyalty.DataAccess.Migrations
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", b =>
                 {
+                    b.Navigation("LotteryDraws");
+
                     b.Navigation("LoyaltyCards");
 
                     b.Navigation("Rewards");

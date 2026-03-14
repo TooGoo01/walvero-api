@@ -285,7 +285,8 @@ UserManager<ApplicationUser> userManager,
                         accountName: $"{customer.FirstName} {customer.LastName}".Trim(),
                         barcodeValue: card.BarcodeValue,
                         currentPoints: card.CurrentPoints,
-                        ct: ct
+                        ct: ct,
+                        lotteryTickets: 0
                     );
 
                     var save = await gw.GenerateSaveLinkByCardIdAsync(card.Id, tenantId, program.Id, ct);
@@ -587,8 +588,9 @@ UserManager<ApplicationUser> userManager,
                         tpl: snapshot,
                         accountName: $"{customer.FirstName} {customer.LastName}".Trim(),
                         barcodeValue: card.BarcodeValue,
-                        currentPoints:card.CurrentPoints,
-                        ct: ct
+                        currentPoints: card.CurrentPoints,
+                        ct: ct,
+                        lotteryTickets: 0
                     );
                     var save = await gw.GenerateSaveLinkByCardIdAsync(card.Id, tenantId, program.Id, ct);
                     if (save.Success) googleUrl = (string?)save.Data ?? save.Message as string;

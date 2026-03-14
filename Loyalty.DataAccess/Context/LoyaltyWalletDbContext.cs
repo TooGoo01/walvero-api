@@ -65,6 +65,10 @@ namespace Loyalty.DataAccess.Context
         public DbSet<TenantIntegration> TenantIntegrations { get; set; }
         public DbSet<PosProductEarnRule> PosProductEarnRules { get; set; }
         public DbSet<PosCustomerMapping> PosCustomerMappings { get; set; }
+
+        // Lottery
+        public DbSet<LotteryTicket> LotteryTickets { get; set; }
+        public DbSet<LotteryDraw> LotteryDraws { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -242,7 +246,44 @@ namespace Loyalty.DataAccess.Context
                     .HasForeignKey(t => t.LoyaltyCardId)
                     .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasMany(lc => lc.LotteryTickets)
+                    .WithOne(lt => lt.LoyaltyCard)
+                    .HasForeignKey(lt => lt.LoyaltyCardId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
+
+            // ==== LOTTERY ====
+            modelBuilder.Entity<LotteryTicket>(entity =>
+            {
+                entity.ToTable("LotteryTickets");
+                entity.HasKey(lt => lt.Id);
+                entity.Property(lt => lt.TicketCode).IsRequired().HasMaxLength(20);
+                entity.HasIndex(lt => lt.TicketCode).IsUnique();
+                entity.Property(lt => lt.Status).HasConversion<int>();
+                entity.HasIndex(lt => new { lt.TenantId, lt.Status });
+
+                entity.HasOne(lt => lt.LotteryDraw)
+                    .WithMany(ld => ld.WinningTickets)
+                    .HasForeignKey(lt => lt.LotteryDrawId)
+                    .IsRequired(false)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            modelBuilder.Entity<LotteryDraw>(entity =>
+            {
+                entity.ToTable("LotteryDraws");
+                entity.HasKey(ld => ld.Id);
+                entity.Property(ld => ld.DrawName).IsRequired().HasMaxLength(200);
+                entity.Property(ld => ld.PrizeName).HasMaxLength(200);
+                entity.Property(ld => ld.PrizeDescription).HasMaxLength(1000);
+                entity.Property(ld => ld.Status).HasConversion<int>();
+
+                entity.HasOne(ld => ld.LoyaltyProgram)
+                    .WithMany(lp => lp.LotteryDraws)
+                    .HasForeignKey(ld => ld.LoyaltyProgramId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
             modelBuilder.Entity<WalletPass>(entity =>
             {
                 entity.ToTable("WalletPasses");

@@ -8,6 +8,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public interface IWalletRouter
     {
         Task<ServiceResult> RouteAsync(WalletPlatform platform, int cardId,
-            CardTemplateSnapshot tpl, int currentPoints, int currentSteps, int completedCycles, int delta, CancellationToken ct);
+            CardTemplateSnapshot tpl, int currentPoints, int currentSteps, int completedCycles, int delta, CancellationToken ct,
+            int lotteryTickets = 0, string? lotteryWinPrize = null, DateTime? lotteryDrawDate = null);
     }
 }

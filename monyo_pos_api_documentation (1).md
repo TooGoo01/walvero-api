@@ -1,14 +1,14 @@
-# Monyo POS -- Customer & Balance Integration API Documentation
+# POS -- Customer & Balance Integration API Documentation
 
 Base URL:
 
-    https://monyo.az/v4/api
+    https://your-domain.com/v4/api
 
 Authentication: All requests must include:
 
-    Authorization: Bearer {Monyo Token}
+    Authorization: Bearer {POS Token}
 
-Each restaurant is provided with its own Monyo Token.
+Each restaurant is provided with its own POS Token.
 
 ---
 
@@ -106,14 +106,14 @@ Field Description
 
 ---
 
-id Monyo POS customer_id
+id POS customer_id
 customer_code External system customer ID
 
 ---
 
 ## 1.2 Update Customers
 
-Updates existing customers in Monyo POS.
+Updates existing customers in POS.
 
 ### Request
 
@@ -125,8 +125,8 @@ Updates existing customers in Monyo POS.
     "data": [
       {
         "id": "1",
-        "name": "Kamran Gasimov",
-        "phone": "+994553019857",
+        "name": "Elmir Gasimzada",
+        "phone": "+994553555555",
         "address": "Haydar Aliyev 115",
         "birthday": "2026-01-24",
         "customer_code": "1",
@@ -146,7 +146,7 @@ Field Required Description
 
 ---
 
-id Yes Monyo POS customer_id
+id Yes POS customer_id
 
 ---
 
@@ -165,7 +165,7 @@ id Yes Monyo POS customer_id
 
 # 4. Wallet Integration API (For Wallet Platform Providers)
 
-Monyo POS integrates with external wallet platforms for loyalty stamp campaigns and cashback balance. This section describes the endpoints that **your platform must implement** so Monyo POS can communicate with it.
+POS integrates with external wallet platforms for loyalty stamp campaigns and cashback balance. This section describes the endpoints that **your platform must implement** so POS can communicate with it.
 
 All requests are sent as `POST` with `Content-Type: application/json` and authenticated via `Authorization: Bearer {wallet_token}`.
 
@@ -173,27 +173,27 @@ All requests are sent as `POST` with `Content-Type: application/json` and authen
 
 ## 4.1 Get Wallet
 
-Monyo POS calls this endpoint to retrieve loyalty campaigns and cashback balance for a customer.
+POS calls this endpoint to retrieve loyalty campaigns and cashback balance for a customer.
 
 ### Your Endpoint
 
     POST {your_base_url}/get_wallet
 
-### Incoming Request (from Monyo POS)
+### Incoming Request (from POS)
 
 ```json
 {
   "venue_id": "44",
   "barcode": "123456789",
-  "source": "monyo_pos"
+  "source": "pos"
 }
 ```
 
 | Field    | Type   | Description                |
 | -------- | ------ | -------------------------- |
-| venue_id | string | Restaurant ID in Monyo POS |
+| venue_id | string | Restaurant ID in POS |
 | barcode  | string | Customer barcode           |
-| source   | string | Always `"monyo_pos"`       |
+| source   | string | Always `"pos"`       |
 
 ### Expected Response (from your platform)
 
@@ -222,8 +222,8 @@ Monyo POS calls this endpoint to retrieve loyalty campaigns and cashback balance
 | loyalty[].count        | int     | Yes      | Current stamp count                                              |
 | loyalty[].maximum      | int     | Yes      | Total stamps needed for reward                                   |
 | loyalty[].rewards      | int     | Yes      | Number of available rewards                                      |
-| loyalty[].product_id   | string  | Yes      | Reward product ID (must match Monyo POS product ID)              |
-| loyalty[].product_name | string  | No       | Reward product name (Monyo POS will fill from local DB if empty) |
+| loyalty[].product_id   | string  | Yes      | Reward product ID (must match POS product ID)              |
+| loyalty[].product_name | string  | No       | Reward product name (POS will fill from local DB if empty) |
 | cashback_balans        | float   | Yes      | Available cashback balance                                       |
 
 ### Error Response
@@ -239,13 +239,13 @@ Monyo POS calls this endpoint to retrieve loyalty campaigns and cashback balance
 
 ## 4.2 Set Redeem (Send OTP)
 
-Monyo POS calls this endpoint when a cashier initiates a redemption. Your platform should send an OTP to the customer.
+POS calls this endpoint when a cashier initiates a redemption. Your platform should send an OTP to the customer.
 
 ### Your Endpoint
 
     POST {your_base_url}/set_redeem
 
-### Incoming Request (from Monyo POS)
+### Incoming Request (from POS)
 
 ```json
 {
@@ -254,18 +254,18 @@ Monyo POS calls this endpoint when a cashier initiates a redemption. Your platfo
   "campaign_id": "1",
   "type": "loyalty",
   "amount": 0,
-  "source": "monyo_pos"
+  "source": "pos"
 }
 ```
 
 | Field       | Type   | Description                                   |
 | ----------- | ------ | --------------------------------------------- |
-| venue_id    | string | Restaurant ID in Monyo POS                    |
+| venue_id    | string | Restaurant ID in POS                    |
 | barcode     | string | Customer barcode                              |
 | campaign_id | string | Campaign ID to redeem                         |
 | type        | string | `"loyalty"` or `"cashback"`                   |
 | amount      | float  | Amount to redeem (only for `"cashback"` type) |
-| source      | string | Always `"monyo_pos"`                          |
+| source      | string | Always `"pos"`                          |
 
 ### Expected Response
 
@@ -285,13 +285,13 @@ Monyo POS calls this endpoint when a cashier initiates a redemption. Your platfo
 
 ## 4.3 Verify OTP
 
-Monyo POS calls this endpoint after the cashier enters the OTP code. Your platform should verify the OTP and complete the redemption.
+POS calls this endpoint after the cashier enters the OTP code. Your platform should verify the OTP and complete the redemption.
 
 ### Your Endpoint
 
     POST {your_base_url}/set_verify
 
-### Incoming Request (from Monyo POS)
+### Incoming Request (from POS)
 
 ```json
 {
@@ -301,20 +301,20 @@ Monyo POS calls this endpoint after the cashier enters the OTP code. Your platfo
   "otp": "1234",
   "type": "loyalty",
   "amount": 0,
-  "source": "monyo_pos",
+  "source": "pos",
   "order_id": "1c1jf5u7a4srn"
 }
 ```
 
 | Field       | Type   | Description                         |
 | ----------- | ------ | ----------------------------------- |
-| venue_id    | string | Restaurant ID in Monyo POS          |
+| venue_id    | string | Restaurant ID in POS          |
 | barcode     | string | Customer barcode                    |
 | campaign_id | string | Campaign ID                         |
 | otp         | string | OTP code entered by cashier         |
 | type        | string | `"loyalty"` or `"cashback"`         |
 | amount      | float  | Amount (only for `"cashback"` type) |
-| source      | string | Always `"monyo_pos"`                |
+| source      | string | Always `"pos"`                |
 
 ### Expected Response (Loyalty)
 
@@ -331,8 +331,8 @@ Monyo POS calls this endpoint after the cashier enters the OTP code. Your platfo
 | ------------ | ------- | -------- | ------------------------------------------------------------------------- |
 | success      | boolean | Yes      | `true` if OTP is valid                                                    |
 | type         | string  | Yes      | `"loyalty"`                                                               |
-| product_id   | string  | Yes      | Reward product ID (Monyo POS will add this product to receipt at price 0) |
-| product_name | string  | No       | Product name (Monyo POS will fill from local DB if empty)                 |
+| product_id   | string  | Yes      | Reward product ID (POS will add this product to receipt at price 0) |
+| product_name | string  | No       | Product name (POS will fill from local DB if empty)                 |
 
 ### Expected Response (Cashback)
 
@@ -348,26 +348,26 @@ Monyo POS calls this endpoint after the cashier enters the OTP code. Your platfo
 | -------- | ------- | -------- | ------------------------------------------------------------------------ |
 | success  | boolean | Yes      | `true` if OTP is valid                                                   |
 | type     | string  | Yes      | `"cashback"`                                                             |
-| discount | float   | Yes      | Discount amount (Monyo POS will apply this as a discount to the receipt) |
+| discount | float   | Yes      | Discount amount (POS will apply this as a discount to the receipt) |
 
 ---
 
 ## 4.4 Collect (Order Closed)
 
-Monyo POS calls this endpoint automatically when a receipt is closed. Your platform should use this data to accumulate loyalty stamps and calculate cashback.
+POS calls this endpoint automatically when a receipt is closed. Your platform should use this data to accumulate loyalty stamps and calculate cashback.
 
 ### Your Endpoint
 
     POST {your_base_url}/collect
 
-### Incoming Request (from Monyo POS)
+### Incoming Request (from POS)
 
 ```json
 {
   "id": "1c1jf5u7a4srn",
   "venue_id": "44",
   "customer_id": "5",
-  "source": "monyo_pos",
+  "source": "pos",
   "status": "closed",
   "total": "1000",
   "items": [
@@ -388,9 +388,9 @@ Monyo POS calls this endpoint automatically when a receipt is closed. Your platf
 | Field         | Type         | Description                                    |
 | ------------- | ------------ | ---------------------------------------------- |
 | id            | string       | Order ID (unique, use this to track the order) |
-| venue_id      | string       | Restaurant ID in Monyo POS                     |
-| customer_id   | string       | Customer ID in Monyo POS CRM                   |
-| source        | string       | Always `"monyo_pos"`                           |
+| venue_id      | string       | Restaurant ID in POS                     |
+| customer_id   | string       | Customer ID in POS CRM                   |
+| source        | string       | Always `"pos"`                           |
 | status        | string       | `"closed"` — order was completed               |
 | total         | string/float | Order total amount                             |
 | items         | array        | List of ordered items                          |
@@ -416,20 +416,20 @@ Monyo POS calls this endpoint automatically when a receipt is closed. Your platf
 
 ## 4.5 Collect (Order Deleted — Reverse)
 
-Monyo POS calls the **same collect endpoint** when a receipt is deleted, but with `status: "deleted"`. Your platform should reverse any previously applied stamps and cashback for this order.
+POS calls the **same collect endpoint** when a receipt is deleted, but with `status: "deleted"`. Your platform should reverse any previously applied stamps and cashback for this order.
 
 ### Your Endpoint
 
     POST {your_base_url}/collect
 
-### Incoming Request (from Monyo POS)
+### Incoming Request (from POS)
 
 ```json
 {
   "id": "1c1jf5u7a4srn",
   "venue_id": "44",
   "customer_id": "5",
-  "source": "monyo_pos",
+  "source": "pos",
   "status": "deleted",
   "total": "1000",
   "items": [
@@ -467,11 +467,11 @@ All fields are the same as Section 4.4 except:
 
 ## Setup Requirements
 
-To integrate your wallet platform with Monyo POS, provide the following:
+To integrate your wallet platform with POS, provide the following:
 
 | Setting      | Description                           | Example               |
 | ------------ | ------------------------------------- | --------------------- |
 | Base URL     | Your API base URL                     | `your_base_url`       |
 | Bearer Token | Authentication token for API requests | `your_api_token_here` |
 
-These values will be configured in Monyo POS per restaurant.
+These values will be configured in POS per restaurant.

@@ -122,6 +122,16 @@ namespace Loyalty.Business.Mappings
             CreateMap<MenuItem, UpdateMenuItemDto>().ReverseMap();
             CreateMap<MenuItem, GetMenuItemDto>().ReverseMap();
 
+            CreateMap<Transaction, GetTransactionDto>()
+                .ForMember(d => d.CustomerName,
+                    opt => opt.MapFrom(s => s.LoyaltyCard != null && s.LoyaltyCard.Customer != null
+                        ? s.LoyaltyCard.Customer.FirstName + " " + s.LoyaltyCard.Customer.LastName
+                        : null))
+                .ForMember(d => d.CardNumber,
+                    opt => opt.MapFrom(s => s.LoyaltyCard != null ? s.LoyaltyCard.CardNumber : null))
+                .ForMember(d => d.CreatedAt,
+                    opt => opt.MapFrom(s => s.RegDate));
+
             CreateMap<MenuItemImage, AddMenuItemImageDto>().ReverseMap();
             CreateMap<MenuItemImage, GetMenuItemImageDto>().ReverseMap();
 

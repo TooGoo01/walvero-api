@@ -15,9 +15,6 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
 {
     [Route("api/[controller]/[action]")]
     [ApiController]
-    [Authorize(
-    AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
-    Policy = "CustomerOnly")]
     public class FeedbackController : ControllerBase
     {
         private readonly IFeedbackService _feedbackService;
@@ -36,8 +33,8 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
 
         // POST /api/feedback - Create feedback (Customer)
         [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "CustomerOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-
         public async Task<IActionResult> CreateFeedback([FromBody] CreateFeedbackDto dto)
         {
             if (!ModelState.IsValid)
@@ -74,8 +71,8 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
 
         // GET /api/feedback/my - Get customer's feedbacks
         [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "CustomerOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-
         public async Task<IActionResult> GetMyFeedbacks([FromQuery] FeedbackStatus? status = null, [FromQuery] int? tenantId = null)
         {
             var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -117,6 +114,7 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
 
         // GET /api/feedback/{id} - Get feedback details
         [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> GetFeedbackDetails(int id)
         {
@@ -142,6 +140,7 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
 
         // POST /api/feedback/{id}/reply/store - Store replies to feedback
         [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> StoreReply(int id, [FromBody] ReplyToFeedbackDto dto)
         {
@@ -168,6 +167,7 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
 
         // POST /api/feedback/{id}/reply/customer - Customer replies to feedback
         [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "CustomerOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> CustomerReply(int id, [FromBody] ReplyToFeedbackDto dto)
         {
@@ -212,6 +212,7 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
 
         // POST /api/feedback/{id}/close - Close feedback (Customer)
         [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "CustomerOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> CloseFeedback(int id)
         {
@@ -251,6 +252,7 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
 
         // GET /api/feedback/store - Get store feedbacks (Store admin)
         [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> GetStoreFeedbacks([FromQuery] FeedbackStatus? status = null)
         {

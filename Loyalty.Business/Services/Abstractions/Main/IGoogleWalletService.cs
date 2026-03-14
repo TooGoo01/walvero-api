@@ -20,7 +20,10 @@ namespace Loyalty.Business.Services.Abstractions.Main
             string? barcodeValue = null,
             int currentPoints = 0,
             int currentSteps = 0,
-            CancellationToken ct = default);
+            CancellationToken ct = default,
+            int lotteryTickets = 0,
+            string? lotteryWinPrize = null,
+            DateTime? lotteryDrawDate = null);
 
         /// “Save to Google Wallet” linki (JWT) yaradır
         Task<ServiceResult> GenerateSaveLinkByCardIdAsync(
@@ -52,7 +55,10 @@ namespace Loyalty.Business.Services.Abstractions.Main
      int currentPoints,
      int currentSteps,
      int pointsDelta, string? accountName = null,
-     CancellationToken ct = default);
+     CancellationToken ct = default,
+     int lotteryTickets = 0,
+     string? lotteryWinPrize = null,
+     DateTime? lotteryDrawDate = null);
         // (Legacy) skan edilmiş koddan id çıxarıb redeem edən versiya
         Task<ServiceResult> RedeemAsync(
             string scannedCode,

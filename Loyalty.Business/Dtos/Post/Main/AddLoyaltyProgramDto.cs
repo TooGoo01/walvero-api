@@ -19,5 +19,9 @@ namespace Loyalty.Business.Dtos.Post.Main
         public int MinPointsToRedeem { get; set; } = 0;
         public int? PointsExpiryDays { get; set; }
 
+        // Lottery
+        public bool IsLotteryEnabled { get; set; } = false;
+        public int LotteryPurchaseThreshold { get; set; } = 5;
+        public decimal? LotteryAmountThreshold { get; set; }
     }
 }

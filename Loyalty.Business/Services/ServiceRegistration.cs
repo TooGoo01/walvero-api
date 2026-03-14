@@ -63,6 +63,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IPasskitPushService, ApnsPasskitPushService>();
             services.AddScoped<IPasskitService, PasskitService>();
             services.AddScoped<ITransactionService, TransactionService>();
+            services.AddScoped<IStatisticsService, StatisticsService>();
             services.AddScoped<IFilePathResolver, FilePathResolver>();
             services.AddScoped<IUserCardService, UserCardService>();
             services.AddScoped<IDeviceTokenService, DeviceTokenService>();
@@ -100,7 +101,8 @@ namespace Loyalty.Business.Services
             services.AddScoped<IWalletWebhookService, WalletWebhookService>();
             services.AddScoped<IMonyoPosApiClient, MonyoPosApiClient>();
             services.AddScoped<ICustomerSyncService, CustomerSyncService>();
-            
+            services.AddScoped<ILotteryService, LotteryService>();
+
             services.AddSignalR();
             return services;
         }

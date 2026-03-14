@@ -53,7 +53,10 @@ public sealed class AppleWalletService : IAppleWalletService
         CardTemplateSnapshot snapshot,
         string customerFullName,
         string barcodeValue,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int lotteryTickets = 0,
+        string? lotteryWinPrize = null,
+        DateTime? lotteryDrawDate = null)
     {
         var card = await _loyaltyCardRepository.GetByIdAsync(loyaltyCardId, ct);
         if (card is null) return new ServiceResult(false, "Card not found.");
@@ -202,6 +205,21 @@ public sealed class AppleWalletService : IAppleWalletService
                     "https://www.walvero.com",
                     "Veb-sayt"
                 ));
+
+                // Lottery fields (on the front — auxiliaryFields)
+                if (snapshot.IsLotteryEnabled && lotteryTickets > 0)
+                {
+                    auxiliaryFields.Add(new PassField("lottery", lotteryTickets.ToString(), "Lotereya şansları"));
+                }
+                if (snapshot.IsLotteryEnabled && !string.IsNullOrWhiteSpace(lotteryWinPrize))
+                {
+                    auxiliaryFields.Add(new PassField("lotteryWin", lotteryWinPrize, "Lotereya uduşu"));
+                }
+                if (snapshot.IsLotteryEnabled && lotteryDrawDate.HasValue)
+                {
+                    auxiliaryFields.Add(new PassField("lotteryDrawDate", lotteryDrawDate.Value.ToString("dd.MM.yyyy HH:mm"), "Çəkiliş tarixi"));
+                }
+
                 // 1) pass.json + şəkillər (DB creds → Team/PassType)
                 var req = new BuildPassRequest
                 {
@@ -304,7 +322,8 @@ public sealed class AppleWalletService : IAppleWalletService
     }
 
     public async Task<ServiceResult> RedeemByCardIdAsync(
-        int loyaltyCardId, CardTemplateSnapshot tpl, AppleWalletRuntimeCreds creds, int currentPoints, int currentSteps, int pointsDelta, CancellationToken ct = default)
+        int loyaltyCardId, CardTemplateSnapshot tpl, AppleWalletRuntimeCreds creds, int currentPoints, int currentSteps, int pointsDelta, CancellationToken ct = default,
+        int lotteryTickets = 0, string? lotteryWinPrize = null, DateTime? lotteryDrawDate = null)
     {
         // Creds-i DB-dən burda da çəkə bilərsən (tenantId → _credProvider.GetAppleAsync)
         var card = await _loyaltyCardRepository.GetById(loyaltyCardId, ct);
@@ -321,7 +340,7 @@ public sealed class AppleWalletService : IAppleWalletService
         // Qısa olsun deyə istifadəçidə həmin metodu çağır:
         return await GeneratePassUrlByCardIdAsync(loyaltyCardId, creds, tpl,
             $"{card.Customer?.FirstName} {card.Customer?.LastName}".Trim(),
-            card.BarcodeValue ?? card.Id.ToString(), ct);
+            card.BarcodeValue ?? card.Id.ToString(), ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate);
     }
 
     private static async Task<string> CreatePkpassSafelyAsync(string workingDir, string finalPath, CancellationToken ct)

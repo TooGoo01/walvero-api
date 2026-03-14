@@ -19,6 +19,12 @@ namespace Loyalty.Business.Dtos.Get.Main
         public LoyaltyProgramType ProgramType { get; set; } = LoyaltyProgramType.ProgressBased;
         public int MinPointsToRedeem { get; set; } = 0;
         public int? PointsExpiryDays { get; set; }
+
+        // Lottery
+        public bool IsLotteryEnabled { get; set; }
+        public int LotteryPurchaseThreshold { get; set; }
+        public decimal? LotteryAmountThreshold { get; set; }
+
         public GetCardTemplateDto? CardTemplate { get; set; }
     }
 }

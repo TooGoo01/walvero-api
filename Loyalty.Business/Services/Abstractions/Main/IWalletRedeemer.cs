@@ -17,6 +17,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
           int currentPoints,
           int currentSteps,
           int pointsDelta,
-          CancellationToken ct = default);
+          CancellationToken ct = default,
+          int lotteryTickets = 0,
+          string? lotteryWinPrize = null,
+          DateTime? lotteryDrawDate = null);
     }
 }

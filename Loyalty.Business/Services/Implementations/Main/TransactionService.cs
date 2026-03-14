@@ -56,6 +56,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             var response = _mapper.Map<List<GetTransactionDto>>(respose);
             return new ServiceResult(true, response);
         }
+        public async Task<ServiceResult> GetByCustomerId(int customerId)
+        {
+            var transactions = await _transactionRepository.GetByCustomerIdAsync(customerId);
+            var response = _mapper.Map<List<GetTransactionDto>>(transactions);
+            return new ServiceResult(true, response);
+        }
+
         public Task<ServiceResult> GetLast()
         {
             throw new NotImplementedException();

@@ -52,25 +52,35 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 return;
             }
 
-            if (!File.Exists(cfg.ServiceAccountJsonPath))
-            {
-                _log?.LogWarning("Service account JSON not found: {Path}", cfg.ServiceAccountJsonPath);
-                return;
-            }
-
             _issuerId = cfg.IssuerId;
             _classSuffix = cfg.ClassSuffix;
             _origins = cfg.Origins ?? Array.Empty<string>();
             _applicationName = string.IsNullOrWhiteSpace(cfg.ApplicationName) ? "Walvero Loyalty" : cfg.ApplicationName;
 
-            var json = File.ReadAllText(cfg.ServiceAccountJsonPath);
+            // Blob storage URL or local file
+            string json;
+            if (cfg.ServiceAccountJsonPath.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                using var http = new HttpClient();
+                json = http.GetStringAsync(cfg.ServiceAccountJsonPath).GetAwaiter().GetResult();
+            }
+            else
+            {
+                if (!File.Exists(cfg.ServiceAccountJsonPath))
+                {
+                    _log?.LogWarning("Service account JSON not found: {Path}", cfg.ServiceAccountJsonPath);
+                    return;
+                }
+                json = File.ReadAllText(cfg.ServiceAccountJsonPath);
+            }
+
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             var root = doc.RootElement;
             _serviceAccountEmail = root.GetProperty("client_email").GetString()!;
             _privateKeyPem = root.GetProperty("private_key").GetString()!;
             _privateKeyId = root.TryGetProperty("private_key_id", out var kidEl) ? kidEl.GetString() : null;
 
-            var credential = GoogleCredential.FromFile(cfg.ServiceAccountJsonPath)
+            var credential = GoogleCredential.FromJson(json)
                 .CreateScoped(WalletobjectsService.Scope.WalletObjectIssuer);
 
             _svc = new WalletobjectsService(new BaseClientService.Initializer
@@ -187,7 +197,10 @@ public sealed class GoogleWalletService : IGoogleWalletService
          string? barcodeValue = null,
          int currentPoints = 0,
          int currentSteps = 0,
-         CancellationToken ct = default)
+         CancellationToken ct = default,
+         int lotteryTickets = 0,
+         string? lotteryWinPrize = null,
+         System.DateTime? lotteryDrawDate = null)
     {
         if (!_isInitialized || _svc == null)
         {
@@ -334,6 +347,31 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     "• Müştəri iştirakının artırılması\n" +
                     "• Strateji analizlər"
             });
+
+            // Lottery: show on card even if tickets=0 (so customer sees the feature exists)
+            LoyaltyPoints? secondaryLoyaltyPoints = null;
+            if (tpl.IsLotteryEnabled)
+            {
+                var label = "Lotereya şansları";
+                if (lotteryDrawDate.HasValue)
+                    label += $" · Çəkiliş: {lotteryDrawDate.Value:dd.MM.yyyy HH:mm}";
+                if (!string.IsNullOrWhiteSpace(lotteryWinPrize))
+                    label = $"Lotereya uduşu: {lotteryWinPrize}";
+
+                secondaryLoyaltyPoints = new LoyaltyPoints
+                {
+                    Balance = new LoyaltyPointsBalance { Int__ = lotteryTickets },
+                    Label = label
+                };
+
+                textModules.Add(new TextModuleData
+                {
+                    Id = "lottery",
+                    Header = label,
+                    Body = lotteryTickets.ToString()
+                });
+            }
+
             var obj = new LoyaltyObject
             {
                 Id = objectId,
@@ -348,6 +386,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     Balance = new LoyaltyPointsBalance { Int__ = currentPoints },
                     Label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency
                 },
+                SecondaryLoyaltyPoints = secondaryLoyaltyPoints,
 
                 TextModulesData = textModules,
                 LinksModuleData = new LinksModuleData
@@ -382,6 +421,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 },
             };
 
+            _log?.LogInformation("Creating GW object with lottery: IsLotteryEnabled={IsLotteryEnabled}, Tickets={Tickets}", tpl.IsLotteryEnabled, lotteryTickets);
             var created = await _svc.Loyaltyobject.Insert(obj).ExecuteAsync(ct);
             return new ServiceResult(true, created);
         }
@@ -399,8 +439,11 @@ public sealed class GoogleWalletService : IGoogleWalletService
        int currentPoints,
        int currentSteps,
        int delta,
-       string accountName,
-       CancellationToken ct = default)
+       string? accountName = null,
+       CancellationToken ct = default,
+       int lotteryTickets = 0,
+       string? lotteryWinPrize = null,
+       System.DateTime? lotteryDrawDate = null)
     {
         _log?.LogInformation("RedeemByCardIdAsync started. CardId={CardId}, IssuerId={IssuerId}, TenantId={TenantId}, ProgramId={ProgramId}, Delta={Delta}, Initialized={Initialized}",
             loyaltyCardId, _issuerId, tpl.TenantId, tpl.LoyaltyProgramId, delta, _isInitialized);
@@ -567,6 +610,41 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 if (!IsHttps(bannerUrl)) bannerUrl = FALLBACK_BANNER_URL;
             }
 
+            // Lottery: show on card face via SecondaryLoyaltyPoints + TextModule
+            LoyaltyPoints? secondaryLoyaltyPoints = null;
+            _log?.LogInformation("Lottery check: IsLotteryEnabled={IsLotteryEnabled}, lotteryTickets={Tickets}, lotteryWinPrize={Prize}, lotteryDrawDate={DrawDate}",
+                tpl.IsLotteryEnabled, lotteryTickets, lotteryWinPrize, lotteryDrawDate);
+
+            if (tpl.IsLotteryEnabled && lotteryTickets > 0)
+            {
+                var label = "Lotereya şansları";
+                if (lotteryDrawDate.HasValue)
+                    label += $" · Çəkiliş: {lotteryDrawDate.Value:dd.MM.yyyy HH:mm}";
+                if (!string.IsNullOrWhiteSpace(lotteryWinPrize))
+                    label = $"Lotereya uduşu: {lotteryWinPrize}";
+
+                secondaryLoyaltyPoints = new LoyaltyPoints
+                {
+                    Balance = new LoyaltyPointsBalance { Int__ = lotteryTickets },
+                    Label = label
+                };
+
+                // Also add as TextModule (always visible regardless of SecondaryLoyaltyPoints rendering)
+                var lotteryText = textList.FirstOrDefault(t => t.Id == "lottery");
+                if (lotteryText == null)
+                {
+                    lotteryText = new TextModuleData { Id = "lottery" };
+                    textList.Add(lotteryText);
+                }
+                lotteryText.Header = label;
+                lotteryText.Body = lotteryTickets.ToString();
+            }
+            else
+            {
+                // Remove lottery text module if no tickets
+                textList.RemoveAll(t => t.Id == "lottery");
+            }
+
             var imageModules = new List<ImageModuleData>
             {
                 new ImageModuleData
@@ -590,15 +668,16 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     Balance = new LoyaltyPointsBalance { Int__ = nextPoints },
                     Label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency
                 },
+                SecondaryLoyaltyPoints = secondaryLoyaltyPoints,
                 TextModulesData = textList,
                 ImageModulesData = imageModules
             };
 
             var patched = await _svc.Loyaltyobject.Patch(patch, objectId)
-                //.UpdateMask("loyaltyPoints,textModulesData,imageModulesData") // SDK dəstəkləyirsə aktivləşdir
                 .ExecuteAsync(ct);
 
-            _log?.LogInformation("Google Wallet object PATCHED (redeem): {ObjectId} (banner={Banner}) isProgress={IsProgress}", objectId, bannerUrl, isProgressBased);
+            _log?.LogInformation("Google Wallet object PATCHED (redeem): {ObjectId} (banner={Banner}) isProgress={IsProgress} lotteryTickets={LotteryTickets}",
+                objectId, bannerUrl, isProgressBased, lotteryTickets);
 
             return new ServiceResult(true, patched);
         }

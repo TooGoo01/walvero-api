@@ -85,6 +85,9 @@ namespace Loyalty.Business.Helpers
                 BackgroundImageUrl = toAbsoluteUrl(FirstNonEmpty(ct.BackgroundImageUrl, branding?.BackgroundImageUrl)),
                 StripImageUrl = toAbsoluteUrl(ct.StripImageUrl),
                 HeroImageUrl = toAbsoluteUrl(ct.HeroImageUrl),
+
+                // Lottery
+                IsLotteryEnabled = lp.IsLotteryEnabled,
             };
 
             // Icon list (CardTemplate.Icons kolleksiyasından)

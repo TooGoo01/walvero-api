@@ -29,9 +29,15 @@ namespace Loyalty.DataAccess.Entities.Main
         public int? CardTemplateId { get; set; }
         public CardTemplate? CardTemplate { get; set; }
 
+        // Lottery Configuration
+        public bool IsLotteryEnabled { get; set; } = false;
+        public int LotteryPurchaseThreshold { get; set; } = 5;
+        public decimal? LotteryAmountThreshold { get; set; }
+
         // Navigation Properties
         public Tenant Tenant { get; set; } = null!;
         public ICollection<LoyaltyCard> LoyaltyCards { get; set; } = new List<LoyaltyCard>();
         public ICollection<Reward> Rewards { get; set; } = new List<Reward>();
+        public ICollection<LotteryDraw> LotteryDraws { get; set; } = new List<LotteryDraw>();
     }
 }
