@@ -30,9 +30,11 @@ namespace Loyalty.Business.Mappings
             CreateMap<Tenant, AddTenantDto>().ReverseMap();
             CreateMap<Tenant, GetTenantDto>()
                 .ForMember(d => d.IsCustomer,
-                    opt => opt.MapFrom(s => s.Customers != null && 
-                                             s.Customers.Any(c => c.LoyaltyCards != null && 
-                                                                  c.LoyaltyCards.Any(lc => lc.IsActive))));
+                    opt => opt.MapFrom(s => s.Customers != null &&
+                                             s.Customers.Any(c => c.LoyaltyCards != null &&
+                                                                  c.LoyaltyCards.Any(lc => lc.IsActive))))
+                .ForMember(d => d.AcceptAnonymous, opt => opt.MapFrom(s => s.AcceptAnonymus))
+                .ForMember(d => d.TelegramUrl, opt => opt.MapFrom(s => s.TeleqramUrl));
 
             CreateMap<TenantBranding, AddTenantBrandingDto>().ReverseMap();
             CreateMap<TenantBranding, GetTenantBrandingDto>().ReverseMap();
@@ -85,9 +87,11 @@ namespace Loyalty.Business.Mappings
             CreateMap<Notification, GetNotificationDto>().ReverseMap();
             CreateMap<Tenant, GetTenantDto>()
                 .ForMember(d => d.IsCustomer,
-                    opt => opt.MapFrom(s => s.Customers != null && 
-                                             s.Customers.Any(c => c.LoyaltyCards != null && 
-                                                                  c.LoyaltyCards.Any(lc => lc.IsActive))));
+                    opt => opt.MapFrom(s => s.Customers != null &&
+                                             s.Customers.Any(c => c.LoyaltyCards != null &&
+                                                                  c.LoyaltyCards.Any(lc => lc.IsActive))))
+                .ForMember(d => d.AcceptAnonymous, opt => opt.MapFrom(s => s.AcceptAnonymus))
+                .ForMember(d => d.TelegramUrl, opt => opt.MapFrom(s => s.TeleqramUrl));
             CreateMap<Offer, AddOfferDto>().ReverseMap();
             CreateMap<Offer, GetOfferDto>().ReverseMap();
 

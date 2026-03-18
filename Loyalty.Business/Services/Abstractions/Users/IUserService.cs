@@ -47,5 +47,14 @@ namespace Loyalty.Business.Services.Abstractions.Users
         Task<ServiceResult> VerifyOldPhoneForUpdateAsync(string otpCode, CancellationToken ct = default);
         Task<ServiceResult> VerifyNewPhoneForUpdateAsync(string newPhoneNumber, string otpCode, CancellationToken ct = default);
         Task<ServiceResult> ResendPhoneUpdateOtpAsync(ResendPhoneUpdateOtpDto dto, CancellationToken ct = default);
+
+        // Admin user management
+        Task<ServiceResult> ListUsersAsync();
+        Task<ServiceResult> GetRolesAsync();
+        Task<ServiceResult> CreateAdminUserAsync(CreateAdminUserDto dto);
+        Task<ServiceResult> UpdateAdminUserAsync(string userId, string? role, int? tenantId);
+
+        // Program switching
+        Task<ServiceResult<object>> SwitchProgramAsync(int programId, CancellationToken ct = default);
     }
 }

@@ -3,6 +3,8 @@ using Loyalty.Business.Dtos.Get.Users;
 using Loyalty.Business.Dtos.Post.Users;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Users;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Net;
 
@@ -254,6 +256,62 @@ namespace Loyalty.WebAPI.Controllers
             }
 
             var result = await _userService.ResendOtpAsync(request);
+            return Ok(result);
+        }
+
+        // ========== ADMIN USER MANAGEMENT ==========
+
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult<List<ApplicationUserDto>>), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> List()
+        {
+            var result = await _userService.ListUsersAsync();
+            return Ok(result);
+        }
+
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult<List<string>>), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> Roles()
+        {
+            var result = await _userService.GetRolesAsync();
+            return Ok(result);
+        }
+
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> Add([FromBody] CreateAdminUserDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _userService.CreateAdminUserAsync(dto);
+            return Ok(result);
+        }
+
+        [HttpPut]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> Update([FromBody] UpdateAdminUserDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _userService.UpdateAdminUserAsync(dto.UserId, dto.Role, dto.TenantId);
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Switch active program for admin/moderator (returns new JWT with selected program_id)
+        /// </summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        [ProducesResponseType(typeof(ServiceResult<object>), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> SwitchProgram([FromBody] SwitchProgramDto dto, CancellationToken ct)
+        {
+            var result = await _userService.SwitchProgramAsync(dto.ProgramId, ct);
             return Ok(result);
         }
     }

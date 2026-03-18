@@ -236,12 +236,6 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> Update(UpdateTenantDto dto)
         {
-            // Validation: Şəhər seçimi məcburidir
-            if (!dto.cityId.HasValue || dto.cityId.Value <= 0)
-            {
-                return new ServiceResult(false, "Şəhər seçimi məcburidir");
-            }
-
             var category = await _tenantRepository.GetById(dto.Id);
             if (category != null)
             {
@@ -282,6 +276,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                     category.TeleqramUrl = dto.TelegramUrl;
                 }
                 category.ShowOnHome = dto.ShowOnHome;
+                category.AcceptAnonymus = dto.AcceptAnonymous;
+                category.IsHidden = dto.IsHidden;
+                category.IsHasMenu = dto.IsHasMenu;
+                category.LinkedInUrl = dto.LinkedInUrl;
+                category.WazeLocationUrl = dto.WazeLocationUrl;
+                if (dto.MenuUrl != null)
+                {
+                    category.MenuUrl = dto.MenuUrl;
+                }
                 category.categoryId = dto.categoryId;
                 category.RequireConfirmation = dto.RequireConfirmation ? true : false;
                 if (dto.ConfirmationTtlMinutes != null)

@@ -1341,6 +1341,15 @@ namespace Loyalty.Business.Services.Implementations.Users
                         ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
                         ?.CardTemplate?.GoogleLogoUrl;
 
+                    var programs = user.Tenant?.LoyaltyPrograms?
+                        .Where(lp => lp.IsActive)
+                        .Select(lp => new ProgramSummaryDto
+                        {
+                            Id = lp.Id,
+                            ProgramName = lp.ProgramName,
+                            ProgramType = (int)lp.ProgramType
+                        }).ToList();
+
                     var session = new UserSessionDto
                     {
                         Id = user.Id,
@@ -1358,7 +1367,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                         Expiration = token.Expiration,
                         RefreshToken = token.RefreshToken,
                         RefreshTokenExpiration = token.RefreshTokenExpiration,
-                        GoogleLogoUrl = googleLogoUrl
+                        GoogleLogoUrl = googleLogoUrl,
+                        Programs = programs
                     };
 
                     return ServiceResult<object>.Ok(session, "Login successful");
@@ -1460,6 +1470,15 @@ namespace Loyalty.Business.Services.Implementations.Users
                     ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
                     ?.CardTemplate?.GoogleLogoUrl;
 
+                var otpPrograms = user.Tenant?.LoyaltyPrograms?
+                    .Where(lp => lp.IsActive)
+                    .Select(lp => new ProgramSummaryDto
+                    {
+                        Id = lp.Id,
+                        ProgramName = lp.ProgramName,
+                        ProgramType = (int)lp.ProgramType
+                    }).ToList();
+
                 var session = new UserSessionDto
                 {
                     Id = user.Id,
@@ -1477,7 +1496,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     Expiration = token.Expiration,
                     RefreshToken = token.RefreshToken,
                     RefreshTokenExpiration = token.RefreshTokenExpiration,
-                    GoogleLogoUrl = googleLogoUrl
+                    GoogleLogoUrl = googleLogoUrl,
+                    Programs = otpPrograms
                 };
 
                 var response = new VerifyOtpResponse
@@ -2056,6 +2076,182 @@ namespace Loyalty.Business.Services.Implementations.Users
                 return userId;
             }
             return null;
+        }
+
+        // ========== ADMIN USER MANAGEMENT ==========
+
+        public async Task<ServiceResult> ListUsersAsync()
+        {
+            try
+            {
+                var users = await _dbContext.Users.Include(u => u.Tenant).ToListAsync();
+                var result = new List<ApplicationUserDto>();
+
+                foreach (var user in users)
+                {
+                    var roles = await _userManager.GetRolesAsync(user);
+                    result.Add(new ApplicationUserDto
+                    {
+                        Id = user.Id.ToString(),
+                        UserName = user.UserName,
+                        Email = user.Email,
+                        PhoneNumber = user.PhoneNumber,
+                        Name = user.Name,
+                        Surname = user.Surname,
+                        IsGuest = user.IsGuest,
+                        IsProfileCompleted = user.IsProfileCompleted,
+                        TenantId = user.TenantId,
+                        Roles = roles.ToList(),
+                        CreatedAt = null
+                    });
+                }
+
+                return new ServiceResult(true, result);
+            }
+            catch (Exception ex)
+            {
+                return new ServiceResult(false, ex.Message);
+            }
+        }
+
+        public async Task<ServiceResult> GetRolesAsync()
+        {
+            try
+            {
+                var roles = await _roleManager.Roles.Select(r => r.Name).ToListAsync();
+                return new ServiceResult(true, roles);
+            }
+            catch (Exception ex)
+            {
+                return new ServiceResult(false, ex.Message);
+            }
+        }
+
+        public async Task<ServiceResult> CreateAdminUserAsync(CreateAdminUserDto dto)
+        {
+            try
+            {
+                var nameParts = (dto.FullName ?? "").Split(' ', 2);
+                var user = new ApplicationUser
+                {
+                    UserName = dto.PhoneNumber,
+                    PhoneNumber = dto.PhoneNumber,
+                    Email = dto.Email,
+                    Name = nameParts.Length > 0 ? nameParts[0] : dto.FullName,
+                    Surname = nameParts.Length > 1 ? nameParts[1] : "",
+                    TenantId = dto.TenantId,
+                    IsGuest = false,
+                    IsProfileCompleted = true,
+                    Status = Loyalty.DataAccess.Enums.UserStatus.Active
+                };
+
+                var createResult = await _userManager.CreateAsync(user, dto.Password);
+                if (!createResult.Succeeded)
+                    return new ServiceResult(false, string.Join("; ", createResult.Errors.Select(e => e.Description)));
+
+                if (!string.IsNullOrWhiteSpace(dto.Role))
+                {
+                    var roleExists = await _roleManager.RoleExistsAsync(dto.Role);
+                    if (!roleExists)
+                        return new ServiceResult(false, $"Role '{dto.Role}' not found");
+
+                    await _userManager.AddToRoleAsync(user, dto.Role);
+                }
+
+                return new ServiceResult(true, "User created successfully");
+            }
+            catch (Exception ex)
+            {
+                return new ServiceResult(false, ex.Message);
+            }
+        }
+
+        public async Task<ServiceResult> UpdateAdminUserAsync(string userId, string? role, int? tenantId)
+        {
+            try
+            {
+                var user = await _userManager.FindByIdAsync(userId);
+                if (user == null)
+                    return new ServiceResult(false, "User not found");
+
+                if (tenantId.HasValue)
+                    user.TenantId = tenantId.Value;
+
+                await _userManager.UpdateAsync(user);
+
+                if (!string.IsNullOrWhiteSpace(role))
+                {
+                    var currentRoles = await _userManager.GetRolesAsync(user);
+                    if (currentRoles.Any())
+                        await _userManager.RemoveFromRolesAsync(user, currentRoles);
+
+                    var roleExists = await _roleManager.RoleExistsAsync(role);
+                    if (!roleExists)
+                        return new ServiceResult(false, $"Role '{role}' not found");
+
+                    await _userManager.AddToRoleAsync(user, role);
+                }
+
+                return new ServiceResult(true, "User updated successfully");
+            }
+            catch (Exception ex)
+            {
+                return new ServiceResult(false, ex.Message);
+            }
+        }
+
+        public async Task<ServiceResult<object>> SwitchProgramAsync(int programId, CancellationToken ct = default)
+        {
+            try
+            {
+                var userIdStr = _httpContextAccessor.HttpContext?.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out var userId))
+                    return ServiceResult<object>.Fail("User not authenticated");
+
+                var user = await _dbContext.Users
+                    .Include(x => x.Tenant)
+                    .ThenInclude(x => x.LoyaltyPrograms)
+                    .FirstOrDefaultAsync(x => x.Id == userId, ct);
+
+                if (user == null)
+                    return ServiceResult<object>.Fail("User not found");
+
+                // Verify program belongs to user's tenant
+                var program = user.Tenant?.LoyaltyPrograms?.FirstOrDefault(p => p.Id == programId && p.IsActive);
+                if (program == null)
+                    return ServiceResult<object>.Fail("Program not found or not accessible");
+
+                // Build new claims with selected program_id
+                var roles = await _userManager.GetRolesAsync(user);
+                var claims = new List<System.Security.Claims.Claim>();
+                foreach (var role in roles)
+                    claims.Add(new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, role));
+                claims.Add(new System.Security.Claims.Claim("is_guest", user.IsGuest.ToString().ToLower()));
+                claims.Add(new System.Security.Claims.Claim("is_profile_completed", user.IsProfileCompleted.ToString().ToLower()));
+                if (user.TenantId != null)
+                    claims.Add(new System.Security.Claims.Claim("tenant_id", user.TenantId.ToString()!));
+                claims.Add(new System.Security.Claims.Claim("program_id", programId.ToString()));
+
+                var token = _tokenHelper.CreateToken(user, claims);
+                await SaveRefreshTokenAsync(user.Id, token.RefreshToken!, token.RefreshTokenExpiration!.Value);
+
+                var result = new
+                {
+                    token = token.Token,
+                    expiration = token.Expiration,
+                    refreshToken = token.RefreshToken,
+                    refreshTokenExpiration = token.RefreshTokenExpiration,
+                    programId = program.Id,
+                    programName = program.ProgramName,
+                    programType = (int)program.ProgramType
+                };
+
+                return ServiceResult<object>.Ok(result, "Program switched successfully");
+            }
+            catch (Exception ex)
+            {
+                return ServiceResult<object>.Fail(ex.Message);
+            }
         }
 
     }

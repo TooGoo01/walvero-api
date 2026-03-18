@@ -21,16 +21,18 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? TelegramUrl { get; set; } = string.Empty;
         public string? MenuUrl { get; set; } = string.Empty;
         public bool ShowOnHome { get; set; } = false;
+        public bool AcceptAnonymous { get; set; } = false;
+        public bool IsHidden { get; set; } = false;
+        public bool IsHasMenu { get; set; } = false;
+        public string? LinkedInUrl { get; set; }
+        public string? WazeLocationUrl { get; set; }
         public List<int> admins { get; set; }
         public int categoryId { get; set; }
         public bool RequireConfirmation { get; init; } = true; // tenant setting
         public int ConfirmationTtlMinutes { get; set; } = 10;
         public int? tenantLocationId { get; set; }
         public int? countryId { get; set; }
-
-        [Required(ErrorMessage = "Şəhər seçimi məcburidir")]
         public int? cityId { get; set; }
-
         public int? timeZoneId { get; set; }
     }
 }

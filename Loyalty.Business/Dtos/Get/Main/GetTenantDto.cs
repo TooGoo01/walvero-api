@@ -23,6 +23,12 @@ namespace Loyalty.Business.Dtos.Get.Main
         public bool ShowOnHome { get; set; } = false;
         public bool RequireConfirmation { get; init; } = true; // tenant setting
         public int ConfirmationTtlMinutes { get; set; } = 10;
+        public bool AcceptAnonymous { get; set; } = false;
+        public bool IsHidden { get; set; } = false;
+        public bool IsHasMenu { get; set; } = false;
+        public string? LinkedInUrl { get; set; }
+        public string? WazeLocationUrl { get; set; }
+        public DateTime? SubscriptionExpiryDate { get; set; }
         public List<ApplicationUserDto> Admins { get; set; }
         public List<GetLoyaltyProgramDto> LoyaltyPrograms { get; set; }
         public int? categoryId { get; set; }
