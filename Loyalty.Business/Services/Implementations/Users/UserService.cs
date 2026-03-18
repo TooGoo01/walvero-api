@@ -191,6 +191,15 @@ namespace Loyalty.Business.Services.Implementations.Users
                                 ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
                                 ?.CardTemplate?.GoogleLogoUrl;
 
+                            var loginPrograms = user.Tenant?.LoyaltyPrograms?
+                                .Where(lp => lp.IsActive)
+                                .Select(lp => new ProgramSummaryDto
+                                {
+                                    Id = lp.Id,
+                                    ProgramName = lp.ProgramName,
+                                    ProgramType = (int)lp.ProgramType
+                                }).ToList();
+
                             var detail = new UserSessionDto
                             {
                                 Id = user.Id,
@@ -202,11 +211,13 @@ namespace Loyalty.Business.Services.Implementations.Users
                                 BirthDate = user.DateOfBirth != null ? user.DateOfBirth : DateTime.Now,
                                 Roles = rolem,
                                 TenantId = user.TenantId,
+                                ProgramId = user.Tenant?.LoyaltyPrograms?.FirstOrDefault()?.Id,
                                 Token = token.Token,
                                 Expiration = token.Expiration,
                                 RefreshToken = token.RefreshToken,
                                 RefreshTokenExpiration = token.RefreshTokenExpiration,
-                                GoogleLogoUrl = googleLogoUrl
+                                GoogleLogoUrl = googleLogoUrl,
+                                Programs = loginPrograms
                             };
 
                             return new ServiceResult(true, detail, "login success");
