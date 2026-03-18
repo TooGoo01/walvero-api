@@ -13,15 +13,19 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int LoyaltyCardId { get; set; }
 
         public TransactionType Type { get; set; }
+        public int Status { get; set; }
         public int Points { get; set; }
-        public decimal? Amount { get; set; } // əgər alış-veriş varsa
+        public decimal? Amount { get; set; }
 
         public string? Description { get; set; }
+        public string? ReverseReason { get; set; }
         public string? ReferenceNumber { get; set; }
         public string? OrderId { get; set; }
         public DateTimeOffset LocalOccurredAt { get; set; }
         public string TimeZoneIdUsed { get; set; } = "UTC";
         public int BalanceAfter { get; set; }
-
+        public string? CustomerName { get; set; }
+        public string? CardNumber { get; set; }
+        public DateTime? CreatedAt { get; set; }
     }
 }

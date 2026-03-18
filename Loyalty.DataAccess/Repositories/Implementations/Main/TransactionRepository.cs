@@ -41,6 +41,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         {
             return await GetAsQueryable()
                 .Include(t => t.LoyaltyCard)
+                    .ThenInclude(lc => lc.Customer)
                 .Where(t => t.LoyaltyCard.CustomerId == customerId)
                 .OrderByDescending(t => t.RegDate)
                 .ToListAsync(cancellationToken);

@@ -133,6 +133,15 @@ namespace Loyalty.Business.Mappings
             CreateMap<RestorantWifiInformation, UpdateRestorantWifiInformationDto>().ReverseMap();
             CreateMap<RestorantWifiInformation, GetRestorantWifiInformationDto>().ReverseMap();
 
+            CreateMap<Transaction, GetTransactionDto>()
+                .ForMember(d => d.Status, opt => opt.MapFrom(s => (int)s.Status))
+                .ForMember(d => d.CustomerName, opt => opt.MapFrom(s =>
+                    s.LoyaltyCard != null && s.LoyaltyCard.Customer != null
+                        ? (s.LoyaltyCard.Customer.FirstName + " " + s.LoyaltyCard.Customer.LastName).Trim()
+                        : null))
+                .ForMember(d => d.CardNumber, opt => opt.MapFrom(s =>
+                    s.LoyaltyCard != null ? s.LoyaltyCard.CardNumber : null))
+                .ForMember(d => d.CreatedAt, opt => opt.MapFrom(s => s.RegDate));
 
             #endregion
 
