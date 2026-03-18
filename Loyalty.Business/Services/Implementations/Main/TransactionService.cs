@@ -60,5 +60,12 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             throw new NotImplementedException();
         }
+
+        public async Task<ServiceResult> GetByCustomerId(int customerId, CancellationToken ct = default)
+        {
+            var transactions = await _transactionRepository.GetByCustomerIdAsync(customerId, ct);
+            var response = _mapper.Map<List<GetTransactionDto>>(transactions);
+            return new ServiceResult(true, response);
+        }
     }
 }

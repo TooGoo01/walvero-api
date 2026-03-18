@@ -13,9 +13,7 @@ namespace Loyalty.WebAPI.Controllers
 {
     [Route("api/[controller]/[action]")]
     [ApiController]
-    [Authorize(
-    AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
-    Policy = "CustomerOnly")]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     public class CustomerController : ControllerBase
     {
         private readonly ICustomerEnrollmentService _customerEnrollmentService;
@@ -27,8 +25,8 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         [HttpPost]
+        [Authorize(Policy = "CustomerOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-       
         public async Task<ActionResult<ServiceResult>> Add([FromBody] AddCustomerWithCardDto model)
         {
             if (!ModelState.IsValid)
@@ -66,7 +64,7 @@ namespace Loyalty.WebAPI.Controllers
             }
         }
         [HttpGet]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOnly")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
         [ProducesResponseType(typeof(ServiceResult<List<GetCustomerDto>>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult<WalletCardDetailsResponseDto>), (int)HttpStatusCode.NotFound)]
         [ProducesResponseType(typeof(ServiceResult<WalletCardDetailsResponseDto>), (int)HttpStatusCode.Unauthorized)]

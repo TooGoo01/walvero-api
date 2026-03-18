@@ -1,4 +1,5 @@
-﻿using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -11,51 +12,62 @@ namespace Loyalty.WebAPI.Controllers
 {
     [Route("api/[controller]/[action]")]
     [ApiController]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     public class TransactionController : ControllerBase
     {
         private readonly ITransactionService _transactionService;
+        private readonly ITransactionReverseService _transactionReverseService;
+        private readonly ITenantProvider _tenantProvider;
 
-        public TransactionController(ITransactionService transactionService)
+        public TransactionController(
+            ITransactionService transactionService,
+            ITransactionReverseService transactionReverseService,
+            ITenantProvider tenantProvider)
         {
             _transactionService = transactionService;
+            _transactionReverseService = transactionReverseService;
+            _tenantProvider = tenantProvider;
         }
+
         [HttpGet]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOnly")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
         [ProducesResponseType(typeof(ServiceResult<List<GetTransactionDto>>), (int)HttpStatusCode.OK)]
-        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
-        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
-        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> List(DateOnly? startDate, DateOnly? endDate, int? tenantId = null)
         {
             var today = DateOnly.FromDateTime(DateTime.Today);
+            var effectiveEndDate = endDate ?? today;
+            var effectiveStartDate = startDate ?? effectiveEndDate.AddDays(-30);
 
-            DateOnly effectiveEndDate;
-            DateOnly effectiveStartDate;
+            var id = tenantId ?? _tenantProvider.CurrentTenantId ?? 0;
+            if (id <= 0)
+                return BadRequest(new ServiceResult(false, "TenantId is required"));
 
-            if (!startDate.HasValue && !endDate.HasValue)
-            {
-                effectiveEndDate = today;
-                effectiveStartDate = today.AddDays(-30);
-            }
-            else
-            {
-                effectiveEndDate = endDate ?? today;
-                effectiveStartDate = startDate ?? effectiveEndDate.AddDays(-30);
-            }
+            var result = await _transactionService.GetByTenantIdAndDate(id, effectiveStartDate, effectiveEndDate);
+            return Ok(result);
+        }
 
-           
+        [HttpGet]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> ByCustomer([FromQuery] int customerId)
+        {
+            if (customerId <= 0)
+                return BadRequest(new ServiceResult(false, "CustomerId is required"));
 
-            if (tenantId.HasValue && tenantId.Value > 0)
-            {
-                var result = await _transactionService.GetByTenantIdAndDate(
-                    tenantId.Value,
-                    effectiveStartDate,
-                    effectiveEndDate
-                );
-                return Ok(result);
-            }
+            var result = await _transactionService.GetByCustomerId(customerId);
+            return Ok(result);
+        }
 
-            return BadRequest(false);
+        [HttpPost]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> Reverse([FromBody] ReverseTransactionDto dto, CancellationToken ct)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _transactionReverseService.ReverseTransactionAsync(dto, ct);
+            return Ok(result);
         }
     }
 }
