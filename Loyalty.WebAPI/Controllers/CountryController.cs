@@ -4,6 +4,7 @@ using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Net;
@@ -15,11 +16,22 @@ namespace Loyalty.WebAPI.Controllers
     public class CountryController : ControllerBase
     {
         private readonly ICountryService _countryService;
+        private readonly ICountrySequenceService _countrySequenceService;
 
-        public CountryController(ICountryService countryService)
+        public CountryController(ICountryService countryService, ICountrySequenceService countrySequenceService)
         {
             _countryService = countryService;
+            _countrySequenceService = countrySequenceService;
         }
+
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> PublicCountryCodeList(CancellationToken ct)
+        {
+            var result = await _countrySequenceService.GetActiveCountriesAsync(ct);
+            return Ok(result);
+        }
+
         [HttpGet]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult<List<GetCountryDto>>), (int)HttpStatusCode.OK)]
@@ -28,7 +40,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult<WalletCardDetailsResponseDto>), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> List()
         {
-            var result = await _countryService.GetAllCountries();
+            var result = await _countryService.GetAllCountriesWithCities();
             return Ok(result);
         }
         [HttpPost]
