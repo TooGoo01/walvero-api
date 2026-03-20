@@ -100,7 +100,8 @@ namespace Loyalty.Business.Services
             services.AddScoped<IWalletWebhookService, WalletWebhookService>();
             services.AddScoped<IMonyoPosApiClient, MonyoPosApiClient>();
             services.AddScoped<ICustomerSyncService, CustomerSyncService>();
-            
+            services.AddScoped<IPosSyncService, PosSyncService>();
+
             services.AddSignalR();
             return services;
         }

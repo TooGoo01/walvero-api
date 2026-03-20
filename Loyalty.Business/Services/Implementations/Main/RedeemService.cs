@@ -97,55 +97,62 @@ namespace Loyalty.Business.Services.Implementations.Main
                     return Fail("Tenant və ya kod yanlışdır.");
                 }
 
-                // 1) Kart - Try Barcode first, then WalveroId
+                // 1) Kart - Try Barcode → WalveroId (phone ilə dəqiqləşdir) → Phone
                 LoyaltyCard? card = null;
                 var code = request.Code.Trim();
+                Customer? resolvedCustomer = null;
 
-                // First, try to find by barcode (priority)
+                // 1a) BarcodeValue ilə axtar
                 card = await _cardSvc.GetByBarcodeValueAsync(request.TenantId, code, ct);
 
-                if (card == null && long.TryParse(code, out long walveroId))
+                // Barcode ilə tapıldısa da, customer-in phone-u ilə dəqiqləşdir
+                if (card?.Customer?.applicationUser?.UserName != null)
                 {
-                    // Barcode not found, try WalveroId
-                    _logger.LogInformation("Barcode not found, trying WalveroId: {WalveroId}", walveroId);
-
-                    var customer = await _customerRepo.GetByWalveroIdAsync(request.TenantId, walveroId, ct);
-                    if (customer == null)
+                    var phoneCustomer = await _customerRepo.GetByPhoneAsync(
+                        request.TenantId, card.Customer.applicationUser.UserName, ct);
+                    if (phoneCustomer != null && phoneCustomer.Id != card.CustomerId)
                     {
-                        _logger.LogWarning("Customer not found by WalveroId: {WalveroId} for TenantId: {TenantId}", walveroId, request.TenantId);
-                        return Fail($"Kart tapılmadı (barcode və WalveroId uyğun gəlmədi).");
-                    }
-
-                    // Find the active card for this customer and program
-                    if (request.LoyaltyProgramId.HasValue)
-                    {
-                        card = await _cardSvc.GetLastActiveByCustomerAsync(
-                            request.TenantId,
-                            request.LoyaltyProgramId.Value,
-                            customer.Id,
-                            ct);
-                    }
-                    else
-                    {
-                        // If no program specified, get the most recent active card
-                        var cards = await _cardSvc.ListByCustomerAsync(request.TenantId, customer.Id, ct);
-                        card = cards?.Where(c => c.Status == CardStatus.Active)
-                            .OrderByDescending(c => c.Id)
-                            .FirstOrDefault();
-                    }
-
-                    if (card == null)
-                    {
-                        _logger.LogWarning("Active card not found for CustomerId: {CustomerId}, ProgramId: {ProgramId}",
-                            customer.Id, request.LoyaltyProgramId);
-                        return Fail("Aktiv kart tapılmadı.");
+                        // Phone ilə tapılan customer fərqlidirsə, onun kartını istifadə et
+                        var phoneCard = await FindActiveCardForCustomer(request.TenantId, phoneCustomer.Id, request.LoyaltyProgramId, ct);
+                        if (phoneCard != null)
+                            card = phoneCard;
                     }
                 }
-                else if (card == null)
+
+                // 1b) WalveroId ilə axtar → phone ilə dəqiqləşdir
+                if (card == null && long.TryParse(code, out long walveroId))
                 {
-                    // Neither barcode nor WalveroId found
-                    _logger.LogWarning("Card not found by barcode. Code={Code}", code);
-                    return Fail("Kart tapılmadı (barcode uyğun gəlmədi).");
+                    _logger.LogInformation("Barcode not found, trying WalveroId: {WalveroId}", walveroId);
+
+                    var walveroCustomer = await _customerRepo.GetByWalveroIdAsync(request.TenantId, walveroId, ct);
+                    resolvedCustomer = walveroCustomer;
+
+                    // Phone ilə dəqiqləşdir
+                    if (walveroCustomer?.applicationUser?.UserName != null)
+                    {
+                        var phoneCustomer = await _customerRepo.GetByPhoneAsync(
+                            request.TenantId, walveroCustomer.applicationUser.UserName, ct);
+                        if (phoneCustomer != null)
+                            resolvedCustomer = phoneCustomer;
+                    }
+
+                    if (resolvedCustomer != null)
+                        card = await FindActiveCardForCustomer(request.TenantId, resolvedCustomer.Id, request.LoyaltyProgramId, ct);
+                }
+
+                // 1c) Phone nömrəsi ilə axtar
+                if (card == null && code.StartsWith("+"))
+                {
+                    _logger.LogInformation("Trying phone lookup: {Phone}", code);
+                    var phoneCustomer = await _customerRepo.GetByPhoneAsync(request.TenantId, code, ct);
+                    if (phoneCustomer != null)
+                        card = await FindActiveCardForCustomer(request.TenantId, phoneCustomer.Id, request.LoyaltyProgramId, ct);
+                }
+
+                if (card == null)
+                {
+                    _logger.LogWarning("Card not found. Code={Code}", code);
+                    return Fail("Kart tapılmadı.");
                 }
 
                 var appUserId = card.Customer?.applicationUser?.Id;
@@ -725,6 +732,19 @@ namespace Loyalty.Business.Services.Implementations.Main
                 TimeZoneIdUsed = timeZoneIdUsed
                 // istəsən burada OperatorId/Note da saxla
             };
+        }
+
+        private async Task<LoyaltyCard?> FindActiveCardForCustomer(int tenantId, int customerId, int? programId, CancellationToken ct)
+        {
+            if (programId.HasValue)
+            {
+                return await _cardSvc.GetLastActiveByCustomerAsync(tenantId, programId.Value, customerId, ct);
+            }
+
+            var cards = await _cardSvc.ListByCustomerAsync(tenantId, customerId, ct);
+            return cards?.Where(c => c.Status == CardStatus.Active)
+                .OrderByDescending(c => c.Id)
+                .FirstOrDefault();
         }
 
         private static RedeemResultDto Fail(string msg) => new() { Success = false, Message = msg };

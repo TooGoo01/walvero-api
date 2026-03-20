@@ -9,5 +9,6 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         Task<TenantIntegration?> GetActiveByTenantAndTypeAsync(int tenantId, int integrationTypeId, CancellationToken ct = default);
         Task<TenantIntegration?> GetActiveByTenantAndSourceAsync(int tenantId, string source, CancellationToken ct = default);
         Task<TenantIntegration?> GetActiveByTenantAsync(int tenantId, CancellationToken ct = default);
+        Task<List<TenantIntegration>> GetAllActiveByTenantAsync(int tenantId, CancellationToken ct = default);
     }
 }

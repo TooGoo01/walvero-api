@@ -90,7 +90,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         /// Vergüllə ayrılıbsa: əvvəlcə birinci dəyəri, tapılmazsa ikincini axtarır.
         /// Hər dəyər üçün: BarcodeValue (kart barkodu) → WalveroId (ApplicationUser) sırası ilə yoxlanılır.
         /// </summary>
-        private async Task<LoyaltyCard?> ResolveCardAsync(int tenantId, string rawBarcode, CancellationToken ct)
+        private async Task<LoyaltyCard?> ResolveCardAsync(int tenantId, string rawBarcode, int? programId, CancellationToken ct)
         {
             var parts = rawBarcode.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
@@ -98,17 +98,33 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 // 1) BarcodeValue ilə axtar (tracked + Customer include)
                 var card = await _loyaltyCardRepo.GetByBarcodeValueAsync(tenantId, part, ct);
-                if (card != null) return card;
+                if (card != null)
+                {
+                    // programId varsa ve uyğun deyilse, skip et
+                    if (programId.HasValue && card.LoyaltyProgramId != programId.Value)
+                        continue;
+                    return card;
+                }
 
-                // 2) WalveroId ilə axtar (ApplicationUser.WalveroId)
+                // 2) WalveroId ilə user tap → phone nömrəsi ilə customer-i dəqiqləşdir
                 if (long.TryParse(part, out var walveroId))
                 {
-                    var customer = await _customerRepo.GetByWalveroIdAsync(tenantId, walveroId, ct);
+                    var customerByWalvero = await _customerRepo.GetByWalveroIdAsync(tenantId, walveroId, ct);
+                    Customer? customer = customerByWalvero;
+
+                    // User-in phone nömrəsi ilə customer-i dəqiqləşdir
+                    var phone = customerByWalvero?.applicationUser?.UserName;
+                    if (!string.IsNullOrEmpty(phone))
+                    {
+                        var phoneCustomer = await _customerRepo.GetByPhoneAsync(tenantId, phone, ct);
+                        if (phoneCustomer != null)
+                            customer = phoneCustomer;
+                    }
+
                     if (customer != null)
                     {
-                        // Customer-in son aktiv kartını qaytar
                         var activeCard = customer.LoyaltyCards?
-                            .Where(c => c.IsActive)
+                            .Where(c => c.IsActive && (!programId.HasValue || c.LoyaltyProgramId == programId.Value))
                             .OrderByDescending(c => c.Id)
                             .FirstOrDefault();
                         if (activeCard != null)
@@ -125,7 +141,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             var tenantId = context.TenantId;
             var programId = context.LoyaltyProgramId;
 
-            var card = await ResolveCardAsync(tenantId, barcode, ct);
+            var card = await ResolveCardAsync(tenantId, barcode, programId, ct);
             if (card == null)
                 return new GetWalletResponse { Success = false, Message = "Customer not found" };
 
@@ -208,7 +224,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!programId.HasValue)
                 return new SetRedeemResponse { Status = false, Message = "No program configured" };
 
-            var card = await ResolveCardAsync(tenantId, request.Barcode, ct);
+            var card = await ResolveCardAsync(tenantId, request.Barcode, programId, ct);
             if (card == null)
                 return new SetRedeemResponse { Status = false, Message = "Customer not found" };
 
@@ -276,7 +292,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!programId.HasValue)
                 return new SetVerifyResponse { Status = false };
 
-            var card = await ResolveCardAsync(tenantId, request.Barcode, ct);
+            var card = await ResolveCardAsync(tenantId, request.Barcode, programId, ct);
             if (card == null)
                 return new SetVerifyResponse { Status = false };
 

@@ -41,6 +41,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ICardNumberGenerator _cardNumberGenerator;
         private readonly ICustomerSyncService _customerSyncService;
+        private readonly IPosSyncService _posSyncService;
         private readonly ILogger<CustomerEnrollmentService> _logger;
         public CustomerEnrollmentService(
             ITenantProvider tp,
@@ -60,6 +61,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 UserManager<ApplicationUser> userManager,
             ICardNumberGenerator cardNumberGenerator,
             ICustomerSyncService customerSyncService,
+            IPosSyncService posSyncService,
             ILogger<CustomerEnrollmentService> logger)
         {
             _tp = tp; _customerRepo = customerRepo; _programRepo = programRepo;
@@ -71,6 +73,7 @@ UserManager<ApplicationUser> userManager,
             _userManager = userManager;
             _cardNumberGenerator = cardNumberGenerator;
             _customerSyncService = customerSyncService;
+            _posSyncService = posSyncService;
             _logger = logger;
         }
 
@@ -134,6 +137,15 @@ UserManager<ApplicationUser> userManager,
             if (!string.IsNullOrWhiteSpace(phone))
                 customer = await _customerRepo.GetByPhoneAsync(tenantId, phone, ct);
            
+            // Reactivate if customer exists but is inactive
+            if (customer != null && !customer.IsActive)
+            {
+                customer.IsActive = true;
+                customer.LastActivityDate = DateTime.UtcNow;
+                _uow.Repository<Customer>().Update(customer);
+                _uow.Commit();
+            }
+
             if (customer is null)
             {
                 // Generate CardNumber before creating customer
@@ -167,6 +179,13 @@ UserManager<ApplicationUser> userManager,
                     customer.CardNumber = await _cardNumberGenerator.GenerateCardNumberAsync(tenantId, ct);
                     _uow.Commit();
                 }
+
+                // Sync new customer to POS systems (fire-and-forget)
+                _ = Task.Run(async () =>
+                {
+                    try { await _posSyncService.SyncCustomerToPosAsync(tenantId, customer); }
+                    catch (Exception ex) { _logger?.LogWarning(ex, "POS sync failed for customer {CustomerId}", customer.Id); }
+                });
             }
             customer.applicationUserId = int.Parse(userId);
             // 3) Son aktiv kartı reuse et / yoxdursa deactive kartı aktivləşdir / yoxdursa yarat
@@ -234,10 +253,10 @@ UserManager<ApplicationUser> userManager,
                 hasPendingCardUpdate = true;
             }
 
-            // Auto-sync customer to Monyo POS if integration is configured (after card exists for barcode)
+            // Auto-sync customer to POS systems (supports Basic Auth and Bearer token)
             try
             {
-                await _customerSyncService.SyncCustomerToPosAsync(tenantId, customer.Id, ct);
+                await _posSyncService.SyncCustomerToPosAsync(tenantId, customer, ct);
             }
             catch (Exception ex)
             {
@@ -394,6 +413,15 @@ UserManager<ApplicationUser> userManager,
             // 2) Customer tap / yarat
             Customer? customer = await _customerRepo.GetByPhoneAsync(tenantId, phone, ct);
 
+            // Reactivate if customer exists but is inactive
+            if (customer != null && !customer.IsActive)
+            {
+                customer.IsActive = true;
+                customer.LastActivityDate = DateTime.UtcNow;
+                _uow.Repository<Customer>().Update(customer);
+                _uow.Commit();
+            }
+
             if (customer is null)
             {
                 var cardNumber = await _cardNumberGenerator.GenerateCardNumberAsync(tenantId, ct);
@@ -542,10 +570,10 @@ UserManager<ApplicationUser> userManager,
             _uow.Repository<Customer>().Update(customer);
             _uow.Commit();
 
-            // Auto-sync customer to POS if integration is configured
+            // Auto-sync customer to POS systems (supports Basic Auth and Bearer token)
             try
             {
-                await _customerSyncService.SyncCustomerToPosAsync(customer.TenantId, customer.Id, ct);
+                await _posSyncService.SyncCustomerToPosAsync(customer.TenantId, customer, ct);
             }
             catch (Exception ex)
             {
