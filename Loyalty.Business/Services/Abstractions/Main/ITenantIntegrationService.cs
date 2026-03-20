@@ -20,6 +20,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ExternalVenueId { get; set; }
         public int? LoyaltyProgramId { get; set; }
         public string? ApiBaseUrl { get; set; }
+        public string? ApiUsername { get; set; }
         public string? ApiToken { get; set; }
     }
 
@@ -52,6 +53,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ExternalVenueId { get; set; }
         public int? LoyaltyProgramId { get; set; }
         public string? ApiBaseUrl { get; set; }
+        public string? ApiUsername { get; set; }
         public bool IsActive { get; set; }
     }
 
@@ -61,6 +63,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ExternalVenueId { get; set; }
         public int? LoyaltyProgramId { get; set; }
         public string? ApiBaseUrl { get; set; }
+        public string? ApiUsername { get; set; }
         public string? ApiToken { get; set; }
         public bool? IsActive { get; set; }
     }
