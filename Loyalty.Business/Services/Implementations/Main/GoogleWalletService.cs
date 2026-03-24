@@ -882,13 +882,33 @@ public sealed class GoogleWalletService : IGoogleWalletService
         {
             var objectId = ObjectIdForCard(_issuerId, tenantId, programId, loyaltyCardId);
 
+            // Fetch card to get current balance
+            int currentPoints = 0;
+            string currency = "Points";
+            string accountName = $"Card #{loyaltyCardId}";
+            if (_cardRepo != null)
+            {
+                var card = await _cardRepo.GetByIdAsync(loyaltyCardId, ct);
+                if (card != null)
+                {
+                    currentPoints = card.CurrentPoints;
+                    accountName = $"{card.Customer?.FirstName} {card.Customer?.LastName}".Trim();
+                    if (string.IsNullOrEmpty(accountName)) accountName = $"Card #{loyaltyCardId}";
+                }
+            }
+
             var loyaltyObject = new JObject
             {
                 ["id"] = objectId,
                 ["classId"] = ClassId,
                 ["state"] = "ACTIVE",
                 ["accountId"] = loyaltyCardId.ToString(),
-                ["accountName"] = $"Card #{loyaltyCardId}"
+                ["accountName"] = accountName,
+                ["loyaltyPoints"] = new JObject
+                {
+                    ["balance"] = new JObject { ["int"] = currentPoints },
+                    ["label"] = currency
+                }
             };
 
             var claims = new JObject
