@@ -13,6 +13,8 @@ namespace Loyalty.DataAccess.Entities.Users
         public DateTime? DateOfBirth { get; set; }
         public int? TenantId { get; set; }
         public Tenant? Tenant { get; set; }
+        public int? BranchId { get; set; }
+        public Branch? Branch { get; set; }
         public ICollection<DeviceToken>? DeviceTokens { get; set; } = new List<DeviceToken>();
         public ICollection<Customer>? Customers { get; set; }
         

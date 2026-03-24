@@ -102,6 +102,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IMonyoPosApiClient, MonyoPosApiClient>();
             services.AddScoped<ICustomerSyncService, CustomerSyncService>();
             services.AddScoped<ILotteryService, LotteryService>();
+            services.AddScoped<IBranchService, BranchService>();
 
             services.AddSignalR();
             return services;

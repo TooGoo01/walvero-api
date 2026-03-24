@@ -73,6 +73,76 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("AppVersionConfigs");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Branch", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsMainBranch")
+                        .HasColumnType("bit");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PhotoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("RadiusMeters")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("WorkingHoursJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "IsActive");
+
+                    b.ToTable("Branches", (string)null);
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.CardTemplate", b =>
                 {
                     b.Property<int>("Id")
@@ -2156,6 +2226,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int>("BalanceAfter")
                         .HasColumnType("int");
 
+                    b.Property<int?>("BranchId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Description")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -2207,6 +2280,8 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
 
                     b.HasIndex("LocalOccurredAt");
 
@@ -2542,6 +2617,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("int");
 
+                    b.Property<int?>("BranchId")
+                        .HasColumnType("int");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("nvarchar(max)");
@@ -2637,6 +2715,8 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
 
                     b.HasIndex("NormalizedEmail")
                         .HasDatabaseName("EmailIndex");
@@ -3000,6 +3080,17 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Branch", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                        .WithMany("Branches")
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.City", b =>
@@ -3377,11 +3468,18 @@ namespace Loyalty.DataAccess.Migrations
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Transaction", b =>
                 {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Branch", "Branch")
+                        .WithMany("Transactions")
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyCard", "LoyaltyCard")
                         .WithMany("Transactions")
                         .HasForeignKey("LoyaltyCardId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Branch");
 
                     b.Navigation("LoyaltyCard");
                 });
@@ -3429,10 +3527,17 @@ namespace Loyalty.DataAccess.Migrations
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Users.ApplicationUser", b =>
                 {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Branch", "Branch")
+                        .WithMany("Staff")
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany("Admins")
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Branch");
 
                     b.Navigation("Tenant");
                 });
@@ -3532,6 +3637,13 @@ namespace Loyalty.DataAccess.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Branch", b =>
+                {
+                    b.Navigation("Staff");
+
+                    b.Navigation("Transactions");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.CardTemplate", b =>
                 {
                     b.Navigation("Icons");
@@ -3601,6 +3713,8 @@ namespace Loyalty.DataAccess.Migrations
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Tenant", b =>
                 {
                     b.Navigation("Admins");
+
+                    b.Navigation("Branches");
 
                     b.Navigation("Branding");
 

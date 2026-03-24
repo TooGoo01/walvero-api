@@ -27,14 +27,16 @@ public sealed class GoogleWalletService : IGoogleWalletService
     private readonly string _applicationName;
     private readonly ILogger<GoogleWalletService>? _log;
     private readonly ILoyaltyCardRepository? _cardRepo;
+    private readonly Loyalty.DataAccess.Repositories.Abstractions.Main.IBranchRepository? _branchRepo;
     private readonly bool _isInitialized;
     // Placeholder fallback (public, HTTPS, 3:1 ~ 1032x336/1860x620 və s.)
     private const string FALLBACK_BANNER_URL = "https://yourcdn.example.com/fallback-1032x336.png";
 
-    public GoogleWalletService(GoogleWalletRuntimeConfig cfg, ILogger<GoogleWalletService>? log = null, ILoyaltyCardRepository? cardRepo = null)
+    public GoogleWalletService(GoogleWalletRuntimeConfig cfg, ILogger<GoogleWalletService>? log = null, ILoyaltyCardRepository? cardRepo = null, Loyalty.DataAccess.Repositories.Abstractions.Main.IBranchRepository? branchRepo = null)
     {
         _log = log;
         _cardRepo = cardRepo;
+        _branchRepo = branchRepo;
         _isInitialized = false;
 
         try
@@ -420,6 +422,30 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     }
                 },
             };
+
+            // Inject branch locations for proximity triggers
+            if (_branchRepo != null)
+            {
+                try
+                {
+                    var branches = await _branchRepo.GetByTenantAsync(tpl.TenantId, ct);
+                    var branchLocations = branches?
+                        .Where(b => b.IsActive && b.Latitude.HasValue && b.Longitude.HasValue)
+                        .Select(b => new LatLongPoint
+                        {
+                            Latitude = b.Latitude!.Value,
+                            Longitude = b.Longitude!.Value
+                        })
+                        .ToList();
+
+                    if (branchLocations?.Count > 0)
+                        obj.Locations = branchLocations;
+                }
+                catch (Exception ex)
+                {
+                    _log?.LogWarning(ex, "Failed to load branch locations for Google Wallet");
+                }
+            }
 
             _log?.LogInformation("Creating GW object with lottery: IsLotteryEnabled={IsLotteryEnabled}, Tickets={Tickets}", tpl.IsLotteryEnabled, lotteryTickets);
             var created = await _svc.Loyaltyobject.Insert(obj).ExecuteAsync(ct);

@@ -69,6 +69,9 @@ namespace Loyalty.DataAccess.Context
         // Lottery
         public DbSet<LotteryTicket> LotteryTickets { get; set; }
         public DbSet<LotteryDraw> LotteryDraws { get; set; }
+
+        // Branch
+        public DbSet<Branch> Branches { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -266,6 +269,44 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(ld => ld.WinningTickets)
                     .HasForeignKey(lt => lt.LotteryDrawId)
                     .IsRequired(false)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            // ==== BRANCH ====
+            modelBuilder.Entity<Branch>(entity =>
+            {
+                entity.ToTable("Branches");
+                entity.HasKey(b => b.Id);
+                entity.Property(b => b.Name).IsRequired().HasMaxLength(200);
+                entity.Property(b => b.Address).HasMaxLength(500);
+                entity.Property(b => b.Phone).HasMaxLength(50);
+                entity.Property(b => b.Email).HasMaxLength(200);
+                entity.Property(b => b.PhotoUrl).HasMaxLength(500);
+                entity.Property(b => b.WorkingHoursJson).HasMaxLength(2000);
+
+                entity.HasIndex(b => new { b.TenantId, b.IsActive });
+
+                entity.HasOne(b => b.Tenant)
+                    .WithMany(t => t.Branches)
+                    .HasForeignKey(b => b.TenantId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ApplicationUser → Branch (nullable FK)
+            modelBuilder.Entity<ApplicationUser>(entity =>
+            {
+                entity.HasOne(u => u.Branch)
+                    .WithMany(b => b.Staff)
+                    .HasForeignKey(u => u.BranchId)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
+
+            // Transaction → Branch (nullable FK)
+            modelBuilder.Entity<Transaction>(entity =>
+            {
+                entity.HasOne(t => t.Branch)
+                    .WithMany(b => b.Transactions)
+                    .HasForeignKey(t => t.BranchId)
                     .OnDelete(DeleteBehavior.SetNull);
             });
 

@@ -6,6 +6,7 @@ using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
+using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 
 namespace Loyalty.Business.Services.Implementations.Main
@@ -14,13 +15,21 @@ namespace Loyalty.Business.Services.Implementations.Main
     {
         private readonly ILotteryRepository _lotteryRepository;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly INotificationService? _notificationService;
+        private readonly ILogger<LotteryService>? _logger;
 
         private const string CodeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-        public LotteryService(ILotteryRepository lotteryRepository, IUnitOfWork unitOfWork)
+        public LotteryService(
+            ILotteryRepository lotteryRepository,
+            IUnitOfWork unitOfWork,
+            INotificationService? notificationService = null,
+            ILogger<LotteryService>? logger = null)
         {
             _lotteryRepository = lotteryRepository;
             _unitOfWork = unitOfWork;
+            _notificationService = notificationService;
+            _logger = logger;
         }
 
         public string GenerateTicketCode()
@@ -128,9 +137,41 @@ namespace Loyalty.Business.Services.Implementations.Main
             _unitOfWork.Repository<LotteryDraw>().Update(draw);
             _unitOfWork.Commit();
 
+            // Notify winners via push notification
+            if (_notificationService != null)
+            {
+                foreach (var ticket in winners)
+                {
+                    try
+                    {
+                        var userId = ticket.LoyaltyCard?.Customer?.applicationUserId;
+                        if (userId.HasValue)
+                        {
+                            await _notificationService.SendToUserAsync(
+                                userId.Value,
+                                "Təbriklər! Çəkilişdə qalib oldunuz!",
+                                $"Siz '{draw.DrawName}' çəkilişində '{draw.PrizeName}' mükafatını qazandınız!",
+                                new Dictionary<string, string>
+                                {
+                                    { "type", "lottery_win" },
+                                    { "drawId", draw.Id.ToString() },
+                                    { "prize", draw.PrizeName ?? "" }
+                                });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Failed to notify lottery winner for ticket {TicketId}", ticket.Id);
+                    }
+                }
+            }
+
             // Reload draw with winners
             var updatedDraw = await _lotteryRepository.GetDrawByIdAsync(drawId);
-            return new ServiceResult(true, MapDrawDto(updatedDraw!));
+            if (updatedDraw == null)
+                return new ServiceResult(true, "Çəkiliş tamamlandı, amma yenidən yüklənə bilmədi.");
+
+            return new ServiceResult(true, MapDrawDto(updatedDraw));
         }
 
         public async Task<ServiceResult> GetWinsByCardAsync(int cardId)
@@ -171,7 +212,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Where(t => t.Status == LotteryTicketStatus.Won)
                 .Select(t => MapTicketDto(t))
                 .ToList() ?? new(),
-            TotalTickets = d.WinningTickets?.Count ?? 0
+            TotalTickets = d.WinningTickets?.Count ?? 0  // WinningTickets = all tickets assigned to this draw (winners + losers)
         };
     }
 }

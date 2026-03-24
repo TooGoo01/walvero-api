@@ -11,6 +11,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
     {
         int? CurrentTenantId { get; }
         int? CurrentProgramId { get; }
+        int? CurrentBranchId { get; }
         string? CurrentUserId { get; }
     }
 }

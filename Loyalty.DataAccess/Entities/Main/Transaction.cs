@@ -28,6 +28,9 @@ namespace Loyalty.DataAccess.Entities.Main
         public DateTimeOffset LocalOccurredAt { get; set; } // local + offset
         public string TimeZoneIdUsed { get; set; } = "UTC"; // tenant's timezone
 
+        public int? BranchId { get; set; }
+        public Branch? Branch { get; set; }
+
         public LoyaltyCard LoyaltyCard { get; set; } = null!;
     }
 }

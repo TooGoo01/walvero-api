@@ -124,6 +124,19 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!string.IsNullOrWhiteSpace(req.AuthenticationToken))
                 root["authenticationToken"] = req.AuthenticationToken;
 
+            // Location-based triggers (branch locations)
+            if (req.Locations?.Count > 0)
+            {
+                root["locations"] = req.Locations
+                    .Select(loc => new Dictionary<string, object>
+                    {
+                        ["latitude"] = loc.Latitude,
+                        ["longitude"] = loc.Longitude,
+                        ["relevantText"] = loc.RelevantText ?? ""
+                    })
+                    .ToArray();
+            }
+
             return root;
         }
 

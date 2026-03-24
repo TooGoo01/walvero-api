@@ -42,5 +42,15 @@ namespace Loyalty.Business.Dtos.Post.Main
         // Optional – PassKit Web Service (push updates üçün)
         public string? WebServiceURL { get; set; }
         public string? AuthenticationToken { get; set; }
+
+        // Location triggers (branch locations)
+        public List<PassLocation>? Locations { get; set; }
+    }
+
+    public class PassLocation
+    {
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
+        public string? RelevantText { get; set; }
     }
 }

@@ -13,7 +13,8 @@ namespace Loyalty.WebAPI.Tenancy
         }
 
         public int? CurrentTenantId => GetIntClaimOrCookie("tenant_id", "TenantId");
-        public int? CurrentProgramId => GetIntClaim("program_id");
+        public int? CurrentProgramId => GetIntHeader("X-Program-Id") ?? GetIntClaim("program_id");
+        public int? CurrentBranchId => GetIntHeader("X-Branch-Id");
         public string? CurrentUserId => GetClaim(ClaimTypes.NameIdentifier);
 
         private ClaimsPrincipal? User =>
@@ -30,6 +31,17 @@ namespace Loyalty.WebAPI.Tenancy
             if (int.TryParse(value, out var id))
                 return id;
 
+            return null;
+        }
+
+        private int? GetIntHeader(string headerName)
+        {
+            var httpContext = _httpContextAccessor.HttpContext;
+            if (httpContext?.Request.Headers.TryGetValue(headerName, out var headerVal) == true &&
+                int.TryParse(headerVal, out var id))
+            {
+                return id;
+            }
             return null;
         }
 

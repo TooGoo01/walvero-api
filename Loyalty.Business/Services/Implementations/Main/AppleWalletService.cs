@@ -23,6 +23,7 @@ public sealed class AppleWalletService : IAppleWalletService
     private readonly IUnitOfWork _uow;
     private readonly IPasskitPushService _passkitPush;
     private readonly IWalletCredentialProvider _credProvider;
+    private readonly IBranchRepository? _branchRepo;
     private readonly ILogger<AppleWalletService> _logger;
 
     public AppleWalletService(
@@ -33,7 +34,8 @@ public sealed class AppleWalletService : IAppleWalletService
         IPasskitPushService passkitPush,
         IWalletCredentialProvider credProvider,
         ILoyaltyCardRepository loyaltyCardRepository,
-        ILogger<AppleWalletService> logger)
+        ILogger<AppleWalletService> logger,
+        IBranchRepository? branchRepo = null)
     {
         _builder = builder;
         _signer = signer;
@@ -43,6 +45,7 @@ public sealed class AppleWalletService : IAppleWalletService
         _credProvider = credProvider;
         _loyaltyCardRepository = loyaltyCardRepository;
         _logger = logger;
+        _branchRepo = branchRepo;
     }
 
     private static readonly ConcurrentDictionary<int, SemaphoreSlim> _passLocks = new();
@@ -247,6 +250,31 @@ public sealed class AppleWalletService : IAppleWalletService
                     ForegroundColor = snapshot.ForegroundColor,
                     LabelColor = snapshot.LabelColor,
                 };
+
+                // Inject branch locations for proximity triggers
+                if (_branchRepo != null)
+                {
+                    try
+                    {
+                        var branches = await _branchRepo.GetByTenantAsync(tenantId, ct);
+                        var branchLocs = branches?
+                            .Where(b => b.IsActive && b.Latitude.HasValue && b.Longitude.HasValue)
+                            .Select(b => new PassLocation
+                            {
+                                Latitude = b.Latitude!.Value,
+                                Longitude = b.Longitude!.Value,
+                                RelevantText = b.Name
+                            })
+                            .ToList();
+
+                        if (branchLocs?.Count > 0)
+                            req.Locations = branchLocs;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to load branch locations for tenant {TenantId}", tenantId);
+                    }
+                }
 
                 await _builder.BuildAsync(req, workDir, ct);
 
