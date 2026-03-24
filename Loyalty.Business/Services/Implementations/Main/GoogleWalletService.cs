@@ -216,14 +216,19 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
             var objectId = ObjectIdForCard(_issuerId, tpl.TenantId, tpl.LoyaltyProgramId, loyaltyCardId);
 
+            bool objectExists = false;
             try
             {
                 var existing = await _svc.Loyaltyobject.Get(objectId).ExecuteAsync(ct);
-                return new ServiceResult(true, existing);
+                objectExists = true;
+
+                // Object exists but balance may be stale - update it via RedeemByCardIdAsync
+                _log?.LogInformation("GW object already exists, updating balance. ObjectId={ObjectId}, currentPoints={CurrentPoints}", objectId, currentPoints);
+                return await RedeemByCardIdAsync(loyaltyCardId, tpl, currentPoints, currentSteps, 0, accountName, ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate);
             }
             catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound)
             {
-                // create
+                // create new
             }
 
             var state = BuildDisplayState(tpl, currentPoints, currentSteps);
