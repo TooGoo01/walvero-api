@@ -391,7 +391,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 LoyaltyPoints = isProgressBased ? null : new LoyaltyPoints
                 {
                     Balance = new LoyaltyPointsBalance { Int__ = currentPoints },
-                    Label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency
+                    Label = "Points"
                 },
                 SecondaryLoyaltyPoints = secondaryLoyaltyPoints,
 
@@ -698,10 +698,11 @@ public sealed class GoogleWalletService : IGoogleWalletService
             var patch = new LoyaltyObject
             {
                 // Only set LoyaltyPoints for non-ProgressBased
+                // FIX: Label must be "Points" to match class definition, otherwise Google API silently ignores PATCH
                 LoyaltyPoints = isProgressBased ? null : new LoyaltyPoints
                 {
                     Balance = new LoyaltyPointsBalance { Int__ = nextPoints },
-                    Label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency
+                    Label = "Points"
                 },
                 SecondaryLoyaltyPoints = secondaryLoyaltyPoints,
                 TextModulesData = textList,
