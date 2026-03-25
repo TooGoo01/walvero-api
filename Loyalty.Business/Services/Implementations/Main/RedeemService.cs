@@ -794,7 +794,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new Transaction
             {
                 LoyaltyCardId = card.Id,
-                Points = card.CurrentPoints,
+                Points = Math.Abs(delta),
                 BalanceAfter = card.CurrentPoints,
                 ReferenceNumber = card.BarcodeValue,
                 Type = type,
@@ -889,7 +889,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Type = TransactionType.Redeemed,
                     OrderId = idemKey,
                     ReferenceNumber = dbCard.BarcodeValue,
-                    Points = dbCard.CurrentPoints, // Points remain unchanged
+                    Points = spendCount,
                     BalanceAfter = dbCard.CompletedCycles,
                     Description = $"{spendCount} {freeRewardLabel} xərcləndi. Balans: {before} -> {dbCard.CompletedCycles}"
                 };

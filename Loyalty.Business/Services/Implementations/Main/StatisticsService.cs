@@ -25,18 +25,33 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var transactionList = transactions.ToList();
 
+            // Qazanılan xallar = Earned + Bonus tranzaksiyalarının delta cəmi
             var totalPointsEarned = transactionList
                 .Where(t => t.Type == TransactionType.Earned || t.Type == TransactionType.Bonus)
                 .Sum(t => t.Points);
 
+            // Xərclənən xallar = Redeemed tranzaksiyalarının delta cəmi
+            // ProgressBased: Points = spendCount (pulsuz item sayı)
+            // TierBased/PointsBased: Points = xərclənən xal sayı
             var totalPointsSpent = transactionList
                 .Where(t => t.Type == TransactionType.Redeemed)
                 .Sum(t => t.Points);
 
+            // Unikal müştəri sayı - LoyaltyCard.CustomerId üzrə distinct
             var uniqueCustomers = transactionList
-                .Select(t => t.LoyaltyCardId)
+                .Where(t => t.LoyaltyCard != null)
+                .Select(t => t.LoyaltyCard!.CustomerId)
                 .Distinct()
                 .Count();
+
+            // CustomerId-si olmayan halda fallback: LoyaltyCardId ilə say
+            if (uniqueCustomers == 0 && transactionList.Count > 0)
+            {
+                uniqueCustomers = transactionList
+                    .Select(t => t.LoyaltyCardId)
+                    .Distinct()
+                    .Count();
+            }
 
             var dailyStats = transactionList
                 .GroupBy(t => DateOnly.FromDateTime(t.LocalOccurredAt.DateTime))
