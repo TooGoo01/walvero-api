@@ -8,6 +8,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult<DashboardStatisticsDto>> GetDashboardAsync(
             int tenantId,
             DateOnly startDate,
-            DateOnly endDate);
+            DateOnly endDate,
+            int? programId = null);
     }
 }

@@ -4,6 +4,8 @@ using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
+using Loyalty.DataAccess.Context;
+using Microsoft.EntityFrameworkCore;
 using LoyaltyWalletApp.WEBUI.Tenancy;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -27,6 +29,7 @@ namespace Loyalty.WebAPI.Controllers
         private readonly ICustomerEnrollmentService _customerSvc;
         private readonly IPasskitPushService _passkitPushService;
         private readonly ICustomerRepository _customerRepository;
+        private readonly LoyaltyWalletDbContext _dbContext;
         private readonly ILogger<RedeemController> _logger;
 
         public RedeemController(
@@ -37,7 +40,8 @@ namespace Loyalty.WebAPI.Controllers
             ILoyaltyCardService cardSvc,
             ILogger<RedeemController> logger,
             IPasskitPushService passkitPushService,
-            ICustomerRepository customerRepository)
+            ICustomerRepository customerRepository,
+            LoyaltyWalletDbContext dbContext)
         {
             _tenantProvider = tenantProvider;
             _redeemService = redeemService;
@@ -47,6 +51,7 @@ namespace Loyalty.WebAPI.Controllers
             _logger = logger;
             _passkitPushService = passkitPushService;
             _customerRepository = customerRepository;
+            _dbContext = dbContext;
         }
 
         // === UI CONFIG ===
@@ -299,6 +304,13 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 freeRewardLabel = string.IsNullOrWhiteSpace(tpl.FreeRewardLabel) ? "bonus" : tpl.FreeRewardLabel;
             }
 
+            // Earn/Spend əməliyyat sayları
+            var txList = await _dbContext.Set<DataAccess.Entities.Main.Transaction>()
+                .Where(t => t.LoyaltyCardId == card.Id)
+                .ToListAsync(ct);
+            var earnCount = txList.Count(t => t.Type == DataAccess.Entities.Main.TransactionType.Earned || t.Type == DataAccess.Entities.Main.TransactionType.Bonus);
+            var spendCount2 = txList.Count(t => t.Type == DataAccess.Entities.Main.TransactionType.Redeemed);
+
             return Ok(new
             {
                 success = true,
@@ -313,7 +325,9 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 tierName,
                 tierPercent,
                 tierPercentCash,
-                tierIconUrl
+                tierIconUrl,
+                earnCount,
+                spendCount = spendCount2
             });
         }
 

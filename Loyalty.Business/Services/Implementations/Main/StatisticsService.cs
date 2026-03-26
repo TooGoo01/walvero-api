@@ -18,40 +18,53 @@ namespace Loyalty.Business.Services.Implementations.Main
         public async Task<ServiceResult<DashboardStatisticsDto>> GetDashboardAsync(
             int tenantId,
             DateOnly startDate,
-            DateOnly endDate)
+            DateOnly endDate,
+            int? programId = null)
         {
             var transactions = await _transactionRepository.GetByTenantIdDateAsync(
                 tenantId, startDate, endDate);
 
             var transactionList = transactions.ToList();
 
-            // Qazanılan xallar = Earned + Bonus tranzaksiyalarının delta cəmi
+            // ProgramId filteri
+            if (programId.HasValue && programId.Value > 0)
+            {
+                transactionList = transactionList
+                    .Where(t => t.LoyaltyCard != null && t.LoyaltyCard.LoyaltyProgramId == programId.Value)
+                    .ToList();
+            }
+
+            // Qazanma əməliyyat SAYI (delta cəmi deyil!)
             var totalPointsEarned = transactionList
                 .Where(t => t.Type == TransactionType.Earned || t.Type == TransactionType.Bonus)
-                .Sum(t => t.Points);
+                .Sum(t => Math.Abs(t.Points));
 
-            // Xərclənən xallar = Redeemed tranzaksiyalarının delta cəmi
-            // ProgressBased: Points = spendCount (pulsuz item sayı)
-            // TierBased/PointsBased: Points = xərclənən xal sayı
+            // Xərcləmə əməliyyat miqdarı
             var totalPointsSpent = transactionList
                 .Where(t => t.Type == TransactionType.Redeemed)
-                .Sum(t => t.Points);
+                .Sum(t => Math.Abs(t.Points));
 
-            // Unikal müştəri sayı - LoyaltyCard.CustomerId üzrə distinct
-            var uniqueCustomers = transactionList
-                .Where(t => t.LoyaltyCard != null)
+            // Unikal müştəri sayı - LoyaltyCard.CustomerId + fallback
+            var customerIds = transactionList
+                .Where(t => t.LoyaltyCard?.CustomerId > 0)
                 .Select(t => t.LoyaltyCard!.CustomerId)
                 .Distinct()
-                .Count();
+                .ToList();
 
-            // CustomerId-si olmayan halda fallback: LoyaltyCardId ilə say
-            if (uniqueCustomers == 0 && transactionList.Count > 0)
+            // Customer navigation null olarsa, LoyaltyCard.Customer-dən al
+            if (customerIds.Count == 0 && transactionList.Count > 0)
             {
-                uniqueCustomers = transactionList
-                    .Select(t => t.LoyaltyCardId)
+                customerIds = transactionList
+                    .Where(t => t.LoyaltyCard?.Customer != null)
+                    .Select(t => t.LoyaltyCard!.Customer!.Id)
                     .Distinct()
-                    .Count();
+                    .ToList();
             }
+
+            // Hələ də 0-dırsa, LoyaltyCardId ilə distinct (hər kart = fərqli müştəri)
+            var uniqueCustomers = customerIds.Count > 0
+                ? customerIds.Count
+                : transactionList.Select(t => t.LoyaltyCardId).Distinct().Count();
 
             var dailyStats = transactionList
                 .GroupBy(t => DateOnly.FromDateTime(t.LocalOccurredAt.DateTime))
@@ -61,10 +74,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     TransactionCount = g.Count(),
                     PointsEarned = g
                         .Where(t => t.Type == TransactionType.Earned || t.Type == TransactionType.Bonus)
-                        .Sum(t => t.Points),
+                        .Sum(t => Math.Abs(t.Points)),
                     PointsSpent = g
                         .Where(t => t.Type == TransactionType.Redeemed)
-                        .Sum(t => t.Points),
+                        .Sum(t => Math.Abs(t.Points)),
                 })
                 .OrderBy(d => d.Date)
                 .ToList();

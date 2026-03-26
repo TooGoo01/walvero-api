@@ -32,16 +32,19 @@ namespace Loyalty.WebAPI.Controllers
             var today = DateOnly.FromDateTime(DateTime.Today);
 
             var effectiveEndDate = endDate ?? today;
-            var effectiveStartDate = startDate ?? effectiveEndDate.AddDays(-30);
+            var effectiveStartDate = startDate ?? effectiveEndDate.AddDays(-365);
 
             var tenantId = _tenantProvider.CurrentTenantId;
             if (!tenantId.HasValue)
                 return BadRequest(new ServiceResult(false, "Tenant tapılmadı."));
 
+            var programId = _tenantProvider.CurrentProgramId;
+
             var result = await _statisticsService.GetDashboardAsync(
                 tenantId.Value,
                 effectiveStartDate,
-                effectiveEndDate);
+                effectiveEndDate,
+                programId);
 
             return Ok(result);
         }
