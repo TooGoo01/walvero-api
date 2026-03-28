@@ -18,14 +18,19 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? FacebookUrl { get; set; } = string.Empty;
         public string? WhatsAppUrl { get; set; } = string.Empty;
         public string? TelegramUrl { get; set; } = string.Empty;
+        public string? LinkedInUrl { get; set; }
+        public string? WazeLocationUrl { get; set; }
         public string? MenuUrl { get; set; } = string.Empty;
         public bool ShowOnHome { get; set; } = false;
+        public bool IsHidden { get; set; } = false;
+        public bool IsHasMenu { get; set; } = false;
+        public bool AcceptAnonymous { get; set; } = false;
+        public bool RequireConfirmation { get; set; } = true;
+        public int ConfirmationTtlMinutes { get; set; } = 10;
+        public int? categoryId { get; set; }
         public int? tenantLocationId { get; set; }
         public int? countryId { get; set; }
-
-        [Required(ErrorMessage = "Şəhər seçimi məcburidir")]
         public int? cityId { get; set; }
-
         public int? timeZoneId { get; set; }
     }
 }

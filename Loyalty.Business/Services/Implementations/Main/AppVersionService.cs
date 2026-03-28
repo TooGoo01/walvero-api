@@ -79,9 +79,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(false);
         }
 
-        public Task<ServiceResult> Delete(int id)
+        public async Task<ServiceResult> Delete(int id)
         {
-            throw new NotImplementedException();
+            var entity = await _appVersionRepository.GetById(id);
+            if (entity != null)
+            {
+                _unitOfWork.Repository<AppVersionConfig>().Delete(entity);
+                _unitOfWork.Commit();
+                return new ServiceResult(true);
+            }
+            return new ServiceResult(false);
         }
 
         public async Task<ServiceResult> Get(int id)
@@ -163,10 +170,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     category.Platform = dto.Platform;
                 }
+                category.IsMandatory = dto.IsMandatory;
 
-               
-
-               
                 _unitOfWork.Repository<AppVersionConfig>().Update(category);
                 _unitOfWork.Commit();
                 var response = _mapper.Map<GetAppVersionDto>(category);

@@ -13,6 +13,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> CreateDrawAsync(CreateLotteryDrawDto dto, int tenantId);
         Task<ServiceResult> ExecuteDrawAsync(int drawId);
         Task<ServiceResult> GetWinsByCardAsync(int cardId);
+        Task<ServiceResult> DeletePrizeAsync(int prizeId);
+        Task<ServiceResult> DeleteDrawAsync(int drawId);
         string GenerateTicketCode();
     }
 }

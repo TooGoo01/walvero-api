@@ -21,6 +21,10 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? ImageUrl { get; set; }
         public IFormFile? ImageFile { get; set; }
         
+        // Video - file or URL
+        public string? VideoUrl { get; set; }
+        public IFormFile? VideoFile { get; set; }
+
         public int? TenantId { get; set; }
     }
 }

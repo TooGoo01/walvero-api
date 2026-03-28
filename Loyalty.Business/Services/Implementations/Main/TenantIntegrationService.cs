@@ -133,9 +133,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (ti == null) return ServiceResult<bool>.Fail("Tapılmadı.");
             if (tenantId.HasValue && ti.TenantId != tenantId.Value)
                 return ServiceResult<bool>.Fail("Yetkisiz.");
-            ti.IsActive = false;
-            ti.UpdatedAt = DateTime.UtcNow;
-            _repo.Update(ti);
+            _repo.Delete(ti);
             await _uow.CommitAsync(ct);
             return ServiceResult<bool>.Ok(true);
         }

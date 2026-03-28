@@ -17,8 +17,9 @@ namespace Loyalty.Business.Services.Implementations.Storage
         public async Task DeleteAsync(string containerName, string fileName)
         {
             _blobContainerClient = _blobServiceClient.GetBlobContainerClient(containerName);
+            if (!await _blobContainerClient.ExistsAsync()) return;
             BlobClient blobClient = _blobContainerClient.GetBlobClient(fileName);
-            await blobClient.DeleteAsync();
+            await blobClient.DeleteIfExistsAsync();
         }
 
         public List<string> GetFiles(string containerName)

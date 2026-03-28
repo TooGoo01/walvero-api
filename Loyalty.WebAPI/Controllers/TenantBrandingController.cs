@@ -109,5 +109,19 @@ namespace Loyalty.WebAPI.Controllers
             return BadRequest(result);
         }
 
+        [HttpDelete]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var result = await _tenantBrandingService.Delete(id);
+            if (result.Success)
+                return Ok(result);
+            return BadRequest(result);
+        }
+
     }
 }

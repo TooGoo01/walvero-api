@@ -47,12 +47,6 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> Add(AddTenantDto Dto)
         {
-            // Validation: Şəhər seçimi məcburidir
-            if (!Dto.cityId.HasValue || Dto.cityId.Value <= 0)
-            {
-                return new ServiceResult(false, "Şəhər seçimi məcburidir");
-            }
-
             var request = _mapper.Map<Tenant>(Dto);
             request.IsActive = true;
             await _unitOfWork.Repository<Tenant>().AddAsync(request);
@@ -236,58 +230,40 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> Update(UpdateTenantDto dto)
         {
-            // Validation: Şəhər seçimi məcburidir
-            if (!dto.cityId.HasValue || dto.cityId.Value <= 0)
-            {
-                return new ServiceResult(false, "Şəhər seçimi məcburidir");
-            }
-
             var category = await _tenantRepository.GetById(dto.Id);
             if (category != null)
             {
                 if (dto.CompanyName != null)
-                {
                     category.CompanyName = dto.CompanyName;
-                }
                 if (dto.Subdomain != null)
-                {
                     category.Subdomain = dto.Subdomain;
-                }
                 if (dto.ContactEmail != null)
-                {
                     category.ContactEmail = dto.ContactEmail;
-                }
                 if (dto.ContactPhone != null)
-                {
                     category.ContactPhone = dto.ContactPhone;
-                }
                 if (dto.LocationUrl != null)
-                {
                     category.LocationUrl = dto.LocationUrl;
-                }
                 if (dto.InstagramUrl != null)
-                {
                     category.InstagramUrl = dto.InstagramUrl;
-                }
                 if (dto.FacebookUrl != null)
-                {
                     category.FacebookUrl = dto.FacebookUrl;
-                }
                 if (dto.WhatsAppUrl != null)
-                {
                     category.WhatsAppUrl = dto.WhatsAppUrl;
-                }
                 if (dto.TelegramUrl != null)
-                {
                     category.TeleqramUrl = dto.TelegramUrl;
-                }
+                if (dto.LinkedInUrl != null)
+                    category.LinkedInUrl = dto.LinkedInUrl;
+                if (dto.WazeLocationUrl != null)
+                    category.WazeLocationUrl = dto.WazeLocationUrl;
+                if (dto.MenuUrl != null)
+                    category.MenuUrl = dto.MenuUrl;
                 category.ShowOnHome = dto.ShowOnHome;
+                category.IsHidden = dto.IsHidden;
+                category.IsHasMenu = dto.IsHasMenu;
+                category.AcceptAnonymus = dto.AcceptAnonymous;
                 category.categoryId = dto.categoryId;
-                category.RequireConfirmation = dto.RequireConfirmation ? true : false;
-                if (dto.ConfirmationTtlMinutes != null)
-                {
-                    category.ConfirmationTtlMinutes = dto.ConfirmationTtlMinutes;
-                }
+                category.RequireConfirmation = dto.RequireConfirmation;
+                category.ConfirmationTtlMinutes = dto.ConfirmationTtlMinutes;
 
                 // Handle TenantLocation
                 if (dto.countryId.HasValue || dto.cityId.HasValue || dto.timeZoneId.HasValue)
@@ -319,9 +295,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                         _unitOfWork.Repository<TenantLocation>().Update(tenantLocation);
                     }
                 }
-                var users = await _dbContext.Users.ToListAsync();
-                var selectedUser = users.Where(d => dto.admins.Contains(d.Id)).ToList();
-                category.Admins = selectedUser;
+                if (dto.admins != null && dto.admins.Any())
+                {
+                    var selectedUser = await _dbContext.Users
+                        .Where(d => dto.admins.Contains(d.Id))
+                        .ToListAsync();
+                    category.Admins = selectedUser;
+                }
                 //if (!categoryDto.EnName.IsNullOrEmpty())
                 //{
                 //    category.EnName = categoryDto.EnName;

@@ -32,6 +32,16 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 // === Controllers & CORS & SignalR ===
 builder.Services.AddControllers();
 
+// === Request body size limit (250MB for video uploads) ===
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 250_000_000; // 250 MB
+});
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 250_000_000; // 250 MB
+});
+
 // === Response Caching ===
 builder.Services.AddResponseCaching();
 

@@ -17,13 +17,15 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IMapper _mapper;
         private readonly IOfferRepository _offerRepository;
         private readonly IStorage _storage;
+        private readonly IMediaProcessor _mediaProcessor;
 
-        public OfferService(IOfferRepository offerRepository, IMapper mapper, IUnitOfWork unitOfWork, IStorage storage)
+        public OfferService(IOfferRepository offerRepository, IMapper mapper, IUnitOfWork unitOfWork, IStorage storage, IMediaProcessor mediaProcessor)
         {
             _offerRepository = offerRepository;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _storage = storage;
+            _mediaProcessor = mediaProcessor;
         }
 
         public async Task<ServiceResult> AddOffer(AddOfferDto offer)
@@ -32,7 +34,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             request.IsActive = true;
 
             // Handle file upload
-            var container = $"offers/tenant-{offer.TenantId ?? 0}";
+            var container = $"offers-tenant-{offer.TenantId ?? 0}";
             request.PhotoUrl = await UploadOrUseUrl(container, "photo", offer.PhotoFile, offer.PhotoUrl, null);
 
             await _unitOfWork.Repository<Offer>().AddAsync(request);
@@ -145,7 +147,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
 
                 // Handle file upload
-                var container = $"offers/tenant-{offerDto.TenantId ?? offer.TenantId ?? 0}";
+                var container = $"offers-tenant-{offerDto.TenantId ?? offer.TenantId ?? 0}";
                 offer.PhotoUrl = await UploadOrUseUrl(container, "photo", offerDto.PhotoFile, offerDto.PhotoUrl, offer.PhotoUrl);
 
                 _unitOfWork.Repository<Offer>().Update(offer);
@@ -160,6 +162,10 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             if (file is not null && file.Length > 0)
             {
+                // Convert image to WebP
+                if (_mediaProcessor.IsImage(file))
+                    file = await _mediaProcessor.ConvertImageToWebpAsync(file);
+
                 // Delete old file if exists
                 if (!string.IsNullOrWhiteSpace(oldValue))
                 {

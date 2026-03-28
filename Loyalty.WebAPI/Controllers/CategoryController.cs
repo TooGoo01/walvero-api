@@ -92,7 +92,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> Delete(int Id)
         {
-            var result = await _categoryService.DeactiveCategory(Id);
+            var result = await _categoryService.DeleteCategory(Id);
             return Ok(result);
         }
     }

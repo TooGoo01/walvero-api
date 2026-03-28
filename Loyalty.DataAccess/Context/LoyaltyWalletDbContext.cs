@@ -69,6 +69,7 @@ namespace Loyalty.DataAccess.Context
         // Lottery
         public DbSet<LotteryTicket> LotteryTickets { get; set; }
         public DbSet<LotteryDraw> LotteryDraws { get; set; }
+        public DbSet<LotteryPrize> LotteryPrizes { get; set; }
 
         // Branch
         public DbSet<Branch> Branches { get; set; }
@@ -323,6 +324,19 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(lp => lp.LotteryDraws)
                     .HasForeignKey(ld => ld.LoyaltyProgramId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<LotteryPrize>(entity =>
+            {
+                entity.ToTable("LotteryPrizes");
+                entity.HasKey(lp => lp.Id);
+                entity.Property(lp => lp.PrizeName).IsRequired().HasMaxLength(200);
+                entity.Property(lp => lp.PrizeDescription).HasMaxLength(1000);
+
+                entity.HasOne(lp => lp.LotteryDraw)
+                    .WithMany(ld => ld.Prizes)
+                    .HasForeignKey(lp => lp.LotteryDrawId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             modelBuilder.Entity<WalletPass>(entity =>

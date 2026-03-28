@@ -19,10 +19,16 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? FacebookUrl { get; set; } = string.Empty;
         public string? WhatsAppUrl { get; set; } = string.Empty;
         public string? TelegramUrl { get; set; } = string.Empty;
+        public string? LinkedInUrl { get; set; }
+        public string? WazeLocationUrl { get; set; }
         public string? MenuUrl { get; set; } = string.Empty;
         public bool ShowOnHome { get; set; } = false;
-        public bool RequireConfirmation { get; init; } = true; // tenant setting
+        public bool IsHidden { get; set; } = false;
+        public bool IsHasMenu { get; set; } = false;
+        public bool AcceptAnonymous { get; set; } = false;
+        public bool RequireConfirmation { get; set; } = true;
         public int ConfirmationTtlMinutes { get; set; } = 10;
+        public DateTime? CreatedAt { get; set; }
         public List<ApplicationUserDto> Admins { get; set; }
         public List<GetLoyaltyProgramDto> LoyaltyPrograms { get; set; }
         public int? categoryId { get; set; }

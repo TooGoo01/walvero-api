@@ -18,6 +18,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public LoyaltyProgramType ProgramType { get; set; } = LoyaltyProgramType.ProgressBased;
         public int MinPointsToRedeem { get; set; } = 0;
         public int? PointsExpiryDays { get; set; }
+        public bool IsActive { get; set; } = true;
 
         // Lottery
         public bool IsLotteryEnabled { get; set; } = false;

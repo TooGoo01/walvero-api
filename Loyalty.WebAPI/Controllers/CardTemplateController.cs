@@ -64,7 +64,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
-        public async Task<IActionResult> Update(AddCardTemplateDto updateTenantDto, int Id)
+        public async Task<IActionResult> Update([FromForm] AddCardTemplateDto updateTenantDto, int Id)
         {
             if (!ModelState.IsValid)
             {
@@ -80,6 +80,17 @@ namespace Loyalty.WebAPI.Controllers
                 return Ok(result);
 
             //ModelState.AddModelError("", "Butun hisselerin tam doldurulduqundan emin olun!");
+            return BadRequest(result);
+        }
+
+        [HttpDelete]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> Delete(int Id)
+        {
+            var result = await _cardTemplateService.Delete(Id);
+            if (result.Success)
+                return Ok(result);
             return BadRequest(result);
         }
     }

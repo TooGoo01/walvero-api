@@ -103,6 +103,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<ICustomerSyncService, CustomerSyncService>();
             services.AddScoped<ILotteryService, LotteryService>();
             services.AddScoped<IBranchService, BranchService>();
+            services.AddSingleton<IMediaProcessor, MediaProcessor>();
 
             services.AddSignalR();
             return services;

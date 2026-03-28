@@ -19,5 +19,6 @@ namespace Loyalty.DataAccess.Entities.Main
         // Navigation Properties
         public LoyaltyProgram LoyaltyProgram { get; set; } = null!;
         public ICollection<LotteryTicket> WinningTickets { get; set; } = new List<LotteryTicket>();
+        public ICollection<LotteryPrize> Prizes { get; set; } = new List<LotteryPrize>();
     }
 }

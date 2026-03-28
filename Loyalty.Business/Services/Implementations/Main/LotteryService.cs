@@ -83,6 +83,23 @@ namespace Loyalty.Business.Services.Implementations.Main
             await _unitOfWork.Repository<LotteryDraw>().AddAsync(draw);
             _unitOfWork.Commit();
 
+            // Add per-position prizes if provided
+            if (dto.Prizes?.Any() == true)
+            {
+                foreach (var p in dto.Prizes)
+                {
+                    var prize = new LotteryPrize
+                    {
+                        LotteryDrawId = draw.Id,
+                        Position = p.Position,
+                        PrizeName = p.PrizeName,
+                        PrizeDescription = p.PrizeDescription
+                    };
+                    await _unitOfWork.Repository<LotteryPrize>().AddAsync(prize);
+                }
+                _unitOfWork.Commit();
+            }
+
             return new ServiceResult(true, MapDrawDto(draw));
         }
 
@@ -181,6 +198,38 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, dtos);
         }
 
+        public async Task<ServiceResult> DeletePrizeAsync(int prizeId)
+        {
+            var prize = await _unitOfWork.Repository<LotteryPrize>().GetByIdAsync(prizeId);
+            if (prize == null)
+                return new ServiceResult(false, "Prize not found.");
+
+            _unitOfWork.Repository<LotteryPrize>().Delete(prize);
+            _unitOfWork.Commit();
+
+            return new ServiceResult(true, "Prize deleted.");
+        }
+
+        public async Task<ServiceResult> DeleteDrawAsync(int drawId)
+        {
+            var draw = await _lotteryRepository.GetDrawByIdAsync(drawId);
+            if (draw == null)
+                return new ServiceResult(false, "Draw not found.");
+
+            if (draw.Status != LotteryDrawStatus.Pending)
+                return new ServiceResult(false, "Only pending draws can be deleted.");
+
+            // Delete associated prizes (cascade should handle this, but be explicit)
+            var prizes = draw.Prizes?.ToList() ?? new List<LotteryPrize>();
+            foreach (var prize in prizes)
+                _unitOfWork.Repository<LotteryPrize>().Delete(prize);
+
+            _unitOfWork.Repository<LotteryDraw>().Delete(draw);
+            _unitOfWork.Commit();
+
+            return new ServiceResult(true, "Draw deleted.");
+        }
+
         private static GetLotteryTicketDto MapTicketDto(LotteryTicket t) => new()
         {
             Id = t.Id,
@@ -212,7 +261,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Where(t => t.Status == LotteryTicketStatus.Won)
                 .Select(t => MapTicketDto(t))
                 .ToList() ?? new(),
-            TotalTickets = d.WinningTickets?.Count ?? 0  // WinningTickets = all tickets assigned to this draw (winners + losers)
+            Prizes = d.Prizes?
+                .OrderBy(p => p.Position)
+                .Select(p => new GetLotteryPrizeDto
+                {
+                    Id = p.Id,
+                    Position = p.Position,
+                    PrizeName = p.PrizeName,
+                    PrizeDescription = p.PrizeDescription
+                }).ToList() ?? new(),
+            TotalTickets = d.WinningTickets?.Count ?? 0
         };
     }
 }

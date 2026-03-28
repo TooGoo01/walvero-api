@@ -125,31 +125,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             var category = await _categoryRepository.GetCategory(id);
             if (category != null)
             {
-                //if (!categoryDto.AzName.IsNullOrEmpty())
-                //{
-                //    category.AzName = categoryDto.AzName;
-                //}
-                //if (!categoryDto.EnName.IsNullOrEmpty())
-                //{
-                //    category.EnName = categoryDto.EnName;
-                //}
-                //if (!categoryDto.RuName.IsNullOrEmpty())
-                //{
-                //    category.RuName = categoryDto.RuName;
-                //}
-
-                //if (!categoryDto.AzDescription.IsNullOrEmpty())
-                //{
-                //    category.AzDescription = categoryDto.AzDescription;
-                //}
-                //if (!categoryDto.EnDescription.IsNullOrEmpty())
-                //{
-                //    category.EnDescription = categoryDto.EnDescription;
-                //}
-                //if (!categoryDto.RuDescription.IsNullOrEmpty())
-                //{
-                //    category.RuDescription = categoryDto.RuDescription;
-                //}
+                if (!string.IsNullOrEmpty(categoryDto.AzName))
+                    category.AzName = categoryDto.AzName;
+                if (!string.IsNullOrEmpty(categoryDto.EnName))
+                    category.EnName = categoryDto.EnName;
+                if (!string.IsNullOrEmpty(categoryDto.RuName))
+                    category.RuName = categoryDto.RuName;
 
                 _unitOfWork.Repository<Category>().Update(category);
                 _unitOfWork.Commit();

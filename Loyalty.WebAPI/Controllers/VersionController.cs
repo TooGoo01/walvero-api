@@ -60,11 +60,9 @@ namespace Loyalty.WebAPI.Controllers
             var result = await _appVersion.Add(addSliderDto);
 
             if (result.Success)
-                return Ok(result.Success);
+                return Ok(result);
 
-            //ModelState.AddModelError("", "Butun hisselerin tam doldurulduqundan emin olun!");
-            return BadRequest(result.Success);
-            //ModelState.AddModelError("", "Butun hisselerin tam doldurulduqundan emin olun!");
+            return BadRequest(result);
         }
         [HttpPost]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
@@ -99,7 +97,7 @@ namespace Loyalty.WebAPI.Controllers
             var result = await _appVersion.Delete(Id);
             return Ok(result);
         }
-        [HttpDelete]
+        [HttpPost]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
@@ -110,7 +108,7 @@ namespace Loyalty.WebAPI.Controllers
             var result = await _appVersion.Active(Id);
             return Ok(result);
         }
-        [HttpDelete]
+        [HttpPost]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]

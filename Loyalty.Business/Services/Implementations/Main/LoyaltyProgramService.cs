@@ -80,6 +80,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 existingProgram.ProgramType = dto.ProgramType;
                 existingProgram.MinPointsToRedeem = dto.MinPointsToRedeem;
                 existingProgram.PointsExpiryDays = dto.PointsExpiryDays;
+                existingProgram.IsActive = dto.IsActive;
                 existingProgram.IsLotteryEnabled = dto.IsLotteryEnabled;
                 existingProgram.LotteryPurchaseThreshold = dto.LotteryPurchaseThreshold;
                 existingProgram.LotteryAmountThreshold = dto.LotteryAmountThreshold;
@@ -124,6 +125,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ProgramType = dto.ProgramType,
                     MinPointsToRedeem = dto.MinPointsToRedeem,
                     PointsExpiryDays = dto.PointsExpiryDays,
+                    IsActive = dto.IsActive,
                     IsLotteryEnabled = dto.IsLotteryEnabled,
                     LotteryPurchaseThreshold = dto.LotteryPurchaseThreshold,
                     LotteryAmountThreshold = dto.LotteryAmountThreshold
@@ -192,9 +194,17 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
             return code;
         }
-        public Task<ServiceResult> Delete(int id)
+        public async Task<ServiceResult> Delete(int id)
         {
-            throw new NotImplementedException();
+            var entity = await _unitOfWork.Repository<LoyaltyProgram>().GetByIdAsync(id);
+            if (entity == null)
+                return new ServiceResult(false, "Loyalty program not found.");
+
+            entity.IsActive = false;
+            _unitOfWork.Repository<LoyaltyProgram>().Update(entity);
+            _unitOfWork.Commit();
+
+            return new ServiceResult(true, "Loyalty program deleted successfully.");
         }
 
         public async Task<ServiceResult> Get(int id)

@@ -33,7 +33,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> List()
         {
-            var result = await _loyaltyProgramService.GetActive();
+            var result = await _loyaltyProgramService.GetAll();
             return Ok(result);
         }
         [HttpPost]
@@ -82,6 +82,20 @@ namespace Loyalty.WebAPI.Controllers
                 return Ok(result);
 
             //ModelState.AddModelError("", "Butun hisselerin tam doldurulduqundan emin olun!");
+            return BadRequest(result);
+        }
+
+        [HttpDelete]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var result = await _loyaltyProgramService.Delete(id);
+            if (result.Success)
+                return Ok(result);
             return BadRequest(result);
         }
 

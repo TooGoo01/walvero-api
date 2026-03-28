@@ -96,5 +96,25 @@ namespace Loyalty.WebAPI.Controllers
                 return BadRequest(new { message = result.Message });
             return Ok(result.Data);
         }
+
+        [HttpDelete]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> DeleteDraw([FromQuery] int drawId)
+        {
+            var result = await _lotteryService.DeleteDrawAsync(drawId);
+            if (!result.Success)
+                return BadRequest(new { message = result.Message });
+            return Ok(result.Data);
+        }
+
+        [HttpDelete]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> DeletePrize([FromQuery] int prizeId)
+        {
+            var result = await _lotteryService.DeletePrizeAsync(prizeId);
+            if (!result.Success)
+                return BadRequest(new { message = result.Message });
+            return Ok(result.Data);
+        }
     }
 }

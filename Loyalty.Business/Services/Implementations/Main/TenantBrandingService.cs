@@ -24,14 +24,16 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IMapper _mapper;
         private readonly ITenantBrandingRepository _repo;
         private readonly IStorage _storage;
+        private readonly IMediaProcessor _mediaProcessor;
 
 
-        public TenantBrandingService(ITenantBrandingRepository repo, IMapper mapper, IUnitOfWork unitOfWork, IStorage storage)
+        public TenantBrandingService(ITenantBrandingRepository repo, IMapper mapper, IUnitOfWork unitOfWork, IStorage storage, IMediaProcessor mediaProcessor)
         {
             _repo = repo;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _storage = storage;
+            _mediaProcessor = mediaProcessor;
         }
 
 
@@ -51,11 +53,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             var branding = await _repo.GetByTenantIdAsync(dto.TenantId, ct) ?? new TenantBranding { TenantId = dto.TenantId };
 
             // Upload üçün konteyner yolu (nisbi): uploads/tenant-{id}/branding
-            var container = $"tenant-{dto.TenantId}/branding";
+            var container = $"tenant-{dto.TenantId}-branding";
 
-            // 3) LOGO
+            // 3) LOGO (convert to WebP)
             if (dto.LogoFile is not null && dto.LogoFile.Length > 0)
             {
+                if (_mediaProcessor.IsImage(dto.LogoFile))
+                    dto.LogoFile = await _mediaProcessor.ConvertImageToWebpAsync(dto.LogoFile);
+
                 if (!string.IsNullOrWhiteSpace(branding.LogoUrl))
                 {
                     var oldLogoName = GetFileNameSafe(branding.LogoUrl);
@@ -138,9 +143,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             return pathOrUrl.TrimStart('/'); // "uploads/..." formatında qalsın
         }
 
-        public Task<ServiceResult> Delete(int id)
+        public async Task<ServiceResult> Delete(int id)
         {
-            throw new NotImplementedException();
+            var entity = await _unitOfWork.Repository<TenantBranding>().GetByIdAsync(id);
+            if (entity == null)
+                return new ServiceResult(false, "Tenant branding not found.");
+
+            _unitOfWork.Repository<TenantBranding>().Delete(entity);
+            _unitOfWork.Commit();
+
+            return new ServiceResult(true, "Tenant branding deleted successfully.");
         }
 
         public async Task<ServiceResult> Get(int id)

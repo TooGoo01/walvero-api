@@ -108,8 +108,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (tenantId.HasValue && program?.TenantId != tenantId.Value)
                 return ServiceResult<bool>.Fail("Yetkisiz.");
 
-            reward.IsActive = false;
-            _repo.Update(reward);
+            _repo.Delete(reward);
             await _uow.CommitAsync(ct);
             return ServiceResult<bool>.Ok(true);
         }

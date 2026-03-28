@@ -16,6 +16,15 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int TenantId { get; set; }
         public DateTime CreatedAt { get; set; }
         public List<GetLotteryTicketDto> Winners { get; set; } = new();
+        public List<GetLotteryPrizeDto> Prizes { get; set; } = new();
         public int TotalTickets { get; set; }
+    }
+
+    public class GetLotteryPrizeDto
+    {
+        public int Id { get; set; }
+        public int Position { get; set; }
+        public string PrizeName { get; set; } = string.Empty;
+        public string? PrizeDescription { get; set; }
     }
 }

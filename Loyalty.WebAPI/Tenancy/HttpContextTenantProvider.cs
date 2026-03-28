@@ -12,7 +12,7 @@ namespace Loyalty.WebAPI.Tenancy
             _httpContextAccessor = httpContextAccessor;
         }
 
-        public int? CurrentTenantId => GetIntClaimOrCookie("tenant_id", "TenantId");
+        public int? CurrentTenantId => GetIntHeader("X-Tenant-Id") ?? GetIntClaimOrCookie("tenant_id", "TenantId");
         public int? CurrentProgramId => GetIntHeader("X-Program-Id") ?? GetIntClaim("program_id");
         public int? CurrentBranchId => GetIntHeader("X-Branch-Id");
         public string? CurrentUserId => GetClaim(ClaimTypes.NameIdentifier);

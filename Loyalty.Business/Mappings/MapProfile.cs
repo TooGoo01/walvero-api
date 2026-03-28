@@ -27,11 +27,18 @@ namespace Loyalty.Business.Mappings
             CreateMap<Partner, AddPartnerDto>().ReverseMap();
             CreateMap<Partner, GetPartnerDto>().ReverseMap();
 
-            CreateMap<Tenant, AddTenantDto>().ReverseMap();
+            CreateMap<Tenant, AddTenantDto>()
+                .ForMember(d => d.AcceptAnonymous, opt => opt.MapFrom(s => s.AcceptAnonymus))
+                .ReverseMap()
+                .ForMember(d => d.AcceptAnonymus, opt => opt.MapFrom(s => s.AcceptAnonymous))
+                .ForMember(d => d.TeleqramUrl, opt => opt.MapFrom(s => s.TelegramUrl));
             CreateMap<Tenant, GetTenantDto>()
+                .ForMember(d => d.AcceptAnonymous, opt => opt.MapFrom(s => s.AcceptAnonymus))
+                .ForMember(d => d.TelegramUrl, opt => opt.MapFrom(s => s.TeleqramUrl))
+                .ForMember(d => d.CreatedAt, opt => opt.MapFrom(s => s.RegDate))
                 .ForMember(d => d.IsCustomer,
-                    opt => opt.MapFrom(s => s.Customers != null && 
-                                             s.Customers.Any(c => c.LoyaltyCards != null && 
+                    opt => opt.MapFrom(s => s.Customers != null &&
+                                             s.Customers.Any(c => c.LoyaltyCards != null &&
                                                                   c.LoyaltyCards.Any(lc => lc.IsActive))));
 
             CreateMap<TenantBranding, AddTenantBrandingDto>().ReverseMap();
@@ -39,6 +46,7 @@ namespace Loyalty.Business.Mappings
 
             CreateMap<WalletCredential, AddWalletCredentialDto>().ReverseMap();
             CreateMap<WalletCredential, GetWalletCredentialDto>().ReverseMap();
+            CreateMap<Tenant, WalletCredentialTenantDto>();
 
             CreateMap<LoyaltyProgram, AddLoyaltyProgramDto>().ReverseMap();
             CreateMap<LoyaltyProgram, GetLoyaltyProgramDto>().ReverseMap();
@@ -83,11 +91,6 @@ namespace Loyalty.Business.Mappings
             CreateMap<StoreFeedback, GetStoreFeedbackDto>().ReverseMap();
             CreateMap<StoreFeedbackReply, GetStoreFeedbackReplyDto>().ReverseMap();
             CreateMap<Notification, GetNotificationDto>().ReverseMap();
-            CreateMap<Tenant, GetTenantDto>()
-                .ForMember(d => d.IsCustomer,
-                    opt => opt.MapFrom(s => s.Customers != null && 
-                                             s.Customers.Any(c => c.LoyaltyCards != null && 
-                                                                  c.LoyaltyCards.Any(lc => lc.IsActive))));
             CreateMap<Offer, AddOfferDto>().ReverseMap();
             CreateMap<Offer, GetOfferDto>().ReverseMap();
 

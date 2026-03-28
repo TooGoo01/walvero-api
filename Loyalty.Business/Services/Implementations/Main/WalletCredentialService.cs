@@ -9,6 +9,7 @@ using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.Repositories.Implementations.Main;
 using Loyalty.DataAccess.UnitOfWorks;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -49,7 +50,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new ServiceResult(false, "Unsupported platform.");
 
             // uploads konteyneri
-            var container = $"tenant-{dto.TenantId}/wallet/{platformSlug}";
+            var container = $"tenant-{dto.TenantId}-wallet-{platformSlug}";
 
             // Mövcud aktiv credential varsa deaktiv et (eyni tenant + platform)
             var existing = await _repo.GetActiveAsync(dto.TenantId, dto.Platform, ct);
@@ -214,9 +215,17 @@ namespace Loyalty.Business.Services.Implementations.Main
             return idx >= 0 ? p[idx..] : p.TrimStart('/');
         }
 
-        public Task<ServiceResult> Delete(int id)
+        public async Task<ServiceResult> Delete(int id)
         {
-            throw new NotImplementedException();
+            var entity = await _unitOfWork.Repository<WalletCredential>().GetByIdAsync(id);
+            if (entity == null)
+                return new ServiceResult(false, "Wallet credential not found.");
+
+            entity.IsActive = false;
+            _unitOfWork.Repository<WalletCredential>().Update(entity);
+            _unitOfWork.Commit();
+
+            return new ServiceResult(true, "Wallet credential deleted successfully.");
         }
 
         public async Task<ServiceResult> Get(int id)
@@ -228,7 +237,12 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> GetAll()
         {
-            var partners = await _unitOfWork.Repository<WalletCredential>().GetAllAsync();
+            var partners = await _unitOfWork.Repository<WalletCredential>()
+                .Query()
+                .Where(w => w.IsActive)
+                .Include(w => w.Tenant)
+                .OrderBy(w => w.Id)
+                .ToListAsync();
             if (partners != null)
             {
                 var response = _mapper.Map<ICollection<GetWalletCredentialDto>>(partners);

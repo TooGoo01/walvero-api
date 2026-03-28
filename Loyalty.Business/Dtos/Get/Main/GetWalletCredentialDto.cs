@@ -38,6 +38,12 @@ namespace Loyalty.Business.Dtos.Get.Main
 
         public bool IsActive { get; set; } = true;
 
-        public Tenant Tenant { get; set; } = null!;
+        public WalletCredentialTenantDto? Tenant { get; set; }
+    }
+
+    public class WalletCredentialTenantDto
+    {
+        public int Id { get; set; }
+        public string CompanyName { get; set; } = string.Empty;
     }
 }

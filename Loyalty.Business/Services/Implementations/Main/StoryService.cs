@@ -18,13 +18,15 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IMapper _mapper;
         private readonly IStoryRepository _storyRepository;
         private readonly IStorage _storage;
+        private readonly IMediaProcessor _mediaProcessor;
 
-        public StoryService(IStoryRepository storyRepository, IMapper mapper, IUnitOfWork unitOfWork, IStorage storage)
+        public StoryService(IStoryRepository storyRepository, IMapper mapper, IUnitOfWork unitOfWork, IStorage storage, IMediaProcessor mediaProcessor)
         {
             _storyRepository = storyRepository;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _storage = storage;
+            _mediaProcessor = mediaProcessor;
         }
 
         public async Task<ServiceResult> AddStory(AddStoryDto story)
@@ -33,9 +35,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             request.IsActive = true;
 
             // Handle file uploads
-            var container = $"stories/tenant-{story.TenantId ?? 0}";
+            var container = $"stories-tenant-{story.TenantId ?? 0}";
             request.SmallImageUrl = await UploadOrUseUrl(container, "small", story.SmallImageFile, story.SmallImageUrl, null);
             request.ImageUrl = await UploadOrUseUrl(container, "image", story.ImageFile, story.ImageUrl, null);
+            request.VideoUrl = await UploadOrUseUrl(container, "video", story.VideoFile, story.VideoUrl, null);
 
             await _unitOfWork.Repository<Story>().AddAsync(request);
             _unitOfWork.Commit();
@@ -132,9 +135,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
 
                 // Handle file uploads
-                var container = $"stories/tenant-{storyDto.TenantId ?? story.TenantId ?? 0}";
+                var container = $"stories-tenant-{storyDto.TenantId ?? story.TenantId ?? 0}";
                 story.SmallImageUrl = await UploadOrUseUrl(container, "small", storyDto.SmallImageFile, storyDto.SmallImageUrl, story.SmallImageUrl);
                 story.ImageUrl = await UploadOrUseUrl(container, "image", storyDto.ImageFile, storyDto.ImageUrl, story.ImageUrl);
+                story.VideoUrl = await UploadOrUseUrl(container, "video", storyDto.VideoFile, storyDto.VideoUrl, story.VideoUrl);
 
                 _unitOfWork.Repository<Story>().Update(story);
                 _unitOfWork.Commit();
@@ -148,6 +152,10 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             if (file is not null && file.Length > 0)
             {
+                // Convert image to WebP
+                if (_mediaProcessor.IsImage(file))
+                    file = await _mediaProcessor.ConvertImageToWebpAsync(file);
+
                 // Delete old file if exists
                 if (!string.IsNullOrWhiteSpace(oldValue))
                 {

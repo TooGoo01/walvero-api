@@ -57,6 +57,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Include(d => d.WinningTickets)
                     .ThenInclude(t => t.LoyaltyCard)
                         .ThenInclude(c => c.Customer)
+                .Include(d => d.Prizes)
                 .Where(d => d.TenantId == tenantId && d.LoyaltyProgramId == programId)
                 .OrderByDescending(d => d.RegDate)
                 .ToListAsync();
@@ -68,6 +69,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Include(d => d.WinningTickets)
                     .ThenInclude(t => t.LoyaltyCard)
                         .ThenInclude(c => c.Customer)
+                .Include(d => d.Prizes)
                 .FirstOrDefaultAsync(d => d.Id == drawId);
         }
 

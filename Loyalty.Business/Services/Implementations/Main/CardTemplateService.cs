@@ -228,9 +228,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                
             };
         }
-        public Task<ServiceResult> Delete(int id)
+        public async Task<ServiceResult> Delete(int id)
         {
-            throw new NotImplementedException();
+            var template = await _repo.GetById(id);
+            if (template == null)
+                return new ServiceResult(false, "Template not found");
+
+            template.IsActive = false;
+            _unitOfWork.Repository<DataAccess.Entities.Main.CardTemplate>().Update(template);
+            await _unitOfWork.CommitAsync();
+            return new ServiceResult(true);
         }
 
         public async Task<ServiceResult> Get(int id)

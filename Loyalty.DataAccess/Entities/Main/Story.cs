@@ -17,6 +17,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? AzTitle { get; set; }
         public string? EnTitle { get; set; }
         public string? RuTitle { get; set; }
+        public string? VideoUrl { get; set; }
 
 
     }
