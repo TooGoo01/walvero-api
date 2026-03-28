@@ -28,14 +28,23 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             _projectId = fcmSection["ProjectId"];
 
-            var filePath = Path.Combine(
-                Directory.GetCurrentDirectory(),
-                fcmSection["ServiceAccountFile"]
-            );
-
-            _googleCredential = GoogleCredential
-                .FromFile(filePath)
-                .CreateScoped("https://www.googleapis.com/auth/firebase.messaging");
+            var serviceAccountJson = Environment.GetEnvironmentVariable("GOOGLE_SERVICE_ACCOUNT_KEY");
+            if (!string.IsNullOrEmpty(serviceAccountJson))
+            {
+                _googleCredential = GoogleCredential
+                    .FromJson(serviceAccountJson)
+                    .CreateScoped("https://www.googleapis.com/auth/firebase.messaging");
+            }
+            else
+            {
+                var filePath = Path.Combine(
+                    Directory.GetCurrentDirectory(),
+                    fcmSection["ServiceAccountFile"]
+                );
+                _googleCredential = GoogleCredential
+                    .FromFile(filePath)
+                    .CreateScoped("https://www.googleapis.com/auth/firebase.messaging");
+            }
         }
 
         private async Task<string> GetAccessTokenAsync()
