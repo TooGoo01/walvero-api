@@ -52,6 +52,8 @@ builder.Services.AddCors(options =>
             "http://localhost:3000",
             "http://localhost:7285",
             "https://www.qrwithmenu.com",
+            "https://walvero-next-d0fydybpcxe8d2d6.westeurope-01.azurewebsites.net",
+            "https://walvero.com",
             "https://qrwithmenu.com")
         .AllowCredentials()
         .AllowAnyHeader()
