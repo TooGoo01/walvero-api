@@ -2142,7 +2142,8 @@ namespace Loyalty.Business.Services.Implementations.Users
             }
             catch (Exception ex)
             {
-                return new ServiceResult(false, ex.Message);
+                var msg = ex.InnerException?.Message ?? ex.Message;
+                return new ServiceResult(false, msg);
             }
         }
 
