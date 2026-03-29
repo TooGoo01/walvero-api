@@ -2119,6 +2119,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     Email = dto.Email,
                     Name = nameParts.Length > 0 ? nameParts[0] : dto.FullName,
                     Surname = nameParts.Length > 1 ? nameParts[1] : "",
+                    Position = "",
                     TenantId = dto.TenantId,
                     IsGuest = false,
                     IsProfileCompleted = true,
