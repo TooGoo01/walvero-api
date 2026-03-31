@@ -568,6 +568,7 @@ UserManager<ApplicationUser> userManager,
             // Program/snapshot (CardTemplate include ilə)
             var program = await _dbContext.Set<LoyaltyProgram>()
                 .Include(p => p.CardTemplate)
+                    .ThenInclude(ct2 => ct2.Icons)
                 .FirstOrDefaultAsync(p => p.Id == card.LoyaltyProgramId, ct);
             if (program is null) return new ServiceResult(false, "Program missing.");
             if (program.CardTemplate is null) return new ServiceResult(false, "Card template missing.");
