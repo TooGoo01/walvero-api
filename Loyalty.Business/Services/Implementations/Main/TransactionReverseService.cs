@@ -192,12 +192,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var reverseTransaction = new Transaction
                 {
                     LoyaltyCardId = card.Id,
-                    Type = TransactionType.Adjusted, // Using Adjusted type for reversals
+                    Type = TransactionType.Adjusted,
+                    Status = RedeemStatus.Completed,
                     Points = card.CurrentPoints,
                     BalanceAfter = card.CurrentPoints,
                     Amount = reversedAmount,
                     ReferenceNumber = card.BarcodeValue,
                     OrderId = dto.OrderId,
+                    LocalOccurredAt = DateTimeOffset.UtcNow,
+                    TimeZoneIdUsed = originalTransaction.TimeZoneIdUsed,
                     Description = $"Transaction reversed: {dto.Reason}. Original: {originalTransaction.Description}"
                 };
 

@@ -85,8 +85,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Select(t => new RecentTransactionDto
                 {
                     Id = t.Id,
-                    CustomerName = t.LoyaltyCard?.Customer?.Name != null
-                        ? $"{t.LoyaltyCard.Customer.Name} {t.LoyaltyCard.Customer.Surname}".Trim()
+                    CustomerName = t.LoyaltyCard?.Customer?.FirstName != null
+                        ? $"{t.LoyaltyCard.Customer.FirstName} {t.LoyaltyCard.Customer.LastName}".Trim()
                         : t.LoyaltyCard?.BarcodeValue ?? "Unknown",
                     Type = t.Type.ToString(),
                     Points = t.Points,
