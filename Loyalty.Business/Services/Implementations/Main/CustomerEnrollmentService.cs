@@ -79,7 +79,7 @@ UserManager<ApplicationUser> userManager,
         // ——— Helpers ———
         private static string BuildTenantBaseUrl(string? subdomain)
         {
-            return $"https://walvero.com";
+            return $"https://appapi.walvero.com";
         }
 
         public async Task<ServiceResult> GetTenantCustomers(int tenantId, string username, CancellationToken ct = default)
@@ -247,7 +247,7 @@ UserManager<ApplicationUser> userManager,
             // 4) Program / branding / snapshot (VerifyEnrollment-dan götürdük)
             var branding = await _tenantBrandingRepository.GetByTenantIdAsync(tenantId);
 
-            string baseUrl = "https://walvero.com";
+            string baseUrl = "https://appapi.walvero.com";
             string ToAbs(string? dbPath)
             {
                 if (string.IsNullOrWhiteSpace(dbPath)) return string.Empty;
@@ -565,7 +565,7 @@ UserManager<ApplicationUser> userManager,
             if (program is null) return new ServiceResult(false, "Program missing.");
 
             var branding = await _tenantBrandingRepository.GetByTenantIdAsync(tenantId);
-            string baseUrl ="https://walvero.com";
+            string baseUrl = "https://appapi.walvero.com";
             string ToAbs(string? dbPath)
             {
                 if (string.IsNullOrWhiteSpace(dbPath)) return string.Empty;

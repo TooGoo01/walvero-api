@@ -1,6 +1,7 @@
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Microsoft.EntityFrameworkCore;
@@ -10,12 +11,12 @@ namespace Loyalty.Business.Services.Implementations.Main
     public class StatisticsService : IStatisticsService
     {
         private readonly ITransactionRepository _transactionRepository;
-        private readonly ILoyaltyCardRepository _loyaltyCardRepository;
+        private readonly LoyaltyWalletDbContext _dbContext;
 
-        public StatisticsService(ITransactionRepository transactionRepository, ILoyaltyCardRepository loyaltyCardRepository)
+        public StatisticsService(ITransactionRepository transactionRepository, LoyaltyWalletDbContext dbContext)
         {
             _transactionRepository = transactionRepository;
-            _loyaltyCardRepository = loyaltyCardRepository;
+            _dbContext = dbContext;
         }
 
         public async Task<ServiceResult<DashboardStatisticsDto>> GetDashboardAsync(
@@ -48,7 +49,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Sum(t => Math.Abs(t.Points));
 
             // Unikal müştəri sayı - birbaşa LoyaltyCard cədvəlindən (transaksiyası olmayan müştərilər də daxil)
-            var cardQuery = _loyaltyCardRepository.GetAsQueryable()
+            var cardQuery = _dbContext.Set<LoyaltyCard>()
                 .Where(c => c.TenantId == tenantId && c.IsActive);
 
             if (programId.HasValue && programId.Value > 0)

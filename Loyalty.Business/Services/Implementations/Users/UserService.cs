@@ -206,7 +206,9 @@ namespace Loyalty.Business.Services.Implementations.Users
                                 Expiration = token.Expiration,
                                 RefreshToken = token.RefreshToken,
                                 RefreshTokenExpiration = token.RefreshTokenExpiration,
-                                GoogleLogoUrl = googleLogoUrl
+                                GoogleLogoUrl = googleLogoUrl,
+                                TenantName = user.Tenant?.CompanyName,
+                                SubscriptionExpiryDate = user.Tenant?.SubscriptionExpiryDate
                             };
 
                             return new ServiceResult(true, detail, "login success");
@@ -900,7 +902,9 @@ namespace Loyalty.Business.Services.Implementations.Users
                             Expiration = token.Expiration,
                             RefreshToken = token.RefreshToken,
                             RefreshTokenExpiration = token.RefreshTokenExpiration,
-                            GoogleLogoUrl = googleLogoUrl
+                            GoogleLogoUrl = googleLogoUrl,
+                            TenantName = user.Tenant?.CompanyName,
+                            SubscriptionExpiryDate = user.Tenant?.SubscriptionExpiryDate
                         };
 
                         var response = new VerifyOtpResponseDto

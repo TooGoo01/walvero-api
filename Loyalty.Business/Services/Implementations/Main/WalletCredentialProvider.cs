@@ -25,7 +25,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILogger<WalletCredentialProvider> _logger;
 
         // Walvero public host – istəsən sonra config-dən oxuya bilərsən
-        private static readonly Uri WalveroBaseUri = new("https://walvero.com/");
+        private static readonly Uri WalveroBaseUri = new("https://appapi.walvero.com/");
 
         public WalletCredentialProvider(
             IUnitOfWork uow,

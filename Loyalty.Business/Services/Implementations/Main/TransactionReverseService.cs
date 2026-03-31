@@ -193,7 +193,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     LoyaltyCardId = card.Id,
                     Type = TransactionType.Adjusted,
-                    Status = RedeemStatus.Completed,
+                    Status = RedeemStatus.Applied,
                     Points = card.CurrentPoints,
                     BalanceAfter = card.CurrentPoints,
                     Amount = reversedAmount,

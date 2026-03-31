@@ -115,7 +115,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             var cardTemplate = program.CardTemplate;
-            var baseUrl = _configuration["App:BaseUrl"] ?? "https://walvero.com";
+            var baseUrl = _configuration["App:BaseUrl"] ?? "https://appapi.walvero.com";
 
             // 6.5. Get customer name from Customer entity
             var customerName = $"{user.Name} {user.Surname}".Trim();
