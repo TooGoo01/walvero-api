@@ -192,7 +192,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     Id = x.Id,
                     Name = x.Name,
-                    IconUrl = x.IconUrl,
+                    IconUrl = x.IconUrl ?? x.Path,
                     Order = x.Order
                 }).ToList() ?? new List<IconDto>(),
                 TotalSteps = e.TotalSteps,

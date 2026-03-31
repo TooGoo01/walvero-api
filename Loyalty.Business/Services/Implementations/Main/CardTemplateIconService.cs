@@ -69,11 +69,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var uploaded = await _storage.UploadFileAsync(container, new[] { it.IconFile }); // IEnumerable<IFormFile>
                     var (fileName, relPath) = uploaded.First();
 
+                    var relativePath = EnsureRelative(relPath);
                     newIcons.Add(new Icon
                     {
                         FileName = fileName,
-                        Path = EnsureRelative(relPath),
-                        // varsa bu sahələr:
+                        Path = relativePath,
+                        IconUrl = relativePath,
                         Name = it.Name,
                         Order = order,
                         CardTemplate = template
@@ -89,7 +90,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     newIcons.Add(new Icon
                     {
                         FileName = TryGetFileName(url) ?? $"icon_{order}",
-                        Path = url, // external/internal URL ola bilər
+                        Path = url,
+                        IconUrl = url,
                         Name = it.Name,
                         Order = order,
                         CardTemplate = template
