@@ -26,6 +26,6 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int Points { get; set; }
         public decimal? Amount { get; set; }
         public int BalanceAfter { get; set; }
-        public DateTime CreatedAt { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
     }
 }

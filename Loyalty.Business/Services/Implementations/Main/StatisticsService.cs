@@ -80,7 +80,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             // Son 20 əməliyyat
             var recentTransactions = transactionList
-                .OrderByDescending(t => t.CreatedAt)
+                .OrderByDescending(t => t.LocalOccurredAt)
                 .Take(20)
                 .Select(t => new RecentTransactionDto
                 {
@@ -92,7 +92,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Points = t.Points,
                     Amount = t.Amount,
                     BalanceAfter = t.BalanceAfter,
-                    CreatedAt = t.CreatedAt,
+                    CreatedAt = t.LocalOccurredAt,
                 })
                 .ToList();
 
