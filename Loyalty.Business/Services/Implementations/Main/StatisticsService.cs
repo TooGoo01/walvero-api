@@ -78,6 +78,24 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .OrderBy(d => d.Date)
                 .ToList();
 
+            // Son 20 əməliyyat
+            var recentTransactions = transactionList
+                .OrderByDescending(t => t.CreatedAt)
+                .Take(20)
+                .Select(t => new RecentTransactionDto
+                {
+                    Id = t.Id,
+                    CustomerName = t.LoyaltyCard?.Customer?.Name != null
+                        ? $"{t.LoyaltyCard.Customer.Name} {t.LoyaltyCard.Customer.Surname}".Trim()
+                        : t.LoyaltyCard?.BarcodeValue ?? "Unknown",
+                    Type = t.Type.ToString(),
+                    Points = t.Points,
+                    Amount = t.Amount,
+                    BalanceAfter = t.BalanceAfter,
+                    CreatedAt = t.CreatedAt,
+                })
+                .ToList();
+
             var dto = new DashboardStatisticsDto
             {
                 TotalTransactions = transactionList.Count,
@@ -85,6 +103,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 TotalPointsSpent = totalPointsSpent,
                 UniqueCustomers = uniqueCustomers,
                 DailyStats = dailyStats,
+                RecentTransactions = recentTransactions,
             };
 
             return ServiceResult<DashboardStatisticsDto>.Ok(dto);

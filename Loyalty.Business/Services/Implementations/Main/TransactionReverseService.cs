@@ -157,10 +157,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                 int reverseDelta = -originalDelta;
 
                 // Get card template snapshot for applying delta
-                var program = await _loyaltyProgramRepository.GetByIdNameAsync(card.LoyaltyProgramId, ct);
+                var program = await _dbContext.Set<LoyaltyProgram>()
+                    .Include(p => p.CardTemplate)
+                    .FirstOrDefaultAsync(p => p.Id == card.LoyaltyProgramId, ct);
                 if (program == null)
                 {
                     return ServiceResult<ReverseTransactionResponseDto>.Fail("Loyalty program not found.");
+                }
+                if (program.CardTemplate == null)
+                {
+                    return ServiceResult<ReverseTransactionResponseDto>.Fail("Card template not found for this program.");
                 }
 
                 var branding = await _tenantBrandingRepository.GetByTenantIdAsync(card.TenantId, ct);
