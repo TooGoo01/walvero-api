@@ -1,4 +1,6 @@
 using AutoMapper;
+using Loyalty.DataAccess.Context;
+using Microsoft.EntityFrameworkCore;
 using Azure.Core;
 using Google.Apis.Walletobjects.v1.Data;
 using Loyalty.Business.Dtos.Get.Main;
@@ -42,6 +44,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ICardNumberGenerator _cardNumberGenerator;
         private readonly ICustomerSyncService _customerSyncService;
         private readonly ILogger<CustomerEnrollmentService> _logger;
+        private readonly LoyaltyWalletDbContext _dbContext;
         public CustomerEnrollmentService(
             ITenantProvider tp,
             ICustomerRepository customerRepo,
@@ -60,7 +63,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 UserManager<ApplicationUser> userManager,
             ICardNumberGenerator cardNumberGenerator,
             ICustomerSyncService customerSyncService,
-            ILogger<CustomerEnrollmentService> logger)
+            ILogger<CustomerEnrollmentService> logger,
+            LoyaltyWalletDbContext dbContext)
         {
             _tp = tp; _customerRepo = customerRepo; _programRepo = programRepo;
             _cardRepo = cardRepo; _cardSvc = cardSvc; _credSvc = credSvc;
@@ -72,6 +76,7 @@ UserManager<ApplicationUser> userManager,
             _cardNumberGenerator = cardNumberGenerator;
             _customerSyncService = customerSyncService;
             _logger = logger;
+            _dbContext = dbContext;
         }
 
 
@@ -560,9 +565,12 @@ UserManager<ApplicationUser> userManager,
             var card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, programId, customer.Id, ct);
             if (card is null) return new ServiceResult(false, "Card not found.");
 
-            // Program/snapshot
-            var program = await _programRepo.GetByIdNameAsync(card.LoyaltyProgramId, ct);
+            // Program/snapshot (CardTemplate include ilə)
+            var program = await _dbContext.Set<LoyaltyProgram>()
+                .Include(p => p.CardTemplate)
+                .FirstOrDefaultAsync(p => p.Id == card.LoyaltyProgramId, ct);
             if (program is null) return new ServiceResult(false, "Program missing.");
+            if (program.CardTemplate is null) return new ServiceResult(false, "Card template missing.");
 
             var branding = await _tenantBrandingRepository.GetByTenantIdAsync(tenantId);
             string baseUrl = "https://appapi.walvero.com";
