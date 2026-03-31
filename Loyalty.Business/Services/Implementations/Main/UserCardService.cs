@@ -166,7 +166,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             // BaseUrl
-            var baseUrl = _config["App:BaseUrl"] ?? "https://walvero.com";
+            var baseUrl = _config["App:BaseUrl"] ?? "https://appapi.walvero.com";
 
             string ToAbs(string? dbPath)
             {

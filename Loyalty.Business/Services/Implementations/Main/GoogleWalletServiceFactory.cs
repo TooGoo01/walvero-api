@@ -53,7 +53,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             // 3) SA JSON path / URL
-            var saJsonPathOrUrl = "https://walvero.com/" + cred.GooglePrivateKeyUrl;
+            var saJsonPathOrUrl = cred.GooglePrivateKeyUrl?.StartsWith("http", StringComparison.OrdinalIgnoreCase) == true
+                ? cred.GooglePrivateKeyUrl
+                : "https://appapi.walvero.com/" + cred.GooglePrivateKeyUrl;
             if (string.IsNullOrWhiteSpace(saJsonPathOrUrl))
                 throw new InvalidOperationException("Service Account JSON path is empty.");
 
@@ -94,7 +96,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ClassSuffix = classSuffix,
                 ApplicationName = "Loyalty Wallet",
                 ServiceAccountJsonPath = serviceAccountFilePath,   // 👈 ARTIQ HƏM URL, HƏM PATH DƏSTƏKLƏNİR
-                Origins = new[] { "https://walvero.com", "https://localhost:7199" }
+                Origins = new[] { "https://appapi.walvero.com", "https://walvero.com", "https://localhost:7199" }
             };
 
             // 5) Servisi yaradıb qaytar

@@ -41,7 +41,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             int tenantId,
             CancellationToken ct = default)
         {
-            var baseUrl = _configuration["App:BaseUrl"] ?? "https://walvero.com";
+            var baseUrl = _configuration["App:BaseUrl"] ?? "https://appapi.walvero.com";
 
             // Log without sensitive data
             _logger.LogInformation("Fetching tenant wallet info for TenantId: {TenantId}", tenantId);
@@ -69,7 +69,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             int cardId,
             CancellationToken ct = default)
         {
-            var baseUrl = _configuration["App:BaseUrl"] ?? "https://walvero.com";
+            var baseUrl = _configuration["App:BaseUrl"] ?? "https://appapi.walvero.com";
 
             // Log without sensitive data (no card numbers, barcodes, etc.)
             _logger.LogInformation(

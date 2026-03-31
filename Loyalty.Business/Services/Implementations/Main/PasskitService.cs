@@ -344,7 +344,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _log.LogWarning("Local pkpass not found at {Path}", localPath);
 
             // 2) Remote URL: https://walvero.com/{relativePath}
-            const string remoteBase = "https://walvero.com";
+            const string remoteBase = "https://appapi.walvero.com";
             var relativePath = card.ApplePassUrl.TrimStart('/');
             var backupUrl = $"{remoteBase.TrimEnd('/')}/{relativePath}";
 

@@ -165,7 +165,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var branding = await _brandingSvc.GetByTenantIdAsync(request.TenantId, ct);
                 var policy = await _tenantPolicySvc.GetByIdAsync(request.TenantId, ct);
 
-                string baseUrl = "https://walvero.com";
+                string baseUrl = "https://appapi.walvero.com";
                 string ToAbs(string? dbPath)
                 {
                     if (string.IsNullOrWhiteSpace(dbPath)) return string.Empty;
@@ -571,7 +571,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var program = await _programSvc.GetByIdNameAsync(card.LoyaltyProgramId, ct);
                 var branding = await _brandingSvc.GetByTenantIdAsync(rr.TenantId, ct);
 
-                string baseUrl = "https://walvero.com";
+                string baseUrl = "https://appapi.walvero.com";
                 string ToAbs(string? dbPath)
                 {
                     if (string.IsNullOrWhiteSpace(dbPath)) return string.Empty;

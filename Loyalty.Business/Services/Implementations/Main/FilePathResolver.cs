@@ -15,7 +15,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILogger<FilePathResolver> _logger;
 
         // İstəsən bunu config-dən də oxuya bilərsən
-        private static readonly Uri DefaultBaseUri = new("https://walvero.com/");
+        private static readonly Uri DefaultBaseUri = new("https://appapi.walvero.com/");
 
         public FilePathResolver(
             IAppEnvironment env,
