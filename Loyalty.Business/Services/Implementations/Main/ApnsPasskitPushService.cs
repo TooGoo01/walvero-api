@@ -156,6 +156,9 @@ public sealed class ApnsPasskitPushService : IPasskitPushService, IDisposable
 
     public async Task NotifyUpdatedAsync(int tenantId, string passTypeIdentifier, string serialNumber,string passUrl, CancellationToken ct = default)
     {
+        _log.LogInformation("[APNs-PUSH] NotifyUpdatedAsync CALLED. TenantId={TenantId}, PTI={PTI}, Serial={Serial}, PassUrl={PassUrl}",
+            tenantId, passTypeIdentifier, serialNumber, passUrl);
+
         if (_disposed)
             throw new ObjectDisposedException(nameof(ApnsPasskitPushService));
 
@@ -164,6 +167,7 @@ public sealed class ApnsPasskitPushService : IPasskitPushService, IDisposable
 
         var wrapper = await GetOrCreateHttpClientAsync(tenantId, ct);
         var http = wrapper.Client;
+        _log.LogInformation("[APNs-PUSH] HttpClient ready. BaseAddress={BaseAddress}", http.BaseAddress);
 
         var repo = _uow.Repository<PassDeviceRegistration>();
         var regs = repo.GetAll(r =>
@@ -171,9 +175,11 @@ public sealed class ApnsPasskitPushService : IPasskitPushService, IDisposable
             r.PassTypeIdentifier == passTypeIdentifier &&
             r.SerialNumber == serialNumber && r.IsActive).ToList();
 
+        _log.LogInformation("[APNs-PUSH] Found {Count} device registrations for PTI={PTI}, Serial={Serial}", regs.Count, passTypeIdentifier, serialNumber);
+
         if (regs.Count == 0)
         {
-            _log.LogInformation("APNs: device yoxdur. PTI={PTI}, Serial={Serial}", passTypeIdentifier, serialNumber);
+            _log.LogInformation("[APNs-PUSH] No devices registered. PTI={PTI}, Serial={Serial}", passTypeIdentifier, serialNumber);
             return;
         }
 

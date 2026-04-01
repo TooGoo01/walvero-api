@@ -38,7 +38,6 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILogger<RedeemService> _logger;
         private readonly IHubContext<LoyaltyHub> _hubContext;
         private readonly INotificationService _notificationService;
-        private readonly IPasskitPushService _passkitPush;
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly ITimeZoneService _timeZoneService;
         private readonly ILotteryRepository _lotteryRepository;
@@ -54,7 +53,6 @@ namespace Loyalty.Business.Services.Implementations.Main
             ILogger<RedeemService> logger,
             IHubContext<LoyaltyHub> hubContext,
             INotificationService notificationService,
-            IPasskitPushService passkitPush,
             ICustomerRepository customerRepo,
             LoyaltyWalletDbContext dbContext,
             ITimeZoneService timeZoneService,
@@ -74,7 +72,6 @@ namespace Loyalty.Business.Services.Implementations.Main
             _logger = logger;
             _hubContext = hubContext;
             _notificationService = notificationService;
-            _passkitPush = passkitPush;
             _dbContext = dbContext;
             _timeZoneService = timeZoneService;
             _lotteryRepository = lotteryRepository;
@@ -723,33 +720,6 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
 
                 _logger.LogInformation("Confirm completed successfully. CardId={CardId}, AppliedDelta={Delta}", card.Id, displayDelta);
-
-                // Apple Wallet pass update push
-                try
-                {
-                    _logger.LogInformation("[APNs] Looking for WalletPass with CardId={CardId}", card.Id);
-                    var walletPass = await _dbContext.Set<DataAccess.Entities.Main.WalletPass>()
-                        .FirstOrDefaultAsync(wp => wp.LoyaltyCardId == card.Id && !string.IsNullOrEmpty(wp.PassTypeIdentifier), ct);
-                    if (walletPass != null)
-                    {
-                        _logger.LogInformation("[APNs] Found WalletPass: PTI={PTI}, Serial={Serial}", walletPass.PassTypeIdentifier, walletPass.SerialNumber);
-                        await _passkitPush.NotifyUpdatedAsync(
-                            program.TenantId,
-                            walletPass.PassTypeIdentifier,
-                            walletPass.SerialNumber,
-                            snapshot.ProgramName,
-                            ct);
-                        _logger.LogInformation("[APNs] Push sent for CardId={CardId}, Serial={Serial}", card.Id, walletPass.SerialNumber);
-                    }
-                    else
-                    {
-                        _logger.LogWarning("[APNs] No WalletPass found for CardId={CardId}", card.Id);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[APNs] Push failed for CardId={CardId}", card.Id);
-                }
 
                 return new RedeemResultDto
                 {

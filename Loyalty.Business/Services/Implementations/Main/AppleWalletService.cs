@@ -315,8 +315,18 @@ public sealed class AppleWalletService : IAppleWalletService
                 _uow.Commit();
 
                 // 7) push (WebService varsa) — qeydiyyatlı cihazlara xəbər ver
+                _logger.LogInformation("[APPLE-PUSH] WebServiceUrl={WebServiceUrl}, PTI={PTI}, Serial={Serial}",
+                    creds.WebServiceUrl ?? "(null)", creds.PassTypeIdentifier, serial);
                 if (!string.IsNullOrWhiteSpace(creds.WebServiceUrl))
+                {
+                    _logger.LogInformation("[APPLE-PUSH] Calling NotifyUpdatedAsync...");
                     await _passkitPush.NotifyUpdatedAsync(tenantId, creds.PassTypeIdentifier, serial, fileName, ct);
+                    _logger.LogInformation("[APPLE-PUSH] NotifyUpdatedAsync completed.");
+                }
+                else
+                {
+                    _logger.LogWarning("[APPLE-PUSH] SKIPPED - WebServiceUrl is empty/null!");
+                }
 
                 return new ServiceResult(true, publicUrl);
             }
