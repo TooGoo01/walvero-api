@@ -122,10 +122,10 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             // 1) DB-dən registrasiyanı tap
             var regRepo = _uow.Repository<PassDeviceRegistration>();
-            var reg = regRepo.Get(r =>
+            var reg = regRepo.GetAll(r =>
                 r.DeviceLibraryIdentifier == deviceLibId &&
                 r.PassTypeIdentifier == passTypeId &&
-                r.SerialNumber == serial);
+                r.SerialNumber == serial).FirstOrDefault();
 
             // 2) LoyaltyCard-ı tap (ola bilər ki, artıq silinib)
             var cardRepo = _uow.Repository<LoyaltyCard>();
