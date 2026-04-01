@@ -727,22 +727,28 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // Apple Wallet pass update push
                 try
                 {
+                    _logger.LogInformation("[APNs] Looking for WalletPass with CardId={CardId}", card.Id);
                     var walletPass = await _dbContext.Set<DataAccess.Entities.Main.WalletPass>()
                         .FirstOrDefaultAsync(wp => wp.LoyaltyCardId == card.Id && !string.IsNullOrEmpty(wp.PassTypeIdentifier), ct);
                     if (walletPass != null)
                     {
+                        _logger.LogInformation("[APNs] Found WalletPass: PTI={PTI}, Serial={Serial}", walletPass.PassTypeIdentifier, walletPass.SerialNumber);
                         await _passkitPush.NotifyUpdatedAsync(
                             program.TenantId,
                             walletPass.PassTypeIdentifier,
                             walletPass.SerialNumber,
                             snapshot.ProgramName,
                             ct);
-                        _logger.LogInformation("APNs push sent for CardId={CardId}, Serial={Serial}", card.Id, walletPass.SerialNumber);
+                        _logger.LogInformation("[APNs] Push sent for CardId={CardId}, Serial={Serial}", card.Id, walletPass.SerialNumber);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[APNs] No WalletPass found for CardId={CardId}", card.Id);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "APNs push failed for CardId={CardId}", card.Id);
+                    _logger.LogWarning(ex, "[APNs] Push failed for CardId={CardId}", card.Id);
                 }
 
                 return new RedeemResultDto
