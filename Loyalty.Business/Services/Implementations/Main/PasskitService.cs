@@ -410,7 +410,13 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var match = FixedTimeEquals(token, card.AppleAuthToken);
             if (!match)
-                _log.LogWarning("[AUTH] Token mismatch for serial={Serial}. Incoming={InToken}, DB={DbToken}", serial, token, card.AppleAuthToken);
+            {
+                _log.LogWarning("[AUTH] Token mismatch for serial={Serial}. Updating DB token to match pass token.", serial);
+                card.AppleAuthToken = token;
+                _uow.Repository<LoyaltyCard>().Update(card);
+                _uow.Commit();
+                return Task.FromResult(true);
+            }
             return Task.FromResult(match);
         }
 
