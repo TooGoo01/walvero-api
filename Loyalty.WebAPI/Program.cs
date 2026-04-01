@@ -232,7 +232,8 @@ builder.Host.UseSerilog((ctx, services, lc) =>
 {
     lc.ReadFrom.Configuration(ctx.Configuration)
       .ReadFrom.Services(services)
-      .Enrich.FromLogContext();
+      .Enrich.FromLogContext()
+      .WriteTo.Console();
 });
 
 var app = builder.Build();
