@@ -39,7 +39,12 @@ namespace Loyalty.WebAPI.Controllers
                     maximum = l.Maximum,
                     rewards = l.Rewards,
                     product_id = l.ProductId,
-                    product_name = l.ProductName
+                    product_name = l.ProductName,
+                    products = l.Products.Select(p => new
+                    {
+                        product_id = p.ProductId,
+                        product_name = p.ProductName
+                    })
                 }),
                 cashback_balans = result.CashbackBalans
             });

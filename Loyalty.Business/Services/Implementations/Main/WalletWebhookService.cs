@@ -162,33 +162,33 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var totalSteps = template?.TotalSteps ?? 10;
                     var rewards = (await _rewardRepo.GetAllAsync(r => r.LoyaltyProgramId == programId.Value && r.IsActive)).ToList();
 
-                    if (rewards.Count == 0)
-                    {
-                        loyalty.Add(new LoyaltyCampaignItem
+                    var productList = rewards.Count > 0
+                        ? rewards.Select(r => new ProductItem
                         {
-                            Id = program.Id,
-                            Count = cardInProgram.CompletedCycles * totalSteps + cardInProgram.CurrentSteps,
-                            Maximum = totalSteps,
-                            Rewards = cardInProgram.CompletedCycles,
-                            ProductId = program.Id.ToString(),
-                            ProductName = template?.RewardDescription
-                        });
-                    }
-                    else
-                    {
-                        foreach (var reward in rewards)
+                            ProductId = r.ExternalProductId ?? r.Id.ToString(),
+                            ProductName = r.Name
+                        }).ToList()
+                        : new List<ProductItem>
                         {
-                            loyalty.Add(new LoyaltyCampaignItem
+                            new ProductItem
                             {
-                                Id = reward.Id,
-                                Count = cardInProgram.CompletedCycles * totalSteps + cardInProgram.CurrentSteps,
-                                Maximum = totalSteps,
-                                Rewards = cardInProgram.CompletedCycles,
-                                ProductId = reward.ExternalProductId ?? reward.Id.ToString(),
-                                ProductName = reward.Name
-                            });
-                        }
-                    }
+                                ProductId = program.Id.ToString(),
+                                ProductName = template?.RewardDescription
+                            }
+                        };
+
+                    var firstProduct = productList.First();
+
+                    loyalty.Add(new LoyaltyCampaignItem
+                    {
+                        Id = program.Id,
+                        Count = cardInProgram.CompletedCycles * totalSteps + cardInProgram.CurrentSteps,
+                        Maximum = totalSteps,
+                        Rewards = cardInProgram.CompletedCycles,
+                        ProductId = firstProduct.ProductId,
+                        ProductName = firstProduct.ProductName,
+                        Products = productList
+                    });
                 }
                 // TierBased və PointsBased — yalnız cashback_balans qaytarılır, loyalty boş olur
             }
