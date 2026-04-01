@@ -408,7 +408,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (string.IsNullOrWhiteSpace(card.AppleAuthToken))
                 return Task.FromResult(true);
 
-            return Task.FromResult(FixedTimeEquals(token, card.AppleAuthToken));
+            var match = FixedTimeEquals(token, card.AppleAuthToken);
+            if (!match)
+                _log.LogWarning("[AUTH] Token mismatch for serial={Serial}. Incoming={InToken}, DB={DbToken}", serial, token, card.AppleAuthToken);
+            return Task.FromResult(match);
         }
 
         private static bool FixedTimeEquals(string a, string b)
