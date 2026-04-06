@@ -26,6 +26,13 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public int Rewards { get; set; }
         public string ProductId { get; set; } = string.Empty;
         public string? ProductName { get; set; }
+        public List<ProductItem> Products { get; set; } = new();
+    }
+
+    public class ProductItem
+    {
+        public string ProductId { get; set; } = string.Empty;
+        public string? ProductName { get; set; }
     }
 
     public class SetRedeemRequest
