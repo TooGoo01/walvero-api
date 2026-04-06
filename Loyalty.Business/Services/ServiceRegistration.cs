@@ -99,6 +99,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IRewardCrudService, RewardCrudService>();
             services.AddScoped<IWalletWebhookService, WalletWebhookService>();
             services.AddScoped<IMonyoPosApiClient, MonyoPosApiClient>();
+            services.AddScoped<IIikoPosApiClient, IikoPosApiClient>();
             services.AddScoped<ICustomerSyncService, CustomerSyncService>();
             services.AddScoped<IPosSyncService, PosSyncService>();
 

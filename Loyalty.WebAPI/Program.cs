@@ -128,6 +128,9 @@ builder.Services.AddAuthorization(options =>
     });
 });
 
+// === Caching ===
+builder.Services.AddMemoryCache();
+
 // === Session ===
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(conf =>

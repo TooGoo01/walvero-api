@@ -15,6 +15,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILoyaltyCardRepository _loyaltyCardRepo;
         private readonly IPosCustomerMappingRepository _mappingRepo;
         private readonly IMonyoPosApiClient _monyoClient;
+        private readonly IIikoPosApiClient _iikoClient;
         private readonly ISensitiveDataProtector _protector;
         private readonly IUnitOfWork _uow;
         private readonly LoyaltyWalletDbContext _db;
@@ -25,6 +26,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             ILoyaltyCardRepository loyaltyCardRepo,
             IPosCustomerMappingRepository mappingRepo,
             IMonyoPosApiClient monyoClient,
+            IIikoPosApiClient iikoClient,
             ISensitiveDataProtector protector,
             IUnitOfWork uow,
             LoyaltyWalletDbContext db)
@@ -34,6 +36,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _loyaltyCardRepo = loyaltyCardRepo;
             _mappingRepo = mappingRepo;
             _monyoClient = monyoClient;
+            _iikoClient = iikoClient;
             _protector = protector;
             _uow = uow;
             _db = db;
@@ -42,7 +45,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         public async Task<CustomerSyncResult> SyncCustomerToPosAsync(int tenantId, int customerId, CancellationToken ct = default)
         {
             var integration = await _tenantIntegrationRepo.GetActiveByTenantAsync(tenantId, ct);
-            if (integration == null || string.IsNullOrEmpty(integration.ApiBaseUrl) || string.IsNullOrEmpty(integration.ApiTokenEncrypted))
+            if (integration == null || string.IsNullOrEmpty(integration.ApiTokenEncrypted))
                 return CustomerSyncResult.Fail();
 
             var apiToken = _protector.Decrypt(integration.ApiTokenEncrypted);
@@ -68,11 +71,30 @@ namespace Loyalty.Business.Services.Implementations.Main
                     barcode = $"{walveroId.Value},{barcode}";
             }
 
-            var existingMapping = await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, customerId, ct);
-            var monyoId = existingMapping?.ExternalCustomerId;
-
             var name = $"{customer.FirstName} {customer.LastName}".Trim();
             if (string.IsNullOrEmpty(name)) name = customer.PhoneNumber;
+
+            var source = integration.IntegrationType?.Source;
+
+            switch (source)
+            {
+                case "iiko_pos":
+                    return await SyncCustomerToIikoAsync(integration, apiToken, customer, customerId, barcode, name, ct);
+                case "monyo_pos":
+                default:
+                    return await SyncCustomerToMonyoAsync(integration, apiToken, customer, customerId, barcode, name, ct);
+            }
+        }
+
+        private async Task<CustomerSyncResult> SyncCustomerToMonyoAsync(
+            TenantIntegration integration, string apiToken, Customer customer,
+            int customerId, string? barcode, string name, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(integration.ApiBaseUrl))
+                return CustomerSyncResult.Fail();
+
+            var existingMapping = await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, customerId, ct);
+            var monyoId = existingMapping?.ExternalCustomerId;
 
             if (!string.IsNullOrEmpty(monyoId))
             {
@@ -84,7 +106,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     CustomerCode = customer.Id.ToString(),
                     Barcode = barcode
                 }};
-                var resp = await _monyoClient.UpdateCustomersAsync(integration.ApiBaseUrl, apiToken, integration.ExternalVenueId, updateDtos, ct);
+                var resp = await _monyoClient.UpdateCustomersAsync(integration.ApiBaseUrl, apiToken, integration.ExternalVenueId!, updateDtos, ct);
                 return resp != null && resp.Length > 0 ? CustomerSyncResult.Ok(null, barcode) : CustomerSyncResult.Fail();
             }
 
@@ -95,15 +117,55 @@ namespace Loyalty.Business.Services.Implementations.Main
                 CustomerCode = customer.Id.ToString(),
                 Barcode = barcode
             }};
-            var addResp = await _monyoClient.AddCustomersAsync(integration.ApiBaseUrl, apiToken, integration.ExternalVenueId, addDtos, ct);
+            var addResp = await _monyoClient.AddCustomersAsync(integration.ApiBaseUrl, apiToken, integration.ExternalVenueId!, addDtos, ct);
             if (addResp == null || addResp.Length == 0)
                 return CustomerSyncResult.Fail();
 
             var r = addResp[0];
+            await CreateMappingAsync(integration.Id, r.Id.ToString(), customerId, ct);
+            return CustomerSyncResult.Ok(null, barcode);
+        }
+
+        private async Task<CustomerSyncResult> SyncCustomerToIikoAsync(
+            TenantIntegration integration, string apiToken, Customer customer,
+            int customerId, string? barcode, string name, CancellationToken ct)
+        {
+            // apiToken = iiko apiLogin; ExternalVenueId = iiko organizationId
+            var accessToken = await _iikoClient.GetAccessTokenAsync(apiToken, ct);
+            if (string.IsNullOrEmpty(accessToken))
+                return CustomerSyncResult.Fail();
+
+            var orgId = Guid.Parse(integration.ExternalVenueId!);
+
+            var existingMapping = await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, customerId, ct);
+
+            var iikoCustomer = new IikoCustomerDto
+            {
+                Id = existingMapping != null ? Guid.Parse(existingMapping.ExternalCustomerId) : null,
+                Name = customer.FirstName,
+                Surname = customer.LastName,
+                Phone = customer.PhoneNumber,
+                CardTrack = barcode,
+                CardNumber = barcode,
+                Birthday = customer.DateOfBirth?.ToString("yyyy-MM-dd HH:mm:ss.fff")
+            };
+
+            var result = await _iikoClient.CreateOrUpdateCustomerAsync(accessToken, orgId, iikoCustomer, ct);
+            if (result == null)
+                return CustomerSyncResult.Fail();
+
+            if (existingMapping == null)
+                await CreateMappingAsync(integration.Id, result.Id.ToString(), customerId, ct);
+
+            return CustomerSyncResult.Ok(null, barcode);
+        }
+
+        private async Task CreateMappingAsync(int integrationId, string externalId, int customerId, CancellationToken ct)
+        {
             var mapping = new PosCustomerMapping
             {
-                TenantIntegrationId = integration.Id,
-                ExternalCustomerId = r.Id.ToString(),
+                TenantIntegrationId = integrationId,
+                ExternalCustomerId = externalId,
                 CustomerId = customerId,
                 RegUserId = 1,
                 RegDate = DateTime.UtcNow,
@@ -111,7 +173,6 @@ namespace Loyalty.Business.Services.Implementations.Main
             };
             await _mappingRepo.AddAsync(mapping);
             await _uow.CommitAsync(ct);
-            return CustomerSyncResult.Ok(null, barcode);
         }
 
         public async Task<int> SyncAllCustomersToPosAsync(int tenantId, CancellationToken ct = default)

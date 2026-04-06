@@ -1,6 +1,8 @@
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
+using Loyalty.DataAccess.UnitOfWorks;
 using Loyalty.WebAPI.Tenancy;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -16,15 +18,18 @@ namespace Loyalty.WebAPI.Controllers
         private readonly ITenantIntegrationService _service;
         private readonly IIntegrationTypeRepository _typeRepo;
         private readonly ITenantProvider _tenantProvider;
+        private readonly IUnitOfWork _uow;
 
         public TenantIntegrationController(
             ITenantIntegrationService service,
             IIntegrationTypeRepository typeRepo,
-            ITenantProvider tenantProvider)
+            ITenantProvider tenantProvider,
+            IUnitOfWork uow)
         {
             _service = service;
             _typeRepo = typeRepo;
             _tenantProvider = tenantProvider;
+            _uow = uow;
         }
 
         [HttpGet("types")]
