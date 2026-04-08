@@ -139,20 +139,36 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var existingMapping = await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, customerId, ct);
 
+            // barcode "walveroId,actualBarcode" formatında gələ bilər — parse et
+            string? walveroIdStr = null;
+            string? actualBarcode = barcode;
+            if (!string.IsNullOrEmpty(barcode) && barcode.Contains(','))
+            {
+                var parts = barcode.Split(',', 2);
+                walveroIdStr = parts[0];
+                actualBarcode = parts[1];
+            }
+
+            // Birinci kart (actualBarcode) ilə müştəri yarat
             var iikoCustomer = new IikoCustomerDto
             {
                 Id = existingMapping != null ? Guid.Parse(existingMapping.ExternalCustomerId) : null,
                 Name = customer.FirstName,
                 Surname = customer.LastName,
-                Phone = customer.PhoneNumber,
-                CardTrack = barcode,
-                CardNumber = barcode,
+                CardTrack = actualBarcode,
+                CardNumber = actualBarcode,
                 Birthday = customer.DateOfBirth?.ToString("yyyy-MM-dd HH:mm:ss.fff")
             };
 
             var result = await _iikoClient.CreateOrUpdateCustomerAsync(accessToken, orgId, iikoCustomer, ct);
             if (result == null)
                 return CustomerSyncResult.Fail();
+
+            // İkinci kart (walveroId) əlavə et — ayrı kart olaraq
+            if (!string.IsNullOrEmpty(walveroIdStr))
+            {
+                await _iikoClient.AddCustomerCardAsync(accessToken, orgId, result.Id, walveroIdStr, walveroIdStr, ct);
+            }
 
             if (existingMapping == null)
                 await CreateMappingAsync(integration.Id, result.Id.ToString(), customerId, ct);
