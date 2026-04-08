@@ -8,6 +8,7 @@ using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.Business.Services.Abstractions.Sequences;
 using Loyalty.Business.Services.Abstractions.Users;
+using Microsoft.EntityFrameworkCore;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Entities.Users;
 using Loyalty.DataAccess.Enums;
@@ -426,6 +427,10 @@ UserManager<ApplicationUser> userManager,
             {
                 var cardNumber = await _cardNumberGenerator.GenerateCardNumberAsync(tenantId, ct);
 
+                // Phone ilə mövcud ApplicationUser axtar (mobile app istifadəçisi)
+                var existingAppUser = await _userManager.Users
+                    .FirstOrDefaultAsync(u => u.PhoneNumber == phone, ct);
+
                 customer = new Customer
                 {
                     TenantId = tenantId,
@@ -437,7 +442,8 @@ UserManager<ApplicationUser> userManager,
                     DateOfBirth = dto.DateOfBirth,
                     IsActive = true,
                     LastActivityDate = DateTime.UtcNow,
-                    CardNumber = cardNumber
+                    CardNumber = cardNumber,
+                    applicationUserId = existingAppUser?.Id
                 };
 
                 await _uow.Repository<Customer>().AddAsync(customer);
@@ -460,6 +466,15 @@ UserManager<ApplicationUser> userManager,
                 customer.Gender = dto.Gender.HasValue ? (Gender)dto.Gender.Value : customer.Gender;
                 customer.DateOfBirth = dto.DateOfBirth ?? customer.DateOfBirth;
                 customer.LastActivityDate = DateTime.UtcNow;
+
+                // Əgər hələ ApplicationUser ilə linkli deyilsə, phone ilə axtar və bağla
+                if (!customer.applicationUserId.HasValue)
+                {
+                    var existingAppUser = await _userManager.Users
+                        .FirstOrDefaultAsync(u => u.PhoneNumber == phone, ct);
+                    if (existingAppUser != null)
+                        customer.applicationUserId = existingAppUser.Id;
+                }
             }
 
             // 3) Kart tap / yarat

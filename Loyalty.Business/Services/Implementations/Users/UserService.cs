@@ -1342,6 +1342,26 @@ namespace Loyalty.Business.Services.Implementations.Users
                 // If user is Active, create JWT and return session
                 if (user.Status == UserStatus.Active)
                 {
+                    // Link orphan Customers with same phone number (e.g., added via POS enrollment)
+                    if (!string.IsNullOrEmpty(user.PhoneNumber))
+                    {
+                        var orphanCustomers = await _dbContext.Customers
+                            .Where(c => c.PhoneNumber == user.PhoneNumber
+                                && c.applicationUserId == null
+                                && c.IsActive)
+                            .ToListAsync(ct);
+
+                        foreach (var orphan in orphanCustomers)
+                        {
+                            orphan.applicationUserId = user.Id;
+                        }
+                        if (orphanCustomers.Count > 0)
+                        {
+                            _dbContext.Customers.UpdateRange(orphanCustomers);
+                            await _dbContext.SaveChangesAsync(ct);
+                        }
+                    }
+
                     var roles = await _userManager.GetRolesAsync(user);
                     var claims = await BuildClaimsAsync(user, roles);
                     var token = _tokenHelper.CreateToken(user, claims);
@@ -1457,6 +1477,27 @@ namespace Loyalty.Business.Services.Implementations.Users
                     await _userManager.UpdateAsync(user);
 
                     _logger?.LogInformation("User activated after OTP verification. UserId: {UserId}", user.Id);
+                }
+
+                // Link orphan Customers with same phone number (e.g., added via POS enrollment)
+                if (!string.IsNullOrEmpty(user.PhoneNumber))
+                {
+                    var orphanCustomers = await _dbContext.Customers
+                        .Where(c => c.PhoneNumber == user.PhoneNumber
+                            && c.applicationUserId == null
+                            && c.IsActive)
+                        .ToListAsync(ct);
+
+                    foreach (var orphan in orphanCustomers)
+                    {
+                        orphan.applicationUserId = user.Id;
+                    }
+                    if (orphanCustomers.Count > 0)
+                    {
+                        _dbContext.Customers.UpdateRange(orphanCustomers);
+                        await _dbContext.SaveChangesAsync(ct);
+                        _logger?.LogInformation("Linked {Count} orphan customers to UserId: {UserId}", orphanCustomers.Count, user.Id);
+                    }
                 }
 
                 // Check if user is blocked

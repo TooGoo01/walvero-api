@@ -103,6 +103,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             else
                 _unitOfWork.Repository<CardTemplate>().Update(entity);
             _unitOfWork.Commit();
+
+            // LoyaltyProgram.CardTemplateId-ni yenilə
+            var program = await _unitOfWork.Repository<LoyaltyProgram>().GetByIdAsync(dto.LoyaltyProgramId);
+            if (program != null && program.CardTemplateId != entity.Id)
+            {
+                program.CardTemplateId = entity.Id;
+                _unitOfWork.Repository<LoyaltyProgram>().Update(program);
+                _unitOfWork.Commit();
+            }
             await _cardTemplateIconService.AddRangeAsync(dto, entity.Id, ct);
             // local obyekt üçün
             // 7) Cavab
