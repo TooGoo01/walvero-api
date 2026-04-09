@@ -165,11 +165,16 @@ namespace Loyalty.Business.Services.Implementations.Users
                 // Əgər UserName və Password verilibsə, normal login cəhd et
                 if (!string.IsNullOrEmpty(loginUser.UserName) && !string.IsNullOrEmpty(loginUser.Password))
                 {
+                    var normalizedInput = loginUser.UserName.Trim();
+                    var normalizedUpper = normalizedInput.ToUpperInvariant();
+
                     ApplicationUser user = await _dbContext.Users
                         .Include(x => x.Tenant)
                         .ThenInclude(x => x.LoyaltyPrograms)
                         .ThenInclude(x => x.CardTemplate)
-                        .FirstOrDefaultAsync(x => x.UserName == loginUser.UserName);
+                        .FirstOrDefaultAsync(x => x.UserName == normalizedInput
+                            || x.PhoneNumber == normalizedInput
+                            || x.NormalizedUserName == normalizedUpper);
 
                     if (user != null)
                     {

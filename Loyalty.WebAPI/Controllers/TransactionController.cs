@@ -69,5 +69,23 @@ namespace Loyalty.WebAPI.Controllers
             var result = await _transactionReverseService.ReverseTransactionAsync(dto, ct);
             return Ok(result);
         }
+
+        [HttpPost]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> ReverseLastByCard([FromBody] ReverseLastByCardDto dto, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(dto.CardNumber))
+                return BadRequest(new ServiceResult(false, "CardNumber is required"));
+
+            var result = await _transactionReverseService.ReverseLastTransactionByCardAsync(dto.CardNumber, dto.Reason, ct);
+            return Ok(result);
+        }
+    }
+
+    public class ReverseLastByCardDto
+    {
+        public string CardNumber { get; set; } = string.Empty;
+        public string? Reason { get; set; }
     }
 }

@@ -245,6 +245,55 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
         }
 
+        public async Task<ServiceResult<ReverseTransactionResponseDto>> ReverseLastTransactionByCardAsync(
+            string cardNumber, string? reason, CancellationToken ct = default)
+        {
+            try
+            {
+                // 1. cardNumber ilə LoyaltyCard tap
+                var card = await _dbContext.Set<LoyaltyCard>()
+                    .FirstOrDefaultAsync(c => c.BarcodeValue == cardNumber && c.IsActive, ct);
+
+                if (card == null)
+                {
+                    // CardNumber ilə də axtar
+                    card = await _dbContext.Set<LoyaltyCard>()
+                        .FirstOrDefaultAsync(c => c.CardNumber == cardNumber && c.IsActive, ct);
+                }
+
+                if (card == null)
+                    return ServiceResult<ReverseTransactionResponseDto>.Fail("Loyalty card not found.");
+
+                // 2. Son aktiv transaction-ı tap (Earned və ya Redeemed, status=Active)
+                var lastTransaction = await _dbContext.Set<Transaction>()
+                    .Where(t => t.LoyaltyCardId == card.Id
+                        && (t.Type == TransactionType.Earned || t.Type == TransactionType.Redeemed)
+                        && t.Status == RedeemStatus.Applied)
+                    .OrderByDescending(t => t.Id)
+                    .FirstOrDefaultAsync(ct);
+
+                if (lastTransaction == null)
+                    return ServiceResult<ReverseTransactionResponseDto>.Fail("No reversible transaction found.");
+
+                // 3. Mövcud ReverseTransactionAsync çağır
+                var dto = new ReverseTransactionDto
+                {
+                    TransactionId = lastTransaction.Id,
+                    OrderId = lastTransaction.OrderId ?? $"reverse-{lastTransaction.Id}",
+                    OriginalType = lastTransaction.Type == TransactionType.Earned ? "EARN" : "REDEEM",
+                    Reason = string.IsNullOrEmpty(reason) ? "Admin reverse" : reason,
+                    Timestamp = DateTime.UtcNow
+                };
+
+                return await ReverseTransactionAsync(dto, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to reverse last transaction by card. CardNumber={CardNumber}", cardNumber);
+                return ServiceResult<ReverseTransactionResponseDto>.Fail($"Failed: {ex.Message}");
+            }
+        }
+
         private void ApplyReverseDelta(LoyaltyCard card, CardTemplateSnapshot snapshot, int reverseDelta, TransactionType originalType)
         {
             // Reverse delta is opposite of original
