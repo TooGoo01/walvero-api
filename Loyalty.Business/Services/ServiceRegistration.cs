@@ -101,6 +101,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IMonyoPosApiClient, MonyoPosApiClient>();
             services.AddScoped<IIikoPosApiClient, IikoPosApiClient>();
             services.AddScoped<ICustomerSyncService, CustomerSyncService>();
+            services.AddScoped<ISalesRepVisitService, SalesRepVisitService>();
             services.AddScoped<IPosSyncService, PosSyncService>();
 
             services.AddSignalR();

@@ -21,6 +21,7 @@ namespace Loyalty.DataAccess.Context
         #region Main
         public DbSet<Tenant> Tenants { get; set; }
         public DbSet<Contact> Contacts { get; set; }
+        public DbSet<SalesRepVisit> SalesRepVisits { get; set; }
         public DbSet<DeviceToken> DeviceTokens { get; set; }
         public DbSet<RedeemRequest> RedeemRequests { get; set; }
         public DbSet<PassDeviceRegistration> PassDeviceRegistrations { get; set; }

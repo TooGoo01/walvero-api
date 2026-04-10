@@ -21,6 +21,7 @@ namespace Loyalty.DataAccess
             services.AddScoped<IServiceRepository, ServiceRepository>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<IContactRepository, ContactRepository>();
+            services.AddScoped<ISalesRepVisitRepository, SalesRepVisitRepository>();
             services.AddScoped<IPartnerRepository, PartnerRepository>();
             services.AddScoped<IAboutRepository, AboutRepository>();
             services.AddScoped<IWalletCredentialRepository, WalletCredentialRepository>();

@@ -22,6 +22,20 @@ namespace Loyalty.Business.Mappings
             CreateMap<Contact, AddContactDto>().ReverseMap();
             CreateMap<Contact, GetContactDto>().ReverseMap();
 
+            CreateMap<AddSalesRepVisitDto, SalesRepVisit>()
+                .ForMember(d => d.Status, opt => opt.MapFrom(s => (SalesVisitStatus)s.Status))
+                .ForMember(d => d.Id, opt => opt.Ignore())
+                .ForMember(d => d.RegDate, opt => opt.Ignore())
+                .ForMember(d => d.IsActive, opt => opt.Ignore());
+            CreateMap<UpdateSalesRepVisitDto, SalesRepVisit>()
+                .ForMember(d => d.Status, opt => opt.MapFrom(s => (SalesVisitStatus)s.Status))
+                .ForMember(d => d.Id, opt => opt.Ignore())
+                .ForMember(d => d.RegDate, opt => opt.Ignore())
+                .ForMember(d => d.IsActive, opt => opt.Ignore());
+            CreateMap<SalesRepVisit, GetSalesRepVisitDto>()
+                .ForMember(d => d.Status, opt => opt.MapFrom(s => (int)s.Status))
+                .ForMember(d => d.StatusName, opt => opt.MapFrom(s => s.Status.ToString()));
+
         
 
             CreateMap<Partner, AddPartnerDto>().ReverseMap();

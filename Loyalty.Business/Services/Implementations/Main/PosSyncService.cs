@@ -20,6 +20,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILoyaltyCardRepository _cardRepo;
         private readonly ISensitiveDataProtector _protector;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IIikoPosApiClient _iikoClient;
         private readonly IUnitOfWork _uow;
         private readonly LoyaltyWalletDbContext _db;
         private readonly ILogger<PosSyncService> _logger;
@@ -35,6 +36,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             ILoyaltyCardRepository cardRepo,
             ISensitiveDataProtector protector,
             IHttpClientFactory httpClientFactory,
+            IIikoPosApiClient iikoClient,
             IUnitOfWork uow,
             LoyaltyWalletDbContext db,
             ILogger<PosSyncService> logger)
@@ -44,6 +46,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _cardRepo = cardRepo;
             _protector = protector;
             _httpClientFactory = httpClientFactory;
+            _iikoClient = iikoClient;
             _uow = uow;
             _db = db;
             _logger = logger;
@@ -57,7 +60,9 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             foreach (var integration in integrations)
             {
-                if (string.IsNullOrWhiteSpace(integration.ApiBaseUrl))
+                // iiko üçün ApiBaseUrl məcburi deyil (client-də hardcoded)
+                var isIiko = integration.IntegrationType?.Source == "iiko_pos";
+                if (!isIiko && string.IsNullOrWhiteSpace(integration.ApiBaseUrl))
                     continue;
 
                 try
@@ -106,6 +111,12 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         private async Task<string?> SyncToSinglePosAsync(TenantIntegration integration, Customer customer, CancellationToken ct)
         {
+            // iiko POS üçün ayrı işləmə — iiko Cloud API endpoint-lərinə çağırış
+            if (integration.IntegrationType?.Source == "iiko_pos")
+            {
+                return await SyncCustomerToIikoAsync(integration, customer, ct);
+            }
+
             var rawBaseUrl = integration.ApiBaseUrl!.TrimEnd('/');
             var hasUrlCredentials = rawBaseUrl.Contains("@");
 
@@ -221,6 +232,93 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             // Try to extract external customer ID from response
             return ExtractExternalId(responseBody);
+        }
+
+        private async Task<string?> SyncCustomerToIikoAsync(TenantIntegration integration, Customer customer, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(integration.ApiTokenEncrypted) || string.IsNullOrEmpty(integration.ExternalVenueId))
+            {
+                _logger.LogWarning("iiko sync: ApiToken or ExternalVenueId is missing. IntegrationId={Id}", integration.Id);
+                return null;
+            }
+
+            var apiLogin = _protector.Decrypt(integration.ApiTokenEncrypted);
+            if (string.IsNullOrEmpty(apiLogin))
+                return null;
+
+            // iiko access token (55 dəq cache)
+            var accessToken = await _iikoClient.GetAccessTokenAsync(apiLogin, ct);
+            if (string.IsNullOrEmpty(accessToken))
+            {
+                _logger.LogWarning("iiko sync: access_token alınmadı. IntegrationId={Id}", integration.Id);
+                return null;
+            }
+
+            if (!Guid.TryParse(integration.ExternalVenueId, out var orgId))
+            {
+                _logger.LogWarning("iiko sync: ExternalVenueId GUID deyil: {VenueId}", integration.ExternalVenueId);
+                return null;
+            }
+
+            // BarcodeValue-nu LoyaltyCard-dan al
+            var cards = await _cardRepo.ListByCustomerAsync(integration.TenantId, customer.Id, ct);
+            var barcodeValue = cards?
+                .Where(c => c.IsActive && !string.IsNullOrEmpty(c.BarcodeValue))
+                .OrderByDescending(c => c.Id)
+                .Select(c => c.BarcodeValue)
+                .FirstOrDefault();
+
+            // WalveroId-ni ApplicationUser-dən al
+            long? walveroId = null;
+            if (customer.applicationUserId.HasValue)
+            {
+                walveroId = await _db.Users
+                    .Where(u => u.Id == customer.applicationUserId.Value)
+                    .Select(u => u.WalveroId)
+                    .FirstOrDefaultAsync(ct);
+            }
+
+            // Əsas barcode (cardTrack) — LoyaltyCard barcode və ya customer ID
+            var primaryCard = !string.IsNullOrEmpty(barcodeValue)
+                ? barcodeValue
+                : customer.Id.ToString();
+
+            // iiko müştəri yarat/yenilə (1-ci kart: primaryCard)
+            var iikoCustomer = new IikoCustomerDto
+            {
+                Name = customer.FirstName?.Trim() ?? "",
+                Surname = customer.LastName?.Trim(),
+                CardTrack = primaryCard,
+                CardNumber = primaryCard,
+                Birthday = customer.DateOfBirth?.ToString("yyyy-MM-dd HH:mm:ss.fff")
+            };
+
+            var result = await _iikoClient.CreateOrUpdateCustomerAsync(accessToken, orgId, iikoCustomer, ct);
+            if (result == null)
+            {
+                _logger.LogWarning("iiko sync: CreateOrUpdate failed. CustomerId={CustomerId}", customer.Id);
+                return null;
+            }
+
+            // 2-ci kart: WalveroId (əgər varsa)
+            if (walveroId.HasValue)
+            {
+                var walveroIdStr = walveroId.Value.ToString();
+                var addCardOk = await _iikoClient.AddCustomerCardAsync(
+                    accessToken, orgId, result.Id, walveroIdStr, walveroIdStr, ct);
+                if (!addCardOk)
+                {
+                    _logger.LogInformation(
+                        "iiko sync: WalveroId kart əlavə edilmədi (ola bilsin ki, artıq var). CustomerId={CustomerId}, WalveroId={WalveroId}",
+                        customer.Id, walveroIdStr);
+                }
+            }
+
+            _logger.LogInformation(
+                "iiko sync OK: IntegrationId={Id}, CustomerId={CustomerId}, iikoId={IikoId}",
+                integration.Id, customer.Id, result.Id);
+
+            return result.Id.ToString();
         }
 
         /// <summary>
