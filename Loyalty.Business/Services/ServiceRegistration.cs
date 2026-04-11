@@ -100,10 +100,14 @@ namespace Loyalty.Business.Services
             services.AddScoped<IRewardCrudService, RewardCrudService>();
             services.AddScoped<IWalletWebhookService, WalletWebhookService>();
             services.AddScoped<IMonyoPosApiClient, MonyoPosApiClient>();
+            services.AddScoped<IIikoPosApiClient, IikoPosApiClient>();
             services.AddScoped<ICustomerSyncService, CustomerSyncService>();
             services.AddScoped<ILotteryService, LotteryService>();
             services.AddScoped<IBranchService, BranchService>();
             services.AddSingleton<IMediaProcessor, MediaProcessor>();
+
+            services.AddScoped<ISalesRepVisitService, SalesRepVisitService>();
+            services.AddScoped<IPosSyncService, PosSyncService>();
 
             services.AddSignalR();
             return services;

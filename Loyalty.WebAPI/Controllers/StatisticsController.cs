@@ -1,6 +1,7 @@
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Entities.Main;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -8,45 +9,92 @@ using System.Net;
 
 namespace Loyalty.WebAPI.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/[controller]/[action]")]
     [ApiController]
-    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+    [Authorize(
+        AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
+        Policy = "TenantAdminOrModerator")]
     public class StatisticsController : ControllerBase
     {
-        private readonly IStatisticsService _statisticsService;
+        private readonly ITransactionService _transactionService;
         private readonly ITenantProvider _tenantProvider;
 
-        public StatisticsController(
-            IStatisticsService statisticsService,
-            ITenantProvider tenantProvider)
+        public StatisticsController(ITransactionService transactionService, ITenantProvider tenantProvider)
         {
-            _statisticsService = statisticsService;
+            _transactionService = transactionService;
             _tenantProvider = tenantProvider;
         }
 
-        [HttpGet("dashboard")]
-        [ProducesResponseType(typeof(ServiceResult<DashboardStatisticsDto>), (int)HttpStatusCode.OK)]
-        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
-        public async Task<IActionResult> Dashboard(DateOnly? startDate, DateOnly? endDate)
+        [HttpGet]
+        public async Task<IActionResult> Dashboard([FromQuery] string? startDate, [FromQuery] string? endDate)
         {
+            var tenantId = _tenantProvider.CurrentTenantId ?? 0;
+            if (tenantId <= 0)
+                return Ok(new ServiceResult(false, "TenantId is required"));
+
             var today = DateOnly.FromDateTime(DateTime.Today);
+            var start = !string.IsNullOrWhiteSpace(startDate) && DateOnly.TryParse(startDate, out var sd)
+                ? sd
+                : today.AddDays(-30);
+            var end = !string.IsNullOrWhiteSpace(endDate) && DateOnly.TryParse(endDate, out var ed)
+                ? ed
+                : today;
 
-            var effectiveEndDate = endDate ?? today;
-            var effectiveStartDate = startDate ?? effectiveEndDate.AddDays(-365);
+            var result = await _transactionService.GetByTenantIdAndDate(tenantId, start, end);
 
-            var tenantId = _tenantProvider.CurrentTenantId;
-            if (!tenantId.HasValue)
-                return BadRequest(new ServiceResult(false, "Tenant tapılmadı."));
+            if (!result.Success || result.Data is not List<GetTransactionDto> txList)
+                return Ok(new ServiceResult(false, result.Message ?? "No data"));
 
-            var programId = _tenantProvider.CurrentProgramId;
+            var totalTransactions = txList.Count;
+            var totalPointsEarned = 0;
+            var totalPointsSpent = 0;
+            var cardIds = new HashSet<int>();
 
-            var result = await _statisticsService.GetDashboardAsync(
-                tenantId.Value,
-                effectiveStartDate,
-                effectiveEndDate,
-                programId);
+            var dailyMap = new SortedDictionary<string, (int count, int earned, int spent)>();
 
-            return Ok(result);
+            foreach (var tx in txList)
+            {
+                var points = tx.Points;
+                var type = tx.Type;
+                var dateKey = tx.LocalOccurredAt.ToString("yyyy-MM-dd");
+
+                if (type == TransactionType.Earned || type == TransactionType.Bonus)
+                    totalPointsEarned += points;
+                else if (type == TransactionType.Redeemed)
+                    totalPointsSpent += points;
+
+                if (tx.LoyaltyCardId > 0)
+                    cardIds.Add(tx.LoyaltyCardId);
+
+                if (!dailyMap.ContainsKey(dateKey))
+                    dailyMap[dateKey] = (0, 0, 0);
+
+                var d = dailyMap[dateKey];
+                dailyMap[dateKey] = (
+                    d.count + 1,
+                    d.earned + (type == TransactionType.Earned || type == TransactionType.Bonus ? points : 0),
+                    d.spent + (type == TransactionType.Redeemed ? points : 0)
+                );
+            }
+
+            var dailyStats = dailyMap.Select(kvp => new
+            {
+                date = kvp.Key,
+                transactionCount = kvp.Value.count,
+                pointsEarned = kvp.Value.earned,
+                pointsSpent = kvp.Value.spent
+            }).ToList();
+
+            var dashboard = new
+            {
+                totalTransactions,
+                totalPointsEarned,
+                totalPointsSpent,
+                uniqueCustomers = cardIds.Count,
+                dailyStats
+            };
+
+            return Ok(new ServiceResult(true, dashboard));
         }
     }
 }

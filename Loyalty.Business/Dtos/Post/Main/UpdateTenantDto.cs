@@ -23,9 +23,9 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? WazeLocationUrl { get; set; }
         public string? MenuUrl { get; set; } = string.Empty;
         public bool ShowOnHome { get; set; } = false;
+        public bool AcceptAnonymous { get; set; } = false;
         public bool IsHidden { get; set; } = false;
         public bool IsHasMenu { get; set; } = false;
-        public bool AcceptAnonymous { get; set; } = false;
         public List<int> admins { get; set; }
         public int categoryId { get; set; }
         public bool RequireConfirmation { get; set; } = true;

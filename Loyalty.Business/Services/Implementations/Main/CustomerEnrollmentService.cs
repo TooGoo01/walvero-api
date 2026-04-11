@@ -10,6 +10,7 @@ using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.Business.Services.Abstractions.Sequences;
 using Loyalty.Business.Services.Abstractions.Users;
+using Microsoft.EntityFrameworkCore;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Entities.Users;
 using Loyalty.DataAccess.Enums;
@@ -43,6 +44,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ICardNumberGenerator _cardNumberGenerator;
         private readonly ICustomerSyncService _customerSyncService;
+        private readonly IPosSyncService _posSyncService;
         private readonly ILogger<CustomerEnrollmentService> _logger;
         private readonly LoyaltyWalletDbContext _dbContext;
         public CustomerEnrollmentService(
@@ -63,6 +65,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 UserManager<ApplicationUser> userManager,
             ICardNumberGenerator cardNumberGenerator,
             ICustomerSyncService customerSyncService,
+            IPosSyncService posSyncService,
             ILogger<CustomerEnrollmentService> logger,
             LoyaltyWalletDbContext dbContext)
         {
@@ -75,6 +78,7 @@ UserManager<ApplicationUser> userManager,
             _userManager = userManager;
             _cardNumberGenerator = cardNumberGenerator;
             _customerSyncService = customerSyncService;
+            _posSyncService = posSyncService;
             _logger = logger;
             _dbContext = dbContext;
         }
@@ -139,6 +143,15 @@ UserManager<ApplicationUser> userManager,
             if (!string.IsNullOrWhiteSpace(phone))
                 customer = await _customerRepo.GetByPhoneAsync(tenantId, phone, ct);
            
+            // Reactivate if customer exists but is inactive
+            if (customer != null && !customer.IsActive)
+            {
+                customer.IsActive = true;
+                customer.LastActivityDate = DateTime.UtcNow;
+                _uow.Repository<Customer>().Update(customer);
+                _uow.Commit();
+            }
+
             if (customer is null)
             {
                 // Generate CardNumber before creating customer
@@ -172,6 +185,13 @@ UserManager<ApplicationUser> userManager,
                     customer.CardNumber = await _cardNumberGenerator.GenerateCardNumberAsync(tenantId, ct);
                     _uow.Commit();
                 }
+
+                // Sync new customer to POS systems (fire-and-forget)
+                _ = Task.Run(async () =>
+                {
+                    try { await _posSyncService.SyncCustomerToPosAsync(tenantId, customer); }
+                    catch (Exception ex) { _logger?.LogWarning(ex, "POS sync failed for customer {CustomerId}", customer.Id); }
+                });
             }
             customer.applicationUserId = int.Parse(userId);
             // 3) Son aktiv kartı reuse et / yoxdursa deactive kartı aktivləşdir / yoxdursa yarat
@@ -239,10 +259,10 @@ UserManager<ApplicationUser> userManager,
                 hasPendingCardUpdate = true;
             }
 
-            // Auto-sync customer to Monyo POS if integration is configured (after card exists for barcode)
+            // Auto-sync customer to POS systems (supports Basic Auth and Bearer token)
             try
             {
-                await _customerSyncService.SyncCustomerToPosAsync(tenantId, customer.Id, ct);
+                await _posSyncService.SyncCustomerToPosAsync(tenantId, customer, ct);
             }
             catch (Exception ex)
             {
@@ -400,9 +420,22 @@ UserManager<ApplicationUser> userManager,
             // 2) Customer tap / yarat
             Customer? customer = await _customerRepo.GetByPhoneAsync(tenantId, phone, ct);
 
+            // Reactivate if customer exists but is inactive
+            if (customer != null && !customer.IsActive)
+            {
+                customer.IsActive = true;
+                customer.LastActivityDate = DateTime.UtcNow;
+                _uow.Repository<Customer>().Update(customer);
+                _uow.Commit();
+            }
+
             if (customer is null)
             {
                 var cardNumber = await _cardNumberGenerator.GenerateCardNumberAsync(tenantId, ct);
+
+                // Phone ilə mövcud ApplicationUser axtar (mobile app istifadəçisi)
+                var existingAppUser = await _userManager.Users
+                    .FirstOrDefaultAsync(u => u.PhoneNumber == phone, ct);
 
                 customer = new Customer
                 {
@@ -415,7 +448,8 @@ UserManager<ApplicationUser> userManager,
                     DateOfBirth = dto.DateOfBirth,
                     IsActive = true,
                     LastActivityDate = DateTime.UtcNow,
-                    CardNumber = cardNumber
+                    CardNumber = cardNumber,
+                    applicationUserId = existingAppUser?.Id
                 };
 
                 await _uow.Repository<Customer>().AddAsync(customer);
@@ -438,6 +472,15 @@ UserManager<ApplicationUser> userManager,
                 customer.Gender = dto.Gender.HasValue ? (Gender)dto.Gender.Value : customer.Gender;
                 customer.DateOfBirth = dto.DateOfBirth ?? customer.DateOfBirth;
                 customer.LastActivityDate = DateTime.UtcNow;
+
+                // Əgər hələ ApplicationUser ilə linkli deyilsə, phone ilə axtar və bağla
+                if (!customer.applicationUserId.HasValue)
+                {
+                    var existingAppUser = await _userManager.Users
+                        .FirstOrDefaultAsync(u => u.PhoneNumber == phone, ct);
+                    if (existingAppUser != null)
+                        customer.applicationUserId = existingAppUser.Id;
+                }
             }
 
             // 3) Kart tap / yarat
@@ -548,10 +591,10 @@ UserManager<ApplicationUser> userManager,
             _uow.Repository<Customer>().Update(customer);
             _uow.Commit();
 
-            // Auto-sync customer to POS if integration is configured
+            // Auto-sync customer to POS systems (supports Basic Auth and Bearer token)
             try
             {
-                await _customerSyncService.SyncCustomerToPosAsync(customer.TenantId, customer.Id, ct);
+                await _posSyncService.SyncCustomerToPosAsync(customer.TenantId, customer, ct);
             }
             catch (Exception ex)
             {

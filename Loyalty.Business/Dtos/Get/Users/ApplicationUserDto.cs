@@ -16,6 +16,6 @@ namespace Loyalty.Business.Dtos.Get.Users
         public int? TenantId { get; set; }
         public GetTenantDto? Tenant { get; set; }
         public List<string>? Roles { get; set; }
-        public string? CreatedAt { get; set; }
+        public DateTime? CreatedAt { get; set; }
     }
 }

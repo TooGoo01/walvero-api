@@ -53,5 +53,8 @@ namespace Loyalty.Business.Services.Abstractions.Users
         Task<ServiceResult> GetRolesAsync();
         Task<ServiceResult> CreateAdminUserAsync(CreateAdminUserDto dto);
         Task<ServiceResult> UpdateAdminUserAsync(string userId, string? role, int? tenantId);
+
+        // Program switching
+        Task<ServiceResult<object>> SwitchProgramAsync(int programId, CancellationToken ct = default);
     }
 }

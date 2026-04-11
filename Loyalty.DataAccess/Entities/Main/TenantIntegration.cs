@@ -17,6 +17,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public int? LoyaltyProgramId { get; set; }
 
         public string? ApiBaseUrl { get; set; }
+        public string? ApiUsername { get; set; }
         public string? ApiTokenEncrypted { get; set; }
 
         public string? WalletTokenHash { get; set; }

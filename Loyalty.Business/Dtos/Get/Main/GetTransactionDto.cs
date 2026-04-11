@@ -25,9 +25,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public DateTimeOffset LocalOccurredAt { get; set; }
         public string TimeZoneIdUsed { get; set; } = "UTC";
         public int BalanceAfter { get; set; }
-
         public string? CustomerName { get; set; }
         public string? CardNumber { get; set; }
-        public DateTime CreatedAt { get; set; }
+        public DateTime? CreatedAt { get; set; }
     }
 }

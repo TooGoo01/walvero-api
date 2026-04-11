@@ -302,5 +302,17 @@ namespace Loyalty.WebAPI.Controllers
             var result = await _userService.UpdateAdminUserAsync(dto.UserId, dto.Role, dto.TenantId);
             return Ok(result);
         }
+
+        /// <summary>
+        /// Switch active program for admin/moderator (returns new JWT with selected program_id)
+        /// </summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        [ProducesResponseType(typeof(ServiceResult<object>), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> SwitchProgram([FromBody] SwitchProgramDto dto, CancellationToken ct)
+        {
+            var result = await _userService.SwitchProgramAsync(dto.ProgramId, ct);
+            return Ok(result);
+        }
     }
 }

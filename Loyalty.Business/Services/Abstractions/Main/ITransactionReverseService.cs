@@ -12,6 +12,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public interface ITransactionReverseService
     {
         Task<ServiceResult<ReverseTransactionResponseDto>> ReverseTransactionAsync(ReverseTransactionDto dto, CancellationToken ct = default);
+        Task<ServiceResult<ReverseTransactionResponseDto>> ReverseLastTransactionByCardAsync(string cardNumber, string? reason, CancellationToken ct = default);
     }
 }
 

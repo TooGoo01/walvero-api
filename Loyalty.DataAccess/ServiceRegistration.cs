@@ -21,6 +21,7 @@ namespace Loyalty.DataAccess
             services.AddScoped<IServiceRepository, ServiceRepository>();
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<IContactRepository, ContactRepository>();
+            services.AddScoped<ISalesRepVisitRepository, SalesRepVisitRepository>();
             services.AddScoped<IPartnerRepository, PartnerRepository>();
             services.AddScoped<IAboutRepository, AboutRepository>();
             services.AddScoped<IWalletCredentialRepository, WalletCredentialRepository>();
@@ -51,6 +52,7 @@ namespace Loyalty.DataAccess
             services.AddScoped<IRewardRepository, RewardRepository>();
             services.AddScoped<ILotteryRepository, LotteryRepository>();
             services.AddScoped<IBranchRepository, BranchRepository>();
+            services.AddScoped<ISalesRepVisitRepository, SalesRepVisitRepository>();
 
         }
     }

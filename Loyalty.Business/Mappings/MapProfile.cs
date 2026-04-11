@@ -22,6 +22,20 @@ namespace Loyalty.Business.Mappings
             CreateMap<Contact, AddContactDto>().ReverseMap();
             CreateMap<Contact, GetContactDto>().ReverseMap();
 
+            CreateMap<AddSalesRepVisitDto, SalesRepVisit>()
+                .ForMember(d => d.Status, opt => opt.MapFrom(s => (SalesVisitStatus)s.Status))
+                .ForMember(d => d.Id, opt => opt.Ignore())
+                .ForMember(d => d.RegDate, opt => opt.Ignore())
+                .ForMember(d => d.IsActive, opt => opt.Ignore());
+            CreateMap<UpdateSalesRepVisitDto, SalesRepVisit>()
+                .ForMember(d => d.Status, opt => opt.MapFrom(s => (SalesVisitStatus)s.Status))
+                .ForMember(d => d.Id, opt => opt.Ignore())
+                .ForMember(d => d.RegDate, opt => opt.Ignore())
+                .ForMember(d => d.IsActive, opt => opt.Ignore());
+            CreateMap<SalesRepVisit, GetSalesRepVisitDto>()
+                .ForMember(d => d.Status, opt => opt.MapFrom(s => (int)s.Status))
+                .ForMember(d => d.StatusName, opt => opt.MapFrom(s => s.Status.ToString()));
+
         
 
             CreateMap<Partner, AddPartnerDto>().ReverseMap();
@@ -39,7 +53,9 @@ namespace Loyalty.Business.Mappings
                 .ForMember(d => d.IsCustomer,
                     opt => opt.MapFrom(s => s.Customers != null &&
                                              s.Customers.Any(c => c.LoyaltyCards != null &&
-                                                                  c.LoyaltyCards.Any(lc => lc.IsActive))));
+                                                                  c.LoyaltyCards.Any(lc => lc.IsActive))))
+                .ForMember(d => d.AcceptAnonymous, opt => opt.MapFrom(s => s.AcceptAnonymus))
+                .ForMember(d => d.TelegramUrl, opt => opt.MapFrom(s => s.TeleqramUrl));
 
             CreateMap<TenantBranding, AddTenantBrandingDto>().ReverseMap();
             CreateMap<TenantBranding, GetTenantBrandingDto>().ReverseMap();
@@ -91,6 +107,13 @@ namespace Loyalty.Business.Mappings
             CreateMap<StoreFeedback, GetStoreFeedbackDto>().ReverseMap();
             CreateMap<StoreFeedbackReply, GetStoreFeedbackReplyDto>().ReverseMap();
             CreateMap<Notification, GetNotificationDto>().ReverseMap();
+            CreateMap<Tenant, GetTenantDto>()
+                .ForMember(d => d.IsCustomer,
+                    opt => opt.MapFrom(s => s.Customers != null &&
+                                             s.Customers.Any(c => c.LoyaltyCards != null &&
+                                                                  c.LoyaltyCards.Any(lc => lc.IsActive))))
+                .ForMember(d => d.AcceptAnonymous, opt => opt.MapFrom(s => s.AcceptAnonymus))
+                .ForMember(d => d.TelegramUrl, opt => opt.MapFrom(s => s.TeleqramUrl));
             CreateMap<Offer, AddOfferDto>().ReverseMap();
             CreateMap<Offer, GetOfferDto>().ReverseMap();
 
@@ -142,6 +165,15 @@ namespace Loyalty.Business.Mappings
             CreateMap<RestorantWifiInformation, UpdateRestorantWifiInformationDto>().ReverseMap();
             CreateMap<RestorantWifiInformation, GetRestorantWifiInformationDto>().ReverseMap();
 
+            CreateMap<Transaction, GetTransactionDto>()
+                .ForMember(d => d.Status, opt => opt.MapFrom(s => (int)s.Status))
+                .ForMember(d => d.CustomerName, opt => opt.MapFrom(s =>
+                    s.LoyaltyCard != null && s.LoyaltyCard.Customer != null
+                        ? (s.LoyaltyCard.Customer.FirstName + " " + s.LoyaltyCard.Customer.LastName).Trim()
+                        : null))
+                .ForMember(d => d.CardNumber, opt => opt.MapFrom(s =>
+                    s.LoyaltyCard != null ? s.LoyaltyCard.CardNumber : null))
+                .ForMember(d => d.CreatedAt, opt => opt.MapFrom(s => s.RegDate));
 
             #endregion
 

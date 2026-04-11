@@ -1,4 +1,4 @@
-﻿using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
@@ -12,7 +12,7 @@ namespace Loyalty.WebAPI.Controllers
 {
     [Route("api/[controller]/[action]")]
     [ApiController]
-    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     public class TransactionController : ControllerBase
     {
         private readonly ITransactionService _transactionService;
@@ -30,48 +30,30 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         [HttpGet]
+        [Authorize(Policy = "TenantAdminOrModerator")]
         [ProducesResponseType(typeof(ServiceResult<List<GetTransactionDto>>), (int)HttpStatusCode.OK)]
-        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> List(DateOnly? startDate, DateOnly? endDate, int? tenantId = null)
         {
             var today = DateOnly.FromDateTime(DateTime.Today);
+            var effectiveEndDate = endDate ?? today;
+            var effectiveStartDate = startDate ?? effectiveEndDate.AddDays(-30);
 
-            DateOnly effectiveEndDate;
-            DateOnly effectiveStartDate;
+            var id = tenantId ?? _tenantProvider.CurrentTenantId ?? 0;
+            if (id <= 0)
+                return BadRequest(new ServiceResult(false, "TenantId is required"));
 
-            if (!startDate.HasValue && !endDate.HasValue)
-            {
-                effectiveEndDate = today;
-                effectiveStartDate = today.AddDays(-30);
-            }
-            else
-            {
-                effectiveEndDate = endDate ?? today;
-                effectiveStartDate = startDate ?? effectiveEndDate.AddDays(-30);
-            }
-
-            var effectiveTenantId = (tenantId.HasValue && tenantId.Value > 0)
-                ? tenantId.Value
-                : _tenantProvider.CurrentTenantId;
-
-            if (!effectiveTenantId.HasValue)
-                return BadRequest(new ServiceResult(false, "Tenant not found."));
-
-            var result = await _transactionService.GetByTenantIdAndDate(
-                effectiveTenantId.Value,
-                effectiveStartDate,
-                effectiveEndDate
-            );
+            var result = await _transactionService.GetByTenantIdAndDate(id, effectiveStartDate, effectiveEndDate);
             return Ok(result);
         }
 
         [HttpGet]
+        [Authorize(Policy = "TenantAdminOrModerator")]
         [ProducesResponseType(typeof(ServiceResult<List<GetTransactionDto>>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
-        public async Task<IActionResult> ByCustomer(int customerId)
+        public async Task<IActionResult> ByCustomer([FromQuery] int customerId)
         {
             if (customerId <= 0)
-                return BadRequest(new ServiceResult(false, "Customer ID is required."));
+                return BadRequest(new ServiceResult(false, "CustomerId is required"));
 
             var result = await _transactionService.GetByCustomerId(customerId);
             return Ok(result);

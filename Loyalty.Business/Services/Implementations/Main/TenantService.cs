@@ -258,9 +258,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (dto.MenuUrl != null)
                     category.MenuUrl = dto.MenuUrl;
                 category.ShowOnHome = dto.ShowOnHome;
+                category.AcceptAnonymus = dto.AcceptAnonymous;
                 category.IsHidden = dto.IsHidden;
                 category.IsHasMenu = dto.IsHasMenu;
-                category.AcceptAnonymus = dto.AcceptAnonymous;
+                category.LinkedInUrl = dto.LinkedInUrl;
+                category.WazeLocationUrl = dto.WazeLocationUrl;
+                if (dto.MenuUrl != null)
+                {
+                    category.MenuUrl = dto.MenuUrl;
+                }
                 category.categoryId = dto.categoryId;
                 category.RequireConfirmation = dto.RequireConfirmation;
                 category.ConfirmationTtlMinutes = dto.ConfirmationTtlMinutes;

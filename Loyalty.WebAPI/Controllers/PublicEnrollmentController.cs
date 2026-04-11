@@ -1,4 +1,4 @@
-using Loyalty.Business.Dtos.Post.Main;
+    using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Microsoft.AspNetCore.Mvc;

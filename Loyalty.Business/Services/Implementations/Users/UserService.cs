@@ -165,11 +165,16 @@ namespace Loyalty.Business.Services.Implementations.Users
                 // Əgər UserName və Password verilibsə, normal login cəhd et
                 if (!string.IsNullOrEmpty(loginUser.UserName) && !string.IsNullOrEmpty(loginUser.Password))
                 {
+                    var normalizedInput = loginUser.UserName.Trim();
+                    var normalizedUpper = normalizedInput.ToUpperInvariant();
+
                     ApplicationUser user = await _dbContext.Users
                         .Include(x => x.Tenant)
                         .ThenInclude(x => x.LoyaltyPrograms)
                         .ThenInclude(x => x.CardTemplate)
-                        .FirstOrDefaultAsync(x => x.UserName == loginUser.UserName);
+                        .FirstOrDefaultAsync(x => x.UserName == normalizedInput
+                            || x.PhoneNumber == normalizedInput
+                            || x.NormalizedUserName == normalizedUpper);
 
                     if (user != null)
                     {
@@ -191,6 +196,15 @@ namespace Loyalty.Business.Services.Implementations.Users
                                 ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
                                 ?.CardTemplate?.GoogleLogoUrl;
 
+                            var loginPrograms = user.Tenant?.LoyaltyPrograms?
+                                .Where(lp => lp.IsActive)
+                                .Select(lp => new ProgramSummaryDto
+                                {
+                                    Id = lp.Id,
+                                    ProgramName = lp.ProgramName,
+                                    ProgramType = (int)lp.ProgramType
+                                }).ToList();
+
                             var detail = new UserSessionDto
                             {
                                 Id = user.Id,
@@ -202,11 +216,13 @@ namespace Loyalty.Business.Services.Implementations.Users
                                 BirthDate = user.DateOfBirth != null ? user.DateOfBirth : DateTime.Now,
                                 Roles = rolem,
                                 TenantId = user.TenantId,
+                                ProgramId = user.Tenant?.LoyaltyPrograms?.FirstOrDefault()?.Id,
                                 Token = token.Token,
                                 Expiration = token.Expiration,
                                 RefreshToken = token.RefreshToken,
                                 RefreshTokenExpiration = token.RefreshTokenExpiration,
                                 GoogleLogoUrl = googleLogoUrl,
+                                Programs = loginPrograms,
                                 TenantName = user.Tenant?.CompanyName,
                                 SubscriptionExpiryDate = user.Tenant?.SubscriptionExpiryDate
                             };
@@ -1335,6 +1351,26 @@ namespace Loyalty.Business.Services.Implementations.Users
                 // If user is Active, create JWT and return session
                 if (user.Status == UserStatus.Active)
                 {
+                    // Link orphan Customers with same phone number (e.g., added via POS enrollment)
+                    if (!string.IsNullOrEmpty(user.PhoneNumber))
+                    {
+                        var orphanCustomers = await _dbContext.Customers
+                            .Where(c => c.PhoneNumber == user.PhoneNumber
+                                && c.applicationUserId == null
+                                && c.IsActive)
+                            .ToListAsync(ct);
+
+                        foreach (var orphan in orphanCustomers)
+                        {
+                            orphan.applicationUserId = user.Id;
+                        }
+                        if (orphanCustomers.Count > 0)
+                        {
+                            _dbContext.Customers.UpdateRange(orphanCustomers);
+                            await _dbContext.SaveChangesAsync(ct);
+                        }
+                    }
+
                     var roles = await _userManager.GetRolesAsync(user);
                     var claims = await BuildClaimsAsync(user, roles);
                     var token = _tokenHelper.CreateToken(user, claims);
@@ -1344,6 +1380,15 @@ namespace Loyalty.Business.Services.Implementations.Users
                     var googleLogoUrl = user.Tenant?.LoyaltyPrograms
                         ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
                         ?.CardTemplate?.GoogleLogoUrl;
+
+                    var programs = user.Tenant?.LoyaltyPrograms?
+                        .Where(lp => lp.IsActive)
+                        .Select(lp => new ProgramSummaryDto
+                        {
+                            Id = lp.Id,
+                            ProgramName = lp.ProgramName,
+                            ProgramType = (int)lp.ProgramType
+                        }).ToList();
 
                     var session = new UserSessionDto
                     {
@@ -1362,7 +1407,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                         Expiration = token.Expiration,
                         RefreshToken = token.RefreshToken,
                         RefreshTokenExpiration = token.RefreshTokenExpiration,
-                        GoogleLogoUrl = googleLogoUrl
+                        GoogleLogoUrl = googleLogoUrl,
+                        Programs = programs
                     };
 
                     return ServiceResult<object>.Ok(session, "Login successful");
@@ -1442,6 +1488,27 @@ namespace Loyalty.Business.Services.Implementations.Users
                     _logger?.LogInformation("User activated after OTP verification. UserId: {UserId}", user.Id);
                 }
 
+                // Link orphan Customers with same phone number (e.g., added via POS enrollment)
+                if (!string.IsNullOrEmpty(user.PhoneNumber))
+                {
+                    var orphanCustomers = await _dbContext.Customers
+                        .Where(c => c.PhoneNumber == user.PhoneNumber
+                            && c.applicationUserId == null
+                            && c.IsActive)
+                        .ToListAsync(ct);
+
+                    foreach (var orphan in orphanCustomers)
+                    {
+                        orphan.applicationUserId = user.Id;
+                    }
+                    if (orphanCustomers.Count > 0)
+                    {
+                        _dbContext.Customers.UpdateRange(orphanCustomers);
+                        await _dbContext.SaveChangesAsync(ct);
+                        _logger?.LogInformation("Linked {Count} orphan customers to UserId: {UserId}", orphanCustomers.Count, user.Id);
+                    }
+                }
+
                 // Check if user is blocked
                 if (user.Status == UserStatus.Blocked)
                 {
@@ -1464,6 +1531,15 @@ namespace Loyalty.Business.Services.Implementations.Users
                     ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
                     ?.CardTemplate?.GoogleLogoUrl;
 
+                var otpPrograms = user.Tenant?.LoyaltyPrograms?
+                    .Where(lp => lp.IsActive)
+                    .Select(lp => new ProgramSummaryDto
+                    {
+                        Id = lp.Id,
+                        ProgramName = lp.ProgramName,
+                        ProgramType = (int)lp.ProgramType
+                    }).ToList();
+
                 var session = new UserSessionDto
                 {
                     Id = user.Id,
@@ -1481,7 +1557,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     Expiration = token.Expiration,
                     RefreshToken = token.RefreshToken,
                     RefreshTokenExpiration = token.RefreshTokenExpiration,
-                    GoogleLogoUrl = googleLogoUrl
+                    GoogleLogoUrl = googleLogoUrl,
+                    Programs = otpPrograms
                 };
 
                 var response = new VerifyOtpResponse
@@ -2184,6 +2261,12 @@ namespace Loyalty.Business.Services.Implementations.Users
             {
                 return new ServiceResult(false, ex.Message);
             }
+        }
+
+        public Task<ServiceResult<object>> SwitchProgramAsync(int programId, CancellationToken ct = default)
+        {
+            // TODO: implement program switching logic. Placeholder implementation.
+            return Task.FromResult(ServiceResult<object>.Ok(new { programId }, "Program switched"));
         }
 
     }

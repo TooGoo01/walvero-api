@@ -44,6 +44,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ExternalVenueId = dto.ExternalVenueId,
                 LoyaltyProgramId = dto.LoyaltyProgramId,
                 ApiBaseUrl = dto.ApiBaseUrl?.Trim(),
+                ApiUsername = dto.ApiUsername?.Trim(),
                 ApiTokenEncrypted = !string.IsNullOrEmpty(dto.ApiToken) ? _protector.Encrypt(dto.ApiToken) : null,
                 WalletTokenHash = hash,
                 CreatedAt = DateTime.UtcNow,
@@ -104,6 +105,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ExternalVenueId = ti.ExternalVenueId,
                 LoyaltyProgramId = ti.LoyaltyProgramId,
                 ApiBaseUrl = ti.ApiBaseUrl,
+                ApiUsername = ti.ApiUsername,
                 IsActive = ti.IsActive
             });
         }
@@ -119,6 +121,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.ExternalVenueId != null) ti.ExternalVenueId = dto.ExternalVenueId;
             if (dto.LoyaltyProgramId.HasValue) ti.LoyaltyProgramId = dto.LoyaltyProgramId;
             if (dto.ApiBaseUrl != null) ti.ApiBaseUrl = dto.ApiBaseUrl.Trim();
+            if (dto.ApiUsername != null) ti.ApiUsername = dto.ApiUsername.Trim();
             if (!string.IsNullOrEmpty(dto.ApiToken)) ti.ApiTokenEncrypted = _protector.Encrypt(dto.ApiToken);
             if (dto.IsActive.HasValue) ti.IsActive = dto.IsActive.Value;
             ti.UpdatedAt = DateTime.UtcNow;

@@ -24,5 +24,17 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .OrderBy(it => it.Name)
                 .ToListAsync(ct);
         }
+
+        public async Task AddAndSaveAsync(IntegrationType entity, CancellationToken ct = default)
+        {
+            await _LoyaltyDbContext.Set<IntegrationType>().AddAsync(entity, ct);
+            await _LoyaltyDbContext.SaveChangesAsync(ct);
+        }
+
+        public async Task UpdateAndSaveAsync(IntegrationType entity, CancellationToken ct = default)
+        {
+            _LoyaltyDbContext.Set<IntegrationType>().Update(entity);
+            await _LoyaltyDbContext.SaveChangesAsync(ct);
+        }
     }
 }

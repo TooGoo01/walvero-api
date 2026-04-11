@@ -28,6 +28,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public bool AcceptAnonymous { get; set; } = false;
         public bool RequireConfirmation { get; set; } = true;
         public int ConfirmationTtlMinutes { get; set; } = 10;
+        public DateTime? SubscriptionExpiryDate { get; set; }
         public DateTime? CreatedAt { get; set; }
         public List<ApplicationUserDto> Admins { get; set; }
         public List<GetLoyaltyProgramDto> LoyaltyPrograms { get; set; }

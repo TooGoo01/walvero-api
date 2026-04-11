@@ -20,6 +20,16 @@ namespace Loyalty.DataAccess.Models
         public DateTime? RefreshTokenExpiration { get; set; }
         public List<string>? Roles { get; set; }
         public string? GoogleLogoUrl { get; set; }
+        public List<ProgramSummaryDto>? Programs { get; set; }
+        public string? TenantName { get; set; }
+        public DateTime? SubscriptionExpiryDate { get; set; }
+    }
+
+    public class ProgramSummaryDto
+    {
+        public int Id { get; set; }
+        public string ProgramName { get; set; } = string.Empty;
+        public int ProgramType { get; set; }
         public string? TenantName { get; set; }
         public DateTime? SubscriptionExpiryDate { get; set; }
     }

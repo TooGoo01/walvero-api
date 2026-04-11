@@ -320,7 +320,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 _dbContext.DeviceSessions.UpdateRange(sessions);
                 await _dbContext.SaveChangesAsync();
 
-                // Update Customer entities if they exist
+                // Update Customer entities if they exist (already linked)
                 var customers = await _dbContext.Customers
                     .Where(c => c.applicationUserId == user.Id)
                     .ToListAsync();
@@ -336,6 +336,21 @@ namespace Loyalty.Business.Services.Implementations.Users
                     }
                 }
                 _dbContext.Customers.UpdateRange(customers);
+
+                // Link orphan Customers that have the same phone but no applicationUserId
+                var orphanCustomers = await _dbContext.Customers
+                    .Where(c => c.PhoneNumber == dto.PhoneNumber
+                        && c.applicationUserId == null
+                        && c.IsActive)
+                    .ToListAsync();
+
+                foreach (var orphan in orphanCustomers)
+                {
+                    orphan.applicationUserId = user.Id;
+                }
+                if (orphanCustomers.Count > 0)
+                    _dbContext.Customers.UpdateRange(orphanCustomers);
+
                 await _dbContext.SaveChangesAsync();
 
                 // Generate new JWT with updated claims

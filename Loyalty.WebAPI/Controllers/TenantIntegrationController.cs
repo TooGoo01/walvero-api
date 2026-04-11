@@ -1,5 +1,8 @@
+using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
+using Loyalty.DataAccess.UnitOfWorks;
 using Loyalty.WebAPI.Tenancy;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -15,22 +18,72 @@ namespace Loyalty.WebAPI.Controllers
         private readonly ITenantIntegrationService _service;
         private readonly IIntegrationTypeRepository _typeRepo;
         private readonly ITenantProvider _tenantProvider;
+        private readonly IUnitOfWork _uow;
 
         public TenantIntegrationController(
             ITenantIntegrationService service,
             IIntegrationTypeRepository typeRepo,
-            ITenantProvider tenantProvider)
+            ITenantProvider tenantProvider,
+            IUnitOfWork uow)
         {
             _service = service;
             _typeRepo = typeRepo;
             _tenantProvider = tenantProvider;
+            _uow = uow;
         }
 
         [HttpGet("types")]
         public async Task<IActionResult> GetIntegrationTypes(CancellationToken ct)
         {
             var types = await _typeRepo.GetAllActiveAsync(ct);
-            return Ok(types.Select(t => new { t.Id, t.Name, t.Source }));
+            return Ok(types.Select(t => new { t.Id, t.Name, t.Source, t.DefaultBaseUrl, t.Description, t.IsActive }));
+        }
+
+        [HttpPost("types")]
+        [Authorize(Policy = "SuperAdminOnly")]
+        public async Task<IActionResult> AddIntegrationType([FromBody] AddIntegrationTypeDto dto, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Name) || string.IsNullOrWhiteSpace(dto.Source))
+                return BadRequest("Name and Source are required.");
+
+            var existing = await _typeRepo.GetBySourceAsync(dto.Source.Trim().ToLowerInvariant(), ct);
+            if (existing != null)
+                return BadRequest($"Integration type with source '{dto.Source}' already exists.");
+
+            var entity = new Loyalty.DataAccess.Entities.Main.IntegrationType
+            {
+                Name = dto.Name.Trim(),
+                Source = dto.Source.Trim().ToLowerInvariant(),
+                DefaultBaseUrl = dto.DefaultBaseUrl?.Trim(),
+                Description = dto.Description?.Trim(),
+                IsActive = true
+            };
+
+            await _typeRepo.AddAndSaveAsync(entity, ct);
+            return Ok(new { entity.Id, entity.Name, entity.Source, entity.DefaultBaseUrl, entity.Description });
+        }
+
+        [HttpPut("types/{id}")]
+        [Authorize(Policy = "SuperAdminOnly")]
+        public async Task<IActionResult> UpdateIntegrationType(int id, [FromBody] UpdateIntegrationTypeDto dto, CancellationToken ct)
+        {
+            var entity = await _typeRepo.GetByIdAsync(id, ct);
+            if (entity == null)
+                return NotFound("Integration type not found.");
+
+            if (!string.IsNullOrWhiteSpace(dto.Name))
+                entity.Name = dto.Name.Trim();
+            if (!string.IsNullOrWhiteSpace(dto.Source))
+                entity.Source = dto.Source.Trim().ToLowerInvariant();
+            if (dto.DefaultBaseUrl != null)
+                entity.DefaultBaseUrl = dto.DefaultBaseUrl.Trim();
+            if (dto.Description != null)
+                entity.Description = dto.Description.Trim();
+            if (dto.IsActive.HasValue)
+                entity.IsActive = dto.IsActive.Value;
+
+            await _typeRepo.UpdateAndSaveAsync(entity, ct);
+            return Ok(new { entity.Id, entity.Name, entity.Source, entity.DefaultBaseUrl, entity.Description, entity.IsActive });
         }
 
         [HttpPost]
