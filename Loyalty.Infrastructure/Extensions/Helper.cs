@@ -56,7 +56,7 @@ namespace Loyalty.Infrastructure.Extensions
             var form = new Dictionary<string, string>
             {
                 ["user"] = "kart12_servis",
-                ["password"] = "kart12s",
+                ["password"] = "TooGoo2025Lime",
                 ["gsm"] = normalizedGsm,
                 ["text"] = message, // FormUrlEncodedContent özü URL-encode edir
             };
