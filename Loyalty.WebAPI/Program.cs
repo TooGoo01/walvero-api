@@ -123,6 +123,9 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("CustomerOrTenantAdmin", policy =>
         policy.RequireRole("Customer", "Tenant Admin", "Moderator"));
 
+    options.AddPolicy("SalesManagerOrAbove", policy =>
+        policy.RequireRole("Sales Manager", "Tenant Admin", "Moderator", "Super Admin"));
+
     // FullProfileOnly policy - requires non-guest user with completed profile
     options.AddPolicy("FullProfileOnly", policy =>
     {

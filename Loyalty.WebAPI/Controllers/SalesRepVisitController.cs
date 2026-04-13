@@ -21,7 +21,7 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         [HttpGet]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SalesManagerOrAbove")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> List([FromQuery] int? status, [FromQuery] bool? remindOnly, [FromQuery] string? search, CancellationToken ct)
         {
@@ -36,7 +36,7 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         [HttpGet]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SalesManagerOrAbove")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> Get(int id, CancellationToken ct)
         {
@@ -45,7 +45,7 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         [HttpPost]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SalesManagerOrAbove")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> Add([FromBody] AddSalesRepVisitDto dto, CancellationToken ct)
@@ -58,7 +58,7 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         [HttpPost]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SalesManagerOrAbove")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> Update([FromBody] UpdateSalesRepVisitDto dto, [FromQuery] int id, CancellationToken ct)
@@ -71,7 +71,7 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         [HttpDelete]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SalesManagerOrAbove")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> Delete(int id, CancellationToken ct)
         {
