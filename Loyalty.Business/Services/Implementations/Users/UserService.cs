@@ -2211,13 +2211,16 @@ namespace Loyalty.Business.Services.Implementations.Users
                 if (!createResult.Succeeded)
                     return new ServiceResult(false, string.Join("; ", createResult.Errors.Select(e => e.Description)));
 
-                if (!string.IsNullOrWhiteSpace(dto.Role))
-                {
-                    var roleExists = await _roleManager.RoleExistsAsync(dto.Role);
-                    if (!roleExists)
-                        return new ServiceResult(false, $"Role '{dto.Role}' not found");
+                // Support multiple roles (Roles list) or single role (Role)
+                var rolesToAdd = dto.Roles?.Where(r => !string.IsNullOrWhiteSpace(r)).ToList()
+                    ?? (string.IsNullOrWhiteSpace(dto.Role) ? new List<string>() : new List<string> { dto.Role });
 
-                    await _userManager.AddToRoleAsync(user, dto.Role);
+                foreach (var roleName in rolesToAdd)
+                {
+                    var roleExists = await _roleManager.RoleExistsAsync(roleName);
+                    if (!roleExists)
+                        return new ServiceResult(false, $"Role '{roleName}' not found");
+                    await _userManager.AddToRoleAsync(user, roleName);
                 }
 
                 return new ServiceResult(true, "User created successfully");
@@ -2229,7 +2232,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             }
         }
 
-        public async Task<ServiceResult> UpdateAdminUserAsync(string userId, string? role, int? tenantId)
+        public async Task<ServiceResult> UpdateAdminUserAsync(string userId, string? role, int? tenantId, List<string>? roles = null)
         {
             try
             {
@@ -2242,17 +2245,23 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 await _userManager.UpdateAsync(user);
 
-                if (!string.IsNullOrWhiteSpace(role))
+                // Support multiple roles (roles list) or single role
+                var rolesToSet = roles?.Where(r => !string.IsNullOrWhiteSpace(r)).ToList()
+                    ?? (string.IsNullOrWhiteSpace(role) ? null : new List<string> { role });
+
+                if (rolesToSet != null && rolesToSet.Count > 0)
                 {
                     var currentRoles = await _userManager.GetRolesAsync(user);
                     if (currentRoles.Any())
                         await _userManager.RemoveFromRolesAsync(user, currentRoles);
 
-                    var roleExists = await _roleManager.RoleExistsAsync(role);
-                    if (!roleExists)
-                        return new ServiceResult(false, $"Role '{role}' not found");
-
-                    await _userManager.AddToRoleAsync(user, role);
+                    foreach (var roleName in rolesToSet)
+                    {
+                        var roleExists = await _roleManager.RoleExistsAsync(roleName);
+                        if (!roleExists)
+                            return new ServiceResult(false, $"Role '{roleName}' not found");
+                        await _userManager.AddToRoleAsync(user, roleName);
+                    }
                 }
 
                 return new ServiceResult(true, "User updated successfully");

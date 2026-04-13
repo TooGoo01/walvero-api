@@ -299,7 +299,7 @@ namespace Loyalty.WebAPI.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var result = await _userService.UpdateAdminUserAsync(dto.UserId, dto.Role, dto.TenantId);
+            var result = await _userService.UpdateAdminUserAsync(dto.UserId, dto.Role, dto.TenantId, dto.Roles);
             return Ok(result);
         }
 

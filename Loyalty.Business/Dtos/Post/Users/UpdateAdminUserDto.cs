@@ -4,6 +4,7 @@ namespace Loyalty.Business.Dtos.Post.Users
     {
         public string UserId { get; set; } = null!;
         public string? Role { get; set; }
+        public List<string>? Roles { get; set; }
         public int? TenantId { get; set; }
     }
 }
