@@ -961,9 +961,12 @@ namespace Loyalty.Business.Services.Implementations.Users
             {
                 _logger?.LogInformation("Forgot password requested for phone: {Phone}", WalletCodeHelper.MaskPhone(phoneNumber));
 
-                // Find user by phone number
+                // Find user by phone number (check PhoneNumber, UserName, and NormalizedUserName)
+                var normalizedUpper = phoneNumber.ToUpperInvariant();
                 var user = await _dbContext.Users
-                    .FirstOrDefaultAsync(u => u.NormalizedUserName == phoneNumber);
+                    .FirstOrDefaultAsync(u => u.PhoneNumber == phoneNumber
+                        || u.UserName == phoneNumber
+                        || u.NormalizedUserName == normalizedUpper);
 
                 // Check if user exists
                 if (user == null)
