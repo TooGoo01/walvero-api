@@ -19,7 +19,8 @@ namespace Loyalty.Business.Helpers
             var uri = new Uri(url);
           
 
-            var client = _http.CreateClient("wallet"); // subdomain-friendly konfiqurasiya
+            var client = _http.CreateClient("wallet");
+            client.Timeout = TimeSpan.FromSeconds(30); // image download timeout
             using var res = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, ct);
             res.EnsureSuccessStatusCode();
 

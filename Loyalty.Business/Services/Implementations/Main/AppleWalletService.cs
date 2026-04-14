@@ -304,6 +304,25 @@ public sealed class AppleWalletService : IAppleWalletService
                 var finalPath = Path.Combine(outDir, fileName);
                 await CreatePkpassSafelyAsync(workDir, finalPath, ct);
 
+                // 4b) pkpass faylını yoxla
+                if (!File.Exists(finalPath))
+                {
+                    _logger.LogError("[APPLE] pkpass file was NOT created at {Path}", finalPath);
+                    return new ServiceResult(false, "pkpass file was not created.");
+                }
+                var pkpassSize = new FileInfo(finalPath).Length;
+                _logger.LogInformation("[APPLE] pkpass verified: size={Size} bytes, path={Path}", pkpassSize, finalPath);
+                if (pkpassSize > 30 * 1024 * 1024)
+                {
+                    _logger.LogError("[APPLE] pkpass too large: {Size} bytes (max 30MB)", pkpassSize);
+                    return new ServiceResult(false, $"pkpass file too large: {pkpassSize} bytes.");
+                }
+                if (pkpassSize < 100)
+                {
+                    _logger.LogError("[APPLE] pkpass empty or corrupt: {Size} bytes", pkpassSize);
+                    return new ServiceResult(false, "pkpass file is empty or corrupt.");
+                }
+
                 // 5) latest link
                 var publicUrl = $"/passes/{tenantId}/{card.LoyaltyProgramId}/{fileName}";
 
@@ -332,12 +351,14 @@ public sealed class AppleWalletService : IAppleWalletService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Apple pass generation failed. TenantId={TenantId}, CardId={CardId}", tenantId, card.Id);
-                return new ServiceResult(false, "Apple pass generation failed.");
+                _logger.LogError(ex, "[APPLE] Pass generation FAILED. TenantId={TenantId}, CardId={CardId}, ExType={ExType}, Message={Msg}",
+                    tenantId, card.Id, ex.GetType().Name, ex.Message);
+                return new ServiceResult(false, $"Apple pass generation failed: {ex.Message}");
             }
             finally
             {
-                try { Directory.Delete(workDir, true); } catch { }
+                try { Directory.Delete(workDir, true); }
+                catch (Exception cleanEx) { _logger.LogWarning("[APPLE] Cleanup failed: {Msg}", cleanEx.Message); }
             }
         }
         finally
@@ -397,7 +418,7 @@ public sealed class AppleWalletService : IAppleWalletService
             }
         }
 
-        File.Move(tmpPath, finalPath);
+        File.Move(tmpPath, finalPath, overwrite: true);
         return finalPath;
     }
 
