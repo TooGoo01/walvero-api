@@ -569,5 +569,73 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             return new CollectResponse { Success = true };
         }
+
+        public async Task<IikoTransactionResponse> ProcessIikoTransactionAsync(
+            WalletWebhookResolvedContext context, IikoTransactionRequest request, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(request.TransactionId))
+                return new IikoTransactionResponse { Success = false, Message = "TransactionId is required" };
+
+            if (string.IsNullOrWhiteSpace(request.CustomerId))
+                return new IikoTransactionResponse { Success = false, Message = "CustomerId is required" };
+
+            // 1) Idempotency: transactionId ilə artıq işlənib mi?
+            var existing = await _uow.Repository<Transaction>().GetAllAsync(
+                t => t.ReferenceNumber == request.TransactionId);
+            if (existing.Any())
+                return new IikoTransactionResponse { Success = true, Message = "Already processed" };
+
+            // 2) PosCustomerMapping ilə müştərini tap
+            var customerId = await _customerMappingRepo.GetCustomerIdByExternalIdAsync(
+                context.TenantIntegrationId, request.CustomerId, ct);
+            if (customerId == null)
+                return new IikoTransactionResponse { Success = false, Message = $"Customer not found for externalId: {request.CustomerId}" };
+
+            // 3) Aktiv LoyaltyCard tap
+            if (context.LoyaltyProgramId == null)
+                return new IikoTransactionResponse { Success = false, Message = "LoyaltyProgramId not configured" };
+
+            var card = await _loyaltyCardRepo.GetLastActiveByCustomerAsync(
+                context.TenantId, context.LoyaltyProgramId.Value, customerId.Value, ct);
+            if (card == null)
+                return new IikoTransactionResponse { Success = false, Message = "Active loyalty card not found" };
+
+            // 4) Delta hesabla və balansı yenilə
+            var delta = (int)request.Sum;
+            if (delta == 0)
+                return new IikoTransactionResponse { Success = true, Message = "Zero sum, no action" };
+
+            var txType = delta > 0 ? TransactionType.Earned : TransactionType.Redeemed;
+
+            card.CurrentPoints += delta;
+            card.CurrentPoints = Math.Max(0, card.CurrentPoints);
+            if (delta > 0)
+                card.LifetimePoints += delta;
+
+            _loyaltyCardRepo.Update(card);
+
+            // 5) Transaction yarat
+            var tx = new Transaction
+            {
+                LoyaltyCardId = card.Id,
+                Type = txType,
+                Status = RedeemStatus.Applied,
+                Points = delta,
+                Amount = Math.Abs(request.Sum),
+                BalanceAfter = card.CurrentPoints,
+                OrderId = request.OrderId,
+                ReferenceNumber = request.TransactionId,
+                Description = $"iiko {request.TransactionType}",
+                RegDate = DateTime.UtcNow,
+                IsActive = true,
+                LocalOccurredAt = DateTimeOffset.UtcNow,
+                TimeZoneIdUsed = "UTC"
+            };
+
+            _uow.Repository<Transaction>().Add(tx);
+            await _uow.CommitAsync(ct);
+
+            return new IikoTransactionResponse { Success = true };
+        }
     }
 }

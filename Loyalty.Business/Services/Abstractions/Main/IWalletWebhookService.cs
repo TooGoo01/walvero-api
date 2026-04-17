@@ -8,6 +8,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<SetRedeemResponse> SetRedeemAsync(WalletWebhookResolvedContext context, SetRedeemRequest request, CancellationToken ct = default);
         Task<SetVerifyResponse> SetVerifyAsync(WalletWebhookResolvedContext context, SetVerifyRequest request, CancellationToken ct = default);
         Task<CollectResponse> CollectAsync(WalletWebhookResolvedContext context, CollectRequest request, CancellationToken ct = default);
+        Task<IikoTransactionResponse> ProcessIikoTransactionAsync(WalletWebhookResolvedContext context, IikoTransactionRequest request, CancellationToken ct = default);
     }
 
     public class GetWalletResponse
@@ -98,5 +99,32 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public class CollectResponse
     {
         public bool Success { get; set; }
+    }
+
+    public class IikoTransactionRequest
+    {
+        public decimal Sum { get; set; }
+        public decimal Balance { get; set; }
+        public string? OrderId { get; set; }
+        public int? OrderNumber { get; set; }
+        public bool? IsDelivery { get; set; }
+        public string? TerminalGroupId { get; set; }
+        public string? WalletId { get; set; }
+        public string? Id { get; set; }
+        public string? OrganizationId { get; set; }
+        public string? UocId { get; set; }
+        public int? NotificationType { get; set; }
+        public string CustomerId { get; set; } = string.Empty;
+        public string? Phone { get; set; }
+        public string TransactionType { get; set; } = string.Empty;
+        public string TransactionId { get; set; } = string.Empty;
+        public string? SubscriptionPassword { get; set; }
+        public string? ChangedOn { get; set; }
+    }
+
+    public class IikoTransactionResponse
+    {
+        public bool Success { get; set; }
+        public string? Message { get; set; }
     }
 }
