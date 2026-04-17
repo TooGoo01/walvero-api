@@ -600,17 +600,74 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (card == null)
                 return new IikoTransactionResponse { Success = false, Message = "Active loyalty card not found" };
 
-            // 4) Delta hesabla və balansı yenilə
+            // 4) Template type-a görə delta hesabla
             var delta = (int)request.Sum;
             if (delta == 0)
                 return new IikoTransactionResponse { Success = true, Message = "Zero sum, no action" };
 
             var txType = delta > 0 ? TransactionType.Earned : TransactionType.Redeemed;
 
-            card.CurrentPoints += delta;
-            card.CurrentPoints = Math.Max(0, card.CurrentPoints);
-            if (delta > 0)
-                card.LifetimePoints += delta;
+            // Program + CardTemplate yüklə
+            var program = await _loyaltyProgramRepo.GetByIdNameAsync(context.LoyaltyProgramId!.Value);
+
+            var template = program?.CardTemplate;
+            var templateType = template?.TemplateType ?? CardTemplateType.PointsBased;
+            var totalSteps = template?.TotalSteps ?? 10;
+
+            if (templateType == CardTemplateType.ProgressBased)
+            {
+                // ProgressBased: sum=1 → 1 step əlavə, sum=-10 → 10 step çıx (pulsuz kofe istifadəsi)
+                // CurrentSteps = toplam step sayı (heç vaxt sıfırlanmır)
+                // CompletedCycles = CurrentSteps / TotalSteps (dinamik hesablanır)
+                var oldSteps = card.CurrentSteps;
+                card.CurrentSteps += delta;
+                card.CurrentSteps = Math.Max(0, card.CurrentSteps);
+
+                // CompletedCycles dinamik: neçə tam tsikl tamamlanıb
+                card.CompletedCycles = card.CurrentSteps / totalSteps;
+
+                // Points-ı da sync saxla (UI üçün)
+                card.CurrentPoints = card.CurrentSteps;
+                if (delta > 0)
+                    card.LifetimePoints += delta;
+            }
+            else if (templateType == CardTemplateType.TierBased || templateType == CardTemplateType.PointsBased)
+            {
+                if (delta > 0 && template != null)
+                {
+                    // Müsbət sum: cashback faizi hesabla
+                    // Tier-i LifetimePoints-a görə müəyyən et (həmişə yüksələ bilsin)
+                    var (tierName, percent, percentCash, _) = ResolveTier(card.LifetimePoints, template);
+                    var cashbackPercent = percent ?? 0;
+
+                    // Cashback = sum * faiz / 100 (məs: 33 AZN * 10% = 3.3 AZN → 3 point)
+                    var cashbackAmount = request.Sum * cashbackPercent / 100.0;
+                    var earnedPoints = (int)Math.Round(cashbackAmount);
+
+                    if (earnedPoints > 0)
+                    {
+                        card.CurrentPoints += earnedPoints;
+                        card.LifetimePoints += earnedPoints;
+                    }
+
+                    // delta-nı earnedPoints ilə əvəz et (transaction üçün)
+                    delta = earnedPoints;
+                }
+                else
+                {
+                    // Mənfi sum: point çıx (redeem)
+                    card.CurrentPoints += delta;
+                    card.CurrentPoints = Math.Max(0, card.CurrentPoints);
+                }
+            }
+            else
+            {
+                // Digər tiplər: sum birbaşa point kimi
+                card.CurrentPoints += delta;
+                card.CurrentPoints = Math.Max(0, card.CurrentPoints);
+                if (delta > 0)
+                    card.LifetimePoints += delta;
+            }
 
             _loyaltyCardRepo.Update(card);
 
@@ -635,7 +692,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             _uow.Repository<Transaction>().Add(tx);
             await _uow.CommitAsync(ct);
 
-            return new IikoTransactionResponse { Success = true };
+            return new IikoTransactionResponse
+            {
+                Success = true,
+                Message = templateType switch
+                {
+                    CardTemplateType.ProgressBased => $"Steps: {card.CurrentSteps}, FreeCoffees: {card.CompletedCycles}",
+                    CardTemplateType.TierBased => $"Cashback earned: {delta}, Balance: {card.CurrentPoints}, Tier: {ResolveTier(card.LifetimePoints, template!).tierName}",
+                    _ => $"Points: {card.CurrentPoints}"
+                }
+            };
         }
     }
 }

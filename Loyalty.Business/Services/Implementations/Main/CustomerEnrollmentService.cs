@@ -428,8 +428,13 @@ UserManager<ApplicationUser> userManager,
                 var cardNumber = await _cardNumberGenerator.GenerateCardNumberAsync(tenantId, ct);
 
                 // Phone ilə mövcud ApplicationUser axtar (mobile app istifadəçisi)
+                // Telefon formatı fərqi ola bilər (+994, 994, 050) - normallaşdıraraq axtarış et
+                var phoneDigits = new string(phone.Where(char.IsDigit).ToArray());
                 var existingAppUser = await _userManager.Users
-                    .FirstOrDefaultAsync(u => u.PhoneNumber == phone, ct);
+                    .FirstOrDefaultAsync(u =>
+                        u.PhoneNumber == phone ||
+                        u.PhoneNumber == phoneDigits ||
+                        u.PhoneNumber == "+" + phoneDigits, ct);
 
                 customer = new Customer
                 {
@@ -470,8 +475,12 @@ UserManager<ApplicationUser> userManager,
                 // Əgər hələ ApplicationUser ilə linkli deyilsə, phone ilə axtar və bağla
                 if (!customer.applicationUserId.HasValue)
                 {
+                    var phoneDigits2 = new string(phone.Where(char.IsDigit).ToArray());
                     var existingAppUser = await _userManager.Users
-                        .FirstOrDefaultAsync(u => u.PhoneNumber == phone, ct);
+                        .FirstOrDefaultAsync(u =>
+                            u.PhoneNumber == phone ||
+                            u.PhoneNumber == phoneDigits2 ||
+                            u.PhoneNumber == "+" + phoneDigits2, ct);
                     if (existingAppUser != null)
                         customer.applicationUserId = existingAppUser.Id;
                 }
