@@ -1,6 +1,7 @@
 using Loyalty.Business.Services.Abstractions.Main;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace Loyalty.WebAPI.Controllers
 {
@@ -34,6 +35,11 @@ namespace Loyalty.WebAPI.Controllers
         {
             try
             {
+                // Tam JSON logla — Azure Log Stream / App Insights-da görünəcək
+                _logger.LogInformation(
+                    "iiko webhook RAW: {RawJson}",
+                    JsonSerializer.Serialize(request));
+
                 _logger.LogInformation(
                     "iiko webhook received: orgId={OrgId} txId={TxId} type={Type} sum={Sum} customerId={CustomerId}",
                     request?.OrganizationId, request?.TransactionId, request?.TransactionType, request?.Sum, request?.CustomerId);

@@ -600,14 +600,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (card == null)
                 return new IikoTransactionResponse { Success = false, Message = "Active loyalty card not found" };
 
-            // 4) Template type-a görə delta hesabla
-            var delta = (int)request.Sum;
+            // 4) iiko POS-dan gələn sum artıq hesablanmış point-dir — birbaşa əlavə et
+            var delta = request.Sum;
             if (delta == 0)
                 return new IikoTransactionResponse { Success = true, Message = "Zero sum, no action" };
 
             var txType = delta > 0 ? TransactionType.Earned : TransactionType.Redeemed;
 
-            // Program + CardTemplate yüklə
+            // Program + CardTemplate yüklə (ProgressBased/PointsBased fərqi üçün)
             var program = await _loyaltyProgramRepo.GetByIdNameAsync(context.LoyaltyProgramId!.Value);
 
             var template = program?.CardTemplate;
@@ -616,53 +616,18 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (templateType == CardTemplateType.ProgressBased)
             {
-                // ProgressBased: sum=1 → 1 step əlavə, sum=-10 → 10 step çıx (pulsuz kofe istifadəsi)
-                // CurrentSteps = toplam step sayı (heç vaxt sıfırlanmır)
-                // CompletedCycles = CurrentSteps / TotalSteps (dinamik hesablanır)
-                var oldSteps = card.CurrentSteps;
-                card.CurrentSteps += delta;
+                // ProgressBased: sum=1 → 1 step əlavə
+                var intDelta = (int)delta;
+                card.CurrentSteps += intDelta;
                 card.CurrentSteps = Math.Max(0, card.CurrentSteps);
-
-                // CompletedCycles dinamik: neçə tam tsikl tamamlanıb
                 card.CompletedCycles = card.CurrentSteps / totalSteps;
-
-                // Points-ı da sync saxla (UI üçün)
                 card.CurrentPoints = card.CurrentSteps;
-                if (delta > 0)
-                    card.LifetimePoints += delta;
-            }
-            else if (templateType == CardTemplateType.TierBased || templateType == CardTemplateType.PointsBased)
-            {
-                if (delta > 0 && template != null)
-                {
-                    // Müsbət sum: cashback faizi hesabla
-                    // Tier-i LifetimePoints-a görə müəyyən et (həmişə yüksələ bilsin)
-                    var (tierName, percent, percentCash, _) = ResolveTier(card.LifetimePoints, template);
-                    var cashbackPercent = percent ?? 0;
-
-                    // Cashback = sum * faiz / 100 (məs: 33 AZN * 10% = 3.3 AZN → 3 point)
-                    var cashbackAmount = request.Sum * cashbackPercent / 100m;
-                    var earnedPoints = (int)Math.Round(cashbackAmount);
-
-                    if (earnedPoints > 0)
-                    {
-                        card.CurrentPoints += earnedPoints;
-                        card.LifetimePoints += earnedPoints;
-                    }
-
-                    // delta-nı earnedPoints ilə əvəz et (transaction üçün)
-                    delta = earnedPoints;
-                }
-                else
-                {
-                    // Mənfi sum: point çıx (redeem)
-                    card.CurrentPoints += delta;
-                    card.CurrentPoints = Math.Max(0, card.CurrentPoints);
-                }
+                if (intDelta > 0)
+                    card.LifetimePoints += intDelta;
             }
             else
             {
-                // Digər tiplər: sum birbaşa point kimi
+                // PointsBased/TierBased: sum birbaşa point kimi (POS artıq hesablayıb)
                 card.CurrentPoints += delta;
                 card.CurrentPoints = Math.Max(0, card.CurrentPoints);
                 if (delta > 0)
