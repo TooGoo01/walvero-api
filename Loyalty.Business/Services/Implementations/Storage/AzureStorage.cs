@@ -18,7 +18,7 @@ namespace Loyalty.Business.Services.Implementations.Storage
         {
             _blobContainerClient = _blobServiceClient.GetBlobContainerClient(containerName);
             BlobClient blobClient = _blobContainerClient.GetBlobClient(fileName);
-            await blobClient.DeleteAsync();
+            await blobClient.DeleteIfExistsAsync();
         }
 
         public List<string> GetFiles(string containerName)
