@@ -26,6 +26,12 @@ namespace Loyalty.Business.Services.Abstractions.Main
             string accessToken, Guid organizationId, Guid customerId, string cardTrack, string cardNumber, CancellationToken ct = default);
 
         /// <summary>
+        /// iiko müştərisinin wallet balansını artırır (topup).
+        /// </summary>
+        Task<bool> TopUpWalletAsync(
+            string accessToken, Guid organizationId, Guid customerId, Guid walletId, decimal amount, CancellationToken ct = default);
+
+        /// <summary>
         /// iiko təşkilatlarının siyahısını alır.
         /// </summary>
         Task<IikoOrganization[]?> GetOrganizationsAsync(string accessToken, CancellationToken ct = default);

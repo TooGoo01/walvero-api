@@ -314,6 +314,27 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
             }
 
+            // 3) Mövcud balansı iiko wallet-ə göndər
+            if (cards != null && cards.Any())
+            {
+                var activeCard = cards.Where(c => c.IsActive).OrderByDescending(c => c.Id).FirstOrDefault();
+                if (activeCard != null && activeCard.CurrentPoints > 0)
+                {
+                    // iiko müştəri info-dan wallet ID-ni al
+                    var customerInfo = await _iikoClient.GetCustomerInfoAsync(accessToken, orgId, cardTrack: primaryCard, ct: ct);
+                    if (customerInfo?.WalletBalances != null && customerInfo.WalletBalances.Count > 0)
+                    {
+                        var wallet = customerInfo.WalletBalances.First();
+                        var topUpOk = await _iikoClient.TopUpWalletAsync(
+                            accessToken, orgId, result.Id, wallet.Id, activeCard.CurrentPoints, ct);
+
+                        _logger.LogInformation(
+                            "iiko sync balance: CustomerId={CustomerId}, WalletId={WalletId}, Amount={Amount}, Success={Success}",
+                            customer.Id, wallet.Id, activeCard.CurrentPoints, topUpOk);
+                    }
+                }
+            }
+
             _logger.LogInformation(
                 "iiko sync OK: IntegrationId={Id}, CustomerId={CustomerId}, iikoId={IikoId}",
                 integration.Id, customer.Id, result.Id);

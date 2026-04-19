@@ -98,6 +98,20 @@ namespace Loyalty.Business.Services.Implementations.Main
             return result;
         }
 
+        public async Task<bool> TopUpWalletAsync(
+            string accessToken, Guid organizationId, Guid customerId, Guid walletId, decimal amount, CancellationToken ct = default)
+        {
+            var payload = new
+            {
+                organizationId,
+                customerId,
+                walletId,
+                sum = amount
+            };
+
+            return await PostRawAsync(accessToken, "/api/1/loyalty/iiko/customer/wallet/topup", payload, ct);
+        }
+
         public async Task<IikoOrganization[]?> GetOrganizationsAsync(string accessToken, CancellationToken ct = default)
         {
             var response = await PostAsync<IikoOrganizationsResponse>(
