@@ -25,16 +25,18 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly ICardTemplateRepository _repo;
+        private readonly ILoyaltyProgramRepository _loyaltyProgramRepository;
         private readonly ICardTemplateIconService _cardTemplateIconService;
         private readonly IStorage _storage;
 
-        public CardTemplateService(IStorage storage, ICardTemplateRepository repo, IMapper mapper, IUnitOfWork unitOfWork, ICardTemplateIconService cardTemplateIconService)
+        public CardTemplateService(IStorage storage, ICardTemplateRepository repo, IMapper mapper, IUnitOfWork unitOfWork, ICardTemplateIconService cardTemplateIconService, ILoyaltyProgramRepository loyaltyProgramRepository)
         {
             _storage = storage;
             _repo = repo;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _cardTemplateIconService = cardTemplateIconService;
+            _loyaltyProgramRepository = loyaltyProgramRepository;
         }
 
         public Task<ServiceResult> Add(AddCardTemplateDto Dto)
@@ -110,8 +112,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _unitOfWork.Repository<CardTemplate>().Update(entity);
             _unitOfWork.Commit();
 
-            // LoyaltyProgram.CardTemplateId-ni yenilə
-            var program = await _unitOfWork.Repository<LoyaltyProgram>().GetByIdAsync(dto.LoyaltyProgramId);
+            // LoyaltyProgram.CardTemplateId-ni yenilə (tracked query ilə)
+            var program = await _loyaltyProgramRepository.GetByIdTrackedAsync(dto.LoyaltyProgramId, ct);
             if (program != null && program.CardTemplateId != entity.Id)
             {
                 program.CardTemplateId = entity.Id;

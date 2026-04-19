@@ -29,6 +29,11 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         {
           return  await GetAsQueryable().Include(x=>x.CardTemplate).ThenInclude(t => t.Icons).AsNoTracking().FirstOrDefaultAsync(x => x.Id == programId, ct);
         }
+
+        public async Task<LoyaltyProgram?> GetByIdTrackedAsync(int programId, CancellationToken ct = default)
+        {
+          return await GetAsQueryable().FirstOrDefaultAsync(x => x.Id == programId, ct);
+        }
         
         public Task<List<LoyaltyProgram>> ListAsync(int tenantId, bool onlyActive = true, CancellationToken ct = default)
         {

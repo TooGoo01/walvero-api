@@ -30,6 +30,11 @@ namespace Loyalty.Business.Services.Implementations.Main
         public async Task<ServiceResult> AddRangeAsync(AddCardTemplateDto dto, int templateId, CancellationToken ct = default)
         {
             if (dto is null) return new ServiceResult(false, "Model is null.");
+
+            // Yeni icon göndərilməyibsə, köhnələrə toxunma
+            if (dto.Icons == null || dto.Icons.Count == 0)
+                return new ServiceResult(true, "No new icons provided, existing icons preserved.");
+
             var template = _unitOfWork.Repository<CardTemplate>().Get(x => x.Id == templateId);
             if (template is null) return new ServiceResult(false, "CardTemplate not found.");
 

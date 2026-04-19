@@ -9,6 +9,8 @@ using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.Repositories.Implementations.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 using Microsoft.AspNetCore.Http;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -53,39 +55,34 @@ namespace Loyalty.Business.Services.Implementations.Main
             // Upload üçün konteyner yolu (nisbi): uploads/tenant-{id}/branding
             var container = $"tenant-{dto.TenantId}/branding";
 
-            // 3) LOGO
+            // 3) LOGO (.webp-yə çevir)
             if (dto.LogoFile is not null && dto.LogoFile.Length > 0)
             {
                 if (!string.IsNullOrWhiteSpace(branding.LogoUrl))
                 {
                     var oldLogoName = GetFileNameSafe(branding.LogoUrl);
                     if (!string.IsNullOrEmpty(oldLogoName))
-                        await _storage.DeleteAsync(container, oldLogoName);
+                        try { await _storage.DeleteAsync(container, oldLogoName); } catch { }
                 }
 
-                var uploaded = await _storage.UploadFileAsync(container, new[] { dto.LogoFile });  // <= array implements IEnumerable<IFormFile>
-                var (_, relativePath) = uploaded.First();
-                branding.LogoUrl = EnsureRelative(relativePath);
+                branding.LogoUrl = await UploadAsWebp(container, "logo", dto.LogoFile);
             }
             else if (!string.IsNullOrWhiteSpace(dto.LogoUrl))
             {
-                // Fayl yox, URL verilibsə qəbul et (external ola bilər)
                 branding.LogoUrl = dto.LogoUrl.Trim();
             }
 
-            // 4) BACKGROUND
+            // 4) BACKGROUND (.webp-yə çevir)
             if (dto.BackgroundImageFile is not null && dto.BackgroundImageFile.Length > 0)
             {
                 if (!string.IsNullOrWhiteSpace(branding.BackgroundImageUrl))
                 {
                     var oldBgName = GetFileNameSafe(branding.BackgroundImageUrl);
                     if (!string.IsNullOrEmpty(oldBgName))
-                        await _storage.DeleteAsync(container, oldBgName);
+                        try { await _storage.DeleteAsync(container, oldBgName); } catch { }
                 }
 
-                var uploaded = await _storage.UploadFileAsync(container, new[] { dto.BackgroundImageFile }); // <= same idea
-                var (_, relativePath) = uploaded.First();
-                branding.BackgroundImageUrl = EnsureRelative(relativePath);
+                branding.BackgroundImageUrl = await UploadAsWebp(container, "bg", dto.BackgroundImageFile);
             }
             else if (!string.IsNullOrWhiteSpace(dto.BackgroundImageUrl))
             {
@@ -118,6 +115,26 @@ namespace Loyalty.Business.Services.Implementations.Main
             };
             return new ServiceResult(true,br);
         }
+        private async Task<string> UploadAsWebp(string container, string prefix, IFormFile file)
+        {
+            using var inputStream = file.OpenReadStream();
+            using var image = await Image.LoadAsync(inputStream);
+            using var webpStream = new MemoryStream();
+            await image.SaveAsWebpAsync(webpStream, new WebpEncoder { Quality = 80 });
+            webpStream.Position = 0;
+
+            var webpFileName = $"{prefix}-{Random.Shared.Next(1000, 9999)}.webp";
+            var webpFile = new FormFile(webpStream, 0, webpStream.Length, file.Name, webpFileName)
+            {
+                Headers = file.Headers,
+                ContentType = "image/webp"
+            };
+
+            var uploaded = await _storage.UploadFileAsync(container, new[] { webpFile });
+            var (_, relPath) = uploaded.First();
+            return EnsureRelative(relPath);
+        }
+
         private static string GetFileNameSafe(string? urlOrPath)
         {
             if (string.IsNullOrWhiteSpace(urlOrPath)) return "";
