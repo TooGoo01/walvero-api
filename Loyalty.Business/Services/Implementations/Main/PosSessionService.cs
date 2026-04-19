@@ -98,7 +98,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // Get loyalty balance (points)
                 // Note: Balance can be negative in reverse scenarios (e.g., when reversing an EARN transaction
                 // that was already spent). We allow negative balances to accurately reflect the true state.
-                int loyaltyBalance = activeCard?.CurrentPoints ?? 0;
+                decimal loyaltyBalance = activeCard?.CurrentPoints ?? 0;
 
                 // Get user name
                 string name = $"{customer.FirstName} {customer.LastName}".Trim();

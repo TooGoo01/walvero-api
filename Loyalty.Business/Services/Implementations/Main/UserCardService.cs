@@ -82,7 +82,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 BackgroundColor = snapshot.BackgroundColor,
                 ForegroundColor = snapshot.ForegroundColor,
                 LabelColor = snapshot.LabelColor,
-                LogoImageUrl = snapshot.GoogleLogoUrl
+                LogoImageUrl = snapshot.GoogleLogoUrl,
+                AppLogoUrl = snapshot.AppLogoUrl,
+                AppStripUrl = snapshot.AppStripUrl,
             };
 
             return new UserCardDto

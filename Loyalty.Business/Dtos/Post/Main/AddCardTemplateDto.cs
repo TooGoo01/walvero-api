@@ -72,6 +72,12 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? HeroImageUrl { get; set; }       // Google Wallet hero
         public IFormFile? HeroImageFile { get; set; }
 
+        // App-specific images (.webp)
+        public string? AppLogoUrl { get; set; }
+        public IFormFile? AppLogoFile { get; set; }
+        public string? AppStripUrl { get; set; }
+        public IFormFile? AppStripFile { get; set; }
+
         // Layout
         public IconLayout IconLayout { get; set; } = IconLayout.Grid;
 

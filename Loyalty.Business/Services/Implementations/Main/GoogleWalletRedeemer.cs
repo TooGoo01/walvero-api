@@ -30,7 +30,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
 
         public async Task<ServiceResult> RedeemByCardIdAsync(
-            int cardId, CardTemplateSnapshot tpl, int pts, int steps, int delta, CancellationToken ct)
+            int cardId, CardTemplateSnapshot tpl, decimal pts, int steps, int delta, CancellationToken ct)
         {
             using var scope = _logger.BeginScope(new Dictionary<string, object?> { ["CardId"] = cardId });
             var sw = Stopwatch.StartNew();

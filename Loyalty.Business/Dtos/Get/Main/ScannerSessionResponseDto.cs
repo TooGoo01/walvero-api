@@ -12,7 +12,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string SessionToken { get; set; } = string.Empty;
         public long? WalveroUserId { get; set; }
         public string Name { get; set; } = string.Empty;
-        public int LoyaltyBalance { get; set; }
+        public decimal LoyaltyBalance { get; set; }
         public DateTime SessionExpiry { get; set; }
         public SessionStatus Status { get; set; }
     }

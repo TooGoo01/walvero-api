@@ -12,7 +12,7 @@ namespace Loyalty.Business.Helpers
     {
         public static LoyaltyDisplayState BuildDisplayState(
             CardTemplateSnapshot tpl,
-            int currentPoints,
+            decimal currentPoints,
             int currentSteps)
         {
             var state = new LoyaltyDisplayState();
@@ -92,7 +92,7 @@ namespace Loyalty.Business.Helpers
         }
 
         // 🔹 Tier ikon seçimi (threshold-lara görə)
-        private static string? PickTierIconByPoints(CardTemplateSnapshot tpl, int pts, out string tier)
+        private static string? PickTierIconByPoints(CardTemplateSnapshot tpl, decimal pts, out string tier)
         {
             // Eşikləri artan sıralama kimi qəbul edirik
             // Bronze < Silver < Gold < Platinum

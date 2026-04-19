@@ -185,7 +185,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
          CardTemplateSnapshot tpl,
          string? accountName = null,
          string? barcodeValue = null,
-         int currentPoints = 0,
+         decimal currentPoints = 0,
          int currentSteps = 0,
          CancellationToken ct = default)
     {
@@ -345,7 +345,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 // Only set LoyaltyPoints for non-ProgressBased
                 LoyaltyPoints = isProgressBased ? null : new LoyaltyPoints
                 {
-                    Balance = new LoyaltyPointsBalance { Int__ = currentPoints },
+                    Balance = new LoyaltyPointsBalance { Int__ = (int)Math.Round(currentPoints) },
                     Label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency
                 },
 
@@ -396,7 +396,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
     public async Task<ServiceResult> RedeemByCardIdAsync(
        int loyaltyCardId,
        CardTemplateSnapshot tpl,
-       int currentPoints,
+       decimal currentPoints,
        int currentSteps,
        int delta,
        string accountName,
@@ -587,7 +587,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 // Only set LoyaltyPoints for non-ProgressBased
                 LoyaltyPoints = isProgressBased ? null : new LoyaltyPoints
                 {
-                    Balance = new LoyaltyPointsBalance { Int__ = nextPoints },
+                    Balance = new LoyaltyPointsBalance { Int__ = (int)Math.Round(nextPoints) },
                     Label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency
                 },
                 TextModulesData = textList,
@@ -837,7 +837,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
         return $"{input}.{s}";
     }
 
-    private static LoyaltyDisplayState BuildDisplayState(CardTemplateSnapshot tpl, int currentPoints, int currentSteps)
+    private static LoyaltyDisplayState BuildDisplayState(CardTemplateSnapshot tpl, decimal currentPoints, int currentSteps)
     {
         var s = new LoyaltyDisplayState();
 
@@ -1184,7 +1184,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
         }
     }
 
-    private static string? PickTierIconByPoints(CardTemplateSnapshot tpl, int pts, out string tier)
+    private static string? PickTierIconByPoints(CardTemplateSnapshot tpl, decimal pts, out string tier)
     {
         tier = "Bronze";
         string? icon = IsHttps(tpl.BronzeIconUrl) ? tpl.BronzeIconUrl : null;
@@ -1210,7 +1210,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
         return icon;
     }
 
-    private static int GetCashbackPercent(int currentPoints, CardTemplateSnapshot snapshot)
+    private static int GetCashbackPercent(decimal currentPoints, CardTemplateSnapshot snapshot)
     {
         var bronzeTh = snapshot.BronzeThreshold ?? 0;
         var silverTh = snapshot.SilverThreshold ?? int.MaxValue;
@@ -1233,7 +1233,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
         else
             return platPct;
     }
-    private static int GetCashbackPercentCash(int currentPoints, CardTemplateSnapshot snapshot)
+    private static int GetCashbackPercentCash(decimal currentPoints, CardTemplateSnapshot snapshot)
     {
         var bronzeTh = snapshot.BronzeThreshold ?? 0;
         var silverTh = snapshot.SilverThreshold ?? int.MaxValue;

@@ -304,7 +304,7 @@ public sealed class AppleWalletService : IAppleWalletService
     }
 
     public async Task<ServiceResult> RedeemByCardIdAsync(
-        int loyaltyCardId, CardTemplateSnapshot tpl, AppleWalletRuntimeCreds creds, int currentPoints, int currentSteps, int pointsDelta, CancellationToken ct = default)
+        int loyaltyCardId, CardTemplateSnapshot tpl, AppleWalletRuntimeCreds creds, decimal currentPoints, int currentSteps, int pointsDelta, CancellationToken ct = default)
     {
         // Creds-i DB-dən burda da çəkə bilərsən (tenantId → _credProvider.GetAppleAsync)
         var card = await _loyaltyCardRepository.GetById(loyaltyCardId, ct);

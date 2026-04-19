@@ -75,14 +75,14 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .ToListAsync(cancellationToken);
         }
 
-        public async Task<int> GetTotalPointsEarnedAsync(int cardId, CancellationToken cancellationToken = default)
+        public async Task<decimal> GetTotalPointsEarnedAsync(int cardId, CancellationToken cancellationToken = default)
         {
             return await GetAsQueryable()
                 .Where(t => t.LoyaltyCardId == cardId && t.Type == TransactionType.Earned)
                 .SumAsync(t => t.Points, cancellationToken);
         }
 
-        public async Task<int> GetTotalPointsRedeemedAsync(int cardId, CancellationToken cancellationToken = default)
+        public async Task<decimal> GetTotalPointsRedeemedAsync(int cardId, CancellationToken cancellationToken = default)
         {
             return await GetAsQueryable()
                 .Where(t => t.LoyaltyCardId == cardId && t.Type == TransactionType.Redeemed)

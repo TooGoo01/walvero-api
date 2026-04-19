@@ -12,7 +12,7 @@ namespace Loyalty.Business.Dtos.Post.Main
       string OrganizationName,
       string CustomerFullName,
       string BarcodeValue,
-      int CurrentPoints,
+      decimal CurrentPoints,
       string? TierName,
       string? BackgroundColor,
       string? LogoText,

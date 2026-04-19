@@ -14,8 +14,8 @@ namespace Loyalty.Business.Dtos.Get.Main
 
         public int? LoyaltyCardId { get; set; }
         public int? AppliedDelta { get; set; }
-        public int? OldPoints { get; set; }
-        public int? NewPoints { get; set; }
+        public decimal? OldPoints { get; set; }
+        public decimal? NewPoints { get; set; }
         public bool? IsPending { get; set; }
         public int? RedeemRequestId { get; set; }
         public int? RemainingRewardCount { get; set; }   // Redeem-dən sonra yeni CompletedCycles

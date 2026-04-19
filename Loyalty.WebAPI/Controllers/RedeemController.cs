@@ -91,7 +91,7 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(dto);
         }
         public static (string tierName, int? percent,int? percentCash, string? iconUrl) TierResolver(
-  int points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null)
+  decimal points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null)
         {
             string? H(string? url) =>
                 toAbsHttps is null ? EnsureHttpsOrNull(url) : EnsureHttpsOrNull(toAbsHttps(url));

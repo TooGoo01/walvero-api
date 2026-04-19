@@ -12,6 +12,10 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string ForegroundColor { get; set; } = "#000000";
         public string LabelColor { get; set; } = "#000000";
         public string? LogoImageUrl { get; set; }
+
+        // App-specific images (.webp)
+        public string? AppLogoUrl { get; set; }
+        public string? AppStripUrl { get; set; }
     }
     public class UserCardDto
     {

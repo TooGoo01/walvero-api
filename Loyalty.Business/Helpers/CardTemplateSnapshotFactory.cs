@@ -85,6 +85,10 @@ namespace Loyalty.Business.Helpers
                 BackgroundImageUrl = toAbsoluteUrl(FirstNonEmpty(ct.BackgroundImageUrl, branding?.BackgroundImageUrl)),
                 StripImageUrl = toAbsoluteUrl(ct.StripImageUrl),
                 HeroImageUrl = toAbsoluteUrl(ct.HeroImageUrl),
+
+                // App-specific images (.webp)
+                AppLogoUrl = toAbsoluteUrl(ct.AppLogoUrl),
+                AppStripUrl = toAbsoluteUrl(ct.AppStripUrl),
             };
 
             // Icon list (CardTemplate.Icons kolleksiyasından)

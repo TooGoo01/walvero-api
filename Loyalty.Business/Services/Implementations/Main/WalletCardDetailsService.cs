@@ -188,7 +188,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 BackgroundColor = cardTemplate?.BackgroundColor ?? tenant.Branding?.BackgroundColor ?? "#FFFFFF",
                 ForegroundColor = cardTemplate?.ForegroundColor ?? tenant.Branding?.TextColor ?? "#000000",
                 CashbackPercent = cashbackPercent,
-                CashbackPercentCash = cashbackPercentCash
+                CashbackPercentCash = cashbackPercentCash,
+
+                // App-specific images (.webp)
+                AppLogoUrl = ToAbsoluteUrl(cardTemplate?.AppLogoUrl, baseUrl),
+                AppStripUrl = ToAbsoluteUrl(cardTemplate?.AppStripUrl, baseUrl),
             };
 
             return dto;
@@ -254,7 +258,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         /// Calculate tier name and cashback percentages based on points.
         /// </summary>
         private static (string tierName, decimal? percent, decimal? percentCash) CalculateTier(
-            int points,
+            decimal points,
             CardTemplate? cardTemplate)
         {
             if (cardTemplate == null)

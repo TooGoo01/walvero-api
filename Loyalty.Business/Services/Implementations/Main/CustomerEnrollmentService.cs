@@ -137,7 +137,24 @@ UserManager<ApplicationUser> userManager,
 
             if (!string.IsNullOrWhiteSpace(phone))
                 customer = await _customerRepo.GetByPhoneAsync(tenantId, phone, ct);
-           
+
+            // Nömrə dəyişibsə, əvvəlki customer-i applicationUserId ilə tap
+            if (customer is null)
+            {
+                var appUserId = int.Parse(userId);
+                var existingCustomers = await _customerRepo.GetByUserId(appUserId);
+                customer = existingCustomers.FirstOrDefault(c => c.TenantId == tenantId && c.IsActive);
+
+                // Köhnə customer tapıldısa, nömrəni yenilə
+                if (customer != null && !string.IsNullOrWhiteSpace(phone))
+                {
+                    customer.PhoneNumber = phone;
+                    customer.LastActivityDate = DateTime.UtcNow;
+                    _uow.Repository<Customer>().Update(customer);
+                    _uow.Commit();
+                }
+            }
+
             // Reactivate if customer exists but is inactive
             if (customer != null && !customer.IsActive)
             {
@@ -192,7 +209,6 @@ UserManager<ApplicationUser> userManager,
             // 3) Son aktiv kartı reuse et / yoxdursa deactive kartı aktivləşdir / yoxdursa yarat
             var card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
             var hasPendingCardUpdate = false;
-            var platformUpdated = false;
            
             // Əgər aktiv kart yoxdursa, deactive edilmiş kartı tap
             if (card is null)
@@ -264,126 +280,17 @@ UserManager<ApplicationUser> userManager,
                 _logger.LogWarning(ex, " POS sync failed for CustomerId={CustomerId}, TenantId={TenantId}", customer.Id, tenantId);
             }
 
-            // 4) Program / branding / snapshot (VerifyEnrollment-dan götürdük)
-            var branding = await _tenantBrandingRepository.GetByTenantIdAsync(tenantId);
-
-            string baseUrl = "https://walvero.com";
-            string ToAbs(string? dbPath)
-            {
-                if (string.IsNullOrWhiteSpace(dbPath)) return string.Empty;
-                if (dbPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
-                    dbPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return dbPath;
-                
-                var normalizedBaseUrl = baseUrl.TrimEnd('/', '\\');
-                var normalizedPath = dbPath.TrimStart('~').TrimStart('/', '\\');
-                normalizedPath = string.IsNullOrWhiteSpace(normalizedPath) ? "/" : "/" + normalizedPath;
-                return normalizedBaseUrl + normalizedPath;
-            }
-
-            var snapshot = CardTemplateSnapshotFactory.From(
-                program,
-                program.CardTemplate,
-                branding,
-                ToAbs
-            );
-
-            string? googleUrl = null;
-            string? appleUrl = null;
-
-            // 5) Platforma görə Google / Apple pass yarad
-            if (string.Equals(dto.DevicePlatform, "android", StringComparison.OrdinalIgnoreCase))
-            {
-                try
-                {
-                    var gw = await _googleFactory.CreateForTenantAsync(tenantId, program.Id, ct);
-
-                    await gw.EnsureClassAsync(snapshot, program.ProgramName, ct);
-
-                    await gw.CreateOrGetObjectByCardIdAsync(
-                        loyaltyCardId: card.Id,
-                        tpl: snapshot,
-                        accountName: $"{customer.FirstName} {customer.LastName}".Trim(),
-                        barcodeValue: card.BarcodeValue,
-                        currentPoints: card.CurrentPoints,
-                        ct: ct
-                    );
-
-                    var save = await gw.GenerateSaveLinkByCardIdAsync(card.Id, tenantId, program.Id, ct);
-                    if (save.Success)
-                        googleUrl = save.Data as string ?? save.Message as string;
-
-                    card.IsAndroid = true;
-                    platformUpdated = true;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Google Wallet credentials missing or error occurred during enrollment. TenantId={TenantId}, ProgramId={ProgramId}, CardId={CardId}, CustomerId={CustomerId}", 
-                        tenantId, program.Id, card.Id, customer.Id);
-                    // Continue without Google wallet URL - do not set IsAndroid flag
-                }
-            }
-            else if (string.Equals(dto.DevicePlatform, "ios", StringComparison.OrdinalIgnoreCase))
-            {
-                try
-                {
-                    var acred = await _credSvc.GetByProgram(tenantId, WalletPlatform.AppleWallet);
-                    if (acred?.Success == true && acred.Data is GetWalletCredentialDto c)
-                    {
-                        var appleCreds = new AppleWalletRuntimeCreds
-                        {
-                            TeamIdentifier = c.TeamIdentifier!,
-                            PassTypeIdentifier = c.PassTypeIdentifier!,
-                            CertP12Path = ToAbs(c.AppleCertificateUrl),
-                            CertPassword = c.CertificatePassword,
-                            WwdrCertPath = ToAbs(c.AppleWwdrCertUrl),
-                            WebServiceUrl = c.PassKitServiceUrl,
-                            AuthToken = c.PassKitAuthToken
-                        };
-
-                        var appleRes = await _appleService.GeneratePassUrlByCardIdAsync(
-                            loyaltyCardId: card.Id,
-                            creds: appleCreds,
-                            snapshot: snapshot,
-                            customerFullName: $"{customer.FirstName} {customer.LastName}".Trim(),
-                            barcodeValue: card.BarcodeValue ?? card.CardNumber,
-                            ct: ct
-                        );
-
-                        if (appleRes.Success)
-                            appleUrl = appleRes.Data as string ?? appleRes.Message as string;
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Apple Wallet credentials not found. TenantId={TenantId}, ProgramId={ProgramId}, CardId={CardId}, CustomerId={CustomerId}", 
-                            tenantId, program.Id, card.Id, customer.Id);
-                    }
-
-                    card.IsIOS = true;
-                    platformUpdated = true;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Apple Wallet credentials missing or error occurred during enrollment. TenantId={TenantId}, ProgramId={ProgramId}, CardId={CardId}, CustomerId={CustomerId}", 
-                        tenantId, program.Id, card.Id, customer.Id);
-                    // Continue without Apple wallet URL - do not set IsIOS flag
-                }
-            }
-
-            var needsFinalUpdate = hasPendingCardUpdate || platformUpdated;
-
-            if (needsFinalUpdate)
+            // 4) Son update — kart dəyişiklikləri varsa commit et
+            if (hasPendingCardUpdate)
             {
                 _uow.Repository<LoyaltyCard>().Update(card);
                 _uow.Commit();
             }
 
-            // 6) Nəticə – artıq OTP yox, birbaşa wallet linkləri qaytarırıq
+            // 5) Nəticə — yalnız customer + card yaradıldı, wallet pass sonra ayrıca yaradılacaq
             return new ServiceResult(true, new VerifyEnrollmentResultDto
             {
-                GoogleSaveUrl = googleUrl,
-                ApplePassUrl = appleUrl,
                 CardId = card.Id
-                // istəsən buraya CustomerId, ProgramId də əlavə edə bilərsən DTO-nu genişləndirib
             });
         }
 

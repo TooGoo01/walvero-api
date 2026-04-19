@@ -48,7 +48,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         /// CardTemplate entity-si üzərindən tier hesablayır (RedeemController.TierResolverDouble kimi).
         /// </summary>
         private static (string tierName, int? percent, int? percentCash, string? iconUrl) ResolveTier(
-            double points, CardTemplate tpl)
+            decimal points, CardTemplate tpl)
         {
             int bronzeTh = tpl.BronzeThreshold ?? 0;
             int? silverTh = tpl.SilverThreshold;
@@ -350,7 +350,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var program = await _loyaltyProgramRepo.GetByIdAsync(programId.Value, ct);
                 var pointsRedeemed = (result.OldPoints ?? 0) - (result.NewPoints ?? 0);
                 if (pointsRedeemed < 0) pointsRedeemed = 0;
-                var discount = request.Amount > 0 ? request.Amount : (decimal)(pointsRedeemed * (double)(program?.CurrencyPerPoint ?? 0.1m));
+                var discount = request.Amount > 0 ? request.Amount : pointsRedeemed * (program?.CurrencyPerPoint ?? 0.1m);
                 return new SetVerifyResponse { Status = true, Type = "cashback", Discount = discount };
             }
 
@@ -408,12 +408,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                             t => t.LoyaltyCardId == tx.LoyaltyCardId && t.Id < tx.Id);
                         var prev = prevTx.OrderByDescending(t => t.Id).FirstOrDefault();
 
-                        int originalDelta = prev != null
+                        decimal originalDelta = prev != null
                             ? tx.BalanceAfter - prev.BalanceAfter
                             : tx.BalanceAfter;
 
                         // Reverse: əks delta tətbiq et
-                        c.CurrentSteps = Math.Max(0, c.CurrentSteps - originalDelta);
+                        c.CurrentSteps = Math.Max(0, c.CurrentSteps - (int)originalDelta);
                         c.CurrentPoints = Math.Max(0, c.CurrentPoints - originalDelta);
                         _uow.Repository<LoyaltyCard>().Update(c);
 
@@ -467,14 +467,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                         var tpl = await _cardTemplateRepo.GetByIdAsync(program.CardTemplateId.Value, ct);
                         if (tpl != null && tpl.PayMentType)
                         {
-                            var (_, percent, percentCash, _) = ResolveTier((double)card.CurrentPoints, tpl);
+                            var (_, percent, percentCash, _) = ResolveTier(card.CurrentPoints, tpl);
                             tierPercent = percent;
                             tierPercentCash = percentCash ?? percent;
                             hasSplitPayment = true;
                         }
                         else if (tpl != null && (tpl.TemplateType == CardTemplateType.TierBased || tpl.TemplateType == CardTemplateType.PointsBased))
                         {
-                            var (_, percent, _, _) = ResolveTier((double)card.CurrentPoints, tpl);
+                            var (_, percent, _, _) = ResolveTier(card.CurrentPoints, tpl);
                             tierPercent = percent;
                         }
                     }
@@ -641,7 +641,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var cashbackPercent = percent ?? 0;
 
                     // Cashback = sum * faiz / 100 (məs: 33 AZN * 10% = 3.3 AZN → 3 point)
-                    var cashbackAmount = request.Sum * cashbackPercent / 100.0;
+                    var cashbackAmount = request.Sum * cashbackPercent / 100m;
                     var earnedPoints = (int)Math.Round(cashbackAmount);
 
                     if (earnedPoints > 0)

@@ -14,7 +14,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> RedeemByCardIdAsync(
           int loyaltyCardId,
           CardTemplateSnapshot tpl,
-          int currentPoints,
+          decimal currentPoints,
           int currentSteps,
           int pointsDelta,
           CancellationToken ct = default);

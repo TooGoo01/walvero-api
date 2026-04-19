@@ -18,7 +18,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
             CardTemplateSnapshot tpl,
             string? accountName = null,
             string? barcodeValue = null,
-            int currentPoints = 0,
+            decimal currentPoints = 0,
             int currentSteps = 0,
             CancellationToken ct = default);
 
@@ -49,7 +49,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> RedeemByCardIdAsync(
      int loyaltyCardId,
      CardTemplateSnapshot tpl,
-     int currentPoints,
+     decimal currentPoints,
      int currentSteps,
      int pointsDelta, string? accountName = null,
      CancellationToken ct = default);

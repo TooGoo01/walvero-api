@@ -81,6 +81,12 @@ namespace Loyalty.DataAccess.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("AppLogoUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AppStripUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("BackgroundColor")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -702,8 +708,8 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int>("CompletedCycles")
                         .HasColumnType("int");
 
-                    b.Property<int>("CurrentPoints")
-                        .HasColumnType("int");
+                    b.Property<decimal>("CurrentPoints")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("CurrentSteps")
                         .HasColumnType("int");
@@ -729,8 +735,8 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<bool>("IsIOS")
                         .HasColumnType("bit");
 
-                    b.Property<int>("LifetimePoints")
-                        .HasColumnType("int");
+                    b.Property<decimal>("LifetimePoints")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("LoyaltyProgramId")
                         .HasColumnType("int");
@@ -1512,6 +1518,71 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("Rewards", (string)null);
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.SalesRepVisit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ContactName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ContactPhone")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("RemindAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("RemindFlag")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("SalesRepName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VenueAddress")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("VenueName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("VisitDate")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SalesRepVisits");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.StoreFeedback", b =>
                 {
                     b.Property<int>("Id")
@@ -2026,8 +2097,8 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<decimal?>("Amount")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<int>("BalanceAfter")
-                        .HasColumnType("int");
+                    b.Property<decimal>("BalanceAfter")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("Description")
                         .HasMaxLength(500)
@@ -2051,8 +2122,8 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("OrderId")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("Points")
-                        .HasColumnType("int");
+                    b.Property<decimal>("Points")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("ReferenceNumber")
                         .HasColumnType("nvarchar(max)");
