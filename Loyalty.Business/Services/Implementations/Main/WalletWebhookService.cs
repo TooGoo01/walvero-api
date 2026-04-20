@@ -579,11 +579,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (string.IsNullOrWhiteSpace(request.CustomerId))
                 return new IikoTransactionResponse { Success = false, Message = "CustomerId is required" };
 
-            // 1) Idempotency: transactionId ilə artıq işlənib mi?
+            // 1) Idempotency: transactionId + walletId ilə artıq işlənib mi?
+            var idempotencyKey = $"{request.TransactionId}:{request.WalletId}";
             var existing = await _uow.Repository<Transaction>().GetAllAsync(
-                t => t.ReferenceNumber == request.TransactionId);
+                t => t.OrderId == idempotencyKey);
             if (existing.Any())
-                return new IikoTransactionResponse { Success = true, Message = "Already processed" };
+                return new IikoTransactionResponse { Success = true, Message = "Already processed (duplicate)" };
 
             // 2) PosCustomerMapping ilə müştərini tap
             var customerId = await _customerMappingRepo.GetCustomerIdByExternalIdAsync(
@@ -645,7 +646,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Points = delta,
                 Amount = Math.Abs(request.Sum),
                 BalanceAfter = card.CurrentPoints,
-                OrderId = request.OrderId,
+                OrderId = idempotencyKey,
                 ReferenceNumber = request.TransactionId,
                 Description = $"iiko {request.TransactionType}",
                 RegDate = DateTime.UtcNow,

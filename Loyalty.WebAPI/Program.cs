@@ -69,7 +69,7 @@ builder.Services
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = SecurityKeyHelper.CreateSecurityKey(tokenOptions.SecurityKey),
-            ClockSkew = TimeSpan.Zero
+            ClockSkew = TimeSpan.FromMinutes(2)
         };
 
         // 🔹 SignalR üçün query-string access_token dəstəyi
@@ -144,7 +144,11 @@ builder.Services.AddSession(conf =>
 
 // === DbContext ===
 builder.Services.AddDbContext<LoyaltyWalletDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("LoyaltyDbConnection")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("LoyaltyDbConnection"),
+        sqlOptions => sqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(10),
+            errorNumbersToAdd: null)));
 
 // HttpClientFactory
 builder.Services.AddHttpClient();

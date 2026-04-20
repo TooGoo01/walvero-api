@@ -243,7 +243,15 @@ namespace Loyalty.DataAccess.Context
                     .HasForeignKey(t => t.LoyaltyCardId)
                     .OnDelete(DeleteBehavior.Restrict);
 
+                entity.Property(lc => lc.CurrentPoints).HasPrecision(18, 2);
+                entity.Property(lc => lc.LifetimePoints).HasPrecision(18, 2);
             });
+            modelBuilder.Entity<Transaction>(entity =>
+            {
+                entity.Property(t => t.Points).HasPrecision(18, 2);
+                entity.Property(t => t.BalanceAfter).HasPrecision(18, 2);
+            });
+
             modelBuilder.Entity<WalletPass>(entity =>
             {
                 entity.ToTable("WalletPasses");

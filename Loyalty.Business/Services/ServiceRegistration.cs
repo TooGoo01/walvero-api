@@ -104,7 +104,12 @@ namespace Loyalty.Business.Services
             services.AddScoped<ISalesRepVisitService, SalesRepVisitService>();
             services.AddScoped<IPosSyncService, PosSyncService>();
 
-            services.AddSignalR();
+            services.AddSignalR(options =>
+            {
+                options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+                options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+                options.MaximumReceiveMessageSize = 64 * 1024; // 64KB
+            });
             return services;
         }
     }
