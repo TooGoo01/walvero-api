@@ -24,9 +24,11 @@ namespace Loyalty.WebAPI.Controllers
         }
         [HttpGet]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> GetMyCards(CancellationToken ct, [FromQuery] TenantSearchDto? model, int currentPage = 1, int pageSize = 10)
+        public async Task<IActionResult> GetMyCards(CancellationToken ct, [FromQuery] TenantSearchDto? model, int page = 1, int currentPage = 1, int pageSize = 10)
         {
-            var res = await _userCardService.GetMyCardsAsync(currentPage,pageSize,model,ct);
+            // Flutter "page", Next.js "currentPage" göndərir — hər ikisini dəstəklə
+            var effectivePage = page > 1 ? page : currentPage;
+            var res = await _userCardService.GetMyCardsAsync(effectivePage,pageSize,model,ct);
 
             if (!res.Success)
                 return BadRequest(new { message = res.Message });
