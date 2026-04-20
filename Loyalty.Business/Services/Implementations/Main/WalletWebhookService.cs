@@ -472,8 +472,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                             tierPercentCash = percentCash ?? percent;
                             hasSplitPayment = true;
                         }
-                        else if (tpl != null && (tpl.TemplateType == CardTemplateType.TierBased || tpl.TemplateType == CardTemplateType.PointsBased))
+                        else if (tpl != null)
                         {
+                            // PayMentType=false: percentCash seçilməyibsə, həmişə percent üzərindən hesabla
                             var (_, percent, _, _) = ResolveTier((double)card.CurrentPoints, tpl);
                             tierPercent = percent;
                         }

@@ -285,7 +285,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             var tpl = program.CardTemplate;
 
             string? tierName = null; int? tierPercent = null; int? tierPercentCash = null; string? tierIconUrl = null;
-            if (tpl.TemplateType == CardTemplateType.TierBased)
+            if (tpl.TemplateType != CardTemplateType.ProgressBased)
             {
                 if (tpl.OneRedeem == true)
                     (tierName, tierPercent,tierPercentCash, tierIconUrl) = TierResolverDouble(currentPoints, tpl);
@@ -443,7 +443,14 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                     (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolver(card.CurrentPoints, tpl);
             }
            
-            int? percent=model.paymentMethod=="cash" ? tierPercentCash : tierPercent;
+            // PayMentType=false (0) olduqda həmişə percent üzərindən hesabla,
+            // PayMentType=true olduqda cash üçün tierPercentCash istifadə et (null-dursa percent-ə fallback)
+            int? percent;
+            if (tpl.PayMentType && model.paymentMethod == "cash")
+                percent = tierPercentCash ?? tierPercent;
+            else
+                percent = tierPercent;
+
             if (delta > 0 && percent.HasValue) {
                 delta = delta * percent.Value / 100;
             }
