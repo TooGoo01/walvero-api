@@ -606,6 +606,17 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (delta == 0)
                 return new IikoTransactionResponse { Success = true, Message = "Zero sum, no action" };
 
+            // Balans yoxlaması: çıxış əməliyyatında balans kifayət edirmi?
+            if (delta < 0 && card.CurrentPoints < Math.Abs(delta))
+            {
+                Console.WriteLine($"⚠️ Insufficient balance: CardId={card.Id}, Balance={card.CurrentPoints}, Requested={Math.Abs(delta)}");
+                return new IikoTransactionResponse
+                {
+                    Success = false,
+                    Message = $"Insufficient balance. Current: {card.CurrentPoints}, Requested: {Math.Abs(delta)}"
+                };
+            }
+
             var txType = delta > 0 ? TransactionType.Earned : TransactionType.Redeemed;
 
             // Program + CardTemplate yüklə (ProgressBased/PointsBased fərqi üçün)

@@ -342,6 +342,68 @@ namespace Loyalty.Business.Services.Implementations.Main
             return result.Id.ToString();
         }
 
+        public async Task SyncBalanceToPosAsync(int tenantId, int customerId, decimal currentPoints, CancellationToken ct = default)
+        {
+            var integrations = await _integrationRepo.GetAllActiveByTenantAsync(tenantId, ct);
+            if (integrations == null || !integrations.Any())
+                return;
+
+            foreach (var integration in integrations)
+            {
+                var isIiko = integration.IntegrationType?.Source == "iiko_pos";
+                if (!isIiko) continue;
+
+                try
+                {
+                    var mapping = await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, customerId, ct);
+                    if (mapping == null)
+                    {
+                        _logger.LogDebug("Balance sync skipped (no mapping): IntegrationId={IntegrationId}, CustomerId={CustomerId}", integration.Id, customerId);
+                        continue;
+                    }
+
+                    var apiLogin = _protector.Decrypt(integration.ApiTokenEncrypted!);
+                    var accessToken = await _iikoClient.GetAccessTokenAsync(apiLogin, ct);
+                    if (string.IsNullOrEmpty(accessToken)) continue;
+
+                    if (!Guid.TryParse(integration.ExternalVenueId, out var orgId)) continue;
+                    // iiko müştəri info-dan wallet ID-ni al (cardTrack ilə axtar)
+                    var cards = await _cardRepo.ListByCustomerAsync(tenantId, customerId, ct);
+                    var cardTrack = cards?
+                        .Where(c => c.IsActive && !string.IsNullOrEmpty(c.BarcodeValue))
+                        .OrderByDescending(c => c.Id)
+                        .Select(c => c.BarcodeValue)
+                        .FirstOrDefault() ?? customerId.ToString();
+
+                    var customerInfo = await _iikoClient.GetCustomerInfoAsync(accessToken, orgId, cardTrack: cardTrack, ct: ct);
+                    if (!Guid.TryParse(mapping.ExternalCustomerId, out var iikoCustomerId))
+                    {
+                        // ExternalCustomerId GUID deyilsə, customerInfo-dan al
+                        iikoCustomerId = customerInfo?.Id ?? Guid.Empty;
+                    }
+                    if (customerInfo?.WalletBalances != null && customerInfo.WalletBalances.Count > 0)
+                    {
+                        var wallet = customerInfo.WalletBalances.First();
+                        var diff = currentPoints - wallet.Balance;
+
+                        if (diff != 0)
+                        {
+                            var topUpOk = await _iikoClient.TopUpWalletAsync(
+                                accessToken, orgId, iikoCustomerId, wallet.Id, diff, ct);
+
+                            _logger.LogInformation(
+                                "iiko balance sync: CustomerId={CustomerId}, WalletId={WalletId}, Diff={Diff}, NewBalance={NewBalance}, Success={Success}",
+                                customerId, wallet.Id, diff, currentPoints, topUpOk);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "iiko balance sync FAILED: IntegrationId={IntegrationId}, CustomerId={CustomerId}", integration.Id, customerId);
+                }
+            }
+        }
+
         /// <summary>
         /// POS response-dan external customer ID-ni extract edir.
         /// Ferqli POS formatlarini destekleyir:
