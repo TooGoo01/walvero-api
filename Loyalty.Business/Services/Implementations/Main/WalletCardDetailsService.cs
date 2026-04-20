@@ -190,9 +190,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 CashbackPercent = cashbackPercent,
                 CashbackPercentCash = cashbackPercentCash,
 
-                // App-specific images (.webp)
-                AppLogoUrl = ToAbsoluteUrl(cardTemplate?.AppLogoUrl, baseUrl),
-                AppStripUrl = ToAbsoluteUrl(cardTemplate?.AppStripUrl, baseUrl),
+                // App-specific images (.webp) — fallback to wallet PNG if not set
+                AppLogoUrl = ToAbsoluteUrl(cardTemplate?.AppLogoUrl, baseUrl)
+                    ?? ToAbsoluteUrl(cardTemplate?.GoogleLogoUrl, baseUrl),
+                AppStripUrl = (cardTemplate?.TemplateType == CardTemplateType.ProgressBased)
+                    ? stripImageUrl  // ProgressBased: həmişə PNG strip (icon progress)
+                    : (ToAbsoluteUrl(cardTemplate?.AppStripUrl, baseUrl)
+                        ?? ToAbsoluteUrl(cardTemplate?.StripImageUrl, baseUrl)),
             };
 
             return dto;

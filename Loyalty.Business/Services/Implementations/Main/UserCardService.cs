@@ -83,8 +83,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ForegroundColor = snapshot.ForegroundColor,
                 LabelColor = snapshot.LabelColor,
                 LogoImageUrl = snapshot.GoogleLogoUrl,
-                AppLogoUrl = snapshot.AppLogoUrl,
-                AppStripUrl = snapshot.AppStripUrl,
+                AppLogoUrl = !string.IsNullOrWhiteSpace(snapshot.AppLogoUrl) ? snapshot.AppLogoUrl : snapshot.GoogleLogoUrl,
+                AppStripUrl = (snapshot.TemplateType == CardTemplateType.ProgressBased)
+                    ? snapshot.StripImageUrl
+                    : (!string.IsNullOrWhiteSpace(snapshot.AppStripUrl) ? snapshot.AppStripUrl : snapshot.StripImageUrl),
             };
 
             return new UserCardDto
