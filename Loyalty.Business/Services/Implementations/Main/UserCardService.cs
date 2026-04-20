@@ -193,7 +193,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var tenant = card.Tenant;
                 var program = card.LoyaltyProgram;
 
-                if (tenant == null || program == null || program.CardTemplate == null)
+                if (tenant == null || program == null)
                     continue;
 
                 var key = (card.TenantId, card.LoyaltyProgramId);
@@ -201,8 +201,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     snapshot = CardTemplateSnapshotFactory.From(
                         program,
-                        program.CardTemplate,
-                        null, // Branding not needed
+                        program.CardTemplate ?? new CardTemplate(),
+                        null,
                         ToAbs);
 
                     snapshotCache[key] = snapshot;

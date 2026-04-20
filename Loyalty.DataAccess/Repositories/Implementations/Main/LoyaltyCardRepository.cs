@@ -302,13 +302,14 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Skip((currentPage - 1) * pageSize)
                 .Take(pageSize);
 
-            var cards = await (
-                from c in baseQuery
-                join x in pagedLastIds on c.Id equals x.MaxId
-                select c)
-                .Include(c => c.Customer)
+            var cardIds = await pagedLastIds.Select(x => x.MaxId).ToListAsync(ct);
+
+            var cards = await GetAsQueryable()
+                .AsNoTracking()
+                .Where(c => cardIds.Contains(c.Id))
                 .Include(c => c.LoyaltyProgram).ThenInclude(p => p.CardTemplate)
                 .Include(c => c.Tenant).ThenInclude(t => t.Category)
+                .OrderByDescending(c => c.Id)
                 .AsSplitQuery()
                 .ToListAsync(ct);
 
