@@ -110,7 +110,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ["description"] = req.Description,
                 ["logoText"] = req.LogoText,
                 ["backgroundColor"] = NormalizeColor(req.BackgroundColor),
-                ["foregroundColor"] = NormalizeColor(req.ForegroundColor ?? "#FFFFFF"),
+                ["foregroundColor"] = NormalizeColor(req.ForegroundColor ?? "#000000"),
                 ["labelColor"] = NormalizeColor(req.LabelColor ?? "#444444"),
                 ["barcode"] = barcodeObj,                  // köhnə sahə, hələ də dəstəklənir
                 ["barcodes"] = new[] { barcodeObj },       // yeni sxemə uyğun
@@ -141,30 +141,33 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
 
 
-        // RGB → HEX converter
+        // HEX → rgb() converter (Apple Wallet pass.json requires rgb(r,g,b) format)
         private static string NormalizeColor(string color)
         {
-            if (string.IsNullOrWhiteSpace(color)) return "#FFFFFF";
+            if (string.IsNullOrWhiteSpace(color)) return "rgb(0, 0, 0)";
 
             color = color.Trim();
 
-            // Əgər artıq HEX-dirsə
-            if (color.StartsWith("#")) return color;
-
-            // rgb(255, 255, 255) formatı
+            // Əgər artıq rgb() formatındadırsa — olduğu kimi qaytar
             if (color.StartsWith("rgb(", StringComparison.OrdinalIgnoreCase))
+                return color;
+
+            // HEX → rgb() çevir
+            if (color.StartsWith("#") && (color.Length == 7 || color.Length == 4))
             {
-                var values = color.Replace("rgb(", "").Replace(")", "").Split(',');
-                if (values.Length == 3 &&
-                    int.TryParse(values[0].Trim(), out var r) &&
-                    int.TryParse(values[1].Trim(), out var g) &&
-                    int.TryParse(values[2].Trim(), out var b))
+                string hex = color.Length == 4
+                    ? $"#{color[1]}{color[1]}{color[2]}{color[2]}{color[3]}{color[3]}"
+                    : color;
+
+                if (int.TryParse(hex.Substring(1, 2), System.Globalization.NumberStyles.HexNumber, null, out var r) &&
+                    int.TryParse(hex.Substring(3, 2), System.Globalization.NumberStyles.HexNumber, null, out var g) &&
+                    int.TryParse(hex.Substring(5, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
                 {
-                    return $"#{r:X2}{g:X2}{b:X2}";
+                    return $"rgb({r}, {g}, {b})";
                 }
             }
 
-            return color; // olduğu kimi qaytar
+            return color;
         }
 
         // RGB → HEX converter
