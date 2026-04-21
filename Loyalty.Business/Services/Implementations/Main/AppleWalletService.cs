@@ -282,6 +282,14 @@ public sealed class AppleWalletService : IAppleWalletService
 
                 await _builder.BuildAsync(req, workDir, ct);
 
+                // DEBUG: pass.json content-ini log-a yaz
+                var passJsonPath = Path.Combine(workDir, "pass.json");
+                if (File.Exists(passJsonPath))
+                {
+                    var passJsonContent = await File.ReadAllTextAsync(passJsonPath, ct);
+                    _logger.LogInformation("Apple pass.json content: {PassJson} (CardId={CardId})", passJsonContent, card.Id);
+                }
+
                 // 2) manifest.json (SHA-1)
                 var files = Directory.GetFiles(workDir)
                                      .Where(p => Path.GetFileName(p) != "manifest.json" && Path.GetFileName(p) != "signature")
