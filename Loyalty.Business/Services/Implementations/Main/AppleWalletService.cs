@@ -251,6 +251,10 @@ public sealed class AppleWalletService : IAppleWalletService
                     LabelColor = snapshot.LabelColor,
                 };
 
+                _logger.LogInformation(
+                    "Apple pass colors — BG: {Bg}, FG: {Fg}, Label: {Lbl} (TenantId={TenantId}, CardId={CardId})",
+                    req.BackgroundColor, req.ForegroundColor, req.LabelColor, tenantId, card.Id);
+
                 // Inject branch locations for proximity triggers
                 if (_branchRepo != null)
                 {
