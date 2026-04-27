@@ -13,9 +13,20 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
 
         public async Task<int?> GetCustomerIdByExternalIdAsync(int tenantIntegrationId, string externalCustomerId, CancellationToken ct = default)
         {
-            var mapping = await GetAsQueryable()
-                .Where(m => m.TenantIntegrationId == tenantIntegrationId && m.ExternalCustomerId == externalCustomerId)
-                .FirstOrDefaultAsync(ct);
+            var mapping = externalCustomerId != null
+     ? await GetAsQueryable()
+         .Where(m => m.TenantIntegrationId == tenantIntegrationId
+                     && m.ExternalCustomerId == externalCustomerId)
+         .FirstOrDefaultAsync(ct)
+     : null;
+
+            if (mapping == null && externalCustomerId != null)
+            {
+                mapping = await GetAsQueryable()
+                    .Where(m => m.TenantIntegrationId == tenantIntegrationId
+                                && m.CustomerId ==int.Parse(externalCustomerId))
+                    .FirstOrDefaultAsync(ct);
+            }
             return mapping?.CustomerId;
         }
 

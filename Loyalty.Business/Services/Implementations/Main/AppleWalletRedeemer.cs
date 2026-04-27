@@ -15,7 +15,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IWalletCredentialProvider _provider;
         private readonly IUnitOfWork _uow;
         private readonly ILogger<AppleWalletRedeemer> _logger;      // <-- LOGGER
-
+        
         public AppleWalletRedeemer(
             IAppleWalletFactory factory,
             IUnitOfWork uow,
