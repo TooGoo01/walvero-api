@@ -1,12 +1,12 @@
-﻿using System.Net.Http;
+﻿using Microsoft.Extensions.Configuration;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Configuration;
 using Twilio;
-using Twilio.Rest.Api.V2010.Account;
 using Twilio.Exceptions;
+using Twilio.Rest.Api.V2010.Account;
 
 namespace Loyalty.Infrastructure.Extensions
 {
@@ -110,6 +110,7 @@ namespace Loyalty.Infrastructure.Extensions
             throw new InvalidOperationException(
                 $"PG365 SMS göndərmə alınmadı (Status={status}, Description={description}).");
         }
+
 
         /// <summary>
         /// Twilio API ilə SMS göndərir.
