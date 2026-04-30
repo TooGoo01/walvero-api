@@ -19,8 +19,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? BarcodeValue { get; set; }
 
         // Points
-        public int CurrentPoints { get; set; } = 0;
-        public int LifetimePoints { get; set; } = 0;
+        public decimal CurrentPoints { get; set; } = 0;
+        public decimal LifetimePoints { get; set; } = 0;
         public int CurrentSteps { get; set; } = 0;        // neçə qəhvə alınıb (məs: 7/10)
         public int CompletedCycles { get; set; } = 0;
         public int AvailableRewardCount { get; set; } = 0;  // = CompletedCycles

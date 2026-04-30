@@ -1,0 +1,143 @@
+{
+	"info": {
+		"_postman_id": "a1c2e7b4-1f92-4d58-8a1b-pgcsmsge00001",
+		"name": "Poct Goyercini (PG365) SMS API v1",
+		"description": "Postman collection for sending SMS via Poct Goyercini (PG365) gateway.\n\nEndpoint: `POST https://api.poctgoyercini.com/gateway/api/sms/v1/message/send?publicKey={publicKey}`\n\nAuthentication: `Authorization: Bearer {privateKey}`\n\nBody: JSON — Single Message, Multi-Recipient, Options ilə (Originator, Encoding, SmsType).\n\nResponse: `{ \"Status\": 200, \"Description\": \"\", \"Result\": {...} }` — Status==200 uğurludur.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Send SMS (Walvero / Originator)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test('HTTP 200', function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test('Status field == 200', function () {",
+							"    var json = pm.response.json();",
+							"    pm.expect(json.Status).to.eql(200);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{privateKey}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"Text\": \"{{message}}\",\n    \"Purpose\": \"INF\",\n    \"Options\": {\n        \"Originator\": \"{{originator}}\",\n        \"Encoding\": \"LATIN\",\n        \"SmsType\": \"SMS\"\n    },\n    \"Receivers\": [\n        { \"Receiver\": \"{{receiver}}\" }\n    ]\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/gateway/api/sms/v1/message/send?publicKey={{publicKey}}",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"gateway",
+						"api",
+						"sms",
+						"v1",
+						"message",
+						"send"
+					],
+					"query": [
+						{
+							"key": "publicKey",
+							"value": "{{publicKey}}"
+						}
+					]
+				},
+				"description": "Tək mətnli SMS-i bir və ya bir neçə alıcıya göndərir.\n\n**Headers:**\n- `Authorization: Bearer {privateKey}` — JWT private key\n- `Content-Type: application/json`\n\n**Query:**\n- `publicKey` — abunəliyin açıq açarı\n\n**Body:**\n```json\n{\n  \"Text\": \"test\",\n  \"Purpose\": \"INF\",\n  \"Options\": {\n    \"Originator\": \"Walvero\",\n    \"Encoding\": \"LATIN\",\n    \"SmsType\": \"SMS\"\n  },\n  \"Receivers\": [\n    { \"Receiver\": \"994551234567\" }\n  ]\n}\n```\n\n**Response (success):**\n```json\n{\n  \"Status\": 200,\n  \"Description\": \"\",\n  \"Result\": { ... }\n}\n```"
+			},
+			"response": [
+				{
+					"name": "Success example",
+					"originalRequest": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer {{privateKey}}" },
+							{ "key": "Content-Type", "value": "application/json" }
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"Text\": \"test\",\n    \"Purpose\": \"INF\",\n    \"Options\": {\n        \"Originator\": \"Walvero\",\n        \"Encoding\": \"LATIN\",\n        \"SmsType\": \"SMS\"\n    },\n    \"Receivers\": [\n        { \"Receiver\": \"994551234567\" }\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/gateway/api/sms/v1/message/send?publicKey={{publicKey}}",
+							"host": [ "{{baseUrl}}" ],
+							"path": [ "gateway", "api", "sms", "v1", "message", "send" ],
+							"query": [ { "key": "publicKey", "value": "{{publicKey}}" } ]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{ "key": "Content-Type", "value": "application/json" }
+					],
+					"cookie": [],
+					"body": "{\n    \"Status\": 200,\n    \"Description\": \"\",\n    \"Result\": {\n        \"MessageId\": \"abc123\",\n        \"Accepted\": 1\n    }\n}"
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://api.poctgoyercini.com",
+			"type": "string"
+		},
+		{
+			"key": "publicKey",
+			"value": "740d51a4c88540cc",
+			"type": "string"
+		},
+		{
+			"key": "privateKey",
+			"value": "eyJhbGciOiJBMjU2S1ciLCJlbmMiOiJBMjU2Q0JDLUhTNTEyIiwidHlwIjoiSldUIiwiY3R5IjoiSldUIn0.wP3e4Vr--dPnq2Em_U0X5_EGXL8LEcp-shuWNss87vefhZMv-PyM0ec7GNgGqiwJk2kmWN4lOckB1e1S9r4FdtMd2Jpy3wZq.nSEJe5UTvZKDRv258Aj_Xw.mcCAmY4A3MMZSRaiTYlP6kMMra66McpI_j9NoNRSxv1c-xvVIi5k5G_sWTqP-Hqi4slxmB_cI61Vlb9BYzhli5TbU0izzkYQ63dNKZVpPFndACGlk_5iV8gSexGMnWAk1ZuHjN0czXBTWmqp5C1uMvs_A0Ma9eeP_4xUo56c09R0lix85zMxJ2TJosMTtryeYh4dFM1_n_NSZpNnQ85qOjnqbj7Etqv03tkMaeabvnri4zZNvqZ7UR_fP8kxjBQ_5plXj4r9Ls1llQTIO5RBZ6PpNW794wwytKuGrgkfI9EG7uKG2O33_8iXpdd25VCHD0R7iY17cwqcBcPmrrL2GwjeIRx7hHkfdFs7lt6_K4rPcwuDp0eSm4xqQU3jiv3z0r90et4m2k4ztK8AulwlJB06ijM06uWEuAbyJGAGIPQjYOxoZvX1uFDelRmX63D9QXGWFhEVtGspQ_g7PMQnUA.AovwPYVqP9v9W9Q2xI_FZjg4F5jQr1wCDc0OofS0eps",
+			"type": "string"
+		},
+		{
+			"key": "originator",
+			"value": "Walvero",
+			"type": "string"
+		},
+		{
+			"key": "receiver",
+			"value": "994551234567",
+			"type": "string"
+		},
+		{
+			"key": "message",
+			"value": "test",
+			"type": "string"
+		}
+	]
+}

@@ -68,7 +68,14 @@ namespace Loyalty.Business.Services.Implementations.Storage
             {
                 var name = Path.GetFileNameWithoutExtension(file.FileName) + rnd.Next(1, 1000).ToString() + Path.GetExtension(file.FileName);
                 BlobClient blobClient = _blobContainerClient.GetBlobClient(name);
-                await blobClient.UploadAsync(file.OpenReadStream(), overwrite: true);
+                await blobClient.UploadAsync(file.OpenReadStream(), new Azure.Storage.Blobs.Models.BlobUploadOptions
+                {
+                    HttpHeaders = new Azure.Storage.Blobs.Models.BlobHttpHeaders
+                    {
+                        ContentType = file.ContentType ?? "application/octet-stream",
+                        ContentDisposition = "inline"
+                    }
+                });
                 datas.Add((name, $"https://walverostorage.blob.core.windows.net/{pathOrContainerName}/{name}"));
             }
 

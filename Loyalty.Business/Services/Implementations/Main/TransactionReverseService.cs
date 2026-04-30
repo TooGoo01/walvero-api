@@ -120,17 +120,18 @@ namespace Loyalty.Business.Services.Implementations.Main
                     .OrderByDescending(t => t.Id)
                     .FirstOrDefaultAsync(ct);
 
-                int originalDelta;
+                decimal originalDeltaDecimal;
                 if (previousTransaction != null)
                 {
                     // Delta = BalanceAfter - PreviousBalanceAfter
-                    originalDelta = originalTransaction.BalanceAfter - previousTransaction.BalanceAfter;
+                    originalDeltaDecimal = originalTransaction.BalanceAfter - previousTransaction.BalanceAfter;
                 }
                 else
                 {
                     // This is the first transaction, so delta = BalanceAfter
-                    originalDelta = originalTransaction.BalanceAfter;
+                    originalDeltaDecimal = originalTransaction.BalanceAfter;
                 }
+                int originalDelta = (int)originalDeltaDecimal;
 
                 // Try to parse delta from description if calculation seems wrong
                 if (originalDelta == 0 && !string.IsNullOrEmpty(originalTransaction.Description))

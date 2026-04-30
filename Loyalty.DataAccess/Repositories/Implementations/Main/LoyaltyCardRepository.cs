@@ -18,8 +18,14 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         }
         public Task<LoyaltyCard?> GetByCardNumberAsync(int tenantId, string cardNumber, CancellationToken ct = default)
          => GetAsQueryable().AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CardNumber == cardNumber, ct);
+        // ⚠️ tracked qalır — WalletWebhookService / PosSessionService / RedeemService
+        // qayıdan card-i Status, CurrentPoints və s. ilə yeniləyirlər (komment də belə deyirdi).
         public Task<LoyaltyCard?> GetByBarcodeValueAsync(int tenantId, string cardNumber, CancellationToken ct = default)
-         => GetAsQueryable().Include(x=>x.Customer).ThenInclude(c => c.applicationUser).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.BarcodeValue == cardNumber, ct);
+         => GetAsQueryable()
+                .Include(x => x.Customer)
+                    .ThenInclude(c => c.applicationUser)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.BarcodeValue == cardNumber, ct);
 
         public Task<bool> ExistsAsync(int tenantId, string cardNumber, CancellationToken ct = default)
             => GetAsQueryable().AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.CardNumber == cardNumber, ct);
@@ -52,9 +58,15 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .FirstOrDefaultAsync(ct);
         }
 
+        // ⚠️ tracked qalır — UserCardService.Delete card.IsActive=false yeniləyir,
+        // GoogleWalletService card-ı update flow-larında istifadə edir.
         public Task<LoyaltyCard?> GetById(int id, CancellationToken ct)
         {
-            return GetAsQueryable().Include(x=>x.Customer).ThenInclude(x=>x.applicationUser).FirstOrDefaultAsync(x => x.Id==id, ct);
+            return GetAsQueryable()
+                .Include(x => x.Customer)
+                    .ThenInclude(x => x.applicationUser)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(x => x.Id == id, ct);
         }
 
         public async Task<List<LoyaltyCard>> GetLastActiveCardsForApplicationUserAsync(
@@ -302,13 +314,14 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Skip((currentPage - 1) * pageSize)
                 .Take(pageSize);
 
-            var cards = await (
-                from c in baseQuery
-                join x in pagedLastIds on c.Id equals x.MaxId
-                select c)
-                .Include(c => c.Customer)
+            var cardIds = await pagedLastIds.Select(x => x.MaxId).ToListAsync(ct);
+
+            var cards = await GetAsQueryable()
+                .AsNoTracking()
+                .Where(c => cardIds.Contains(c.Id))
                 .Include(c => c.LoyaltyProgram).ThenInclude(p => p.CardTemplate)
                 .Include(c => c.Tenant).ThenInclude(t => t.Category)
+                .OrderByDescending(c => c.Id)
                 .AsSplitQuery()
                 .ToListAsync(ct);
 

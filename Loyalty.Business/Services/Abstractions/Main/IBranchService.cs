@@ -1,15 +1,23 @@
+using Loyalty.Business.Dtos.Post.Main.Branch;
 using Loyalty.Business.Results;
+using Microsoft.AspNetCore.Http;
 
 namespace Loyalty.Business.Services.Abstractions.Main
 {
     public interface IBranchService
     {
-        Task<ServiceResult> ListAsync(int tenantId, CancellationToken ct = default);
-        Task<ServiceResult> GetByIdAsync(int id, CancellationToken ct = default);
-        Task<ServiceResult> CreateAsync(int tenantId, Dtos.Post.Branch.CreateBranchDto dto, CancellationToken ct = default);
-        Task<ServiceResult> UpdateAsync(int id, Dtos.Post.Branch.UpdateBranchDto dto, CancellationToken ct = default);
-        Task<ServiceResult> DeleteAsync(int id, CancellationToken ct = default);
-        Task<ServiceResult> GetNearbyAsync(int tenantId, double lat, double lng, double radiusKm, CancellationToken ct = default);
-        Task<ServiceResult> GetStatsAsync(int branchId, CancellationToken ct = default);
+        Task<ServiceResult> ListAsync(int? tenantId);
+        Task<ServiceResult> GetByIdAsync(int id);
+        Task<ServiceResult> CreateAsync(CreateBranchDto dto, int tenantId);
+        Task<ServiceResult> UpdateAsync(int id, UpdateBranchDto dto);
+        Task<ServiceResult> DeleteAsync(int id);
+        Task<ServiceResult> GetStatsAsync(int branchId);
+
+        /// <summary>
+        /// Branch foto/logo ??kli üçün generic upload — Azure Blob-a yaz?r, URL qaytar?r.
+        /// DB-d? heç bir yaz? saxlan?lm?r; ça??ran t?r?f qaytar?lan URL-i CreateBranch/UpdateBranch
+        /// DTO-sundak? PhotoUrl v? ya LogoUrl sah?sind? istifad? edir.
+        /// </summary>
+        Task<ServiceResult> UploadImageAsync(IFormFile file);
     }
 }

@@ -47,9 +47,9 @@ namespace Loyalty.DataAccess.Entities.Main
         public ICollection<ApplicationUser> Admins { get; set; } = new List<ApplicationUser>(); // YENİ
         public ICollection<Customer> Customers { get; set; } = new List<Customer>(); // YENİ (əvvəlki Users)
         public ICollection<LoyaltyProgram> LoyaltyPrograms { get; set; } = new List<LoyaltyProgram>();
+        public ICollection<Branch> Branches { get; set; } = new List<Branch>();
         public ICollection<WalletCredential> WalletCredentials { get; set; } = new List<WalletCredential>();
         public ICollection<RestorantWifiInformation>? RestorantWifiInformation { get; set; } = new List<RestorantWifiInformation>();
         public ICollection<TenantIntegration> TenantIntegrations { get; set; } = new List<TenantIntegration>();
-        public ICollection<Branch> Branches { get; set; } = new List<Branch>();
     }
 }

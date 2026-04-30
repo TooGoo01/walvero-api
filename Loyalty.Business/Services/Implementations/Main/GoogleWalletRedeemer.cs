@@ -30,8 +30,11 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
 
         public async Task<ServiceResult> RedeemByCardIdAsync(
-            int cardId, CardTemplateSnapshot tpl, int pts, int steps, int delta, CancellationToken ct,
-            int lotteryTickets = 0, string? lotteryWinPrize = null, DateTime? lotteryDrawDate = null)
+            int cardId, CardTemplateSnapshot tpl, decimal pts, int steps, int delta,
+            CancellationToken ct = default,
+            int lotteryTickets = 0,
+            string? lotteryWinPrize = null,
+            DateTime? lotteryDrawDate = null)
         {
             using var scope = _logger.BeginScope(new Dictionary<string, object?> { ["CardId"] = cardId });
             var sw = Stopwatch.StartNew();

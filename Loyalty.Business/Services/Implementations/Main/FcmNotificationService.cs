@@ -163,8 +163,10 @@ Payload: {json}
                 .Distinct()
                 .ToList();
 
+            // DeviceToken.UserId nullable oldu — guest tokenləri (UserId=null) burada
+            // istisna edirik, çünki bu metod konkret tenant-ın login olmuş customer-lərinə göndərir.
             var tokens = _db.DeviceTokens
-                .Where(dt => userIds.Contains(dt.UserId))
+                .Where(dt => dt.UserId.HasValue && userIds.Contains(dt.UserId.Value))
                 .Select(dt => dt.Token)
                 .ToList();
 

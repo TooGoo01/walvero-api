@@ -95,6 +95,37 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(new { status = "success", type = "loyalty", product_id = result.ProductId, product_name = result.ProductName });
         }
 
+        [HttpPost("iiko_transaction")]
+        public async Task<IActionResult> IikoTransaction([FromBody] IikoWebhookRequest request, CancellationToken ct)
+        {
+            var ctx = HttpContext.GetWalletWebhookContext();
+            if (ctx == null)
+                return Unauthorized();
+
+            var result = await _webhookService.ProcessIikoTransactionAsync(ctx, new IikoTransactionRequest
+            {
+                Sum = request.Sum ?? 0,
+                Balance = request.Balance ?? 0,
+                OrderId = request.OrderId,
+                OrderNumber = request.OrderNumber,
+                IsDelivery = request.IsDelivery,
+                TerminalGroupId = request.TerminalGroupId,
+                WalletId = request.WalletId,
+                Id = request.Id,
+                OrganizationId = request.OrganizationId,
+                UocId = request.UocId,
+                NotificationType = request.NotificationType,
+                CustomerId = request.CustomerId ?? "",
+                Phone = request.Phone,
+                TransactionType = request.TransactionType ?? "",
+                TransactionId = request.TransactionId ?? "",
+                SubscriptionPassword = request.SubscriptionPassword,
+                ChangedOn = request.ChangedOn
+            }, ct);
+
+            return Ok(new { success = result.Success, message = result.Message });
+        }
+
         [HttpPost("collect")]
         public async Task<IActionResult> Collect([FromBody] CollectWebhookRequest request, CancellationToken ct)
         {
@@ -240,5 +271,59 @@ namespace Loyalty.WebAPI.Controllers
 
         [JsonPropertyName("count")]
         public int? Count { get; set; }
+    }
+
+    public class IikoWebhookRequest
+    {
+        [JsonPropertyName("sum")]
+        public decimal? Sum { get; set; }
+
+        [JsonPropertyName("balance")]
+        public decimal? Balance { get; set; }
+
+        [JsonPropertyName("orderId")]
+        public string? OrderId { get; set; }
+
+        [JsonPropertyName("orderNumber")]
+        public int? OrderNumber { get; set; }
+
+        [JsonPropertyName("isDelivery")]
+        public bool? IsDelivery { get; set; }
+
+        [JsonPropertyName("terminalGroupId")]
+        public string? TerminalGroupId { get; set; }
+
+        [JsonPropertyName("walletId")]
+        public string? WalletId { get; set; }
+
+        [JsonPropertyName("id")]
+        public string? Id { get; set; }
+
+        [JsonPropertyName("organizationId")]
+        public string? OrganizationId { get; set; }
+
+        [JsonPropertyName("uocId")]
+        public string? UocId { get; set; }
+
+        [JsonPropertyName("notificationType")]
+        public int? NotificationType { get; set; }
+
+        [JsonPropertyName("customerId")]
+        public string? CustomerId { get; set; }
+
+        [JsonPropertyName("phone")]
+        public string? Phone { get; set; }
+
+        [JsonPropertyName("transactionType")]
+        public string? TransactionType { get; set; }
+
+        [JsonPropertyName("transactionId")]
+        public string? TransactionId { get; set; }
+
+        [JsonPropertyName("subscriptionPassword")]
+        public string? SubscriptionPassword { get; set; }
+
+        [JsonPropertyName("changedOn")]
+        public string? ChangedOn { get; set; }
     }
 }

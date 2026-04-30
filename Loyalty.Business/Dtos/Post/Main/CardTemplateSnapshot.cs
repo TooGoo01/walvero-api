@@ -74,6 +74,10 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? StripImageUrl { get; set; }         // Apple Wallet banner
         public string? HeroImageUrl { get; set; }          // Google Wallet hero
 
+        // ---- App-specific images (.webp) ----
+        public string? AppLogoUrl { get; set; }
+        public string? AppStripUrl { get; set; }
+
         // ---- Dinamik ikon list (Progress vizual üçün) ----
         public List<string> IconUrls { get; set; } = new(); // CardTemplate.Icons -> absolute URL-lər
 

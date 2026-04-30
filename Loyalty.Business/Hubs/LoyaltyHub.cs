@@ -41,17 +41,17 @@ namespace Loyalty.Business.Hubs
 
         public override async Task OnDisconnectedAsync(Exception? exception)
         {
-            var userName = Context.User?.Identity?.Name;
+            var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
 
-            if (!string.IsNullOrWhiteSpace(userName))
+            if (!string.IsNullOrWhiteSpace(userId))
             {
-                var groupName = $"user-{userName}";
+                var groupName = $"user-{userId}";
                 await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
             }
             _logger.LogInformation(
             "❌ LoyaltyHub: Disconnected. ConnectionId={ConnectionId}, User={User}, Error={Error}",
             Context.ConnectionId,
-            userName,
+            userId,
             exception?.Message
         );
 

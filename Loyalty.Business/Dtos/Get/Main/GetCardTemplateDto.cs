@@ -56,6 +56,11 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? BackgroundImageUrl { get; set; }
         public string? StripImageUrl { get; set; }
         public string? HeroImageUrl { get; set; }
+
+        // App-specific images (.webp)
+        public string? AppLogoUrl { get; set; }
+        public string? AppStripUrl { get; set; }
+
         public string Currency { get; set; } = "AZN"; // Currency code
 
         public IconLayout IconLayout { get; set; }

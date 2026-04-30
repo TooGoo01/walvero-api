@@ -265,8 +265,8 @@ public sealed class AppleWalletService : IAppleWalletService
                             .Where(b => b.IsActive && b.Latitude.HasValue && b.Longitude.HasValue)
                             .Select(b => new PassLocation
                             {
-                                Latitude = b.Latitude!.Value,
-                                Longitude = b.Longitude!.Value,
+                                Latitude = (double)b.Latitude!.Value,
+                                Longitude = (double)b.Longitude!.Value,
                                 RelevantText = b.Name
                             })
                             .ToList();
@@ -393,8 +393,12 @@ public sealed class AppleWalletService : IAppleWalletService
     }
 
     public async Task<ServiceResult> RedeemByCardIdAsync(
-        int loyaltyCardId, CardTemplateSnapshot tpl, AppleWalletRuntimeCreds creds, int currentPoints, int currentSteps, int pointsDelta, CancellationToken ct = default,
-        int lotteryTickets = 0, string? lotteryWinPrize = null, DateTime? lotteryDrawDate = null)
+        int loyaltyCardId, CardTemplateSnapshot tpl, AppleWalletRuntimeCreds creds,
+        decimal currentPoints, int currentSteps, int pointsDelta,
+        CancellationToken ct = default,
+        int lotteryTickets = 0,
+        string? lotteryWinPrize = null,
+        DateTime? lotteryDrawDate = null)
     {
         // Creds-i DB-dən burda da çəkə bilərsən (tenantId → _credProvider.GetAppleAsync)
         var card = await _loyaltyCardRepository.GetById(loyaltyCardId, ct);

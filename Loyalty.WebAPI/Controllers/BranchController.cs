@@ -1,8 +1,9 @@
-using Loyalty.Business.Dtos.Post.Branch;
+using Loyalty.Business.Dtos.Post.Main.Branch;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Net;
 
@@ -10,9 +11,7 @@ namespace Loyalty.WebAPI.Controllers
 {
     [Route("api/[controller]/[action]")]
     [ApiController]
-    [Authorize(
-        AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
-        Policy = "TenantAdminOrModerator")]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     public class BranchController : ControllerBase
     {
         private readonly IBranchService _branchService;
@@ -24,84 +23,105 @@ namespace Loyalty.WebAPI.Controllers
             _tenantProvider = tenantProvider;
         }
 
-        [HttpGet]
+        [HttpGet("/api/branch/list")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> List(CancellationToken ct)
+        public async Task<IActionResult> List()
         {
-            var tenantId = _tenantProvider.CurrentTenantId ?? 0;
-            var result = await _branchService.ListAsync(tenantId, ct);
-            if (!result.Success)
-                return BadRequest(new { message = result.Message });
-            return Ok(result.Data);
+            int? tenantId = ResolveTenantId();
+            var result = await _branchService.ListAsync(tenantId);
+            return Ok(result);
         }
 
-        [HttpGet]
+        [HttpGet("/api/branch/GetById")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> GetById([FromQuery] int id, CancellationToken ct)
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
+        public async Task<IActionResult> GetById([FromQuery] int id)
         {
-            var result = await _branchService.GetByIdAsync(id, ct);
+            var result = await _branchService.GetByIdAsync(id);
             if (!result.Success)
-                return BadRequest(new { message = result.Message });
-            return Ok(result.Data);
+                return NotFound(result);
+            return Ok(result);
         }
 
-        [HttpPost]
+        [HttpPost("/api/branch/create")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> Create([FromBody] CreateBranchDto dto, CancellationToken ct)
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> Create([FromBody] CreateBranchDto dto)
         {
-            var tenantId = _tenantProvider.CurrentTenantId ?? 0;
-            var result = await _branchService.CreateAsync(tenantId, dto, ct);
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            int? tenantId = ResolveTenantId();
+            if (!tenantId.HasValue)
+                return BadRequest(new ServiceResult(false, "Tenant context is required"));
+
+            var result = await _branchService.CreateAsync(dto, tenantId.Value);
             if (!result.Success)
-                return BadRequest(new { message = result.Message });
-            return Ok(result.Data);
+                return BadRequest(result);
+            return Ok(result);
         }
 
-        [HttpPost]
+        [HttpPost("/api/branch/Update")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> Update([FromQuery] int id, [FromBody] UpdateBranchDto dto, CancellationToken ct)
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
+        public async Task<IActionResult> Update([FromQuery] int id, [FromBody] UpdateBranchDto dto)
         {
-            var result = await _branchService.UpdateAsync(id, dto, ct);
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _branchService.UpdateAsync(id, dto);
             if (!result.Success)
-                return BadRequest(new { message = result.Message });
-            return Ok(result.Data);
+                return NotFound(result);
+            return Ok(result);
         }
 
-        [HttpPost]
+        [HttpPost("/api/branch/Delete")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> Delete([FromQuery] int id, CancellationToken ct)
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
+        public async Task<IActionResult> Delete([FromQuery] int id)
         {
-            var result = await _branchService.DeleteAsync(id, ct);
+            var result = await _branchService.DeleteAsync(id);
             if (!result.Success)
-                return BadRequest(new { message = result.Message });
-            return Ok(result.Data);
+                return NotFound(result);
+            return Ok(result);
         }
 
-        [HttpGet]
-        [Authorize(
-            AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
-            Policy = "CustomerOrTenantAdmin")]
+        [HttpGet("/api/branch/GetStats")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> GetNearby(
-            [FromQuery] int tenantId,
-            [FromQuery] double lat,
-            [FromQuery] double lng,
-            [FromQuery] double radiusKm = 10,
-            CancellationToken ct = default)
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
+        public async Task<IActionResult> GetStats([FromQuery] int branchId)
         {
-            var result = await _branchService.GetNearbyAsync(tenantId, lat, lng, radiusKm, ct);
+            var result = await _branchService.GetStatsAsync(branchId);
             if (!result.Success)
-                return BadRequest(new { message = result.Message });
-            return Ok(result.Data);
+                return NotFound(result);
+            return Ok(result);
         }
 
-        [HttpGet]
+        [HttpPost("/api/branch/UploadImage")]
+        [RequestSizeLimit(20_000_000)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 20_000_000)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> GetStats([FromQuery] int branchId, CancellationToken ct)
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> UploadImage()
         {
-            var result = await _branchService.GetStatsAsync(branchId, ct);
+            var files = Request.Form.Files;
+            if (files == null || files.Count == 0)
+                return BadRequest(new ServiceResult(false, "No file provided"));
+
+            var result = await _branchService.UploadImageAsync(files[0]);
             if (!result.Success)
-                return BadRequest(new { message = result.Message });
-            return Ok(result.Data);
+                return BadRequest(result);
+            return Ok(result);
+        }
+
+        private int? ResolveTenantId()
+        {
+            if (Request.Headers.TryGetValue("X-Tenant-Id", out var headerVal) &&
+                int.TryParse(headerVal, out var headerId))
+            {
+                return headerId;
+            }
+            return _tenantProvider.CurrentTenantId;
         }
     }
 }

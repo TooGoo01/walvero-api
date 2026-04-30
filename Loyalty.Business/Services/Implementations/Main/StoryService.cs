@@ -9,6 +9,8 @@ using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 
 using Microsoft.AspNetCore.Http;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
 
 namespace Loyalty.Business.Services.Implementations.Main
 {
@@ -152,19 +154,28 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             if (file is not null && file.Length > 0)
             {
-                // Convert image to WebP
-                if (_mediaProcessor.IsImage(file))
-                    file = await _mediaProcessor.ConvertImageToWebpAsync(file);
-
-                // Delete old file if exists
                 if (!string.IsNullOrWhiteSpace(oldValue))
                 {
                     var oldName = GetFileNameSafe(oldValue);
                     if (!string.IsNullOrEmpty(oldName))
-                        await _storage.DeleteAsync(container, oldName);
+                        try { await _storage.DeleteAsync(container, oldName); } catch { }
                 }
 
-                var uploaded = await _storage.UploadFileAsync(container, new[] { file });
+                // .webp-yə çevir
+                using var inputStream = file.OpenReadStream();
+                using var image = await Image.LoadAsync(inputStream);
+                using var webpStream = new MemoryStream();
+                await image.SaveAsWebpAsync(webpStream, new WebpEncoder { Quality = 80 });
+                webpStream.Position = 0;
+
+                var webpFileName = $"{prefix}-{Random.Shared.Next(1000, 9999)}.webp";
+                var webpFile = new FormFile(webpStream, 0, webpStream.Length, file.Name, webpFileName)
+                {
+                    Headers = file.Headers,
+                    ContentType = "image/webp"
+                };
+
+                var uploaded = await _storage.UploadFileAsync(container, new[] { webpFile });
                 var (_, relPath) = uploaded.First();
                 return EnsureRelative(relPath);
             }

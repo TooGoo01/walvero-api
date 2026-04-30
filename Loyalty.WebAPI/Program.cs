@@ -13,6 +13,8 @@ using Loyalty.Infrastructure.Utilities.Security.Jwt;
 using Loyalty.WebAPI.Tenancy;
 using LoyaltyWalletApp.WEBUI.Tenancy;
 using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.AspNetCore.ResponseCompression;
+using System.IO.Compression;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
@@ -44,6 +46,28 @@ builder.WebHost.ConfigureKestrel(options =>
 
 // === Response Caching ===
 builder.Services.AddResponseCaching();
+
+// === Response Compression (Brotli + Gzip) ===
+// JSON cavabları 3-5x kiçilir (məs. GetTenants ~100KB → ~20KB).
+// Mobile network-də çox böyük effekt — bandwidth + latency hər ikisi azalır.
+// Brotli daha sıxılmış olur amma yalnız HTTPS-də işləyir; Gzip fallback.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes
+        .Concat(new[] { "application/json", "text/json" });
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(o =>
+{
+    // Fastest = az CPU, yenə də ~70% sıxılma. Optimal default-dur.
+    o.Level = CompressionLevel.Fastest;
+});
+builder.Services.Configure<GzipCompressionProviderOptions>(o =>
+{
+    o.Level = CompressionLevel.Fastest;
+});
 
 builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", policy => policy
@@ -81,7 +105,7 @@ builder.Services
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = SecurityKeyHelper.CreateSecurityKey(tokenOptions.SecurityKey),
-            ClockSkew = TimeSpan.Zero
+            ClockSkew = TimeSpan.FromMinutes(2)
         };
 
         // 🔹 SignalR üçün query-string access_token dəstəyi
@@ -162,7 +186,11 @@ builder.Services.AddSession(conf =>
 
 // === DbContext ===
 builder.Services.AddDbContext<LoyaltyWalletDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("LoyaltyDbConnection")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("LoyaltyDbConnection"),
+        sqlOptions => sqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(10),
+            errorNumbersToAdd: null)));
 
 // HttpClientFactory
 builder.Services.AddHttpClient();
@@ -294,6 +322,10 @@ else
 }
 
 app.UseCors("AllowAll");
+
+// Response Compression — must come EARLY (before UseRouting/MapControllers).
+// Brotli/Gzip daxil olan request-in `Accept-Encoding` header-inə uyğun olur.
+app.UseResponseCompression();
 
 // Response Caching middleware - must be BEFORE UseSession
 app.UseResponseCaching();

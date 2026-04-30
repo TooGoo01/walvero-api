@@ -18,7 +18,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         int loyaltyCardId,
         CardTemplateSnapshot tpl,
          AppleWalletRuntimeCreds creds,
-        int currentPoints,
+        decimal currentPoints,
         int currentSteps,
         int pointsDelta,
         CancellationToken ct = default,

@@ -21,8 +21,8 @@ namespace Loyalty.DataAccess.Entities.Main
         public BarcodeType BarcodeType { get; set; } = BarcodeType.Code128;
 
         // Points
-        public int CurrentPoints { get; set; } = 0;
-        public int LifetimePoints { get; set; } = 0;
+        public decimal CurrentPoints { get; set; } = 0;
+        public decimal LifetimePoints { get; set; } = 0;
         public int CurrentSteps { get; set; } = 0;        // neçə qəhvə alınıb (məs: 7/10)
         public int CompletedCycles { get; set; } = 0;
 

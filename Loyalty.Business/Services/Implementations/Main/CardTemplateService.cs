@@ -10,6 +10,8 @@ using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,16 +25,18 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly ICardTemplateRepository _repo;
+        private readonly ILoyaltyProgramRepository _loyaltyProgramRepository;
         private readonly ICardTemplateIconService _cardTemplateIconService;
         private readonly IStorage _storage;
 
-        public CardTemplateService(IStorage storage, ICardTemplateRepository repo, IMapper mapper, IUnitOfWork unitOfWork, ICardTemplateIconService cardTemplateIconService)
+        public CardTemplateService(IStorage storage, ICardTemplateRepository repo, IMapper mapper, IUnitOfWork unitOfWork, ICardTemplateIconService cardTemplateIconService, ILoyaltyProgramRepository loyaltyProgramRepository)
         {
             _storage = storage;
             _repo = repo;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _cardTemplateIconService = cardTemplateIconService;
+            _loyaltyProgramRepository = loyaltyProgramRepository;
         }
 
         public Task<ServiceResult> Add(AddCardTemplateDto Dto)
@@ -60,6 +64,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             entity.BackgroundImageUrl = await UpOrNullLink(container, "bg", dto.BackgroundImageFile, dto.BackgroundImageUrl, entity.BackgroundImageUrl, ct);
             entity.StripImageUrl = await UpOrLink(container, "strip", dto.StripImageFile, dto.StripImageUrl, entity.StripImageUrl, ct);
             entity.HeroImageUrl = await UpOrLink(container, "hero", dto.HeroImageFile, dto.HeroImageUrl, entity.HeroImageUrl, ct);
+
+            // App-specific images — avtomatik .webp-yə çevrilir
+            entity.AppLogoUrl = await UpAsWebpOrNullLink(container, "app-logo", dto.AppLogoFile, dto.AppLogoUrl, entity.AppLogoUrl, ct);
+            entity.AppStripUrl = await UpAsWebpOrNullLink(container, "app-strip", dto.AppStripFile, dto.AppStripUrl, entity.AppStripUrl, ct);
 
             // Points-based icon faylları (bronze/silver/gold/platinum)
             entity.BronzeIconUrl = await UpOrNullLink(container, "bronze", dto.BronzeIconFile, dto.BronzeIconUrl, entity.BronzeIconUrl, ct);
@@ -104,8 +112,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _unitOfWork.Repository<CardTemplate>().Update(entity);
             _unitOfWork.Commit();
 
-            // LoyaltyProgram.CardTemplateId-ni yenilə
-            var program = await _unitOfWork.Repository<LoyaltyProgram>().GetByIdAsync(dto.LoyaltyProgramId);
+            // LoyaltyProgram.CardTemplateId-ni yenilə (tracked query ilə)
+            var program = await _loyaltyProgramRepository.GetByIdTrackedAsync(dto.LoyaltyProgramId, ct);
             if (program != null && program.CardTemplateId != entity.Id)
             {
                 program.CardTemplateId = entity.Id;
@@ -164,6 +172,46 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
             return null; // heç nə gəlməyibsə köhnə qalsın
         }
+        /// <summary>
+        /// Yüklənən şəkili avtomatik .webp formatına çevirib saxlayır.
+        /// </summary>
+        private async Task<string?> UpAsWebpOrNullLink(
+            string container, string prefix, IFormFile? file, string? url, string? oldValue, CancellationToken ct)
+        {
+            if (file is not null && file.Length > 0)
+            {
+                if (!string.IsNullOrWhiteSpace(oldValue))
+                {
+                    var oldName = GetFileNameSafe(oldValue);
+                    if (!string.IsNullOrEmpty(oldName))
+                        await _storage.DeleteAsync(container, oldName);
+                }
+
+                // Şəkili .webp-yə çevir
+                using var inputStream = file.OpenReadStream();
+                using var image = await Image.LoadAsync(inputStream, ct);
+                using var webpStream = new MemoryStream();
+                await image.SaveAsWebpAsync(webpStream, new WebpEncoder { Quality = 80 }, ct);
+                webpStream.Position = 0;
+
+                var webpFileName = $"{prefix}-{Random.Shared.Next(1000, 9999)}.webp";
+                var webpFile = new FormFile(webpStream, 0, webpStream.Length, file.Name, webpFileName)
+                {
+                    Headers = file.Headers,
+                    ContentType = "image/webp"
+                };
+
+                var uploaded = await _storage.UploadFileAsync(container, new[] { webpFile });
+                var (_, relPath) = uploaded.First();
+                return EnsureRelative(relPath);
+            }
+            else if (!string.IsNullOrWhiteSpace(url))
+            {
+                return url.Trim();
+            }
+            return null;
+        }
+
         private static string EnsureRelative(string path)
         {
             if (string.IsNullOrWhiteSpace(path)) return path;
@@ -231,10 +279,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                 BackgroundImageUrl = e.BackgroundImageUrl,
                 StripImageUrl = e.StripImageUrl,
                 HeroImageUrl = e.HeroImageUrl,
+                AppLogoUrl = e.AppLogoUrl,
+                AppStripUrl = e.AppStripUrl,
                 Currency = e.Currency,
                 IconLayout = e.IconLayout,
                 FreeRewardLabel = e.FreeRewardLabel,
-               
+
             };
         }
         public async Task<ServiceResult> Delete(int id)

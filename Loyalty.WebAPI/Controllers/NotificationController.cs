@@ -59,9 +59,11 @@ namespace Loyalty.WebAPI.Controllers
         [HttpPost]
         public async Task<IActionResult> SendToAll([FromBody] SendToAllRequest request, CancellationToken ct)
         {
-            // Bütün aktiv userləri tap
+            // DeviceToken.UserId nullable oldu — guest tokenləri (UserId=null)
+            // Notification (in-app) üçün istifadə oluna bilməz, ona görə filter edirik.
             var userIds = await _db.DeviceTokens
-                .Select(dt => dt.UserId)
+                .Where(dt => dt.UserId.HasValue)
+                .Select(dt => dt.UserId!.Value)
                 .Distinct()
                 .ToListAsync(ct);
 

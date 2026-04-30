@@ -31,8 +31,11 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
 
         public async Task<ServiceResult> RedeemByCardIdAsync(
-          int id, CardTemplateSnapshot tpl, int pts, int steps, int delta, CancellationToken ct = default,
-          int lotteryTickets = 0, string? lotteryWinPrize = null, DateTime? lotteryDrawDate = null)
+          int id, CardTemplateSnapshot tpl, decimal pts, int steps, int delta,
+          CancellationToken ct = default,
+          int lotteryTickets = 0,
+          string? lotteryWinPrize = null,
+          DateTime? lotteryDrawDate = null)
         {
             using var scope = _logger.BeginScope(new Dictionary<string, object?>
             {

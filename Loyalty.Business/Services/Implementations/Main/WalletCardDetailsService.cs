@@ -188,7 +188,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                 BackgroundColor = cardTemplate?.BackgroundColor ?? tenant.Branding?.BackgroundColor ?? "#FFFFFF",
                 ForegroundColor = cardTemplate?.ForegroundColor ?? tenant.Branding?.TextColor ?? "#000000",
                 CashbackPercent = cashbackPercent,
-                CashbackPercentCash = cashbackPercentCash
+                CashbackPercentCash = cashbackPercentCash,
+
+                // App-specific images (.webp) — fallback to wallet PNG if not set
+                AppLogoUrl = ToAbsoluteUrl(cardTemplate?.AppLogoUrl, baseUrl)
+                    ?? ToAbsoluteUrl(cardTemplate?.GoogleLogoUrl, baseUrl),
+                AppStripUrl = (cardTemplate?.TemplateType == CardTemplateType.ProgressBased)
+                    ? stripImageUrl  // ProgressBased: həmişə PNG strip (icon progress)
+                    : (ToAbsoluteUrl(cardTemplate?.AppStripUrl, baseUrl)
+                        ?? ToAbsoluteUrl(cardTemplate?.StripImageUrl, baseUrl)),
             };
 
             return dto;
@@ -254,7 +262,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         /// Calculate tier name and cashback percentages based on points.
         /// </summary>
         private static (string tierName, decimal? percent, decimal? percentCash) CalculateTier(
-            int points,
+            decimal points,
             CardTemplate? cardTemplate)
         {
             if (cardTemplate == null)

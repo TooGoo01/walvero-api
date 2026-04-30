@@ -1,6 +1,7 @@
 using Loyalty.DataAccess.Abstractions;
 using Loyalty.DataAccess.Entities.Base;
 using Loyalty.DataAccess.Entities.Users;
+using System.Collections.Generic;
 
 namespace Loyalty.DataAccess.Entities.Main
 {
@@ -11,22 +12,32 @@ namespace Loyalty.DataAccess.Entities.Main
 
         public string Name { get; set; } = string.Empty;
         public string? Address { get; set; }
-        public double? Latitude { get; set; }
-        public double? Longitude { get; set; }
-        public int RadiusMeters { get; set; } = 500;
-
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
+        public int RadiusMeters { get; set; } = 100;
         public string? Phone { get; set; }
         public string? Email { get; set; }
         public string? PhotoUrl { get; set; }
-
-        /// <summary>
-        /// JSON format: {"mon":"09:00-22:00","tue":"09:00-22:00",...,"sun":"10:00-20:00"}
-        /// </summary>
+        public string? LogoUrl { get; set; }
         public string? WorkingHoursJson { get; set; }
 
         public bool IsMainBranch { get; set; } = false;
 
-        // Navigation
+        // Optional contact / social links � same shape as Tenant
+        public string? LocationUrl { get; set; }
+        public string? WazeLocationUrl { get; set; }
+        public string? MenuUrl { get; set; }
+        public string? InstagramUrl { get; set; }
+        public string? FacebookUrl { get; set; }
+        public string? WhatsAppUrl { get; set; }
+        public string? TelegramUrl { get; set; }
+        public string? LinkedInUrl { get; set; }
+
+        public ICollection<Room> Rooms { get; set; } = new List<Room>();
+
+        // Inverse navigation collections — DbContext-də HasOne(...).WithMany(b => b.Staff/Transactions)
+        // konfiqurasiyaları üçün lazımdır. ApplicationUser.BranchId və Transaction.BranchId nullable
+        // FK-lər vasitəsilə bağlanır; bu kolleksiyalar ehtiyac olduqda Include ilə yüklənir.
         public ICollection<ApplicationUser> Staff { get; set; } = new List<ApplicationUser>();
         public ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
     }

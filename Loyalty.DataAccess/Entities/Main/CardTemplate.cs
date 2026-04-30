@@ -71,6 +71,11 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? BackgroundImageUrl { get; set; }
         public string? StripImageUrl { get; set; }       // Apple Wallet banner
         public string? HeroImageUrl { get; set; }        // Google Wallet hero
+
+        // App-specific images (.webp) — wallet PNG-lərinə toxunulmur
+        public string? AppLogoUrl { get; set; }
+        public string? AppStripUrl { get; set; }
+
         public string Currency { get; set; } = "AZN"; // Default currency
 
         // Layout

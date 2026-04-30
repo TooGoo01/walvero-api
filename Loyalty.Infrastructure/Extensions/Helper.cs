@@ -1,9 +1,12 @@
-﻿using System.Net.Http;
+﻿using Microsoft.Extensions.Configuration;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Configuration;
 using Twilio;
-using Twilio.Rest.Api.V2010.Account;
 using Twilio.Exceptions;
+using Twilio.Rest.Api.V2010.Account;
 
 namespace Loyalty.Infrastructure.Extensions
 {
@@ -36,56 +39,78 @@ namespace Loyalty.Infrastructure.Extensions
         }
 
         /// <summary>
-        /// PoctGoyercini HTTP API ilə SMS göndərir.
+        /// PG365 (Poct Goyercini) SMS API v1.0.4 ilə SMS göndərir.
+        /// Endpoint: POST https://api.poctgoyercini.com/gateway/api/sms/v1/message/send
         /// </summary>
         private static async Task<bool> SendSmsViaPoctGoyerciniAsync(string phone, string message, CancellationToken ct = default)
         {
-            // 1) Telefonu sənəd formatına sal: 50xxxxxxx (başda +994/0/boşluq YOX)  ← sənəd
+            // 1) Telefonu beynəlxalq formata sal: 994XXXXXXXXX (ölkə kodu ilə)
             static string NormalizePhone(string p)
             {
                 var digits = new string(p.Where(char.IsDigit).ToArray());
-                if (digits.StartsWith("994")) digits = digits[3..];
+                if (digits.StartsWith("994")) return digits;
                 if (digits.StartsWith("0")) digits = digits[1..];
-                return digits;
+                return "994" + digits;
             }
 
-            var normalizedGsm = NormalizePhone(phone);
 
-            // 2) Endpoint və parametrlər (HTTPS + POST + URL-encode)  ← sənəd
-            const string endpoint = "https://www.poctgoyercini.com/api_http/sendsms.asp";
-            var form = new Dictionary<string, string>
+
+            const string publicKey = "740d51a4c88540cc";
+            const string privateKey = "eyJhbGciOiJBMjU2S1ciLCJlbmMiOiJBMjU2Q0JDLUhTNTEyIiwidHlwIjoiSldUIiwiY3R5IjoiSldUIn0.wP3e4Vr--dPnq2Em_U0X5_EGXL8LEcp-shuWNss87vefhZMv-PyM0ec7GNgGqiwJk2kmWN4lOckB1e1S9r4FdtMd2Jpy3wZq.nSEJe5UTvZKDRv258Aj_Xw.mcCAmY4A3MMZSRaiTYlP6kMMra66McpI_j9NoNRSxv1c-xvVIi5k5G_sWTqP-Hqi4slxmB_cI61Vlb9BYzhli5TbU0izzkYQ63dNKZVpPFndACGlk_5iV8gSexGMnWAk1ZuHjN0czXBTWmqp5C1uMvs_A0Ma9eeP_4xUo56c09R0lix85zMxJ2TJosMTtryeYh4dFM1_n_NSZpNnQ85qOjnqbj7Etqv03tkMaeabvnri4zZNvqZ7UR_fP8kxjBQ_5plXj4r9Ls1llQTIO5RBZ6PpNW794wwytKuGrgkfI9EG7uKG2O33_8iXpdd25VCHD0R7iY17cwqcBcPmrrL2GwjeIRx7hHkfdFs7lt6_K4rPcwuDp0eSm4xqQU3jiv3z0r90et4m2k4ztK8AulwlJB06ijM06uWEuAbyJGAGIPQjYOxoZvX1uFDelRmX63D9QXGWFhEVtGspQ_g7PMQnUA.AovwPYVqP9v9W9Q2xI_FZjg4F5jQr1wCDc0OofS0eps";
+            var receiver = NormalizePhone(phone);
+            var endpoint = $"https://api.poctgoyercini.com/gateway/api/sms/v1/message/send?publicKey={publicKey}";
+
+            // 2) JSON request body hazırla (Single Message – Multi-Recipient)
+            var requestBody = new
             {
-                ["user"] = "kart12_servis",
-                ["password"] = "TooGoo2025Lime",
-                ["gsm"] = normalizedGsm,
-                ["text"] = message, // FormUrlEncodedContent özü URL-encode edir
+                Text = message,
+                Purpose = "INF",
+                Options = new
+                {
+                    Originator = "Walvero",
+                    Encoding = "LATIN",
+                    SmsType = "SMS"
+                },
+                Receivers = new[]
+                {
+                    new { Receiver = receiver }
+                }
             };
 
+            var json = JsonSerializer.Serialize(requestBody);
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-            using var content = new FormUrlEncodedContent(form);
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            http.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer " + privateKey);
 
             var resp = await http.PostAsync(endpoint, content, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
 
-            // 3) Cavabı parse et: "errno=0&errtext=&message_id=...&charge=1"  ← sənəd
-            var map = body.Split('&', StringSplitOptions.RemoveEmptyEntries)
-                          .Select(p => p.Split('=', 2))
-                          .Where(a => a.Length == 2)
-                          .ToDictionary(a => a[0], a => Uri.UnescapeDataString(a[1]));
+            // 3) Cavabı parse et: { "Status": 200, "Description": "", "Result": { ... } }
+            int status;
+            string? description;
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                var root = doc.RootElement;
+                // Status həm int, həm string olaraq gələ bilər
+                status = root.GetProperty("Status").ValueKind == JsonValueKind.Number
+                    ? root.GetProperty("Status").GetInt32()
+                    : int.TryParse(root.GetProperty("Status").GetString(), out var s) ? s : -1;
+                description = root.TryGetProperty("Description", out var descProp) ? descProp.GetString() : null;
+            }
+            catch
+            {
+                throw new InvalidOperationException(
+                    $"PG365 SMS cavab parse edilə bilmədi. HTTP {(int)resp.StatusCode}, Body: {body}");
+            }
 
-            int errno = map.TryGetValue("errno", out var eStr) && int.TryParse(eStr, out var eVal) ? eVal : -9999;
-            map.TryGetValue("errtext", out var errtext);
-            map.TryGetValue("message_id", out var messageId);
-            // charge opsionaldır
-            _ = map.TryGetValue("charge", out var chargeStr);
-
-            if (errno == 0)
+            if (status == 200)
                 return true;
 
-            // Daha aydın diaqnostika üçün xətanı ataq
             throw new InvalidOperationException(
-                $"SMS göndərmə alınmadı (errno={errno}, errtext={errtext}, message_id={messageId}).");
+                $"PG365 SMS göndərmə alınmadı (Status={status}, Description={description}).");
         }
+
 
         /// <summary>
         /// Twilio API ilə SMS göndərir.

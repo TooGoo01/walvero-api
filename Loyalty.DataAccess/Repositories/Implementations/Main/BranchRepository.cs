@@ -50,8 +50,8 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             return branches
                 .Select(b =>
                 {
-                    var bLatRad = b.Latitude!.Value * Math.PI / 180.0;
-                    var bLngRad = b.Longitude!.Value * Math.PI / 180.0;
+                    var bLatRad = (double)b.Latitude!.Value * Math.PI / 180.0;
+                    var bLngRad = (double)b.Longitude!.Value * Math.PI / 180.0;
 
                     var cosDistance = Math.Cos(latRad) * Math.Cos(bLatRad) * Math.Cos(bLngRad - lngRad)
                                    + Math.Sin(latRad) * Math.Sin(bLatRad);

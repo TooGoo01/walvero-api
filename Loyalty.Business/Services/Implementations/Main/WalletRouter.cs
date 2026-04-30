@@ -12,8 +12,11 @@ namespace Loyalty.Business.Services.Implementations.Main
         public WalletRouter(GoogleWalletRedeemer g, AppleWalletRedeemer a) { _g = g; _a = a; }
 
         public Task<ServiceResult> RouteAsync(WalletPlatform p, int id, CardTemplateSnapshot tpl,
-            int pts, int steps, int completedCycles, int delta, CancellationToken ct,
-            int lotteryTickets = 0, string? lotteryWinPrize = null, DateTime? lotteryDrawDate = null)
+            decimal pts, int steps, int completedCycles, int delta,
+            CancellationToken ct,
+            int lotteryTickets = 0,
+            string? lotteryWinPrize = null,
+            DateTime? lotteryDrawDate = null)
             => p switch
             {
                 WalletPlatform.GooglePay => _g.RedeemByCardIdAsync(id, tpl, pts, steps, delta, ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate),

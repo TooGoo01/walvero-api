@@ -11,6 +11,7 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
     {
         Task<LoyaltyProgram?> GetByCodeAsync(int tenantId, string code, CancellationToken ct = default);
         Task<LoyaltyProgram?> GetByIdNameAsync(int programId, CancellationToken ct = default);
+        Task<LoyaltyProgram?> GetByIdTrackedAsync(int programId, CancellationToken ct = default);
         Task<List<LoyaltyProgram>> ListAsync(int tenantId, bool onlyActive = true, CancellationToken ct = default);
         Task<List<LoyaltyProgram>> GetActive(CancellationToken ct = default);
         Task<List<LoyaltyProgram>> GetByIdsAsync(IEnumerable<int> programIds, CancellationToken ct = default);

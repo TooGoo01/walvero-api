@@ -96,6 +96,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Include(t => t.TenantLocation)
                     .ThenInclude(tl => tl!.TimeZone)
                 .Where(t => t.Subdomain == slug && t.IsActive && !t.IsHidden)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(ct);
 
             if (tenant == null)

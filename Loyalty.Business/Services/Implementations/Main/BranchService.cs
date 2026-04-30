@@ -1,11 +1,15 @@
-using Loyalty.Business.Dtos.Get.Branch;
-using Loyalty.Business.Dtos.Post.Branch;
+using AutoMapper;
+using Loyalty.Business.Dtos.Get.Main.Branch;
+using Loyalty.Business.Dtos.Post.Main.Branch;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
-using Loyalty.DataAccess.Entities.Main;
-using Loyalty.DataAccess.Enums;
+using Loyalty.Business.Services.Abstractions.Storage;
+using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using BranchEntity = Loyalty.DataAccess.Entities.Main.Branch;
 
 namespace Loyalty.Business.Services.Implementations.Main
 {
@@ -13,165 +17,184 @@ namespace Loyalty.Business.Services.Implementations.Main
     {
         private readonly IBranchRepository _branchRepository;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly IMapper _mapper;
+        private readonly LoyaltyWalletDbContext _dbContext;
+        private readonly IStorage _storage;
 
-        public BranchService(IBranchRepository branchRepository, IUnitOfWork unitOfWork)
+        public BranchService(
+            IBranchRepository branchRepository,
+            IUnitOfWork unitOfWork,
+            IMapper mapper,
+            LoyaltyWalletDbContext dbContext,
+            IStorage storage)
         {
             _branchRepository = branchRepository;
             _unitOfWork = unitOfWork;
+            _mapper = mapper;
+            _dbContext = dbContext;
+            _storage = storage;
         }
 
-        public async Task<ServiceResult> ListAsync(int tenantId, CancellationToken ct = default)
+        public async Task<ServiceResult> ListAsync(int? tenantId)
         {
-            var branches = await _branchRepository.GetByTenantAsync(tenantId, ct);
-            var dtos = branches.Select(b => MapToDto(b)).ToList();
+            var query = _dbContext.Branches.AsNoTracking().Where(b => b.IsActive);
+            if (tenantId.HasValue)
+                query = query.Where(b => b.TenantId == tenantId.Value);
+
+            var branches = await query
+                .OrderByDescending(b => b.IsMainBranch)
+                .ThenBy(b => b.Name)
+                .ToListAsync();
+
+            var dtos = _mapper.Map<List<GetBranchDto>>(branches);
+            foreach (var d in dtos)
+            {
+                d.StaffCount = 0;
+            }
+
             return new ServiceResult(true, dtos);
         }
 
-        public async Task<ServiceResult> GetByIdAsync(int id, CancellationToken ct = default)
+        public async Task<ServiceResult> GetByIdAsync(int id)
         {
-            var branch = await _branchRepository.GetByIdAsync(id, ct);
+            var branch = await _dbContext.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == id);
             if (branch == null)
-                return new ServiceResult(false, "Filial tapılmadı.");
+                return new ServiceResult(false, "Branch not found");
 
-            return new ServiceResult(true, MapToDto(branch));
+            var dto = _mapper.Map<GetBranchDto>(branch);
+            dto.StaffCount = 0;
+            return new ServiceResult(true, dto);
         }
 
-        public async Task<ServiceResult> CreateAsync(int tenantId, CreateBranchDto dto, CancellationToken ct = default)
+        public async Task<ServiceResult> CreateAsync(CreateBranchDto dto, int tenantId)
         {
-            var branch = new Branch
+            if (string.IsNullOrWhiteSpace(dto.Name))
+                return new ServiceResult(false, "Branch name is required");
+
+            var entity = _mapper.Map<BranchEntity>(dto);
+            entity.TenantId = tenantId;
+            entity.IsActive = true;
+
+            if (entity.IsMainBranch)
             {
-                TenantId = tenantId,
-                Name = dto.Name,
-                Address = dto.Address,
-                Latitude = dto.Latitude,
-                Longitude = dto.Longitude,
-                RadiusMeters = dto.RadiusMeters,
-                Phone = dto.Phone,
-                Email = dto.Email,
-                PhotoUrl = dto.PhotoUrl,
-                WorkingHoursJson = dto.WorkingHoursJson,
-                IsMainBranch = dto.IsMainBranch,
-                IsActive = true
-            };
+                await ResetMainBranchAsync(tenantId);
+            }
+            else
+            {
+                var hasMain = await _dbContext.Branches.AnyAsync(b => b.TenantId == tenantId && b.IsActive && b.IsMainBranch);
+                if (!hasMain)
+                    entity.IsMainBranch = true;
+            }
 
-            await _unitOfWork.Repository<Branch>().AddAsync(branch);
+            await _unitOfWork.Repository<BranchEntity>().AddAsync(entity);
             _unitOfWork.Commit();
 
-            return new ServiceResult(true, MapToDto(branch));
+            var response = _mapper.Map<GetBranchDto>(entity);
+            return new ServiceResult(true, response);
         }
 
-        public async Task<ServiceResult> UpdateAsync(int id, UpdateBranchDto dto, CancellationToken ct = default)
+        public async Task<ServiceResult> UpdateAsync(int id, UpdateBranchDto dto)
         {
-            var branch = await _branchRepository.GetByIdAsync(id, ct);
+            var branch = await _dbContext.Branches.FirstOrDefaultAsync(b => b.Id == id);
             if (branch == null)
-                return new ServiceResult(false, "Filial tapılmadı.");
+                return new ServiceResult(false, "Branch not found");
 
-            branch.Name = dto.Name;
-            branch.Address = dto.Address;
-            branch.Latitude = dto.Latitude;
-            branch.Longitude = dto.Longitude;
-            branch.RadiusMeters = dto.RadiusMeters;
-            branch.Phone = dto.Phone;
-            branch.Email = dto.Email;
-            branch.PhotoUrl = dto.PhotoUrl;
-            branch.WorkingHoursJson = dto.WorkingHoursJson;
-            branch.IsMainBranch = dto.IsMainBranch;
-            branch.EditDate = DateTime.UtcNow;
+            if (dto.Name != null) branch.Name = dto.Name;
+            if (dto.Address != null) branch.Address = dto.Address;
+            if (dto.Latitude.HasValue) branch.Latitude = dto.Latitude;
+            if (dto.Longitude.HasValue) branch.Longitude = dto.Longitude;
+            if (dto.RadiusMeters.HasValue) branch.RadiusMeters = dto.RadiusMeters.Value;
+            if (dto.Phone != null) branch.Phone = dto.Phone;
+            if (dto.Email != null) branch.Email = dto.Email;
+            if (dto.PhotoUrl != null) branch.PhotoUrl = dto.PhotoUrl;
+            if (dto.LogoUrl != null) branch.LogoUrl = dto.LogoUrl;
+            if (dto.WorkingHoursJson != null) branch.WorkingHoursJson = dto.WorkingHoursJson;
+            if (dto.LocationUrl != null) branch.LocationUrl = dto.LocationUrl;
+            if (dto.WazeLocationUrl != null) branch.WazeLocationUrl = dto.WazeLocationUrl;
+            if (dto.MenuUrl != null) branch.MenuUrl = dto.MenuUrl;
+            if (dto.InstagramUrl != null) branch.InstagramUrl = dto.InstagramUrl;
+            if (dto.FacebookUrl != null) branch.FacebookUrl = dto.FacebookUrl;
+            if (dto.WhatsAppUrl != null) branch.WhatsAppUrl = dto.WhatsAppUrl;
+            if (dto.TelegramUrl != null) branch.TelegramUrl = dto.TelegramUrl;
+            if (dto.LinkedInUrl != null) branch.LinkedInUrl = dto.LinkedInUrl;
 
-            _unitOfWork.Repository<Branch>().Update(branch);
+            if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
+            {
+                await ResetMainBranchAsync(branch.TenantId);
+                branch.IsMainBranch = true;
+            }
+            else if (dto.IsMainBranch.HasValue && !dto.IsMainBranch.Value)
+            {
+                branch.IsMainBranch = false;
+            }
+
+            _unitOfWork.Repository<BranchEntity>().Update(branch);
             _unitOfWork.Commit();
 
-            return new ServiceResult(true, MapToDto(branch));
+            var response = _mapper.Map<GetBranchDto>(branch);
+            return new ServiceResult(true, response);
         }
 
-        public async Task<ServiceResult> DeleteAsync(int id, CancellationToken ct = default)
+        public async Task<ServiceResult> DeleteAsync(int id)
         {
-            var branch = await _branchRepository.GetByIdAsync(id, ct);
+            var branch = await _dbContext.Branches.FirstOrDefaultAsync(b => b.Id == id);
             if (branch == null)
-                return new ServiceResult(false, "Filial tapılmadı.");
+                return new ServiceResult(false, "Branch not found");
 
             branch.IsActive = false;
-            branch.EditDate = DateTime.UtcNow;
-
-            _unitOfWork.Repository<Branch>().Update(branch);
+            _unitOfWork.Repository<BranchEntity>().Update(branch);
             _unitOfWork.Commit();
 
-            return new ServiceResult(true, "Filial deaktiv edildi.");
+            return new ServiceResult(true);
         }
 
-        public async Task<ServiceResult> GetNearbyAsync(int tenantId, double lat, double lng, double radiusKm, CancellationToken ct = default)
+        public async Task<ServiceResult> GetStatsAsync(int branchId)
         {
-            var branches = await _branchRepository.GetNearbyAsync(tenantId, lat, lng, radiusKm, ct);
-            var dtos = branches.Select(b =>
-            {
-                var dto = MapToDto(b);
-                // Calculate distance for the DTO
-                if (b.Latitude.HasValue && b.Longitude.HasValue)
-                {
-                    dto.DistanceKm = CalculateHaversineDistance(lat, lng, b.Latitude.Value, b.Longitude.Value);
-                }
-                return dto;
-            }).ToList();
-
-            return new ServiceResult(true, dtos);
-        }
-
-        public async Task<ServiceResult> GetStatsAsync(int branchId, CancellationToken ct = default)
-        {
-            var branch = await _branchRepository.GetByIdAsync(branchId, ct);
+            var branch = await _dbContext.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == branchId);
             if (branch == null)
-                return new ServiceResult(false, "Filial tapılmadı.");
+                return new ServiceResult(false, "Branch not found");
 
-            var transactions = branch.Transactions ?? new List<Transaction>();
-
-            var stats = new
+            var stats = new GetBranchStatsDto
             {
                 BranchId = branch.Id,
                 BranchName = branch.Name,
-                TotalTransactions = transactions.Count,
-                TotalPointsEarned = transactions
-                    .Where(t => t.Type == TransactionType.Earned)
-                    .Sum(t => t.Points),
-                TotalPointsRedeemed = transactions
-                    .Where(t => t.Type == TransactionType.Redeemed)
-                    .Sum(t => t.Points),
-                StaffCount = branch.Staff?.Count ?? 0
+                StaffCount = 0,
+                TotalTransactions = 0,
+                TotalPointsIssued = 0m,
+                TotalPointsRedeemed = 0m
             };
 
             return new ServiceResult(true, stats);
         }
 
-        private static GetBranchDto MapToDto(Branch b) => new()
+        public async Task<ServiceResult> UploadImageAsync(IFormFile file)
         {
-            Id = b.Id,
-            TenantId = b.TenantId,
-            Name = b.Name,
-            Address = b.Address,
-            Latitude = b.Latitude,
-            Longitude = b.Longitude,
-            RadiusMeters = b.RadiusMeters,
-            Phone = b.Phone,
-            Email = b.Email,
-            PhotoUrl = b.PhotoUrl,
-            WorkingHoursJson = b.WorkingHoursJson,
-            IsMainBranch = b.IsMainBranch,
-            IsActive = b.IsActive,
-            RegDate = b.RegDate,
-            StaffCount = b.Staff?.Count ?? 0
-        };
+            if (file == null || file.Length == 0)
+                return new ServiceResult(false, "No file provided");
 
-        private static double CalculateHaversineDistance(double lat1, double lng1, double lat2, double lng2)
+            // Mövcud `_storage.UploadAsync` IFormFileCollection qəbul edir, ona görə tək faylı
+            // FormFileCollection-a paketlə.
+            var collection = new FormFileCollection { file };
+            var uploaded = await _storage.UploadAsync("branch-images", collection);
+            if (uploaded.Count == 0)
+                return new ServiceResult(false, "Upload failed");
+
+            var (fileName, url) = uploaded[0];
+            return new ServiceResult(true, new { url, fileName });
+        }
+
+        private async Task ResetMainBranchAsync(int tenantId)
         {
-            var lat1Rad = lat1 * Math.PI / 180.0;
-            var lat2Rad = lat2 * Math.PI / 180.0;
-            var lng1Rad = lng1 * Math.PI / 180.0;
-            var lng2Rad = lng2 * Math.PI / 180.0;
-
-            var cosDistance = Math.Cos(lat1Rad) * Math.Cos(lat2Rad) * Math.Cos(lng2Rad - lng1Rad)
-                           + Math.Sin(lat1Rad) * Math.Sin(lat2Rad);
-
-            cosDistance = Math.Max(-1.0, Math.Min(1.0, cosDistance));
-            return Math.Round(6371.0 * Math.Acos(cosDistance), 2);
+            var existingMains = await _dbContext.Branches
+                .Where(b => b.TenantId == tenantId && b.IsMainBranch && b.IsActive)
+                .ToListAsync();
+            foreach (var m in existingMains)
+            {
+                m.IsMainBranch = false;
+                _unitOfWork.Repository<BranchEntity>().Update(m);
+            }
+            if (existingMains.Count > 0)
+                _unitOfWork.Commit();
         }
     }
 }

@@ -161,6 +161,13 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         /// <inheritdoc />
         public async Task<Tenant?> GetTenantForWalletDetailsAsync(int tenantId, CancellationToken ct = default)
         {
+            // Performans qeydi:
+            // Bu sorğu Tenant + Branding (1:1) + Category (1:1) + LoyaltyPrograms (1:N)
+            // + CardTemplate (1:1) + Icons (1:N) yükləyir. AsSplitQuery olmadan bu Include-lar
+            // tək JOIN-də Cartesian product-a çevrilir (məs. 3 program × 10 icon = 30 dublikat sətir,
+            // hər biri tam Tenant + Branding + Category sütunları ilə) — yüklənmə yavaş olur.
+            // AsSplitQuery EF-ə hər collection üçün ayrı SQL göndərməyi tapşırır → çox az duplicate
+            // data, daha cəld serialize/parse.
             return await GetAsQueryable()
                 .AsNoTracking()
                 .Include(t => t.Branding)
@@ -169,6 +176,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     .ThenInclude(lp => lp.CardTemplate)
                         .ThenInclude(ct => ct!.Icons)
                 .Where(t => t.Id == tenantId && t.IsActive && !t.IsHidden)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(ct);
         }
 

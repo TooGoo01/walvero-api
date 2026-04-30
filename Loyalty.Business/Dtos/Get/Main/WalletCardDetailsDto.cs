@@ -43,6 +43,10 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string ForegroundColor { get; set; } = "#000000";
         public decimal? CashbackPercent { get; set; }
         public decimal? CashbackPercentCash { get; set; }
+
+        // App-specific images (.webp)
+        public string? AppLogoUrl { get; set; }
+        public string? AppStripUrl { get; set; }
     }
 
     /// <summary>
@@ -52,7 +56,7 @@ namespace Loyalty.Business.Dtos.Get.Main
     public class WalletCardPrivateDto
     {
         public string CustomerFullName { get; set; } = string.Empty;
-        public int CurrentPoints { get; set; }
+        public decimal CurrentPoints { get; set; }
 
         // ProgressBased card fields
         public string? progressText { get; set; }  // e.g., "5/10" (null for non-ProgressBased)

@@ -86,8 +86,9 @@ namespace Loyalty.Business.Helpers
                 StripImageUrl = toAbsoluteUrl(ct.StripImageUrl),
                 HeroImageUrl = toAbsoluteUrl(ct.HeroImageUrl),
 
-                // Lottery
-                IsLotteryEnabled = lp.IsLotteryEnabled,
+                // App-specific images (.webp)
+                AppLogoUrl = toAbsoluteUrl(ct.AppLogoUrl),
+                AppStripUrl = toAbsoluteUrl(ct.AppStripUrl),
             };
 
             // Icon list (CardTemplate.Icons kolleksiyasından)

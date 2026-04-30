@@ -197,7 +197,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
          CardTemplateSnapshot tpl,
          string? accountName = null,
          string? barcodeValue = null,
-         int currentPoints = 0,
+         decimal currentPoints = 0,
          int currentSteps = 0,
          CancellationToken ct = default,
          int lotteryTickets = 0,
@@ -390,8 +390,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 // Only set LoyaltyPoints for non-ProgressBased
                 LoyaltyPoints = isProgressBased ? null : new LoyaltyPoints
                 {
-                    Balance = new LoyaltyPointsBalance { Int__ = currentPoints },
-                    Label = "Points"
+                    Balance = new LoyaltyPointsBalance { Int__ = (int)Math.Round(currentPoints) },
+                    Label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency
                 },
                 SecondaryLoyaltyPoints = secondaryLoyaltyPoints,
 
@@ -438,8 +438,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
                         .Where(b => b.IsActive && b.Latitude.HasValue && b.Longitude.HasValue)
                         .Select(b => new LatLongPoint
                         {
-                            Latitude = b.Latitude!.Value,
-                            Longitude = b.Longitude!.Value
+                            Latitude = (double)b.Latitude!.Value,
+                            Longitude = (double)b.Longitude!.Value
                         })
                         .ToList();
 
@@ -467,7 +467,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
     public async Task<ServiceResult> RedeemByCardIdAsync(
        int loyaltyCardId,
        CardTemplateSnapshot tpl,
-       int currentPoints,
+       decimal currentPoints,
        int currentSteps,
        int delta,
        string? accountName = null,
@@ -701,8 +701,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 // FIX: Label must be "Points" to match class definition, otherwise Google API silently ignores PATCH
                 LoyaltyPoints = isProgressBased ? null : new LoyaltyPoints
                 {
-                    Balance = new LoyaltyPointsBalance { Int__ = nextPoints },
-                    Label = "Points"
+                    Balance = new LoyaltyPointsBalance { Int__ = (int)Math.Round(nextPoints) },
+                    Label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency
                 },
                 SecondaryLoyaltyPoints = secondaryLoyaltyPoints,
                 TextModulesData = textList,
@@ -901,7 +901,9 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 var card = await _cardRepo.GetByIdAsync(loyaltyCardId, ct);
                 if (card != null)
                 {
-                    currentPoints = card.CurrentPoints;
+                    // Google Wallet API "int" balance gözləyir; CurrentPoints decimal-dir,
+                    // ona görə fractional dəyəri yuvarlaqlaşdırırıq.
+                    currentPoints = (int)Math.Round(card.CurrentPoints);
                     accountName = $"{card.Customer?.FirstName} {card.Customer?.LastName}".Trim();
                     if (string.IsNullOrEmpty(accountName)) accountName = $"Card #{loyaltyCardId}";
                 }
@@ -972,7 +974,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
         return $"{input}.{s}";
     }
 
-    private static LoyaltyDisplayState BuildDisplayState(CardTemplateSnapshot tpl, int currentPoints, int currentSteps)
+    private static LoyaltyDisplayState BuildDisplayState(CardTemplateSnapshot tpl, decimal currentPoints, int currentSteps)
     {
         var s = new LoyaltyDisplayState();
 
@@ -1319,7 +1321,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
         }
     }
 
-    private static string? PickTierIconByPoints(CardTemplateSnapshot tpl, int pts, out string tier)
+    private static string? PickTierIconByPoints(CardTemplateSnapshot tpl, decimal pts, out string tier)
     {
         tier = "Bronze";
         string? icon = IsHttps(tpl.BronzeIconUrl) ? tpl.BronzeIconUrl : null;
@@ -1345,8 +1347,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
         return icon;
     }
 
-    // Cashback percent - eyni məntiqlə Apple ilə uyğunlaşdırılıb
-    private static int GetCashbackPercent(int currentPoints, CardTemplateSnapshot snapshot)
+    private static int GetCashbackPercent(decimal currentPoints, CardTemplateSnapshot snapshot)
     {
         var bronzeTh = snapshot.BronzeThreshold ?? 0;
         var silverTh = snapshot.SilverThreshold ?? int.MaxValue;
@@ -1369,8 +1370,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
         else
             return platPct;
     }
-    // CashbackPercentCash - eyni məntiqlə Apple ilə uyğunlaşdırılıb
-    private static int GetCashbackPercentCash(int currentPoints, CardTemplateSnapshot snapshot)
+    private static int GetCashbackPercentCash(decimal currentPoints, CardTemplateSnapshot snapshot)
     {
         var bronzeTh = snapshot.BronzeThreshold ?? 0;
         var silverTh = snapshot.SilverThreshold ?? int.MaxValue;

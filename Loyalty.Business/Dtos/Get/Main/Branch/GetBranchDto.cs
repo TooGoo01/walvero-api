@@ -1,0 +1,34 @@
+using System;
+
+namespace Loyalty.Business.Dtos.Get.Main.Branch
+{
+    public class GetBranchDto
+    {
+        public int Id { get; set; }
+        public int TenantId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? Address { get; set; }
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
+        public int RadiusMeters { get; set; }
+        public string? Phone { get; set; }
+        public string? Email { get; set; }
+        public string? PhotoUrl { get; set; }
+        public string? LogoUrl { get; set; }
+        public string? WorkingHoursJson { get; set; }
+        public bool IsMainBranch { get; set; }
+        public bool IsActive { get; set; }
+        public DateTime RegDate { get; set; }
+        public int StaffCount { get; set; }
+        public double? DistanceKm { get; set; }
+
+        public string? LocationUrl { get; set; }
+        public string? WazeLocationUrl { get; set; }
+        public string? MenuUrl { get; set; }
+        public string? InstagramUrl { get; set; }
+        public string? FacebookUrl { get; set; }
+        public string? WhatsAppUrl { get; set; }
+        public string? TelegramUrl { get; set; }
+        public string? LinkedInUrl { get; set; }
+    }
+}

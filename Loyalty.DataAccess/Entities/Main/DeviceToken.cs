@@ -12,7 +12,12 @@ namespace Loyalty.DataAccess.Entities.Main
     public class DeviceToken : EntityBase, IEntity
     {
         public ApplicationUser? User { get; set; }
-        public int UserId { get; set; }
+        /// <summary>
+        /// AspNetUsers.Id-ə işarə edən FK. Guest istifadəçi üçün <c>null</c> olur
+        /// (login olmamış istifadəçilərin də FCM bildirişlərini ala bilməsi üçün).
+        /// Login zamanı eyni token yenidən qeydiyyatdan keçəndə UserId set olunur.
+        /// </summary>
+        public int? UserId { get; set; }
         public string Token { get; set; }
         public string Platform { get; set; } // IOS / ANDROID
     }

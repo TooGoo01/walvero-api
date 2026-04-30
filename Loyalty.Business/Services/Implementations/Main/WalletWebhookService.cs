@@ -48,7 +48,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         /// CardTemplate entity-si üzərindən tier hesablayır (RedeemController.TierResolverDouble kimi).
         /// </summary>
         private static (string tierName, int? percent, int? percentCash, string? iconUrl) ResolveTier(
-            double points, CardTemplate tpl)
+            decimal points, CardTemplate tpl)
         {
             int bronzeTh = tpl.BronzeThreshold ?? 0;
             int? silverTh = tpl.SilverThreshold;
@@ -350,7 +350,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var program = await _loyaltyProgramRepo.GetByIdAsync(programId.Value, ct);
                 var pointsRedeemed = (result.OldPoints ?? 0) - (result.NewPoints ?? 0);
                 if (pointsRedeemed < 0) pointsRedeemed = 0;
-                var discount = request.Amount > 0 ? request.Amount : (decimal)(pointsRedeemed * (double)(program?.CurrencyPerPoint ?? 0.1m));
+                var discount = request.Amount > 0 ? request.Amount : pointsRedeemed * (program?.CurrencyPerPoint ?? 0.1m);
                 return new SetVerifyResponse { Status = true, Type = "cashback", Discount = discount };
             }
 
@@ -408,12 +408,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                             t => t.LoyaltyCardId == tx.LoyaltyCardId && t.Id < tx.Id);
                         var prev = prevTx.OrderByDescending(t => t.Id).FirstOrDefault();
 
-                        int originalDelta = prev != null
+                        decimal originalDelta = prev != null
                             ? tx.BalanceAfter - prev.BalanceAfter
                             : tx.BalanceAfter;
 
                         // Reverse: əks delta tətbiq et
-                        c.CurrentSteps = Math.Max(0, c.CurrentSteps - originalDelta);
+                        c.CurrentSteps = Math.Max(0, c.CurrentSteps - (int)originalDelta);
                         c.CurrentPoints = Math.Max(0, c.CurrentPoints - originalDelta);
                         _uow.Repository<LoyaltyCard>().Update(c);
 
@@ -467,15 +467,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                         var tpl = await _cardTemplateRepo.GetByIdAsync(program.CardTemplateId.Value, ct);
                         if (tpl != null && tpl.PayMentType)
                         {
-                            var (_, percent, percentCash, _) = ResolveTier((double)card.CurrentPoints, tpl);
+                            var (_, percent, percentCash, _) = ResolveTier(card.CurrentPoints, tpl);
                             tierPercent = percent;
                             tierPercentCash = percentCash ?? percent;
                             hasSplitPayment = true;
                         }
                         else if (tpl != null)
                         {
-                            // PayMentType=false: percentCash seçilməyibsə, həmişə percent üzərindən hesabla
-                            var (_, percent, _, _) = ResolveTier((double)card.CurrentPoints, tpl);
+                            var (_, percent, _, _) = ResolveTier(card.CurrentPoints, tpl);
                             tierPercent = percent;
                         }
                     }
@@ -569,6 +568,117 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             return new CollectResponse { Success = true };
+        }
+
+        public async Task<IikoTransactionResponse> ProcessIikoTransactionAsync(
+            WalletWebhookResolvedContext context, IikoTransactionRequest request, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(request.TransactionId))
+                return new IikoTransactionResponse { Success = false, Message = "TransactionId is required" };
+
+            if (string.IsNullOrWhiteSpace(request.CustomerId))
+                return new IikoTransactionResponse { Success = false, Message = "CustomerId is required" };
+
+            // 1) Idempotency: transactionId + walletId ilə artıq işlənib mi?
+            var idempotencyKey = $"{request.TransactionId}:{request.WalletId}";
+            var existing = await _uow.Repository<Transaction>().GetAllAsync(
+                t => t.OrderId == idempotencyKey);
+            if (existing.Any())
+                return new IikoTransactionResponse { Success = true, Message = "Already processed (duplicate)" };
+
+            // 2) PosCustomerMapping ilə müştərini tap
+            var customerId = await _customerMappingRepo.GetCustomerIdByExternalIdAsync(
+                context.TenantIntegrationId, request.CustomerId, ct);
+            if (customerId == null)
+                return new IikoTransactionResponse { Success = false, Message = $"Customer not found for externalId: {request.CustomerId}" };
+
+            // 3) Aktiv LoyaltyCard tap
+            if (context.LoyaltyProgramId == null)
+                return new IikoTransactionResponse { Success = false, Message = "LoyaltyProgramId not configured" };
+
+            var card = await _loyaltyCardRepo.GetLastActiveByCustomerAsync(
+                context.TenantId, context.LoyaltyProgramId.Value, customerId.Value, ct);
+            if (card == null)
+                return new IikoTransactionResponse { Success = false, Message = "Active loyalty card not found" };
+
+            // 4) iiko POS-dan gələn sum artıq hesablanmış point-dir — birbaşa əlavə et
+            var delta = request.Sum;
+            if (delta == 0)
+                return new IikoTransactionResponse { Success = true, Message = "Zero sum, no action" };
+
+            // Balans yoxlaması: çıxış əməliyyatında balans kifayət edirmi?
+            if (delta < 0 && card.CurrentPoints < Math.Abs(delta))
+            {
+                Console.WriteLine($"⚠️ Insufficient balance: CardId={card.Id}, Balance={card.CurrentPoints}, Requested={Math.Abs(delta)}");
+                return new IikoTransactionResponse
+                {
+                    Success = false,
+                    Message = $"Insufficient balance. Current: {card.CurrentPoints}, Requested: {Math.Abs(delta)}"
+                };
+            }
+
+            var txType = delta > 0 ? TransactionType.Earned : TransactionType.Redeemed;
+
+            // Program + CardTemplate yüklə (ProgressBased/PointsBased fərqi üçün)
+            var program = await _loyaltyProgramRepo.GetByIdNameAsync(context.LoyaltyProgramId!.Value);
+
+            var template = program?.CardTemplate;
+            var templateType = template?.TemplateType ?? CardTemplateType.PointsBased;
+            var totalSteps = template?.TotalSteps ?? 10;
+
+            if (templateType == CardTemplateType.ProgressBased)
+            {
+                // ProgressBased: sum=1 → 1 step əlavə
+                var intDelta = (int)delta;
+                card.CurrentSteps += intDelta;
+                card.CurrentSteps = Math.Max(0, card.CurrentSteps);
+                card.CompletedCycles = card.CurrentSteps / totalSteps;
+                card.CurrentPoints = card.CurrentSteps;
+                if (intDelta > 0)
+                    card.LifetimePoints += intDelta;
+            }
+            else
+            {
+                // PointsBased/TierBased: sum birbaşa point kimi (POS artıq hesablayıb)
+                card.CurrentPoints += delta;
+                card.CurrentPoints = Math.Max(0, card.CurrentPoints);
+                if (delta > 0)
+                    card.LifetimePoints += delta;
+            }
+
+            _loyaltyCardRepo.Update(card);
+
+            // 5) Transaction yarat
+            var tx = new Transaction
+            {
+                LoyaltyCardId = card.Id,
+                Type = txType,
+                Status = RedeemStatus.Applied,
+                Points = delta,
+                Amount = Math.Abs(request.Sum),
+                BalanceAfter = card.CurrentPoints,
+                OrderId = idempotencyKey,
+                ReferenceNumber = request.TransactionId,
+                Description = $"iiko {request.TransactionType}",
+                RegDate = DateTime.UtcNow,
+                IsActive = true,
+                LocalOccurredAt = DateTimeOffset.UtcNow,
+                TimeZoneIdUsed = "UTC"
+            };
+
+            _uow.Repository<Transaction>().Add(tx);
+            await _uow.CommitAsync(ct);
+
+            return new IikoTransactionResponse
+            {
+                Success = true,
+                Message = templateType switch
+                {
+                    CardTemplateType.ProgressBased => $"Steps: {card.CurrentSteps}, FreeCoffees: {card.CompletedCycles}",
+                    CardTemplateType.TierBased => $"Cashback earned: {delta}, Balance: {card.CurrentPoints}, Tier: {ResolveTier(card.LifetimePoints, template!).tierName}",
+                    _ => $"Points: {card.CurrentPoints}"
+                }
+            };
         }
     }
 }

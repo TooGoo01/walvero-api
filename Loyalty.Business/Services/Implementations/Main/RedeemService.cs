@@ -791,7 +791,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         private static Transaction BuildTransaction(
             LoyaltyCard card,
-            int delta,
+            decimal delta,
             string? orderId,
             string? note,
             TransactionType type,

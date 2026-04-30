@@ -15,7 +15,7 @@ namespace Loyalty.DataAccess.Entities.Main
 
         public TransactionType Type { get; set; }
         public RedeemStatus Status { get; set; } = RedeemStatus.Pending;
-        public int Points { get; set; }
+        public decimal Points { get; set; }
         public decimal? Amount { get; set; } 
 
         public string? Description { get; set; }
@@ -23,7 +23,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? ReferenceNumber { get; set; }
         public string? OrderId { get; set; }
 
-        public int BalanceAfter { get; set; }
+        public decimal BalanceAfter { get; set; }
         // Timezone tracking
         public DateTimeOffset LocalOccurredAt { get; set; } // local + offset
         public string TimeZoneIdUsed { get; set; } = "UTC"; // tenant's timezone
