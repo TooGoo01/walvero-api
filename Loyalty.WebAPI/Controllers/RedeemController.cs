@@ -332,7 +332,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
         }
 
         // === START REDEEM ===
-        public sealed record StartRedeemRequest( string Code, int Delta, string? OrderId,string mode,string? paymentMethod, int? spendCount);
+        public sealed record StartRedeemRequest( string Code, decimal Delta, string? OrderId,string mode,string? paymentMethod, int? spendCount);
 
         [HttpPost]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
@@ -343,7 +343,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
 
             // If mode is "pay", ensure delta is negative (convert positive to negative)
             // If mode is "earn", ensure delta is positive (convert negative to positive)
-            int delta = model.Delta;
+            decimal delta = model.Delta;
             if (string.Equals(model.mode, "pay", StringComparison.OrdinalIgnoreCase))
             {
                 if (delta > 0)
@@ -438,7 +438,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             if (tpl.TemplateType != CardTemplateType.ProgressBased)
             {
                 if (tpl.OneRedeem == true)
-                    (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolverDouble(delta, tpl);
+                    (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolverDouble((double)delta, tpl);
                 else
                     (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolver(card.CurrentPoints, tpl);
             }
@@ -452,7 +452,8 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 percent = tierPercent;
 
             if (delta > 0 && percent.HasValue) {
-                delta = delta * percent.Value / 100;
+                // decimal arithmetic — kəsr saxlanır (məs. 25 * 5 / 100m = 1.25m)
+                delta = delta * percent.Value / 100m;
             }
           
 
