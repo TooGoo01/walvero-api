@@ -131,31 +131,33 @@ namespace Loyalty.Business.Services.Implementations.Main
                     // This is the first transaction, so delta = BalanceAfter
                     originalDeltaDecimal = originalTransaction.BalanceAfter;
                 }
-                int originalDelta = (int)originalDeltaDecimal;
+                decimal originalDelta = originalDeltaDecimal;
 
                 // Try to parse delta from description if calculation seems wrong
-                if (originalDelta == 0 && !string.IsNullOrEmpty(originalTransaction.Description))
+                if (originalDelta == 0m && !string.IsNullOrEmpty(originalTransaction.Description))
                 {
-                    // Parse from description like "+5" or "-10"
+                    // Parse from description like "+5" or "-10.5"
                     var desc = originalTransaction.Description;
                     var plusIndex = desc.IndexOf('+');
                     var minusIndex = desc.IndexOf('-');
                     if (plusIndex >= 0)
                     {
                         var numStr = desc.Substring(plusIndex + 1).Split(' ', '\n', '\r')[0];
-                        if (int.TryParse(numStr, out int parsed))
+                        if (decimal.TryParse(numStr, System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out decimal parsed))
                             originalDelta = parsed;
                     }
                     else if (minusIndex >= 0 && desc.IndexOf("xərcləndi") < 0) // Not the redeem description
                     {
                         var numStr = desc.Substring(minusIndex + 1).Split(' ', '\n', '\r')[0];
-                        if (int.TryParse(numStr, out int parsed))
+                        if (decimal.TryParse(numStr, System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out decimal parsed))
                             originalDelta = -parsed;
                     }
                 }
 
                 // Calculate reverse delta (opposite of original)
-                int reverseDelta = -originalDelta;
+                decimal reverseDelta = -originalDelta;
 
                 // Get card template snapshot for applying delta
                 var program = await _dbContext.Set<LoyaltyProgram>()
@@ -185,8 +187,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // Apply reverse delta (opposite of original)
                 ApplyReverseDelta(card, snapshot, reverseDelta, originalTransaction.Type);
 
-                // Calculate reversed amount/points
-                int reversedPoints = Math.Abs(reverseDelta);
+                // Calculate reversed amount/points (decimal — kəsr saxlanır)
+                decimal reversedPoints = Math.Abs(reverseDelta);
                 decimal? reversedAmount = originalTransaction.Amount;
 
                 // Create reverse transaction
@@ -229,7 +231,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentPoints,
                         card.CurrentSteps,
                         card.CompletedCycles,
-                        reverseDelta,
+                        (int)reverseDelta,
                         ct);
                 }
                 catch (Exception ex)
@@ -304,7 +306,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
         }
 
-        private void ApplyReverseDelta(LoyaltyCard card, CardTemplateSnapshot snapshot, int reverseDelta, TransactionType originalType)
+        private void ApplyReverseDelta(LoyaltyCard card, CardTemplateSnapshot snapshot, decimal reverseDelta, TransactionType originalType)
         {
             // Reverse delta is opposite of original
             // If original was EARN (positive), reverse is negative
@@ -314,12 +316,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             switch (snapshot.TemplateType)
             {
                 case CardTemplateType.ProgressBased:
+                    // ProgressBased: steps integer — kəsr atılır
                     int totalSteps = Math.Max(1, snapshot.TotalSteps);
+                    int reverseStepsDelta = (int)reverseDelta;
 
-                    if (reverseDelta > 0) // Adding points back (reversing a redeem)
+                    if (reverseStepsDelta > 0) // Adding points back (reversing a redeem)
                     {
-                        int newSteps = card.CurrentSteps + reverseDelta;
-                        card.CurrentPoints = Math.Max(0, card.CurrentPoints + reverseDelta);
+                        int newSteps = card.CurrentSteps + reverseStepsDelta;
+                        card.CurrentPoints = Math.Max(0, card.CurrentPoints + reverseStepsDelta);
 
                         // Calculate if we complete any cycles
                         int cyclesEarned = newSteps / totalSteps;
@@ -330,11 +334,11 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                         card.CurrentSteps = newSteps % totalSteps;
                     }
-                    else if (reverseDelta < 0) // Subtracting points (reversing an earn)
+                    else if (reverseStepsDelta < 0) // Subtracting points (reversing an earn)
                     {
                         // Subtract steps
-                        int newSteps = card.CurrentSteps + reverseDelta; // reverseDelta is negative
-                        card.CurrentPoints = Math.Max(0, card.CurrentPoints + reverseDelta);
+                        int newSteps = card.CurrentSteps + reverseStepsDelta; // reverseStepsDelta is negative
+                        card.CurrentPoints = Math.Max(0, card.CurrentPoints + reverseStepsDelta);
 
                         // If we go negative, reduce completed cycles
                         if (newSteps < 0)
@@ -350,7 +354,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 case CardTemplateType.PointsBased:
                 case CardTemplateType.TierBased:
-                    card.CurrentPoints = Math.Max(0, card.CurrentPoints + reverseDelta);
+                    // PointsBased/TierBased: kəsr saxlanır
+                    card.CurrentPoints = Math.Max(0m, card.CurrentPoints + reverseDelta);
                     break;
             }
         }

@@ -13,7 +13,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public bool? RequiresOtp { get; set; }
 
         public int? LoyaltyCardId { get; set; }
-        public int? AppliedDelta { get; set; }
+        public decimal? AppliedDelta { get; set; }
         public decimal? OldPoints { get; set; }
         public decimal? NewPoints { get; set; }
         public bool? IsPending { get; set; }

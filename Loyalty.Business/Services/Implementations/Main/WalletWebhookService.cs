@@ -232,7 +232,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (cardForProgram == null)
                 return new SetRedeemResponse { Status = false, Message = "No active card for program" };
 
-            int delta = request.Delta;
+            decimal delta = request.Delta;
 
             var program = await _loyaltyProgramRepo.GetByIdAsync(programId.Value, ct);
             if (program != null && program.CardTemplateId.HasValue)
@@ -240,7 +240,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var tpl = await _cardTemplateRepo.GetByIdAsync(program.CardTemplateId.Value, ct);
                 if (tpl != null && tpl.TemplateType == CardTemplateType.ProgressBased)
                 {
-                    // ProgressBased: hər reward = TotalSteps point, pending request yaradılır
+                    // ProgressBased: hər reward = TotalSteps point, pending request yaradılır (steps integer)
                     int totalSteps = Math.Max(1, tpl.TotalSteps);
                     int rewardsToSpend = (int)Math.Max(1, request.Amount);
                     delta = -(rewardsToSpend * totalSteps);
@@ -248,8 +248,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 else if (string.Equals(request.Type, "cashback", StringComparison.OrdinalIgnoreCase)
                          && request.Amount > 0)
                 {
-                    // Cashback: Amount birbaşa point kimi çıxılır
-                    delta = -(int)request.Amount;
+                    // Cashback: Amount birbaşa point kimi çıxılır (kəsr saxlanır)
+                    delta = -request.Amount;
                 }
                 else
                 {
@@ -259,7 +259,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             else if (string.Equals(request.Type, "cashback", StringComparison.OrdinalIgnoreCase)
                      && request.Amount > 0)
             {
-                delta = -(int)request.Amount;
+                delta = -request.Amount;
             }
             else
             {
@@ -441,7 +441,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             var earnRules = await _earnRuleRepo.GetByTenantIntegrationIdAsync(tenantIntegrationId, ct);
             var rulesByProduct = earnRules.ToDictionary(r => r.ExternalProductId.Trim(), StringComparer.OrdinalIgnoreCase);
 
-            int totalSteps = 0, totalPoints = 0;
+            int totalSteps = 0;
+            decimal totalPoints = 0m;
             foreach (var item in request.Items)
             {
                 var productIdStr = item.Id.ToString().Trim();
@@ -481,22 +482,22 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                     if (hasSplitPayment && request.Payments != null)
                     {
-                        // Payments göndərilib + PayMentType=true: cash/cashless üçün ayrı faiz
+                        // Payments göndərilib + PayMentType=true: cash/cashless üçün ayrı faiz (kəsr saxlanır)
                         var pctCard = tierPercent ?? 0;
                         var pctCash = tierPercentCash ?? pctCard;
                         var cashPoints = request.Payments.Cash * pctCash / 100m;
                         var cashlessPoints = request.Payments.Cashless * pctCard / 100m;
-                        totalPoints = (int)(cashPoints + cashlessPoints);
+                        totalPoints = cashPoints + cashlessPoints;
                     }
                     else if (tierPercent.HasValue && tierPercent.Value > 0)
                     {
-                        // Tier faizi var: total × percent / 100
-                        totalPoints = (int)(request.Total * tierPercent.Value / 100m);
+                        // Tier faizi var: total × percent / 100 (kəsr saxlanır)
+                        totalPoints = request.Total * tierPercent.Value / 100m;
                     }
                     else if (program.PointsPerCurrency > 0)
                     {
-                        // Tier yoxdursa: total × PointsPerCurrency
-                        totalPoints = (int)((double)request.Total * (double)program.PointsPerCurrency);
+                        // Tier yoxdursa: total × PointsPerCurrency (kəsr saxlanır)
+                        totalPoints = request.Total * program.PointsPerCurrency;
                     }
                 }
             }
@@ -522,9 +523,9 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                     if (isProgressBased)
                     {
-                        // ProgressBased: yalnız steps artır, CurrentPoints artırmır
-                        // EarnRule varsa totalSteps, yoxdursa totalPoints-i step kimi istifadə et
-                        int stepsToAdd = totalSteps > 0 ? totalSteps : totalPoints;
+                        // ProgressBased: yalnız steps artır, CurrentPoints artırmır (steps integer)
+                        // EarnRule varsa totalSteps, yoxdursa totalPoints-i step kimi istifadə et (kəsr atılır)
+                        int stepsToAdd = totalSteps > 0 ? totalSteps : (int)totalPoints;
                         int newSteps = c.CurrentSteps + stepsToAdd;
                         int cyclesEarned = newSteps / maxSteps;
                         if (cyclesEarned > 0)
@@ -537,15 +538,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                     }
                     else
                     {
-                        // TierBased / PointsBased: yalnız points artır
+                        // TierBased / PointsBased: yalnız points artır (kəsr saxlanır)
                         c.CurrentSteps += totalSteps;
                         c.CurrentPoints += totalPoints;
                         c.LifetimePoints += totalPoints;
                     }
                     _uow.Repository<LoyaltyCard>().Update(c);
 
-                    var earnedValue = isProgressBased
-                        ? (totalSteps > 0 ? totalSteps : totalPoints)
+                    decimal earnedValue = isProgressBased
+                        ? (totalSteps > 0 ? totalSteps : (int)totalPoints)
                         : (totalSteps > 0 ? totalSteps : totalPoints);
 
                     var tx = new Transaction

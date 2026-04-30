@@ -14,7 +14,7 @@ namespace Loyalty.DataAccess.Entities.Main
        
         public int TenantId { get; set; }
         public int LoyaltyCardId { get; set; }
-        public int PointsDelta { get; set; }
+        public decimal PointsDelta { get; set; }
         public RedeemStatus Status { get; set; } = RedeemStatus.Pending;
         public WalletPlatform Platform { get; set; }
 

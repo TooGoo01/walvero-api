@@ -24,7 +24,7 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         public int? LoyaltyProgramId { get; set; }   // istəyə görə filtr
         public string Code { get; set; } = string.Empty; // kartın barcode/QR dəyəri
-        public int Delta { get; set; } = 1;               // +1, +5, -1 və s.
+        public decimal Delta { get; set; } = 1;            // +1, +5.5, -1 və s.
 
         // Yeni sahələr
         public WalletPlatform PreferredPlatform { get; set; } = WalletPlatform.Unknown; // istəyə görə override

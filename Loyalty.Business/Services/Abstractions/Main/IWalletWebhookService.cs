@@ -43,7 +43,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string CampaignId { get; set; } = string.Empty;
         public string Type { get; set; } = "loyalty";
         public decimal Amount { get; set; }
-        public int Delta { get; set; } = -1;
+        public decimal Delta { get; set; } = -1;
     }
 
     public class SetRedeemResponse

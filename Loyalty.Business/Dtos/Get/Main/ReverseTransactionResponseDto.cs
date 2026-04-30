@@ -10,7 +10,7 @@ namespace Loyalty.Business.Dtos.Get.Main
     {
         public string Status { get; set; } = string.Empty;
         public decimal? ReversedAmount { get; set; }
-        public int ReversedPoints { get; set; }
+        public decimal ReversedPoints { get; set; }
         public decimal UpdatedBalance { get; set; }
     }
 }

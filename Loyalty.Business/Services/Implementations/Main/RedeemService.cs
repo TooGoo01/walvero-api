@@ -428,7 +428,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentPoints,
                         card.CurrentSteps,
                         card.CompletedCycles,
-                        delta,
+                        (int)delta,
                         CancellationToken.None,
                         lotteryTickets,
                         lotteryWinPrize,
@@ -459,7 +459,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentPoints,
                         card.CurrentSteps,
                         card.CompletedCycles,
-                        delta,
+                        (int)delta,
                         CancellationToken.None,
                         lotteryTickets,
                         lotteryWinPrize,
@@ -601,12 +601,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // CancellationToken.None: yazma mərhələsi ləğv olunmamalıdır
                 var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(rr.TenantId, null, CancellationToken.None);
 
-                // ProgressBased: display delta = reward sayı, raw delta deyil
-                int displayDelta = rr.PointsDelta;
+                // ProgressBased: display delta = reward sayı (integer), raw delta deyil
+                // PointsBased/TierBased: kəsr saxlanır
+                decimal displayDelta = rr.PointsDelta;
                 if (snapshot.TemplateType == CardTemplateType.ProgressBased && rr.PointsDelta < 0)
                 {
                     int totalSteps = Math.Max(1, snapshot.TotalSteps);
-                    displayDelta = -(Math.Abs(rr.PointsDelta) / totalSteps);
+                    displayDelta = -(Math.Abs((int)rr.PointsDelta) / totalSteps);
                 }
 
                 var tx = BuildTransaction(card, displayDelta, rr.OrderId, rr.Note, TransactionType.Redeemed, localTime, timeZoneId);
@@ -638,7 +639,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentPoints,
                         card.CurrentSteps,
                         card.CompletedCycles,
-                        displayDelta,
+                        (int)displayDelta,
                         CancellationToken.None);
 
                     if (!primaryRes.Success)
@@ -666,7 +667,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentPoints,
                         card.CurrentSteps,
                         card.CompletedCycles,
-                        displayDelta,
+                        (int)displayDelta,
                         CancellationToken.None);
 
                     if (!secondaryRes.Success)
@@ -747,17 +748,19 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         // ------- Helpers -------
 
-        private static void ApplyDelta(LoyaltyCard card, CardTemplateSnapshot snapshot, int delta)
+        private static void ApplyDelta(LoyaltyCard card, CardTemplateSnapshot snapshot, decimal delta)
         {
             switch (snapshot.TemplateType)
             {
                 case CardTemplateType.ProgressBased:
+                    // ProgressBased: steps integer — kəsr atılır
                     int totalSteps = Math.Max(1, snapshot.TotalSteps);
+                    int stepsDelta = (int)delta;
 
-                    if (delta > 0)  // Earning steps
+                    if (stepsDelta > 0)  // Earning steps
                     {
-                        int newSteps = card.CurrentSteps + delta;
-                        card.CurrentPoints = Math.Max(0, card.CurrentPoints + delta);
+                        int newSteps = card.CurrentSteps + stepsDelta;
+                        card.CurrentPoints = Math.Max(0, card.CurrentPoints + stepsDelta);
 
                         // Bu delta ilə neçə cycle tamamlandı?
                         int cyclesEarned = newSteps / totalSteps;
@@ -770,12 +773,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                         // remainder
                         card.CurrentSteps = newSteps % totalSteps;
                     }
-                    else if (delta < 0)
+                    else if (stepsDelta < 0)
                     {
                         // spending points / free reward redeem
-                        card.CurrentPoints = Math.Max(0, card.CurrentPoints + delta);
+                        card.CurrentPoints = Math.Max(0, card.CurrentPoints + stepsDelta);
                         // CompletedCycles azalt (hər cycle = TotalSteps point)
-                        int cyclesLost = Math.Abs(delta) / totalSteps;
+                        int cyclesLost = Math.Abs(stepsDelta) / totalSteps;
                         if (cyclesLost > 0)
                             card.CompletedCycles = Math.Max(0, card.CompletedCycles - cyclesLost);
                     }
@@ -783,7 +786,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 case CardTemplateType.PointsBased:
                 case CardTemplateType.TierBased:
-                    card.CurrentPoints = Math.Max(0, card.CurrentPoints + delta);
+                    // PointsBased/TierBased: kəsr saxlanır
+                    card.CurrentPoints = Math.Max(0m, card.CurrentPoints + delta);
                     break;
             }
         }

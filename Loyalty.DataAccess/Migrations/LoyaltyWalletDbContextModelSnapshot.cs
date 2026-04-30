@@ -1695,8 +1695,8 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int>("Platform")
                         .HasColumnType("int");
 
-                    b.Property<int>("PointsDelta")
-                        .HasColumnType("int");
+                    b.Property<decimal>("PointsDelta")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime>("RegDate")
                         .HasColumnType("datetime2");
