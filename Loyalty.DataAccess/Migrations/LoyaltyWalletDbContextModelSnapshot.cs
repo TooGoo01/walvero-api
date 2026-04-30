@@ -73,6 +73,117 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("AppVersionConfigs");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Branch", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("FacebookUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("InstagramUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsMainBranch")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<decimal?>("Latitude")
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<string>("LinkedInUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("LocationUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<decimal?>("Longitude")
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<string>("MenuUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("PhotoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("RadiusMeters")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(100);
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TelegramUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("WazeLocationUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("WhatsAppUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("WorkingHoursJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "IsActive");
+
+                    b.ToTable("Branches", (string)null);
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.CardTemplate", b =>
                 {
                     b.Property<int>("Id")
@@ -525,10 +636,14 @@ namespace Loyalty.DataAccess.Migrations
                         .IsUnique()
                         .HasFilter("[CardNumber] IS NOT NULL");
 
-                    b.HasIndex("applicationUserId");
+                    b.HasIndex("TenantId", "IsActive")
+                        .HasDatabaseName("IX_Customers_Tenant_IsActive");
 
                     b.HasIndex("TenantId", "PhoneNumber")
                         .IsUnique();
+
+                    b.HasIndex("applicationUserId", "IsActive")
+                        .HasDatabaseName("IX_Customers_AppUser_IsActive");
 
                     b.ToTable("Customers", (string)null);
                 });
@@ -564,7 +679,7 @@ namespace Loyalty.DataAccess.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("UserId")
+                    b.Property<int?>("UserId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
@@ -709,6 +824,7 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("int");
 
                     b.Property<decimal>("CurrentPoints")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("CurrentSteps")
@@ -736,6 +852,7 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("bit");
 
                     b.Property<decimal>("LifetimePoints")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("LoyaltyProgramId")
@@ -760,9 +877,11 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.HasIndex("CustomerId");
 
-                    b.HasIndex("LoyaltyProgramId");
+                    b.HasIndex("LoyaltyProgramId", "TenantId")
+                        .HasDatabaseName("IX_LoyaltyCards_Program_Tenant");
 
-                    b.HasIndex("TenantId");
+                    b.HasIndex("TenantId", "CustomerId", "IsActive")
+                        .HasDatabaseName("IX_LoyaltyCards_Tenant_Customer_IsActive");
 
                     b.ToTable("LoyaltyCards", (string)null);
                 });
@@ -1518,6 +1637,126 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("Rewards", (string)null);
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Room", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BranchId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("Capacity")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("MinDeposit")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("OrderIndex")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Type")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("BranchId", "IsActive");
+
+                    b.ToTable("Rooms", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.RoomFile", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MediaType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("image");
+
+                    b.Property<int>("OrderIndex")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RoomId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ThumbnailPath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoomId");
+
+                    b.HasIndex("RoomId", "MediaType");
+
+                    b.ToTable("RoomFiles", (string)null);
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.SalesRepVisit", b =>
                 {
                     b.Property<int>("Id")
@@ -1848,7 +2087,11 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasIndex("Subdomain")
                         .IsUnique();
 
-                    b.HasIndex("categoryId");
+                    b.HasIndex("IsActive", "IsHidden")
+                        .HasDatabaseName("IX_Tenants_IsActive_IsHidden");
+
+                    b.HasIndex("categoryId", "IsActive")
+                        .HasDatabaseName("IX_Tenants_Category_IsActive");
 
                     b.ToTable("Tenants", (string)null);
                 });
@@ -2098,6 +2341,7 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("BalanceAfter")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("Description")
@@ -2123,6 +2367,7 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal>("Points")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("ReferenceNumber")
@@ -2946,6 +3191,17 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Branch", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                        .WithMany("Branches")
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.City", b =>
                 {
                     b.HasOne("Loyalty.DataAccess.Entities.Main.Country", "Country")
@@ -2980,8 +3236,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", "User")
                         .WithMany("DeviceTokens")
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("User");
                 });
@@ -3171,6 +3426,28 @@ namespace Loyalty.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("LoyaltyProgram");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Room", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Branch", "Branch")
+                        .WithMany("Rooms")
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.RoomFile", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Room", "Room")
+                        .WithMany("Files")
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Room");
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.StoreFeedback", b =>
@@ -3447,6 +3724,11 @@ namespace Loyalty.DataAccess.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Branch", b =>
+                {
+                    b.Navigation("Rooms");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.CardTemplate", b =>
                 {
                     b.Navigation("Icons");
@@ -3499,6 +3781,11 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("MenuItemImages");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Room", b =>
+                {
+                    b.Navigation("Files");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.StoreFeedback", b =>
                 {
                     b.Navigation("Replies");
@@ -3507,6 +3794,8 @@ namespace Loyalty.DataAccess.Migrations
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Tenant", b =>
                 {
                     b.Navigation("Admins");
+
+                    b.Navigation("Branches");
 
                     b.Navigation("Branding");
 

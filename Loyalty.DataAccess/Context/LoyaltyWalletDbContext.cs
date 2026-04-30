@@ -66,6 +66,11 @@ namespace Loyalty.DataAccess.Context
         public DbSet<TenantIntegration> TenantIntegrations { get; set; }
         public DbSet<PosProductEarnRule> PosProductEarnRules { get; set; }
         public DbSet<PosCustomerMapping> PosCustomerMappings { get; set; }
+
+        // Branches & Rooms
+        public DbSet<Branch> Branches { get; set; }
+        public DbSet<Room> Rooms { get; set; }
+        public DbSet<RoomFile> RoomFiles { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -79,6 +84,13 @@ namespace Loyalty.DataAccess.Context
                 entity.HasIndex(t => t.Subdomain).IsUnique();
                 entity.Property(t => t.ContactEmail).IsRequired().HasMaxLength(200);
                 entity.Property(t => t.ContactPhone).IsRequired().HasMaxLength(50);
+
+                // Performans index-ləri:
+                //  - GetActiveFiltered (Discover) (IsActive, IsHidden, categoryId) üzrə filterlə
+                entity.HasIndex(t => new { t.IsActive, t.IsHidden })
+                    .HasDatabaseName("IX_Tenants_IsActive_IsHidden");
+                entity.HasIndex(t => new { t.categoryId, t.IsActive })
+                    .HasDatabaseName("IX_Tenants_Category_IsActive");
 
                 entity.HasOne(t => t.Branding)
                     .WithOne(b => b.Tenant)
@@ -144,6 +156,14 @@ namespace Loyalty.DataAccess.Context
                     .IsUnique()
                     .HasFilter("[CardNumber] IS NOT NULL");
 
+                // Performans index-ləri:
+                //  - GetByTenant: (TenantId, IsActive) tez-tez filterlə
+                //  - GetByUserId: applicationUserId tək sütun, IsActive composite ilə daha aydın
+                entity.HasIndex(c => new { c.TenantId, c.IsActive })
+                    .HasDatabaseName("IX_Customers_Tenant_IsActive");
+                entity.HasIndex(c => new { c.applicationUserId, c.IsActive })
+                    .HasDatabaseName("IX_Customers_AppUser_IsActive");
+
                 entity.HasMany(c => c.LoyaltyCards)
                     .WithOne(lc => lc.Customer)
                     .HasForeignKey(lc => lc.CustomerId)
@@ -156,11 +176,13 @@ namespace Loyalty.DataAccess.Context
 
 
             });
+            // DeviceToken.UserId nullable — guest tokens (login olmamış istifadəçilər)
+            // üçün UserId=null saxlanılır. User silinəndə token UserId=null olur, silinmir.
             modelBuilder.Entity<DeviceToken>()
-            .HasOne(dt => dt.User)
-            .WithMany(u => u.DeviceTokens)
-            .HasForeignKey(dt => dt.UserId)
-            .OnDelete(DeleteBehavior.Cascade); // optional
+                .HasOne(dt => dt.User)
+                .WithMany(u => u.DeviceTokens)
+                .HasForeignKey(dt => dt.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
             modelBuilder.Entity<CardTemplate>(entity =>
             {
                 entity.ToTable("CardTemplates");
@@ -232,6 +254,15 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(lc => lc.BarcodeValue).HasMaxLength(200);
                 entity.Property(lc => lc.BarcodeType).HasConversion<int>();
                 entity.Property(lc => lc.Status).HasConversion<int>();
+
+                // Performans index-ləri (audit nəticəsində):
+                //  - GetMyCardsPaginatedAsync (TenantId, CustomerId, IsActive) üzrə filterlə
+                //  - ListByCustomerAsync (TenantId, CustomerId) + Order by Id
+                //  - GetLastActive/Inactive (TenantId, CustomerId, LoyaltyProgramId, IsActive)
+                entity.HasIndex(lc => new { lc.TenantId, lc.CustomerId, lc.IsActive })
+                    .HasDatabaseName("IX_LoyaltyCards_Tenant_Customer_IsActive");
+                entity.HasIndex(lc => new { lc.LoyaltyProgramId, lc.TenantId })
+                    .HasDatabaseName("IX_LoyaltyCards_Program_Tenant");
 
                 entity.HasMany(lc => lc.WalletPasses)
                     .WithOne(wp => wp.LoyaltyCard)
@@ -809,6 +840,80 @@ namespace Loyalty.DataAccess.Context
                 entity.HasOne(pcm => pcm.Customer)
                     .WithMany()
                     .HasForeignKey(pcm => pcm.CustomerId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== BRANCH ====
+            modelBuilder.Entity<Branch>(entity =>
+            {
+                entity.ToTable("Branches");
+                entity.HasKey(b => b.Id);
+                entity.Property(b => b.Name).IsRequired().HasMaxLength(200);
+                entity.Property(b => b.Address).HasMaxLength(500);
+                entity.Property(b => b.Phone).HasMaxLength(50);
+                entity.Property(b => b.Email).HasMaxLength(200);
+                entity.Property(b => b.PhotoUrl).HasMaxLength(500);
+                entity.Property(b => b.LogoUrl).HasMaxLength(500);
+                entity.Property(b => b.Latitude).HasColumnType("decimal(9,6)");
+                entity.Property(b => b.Longitude).HasColumnType("decimal(9,6)");
+                entity.Property(b => b.RadiusMeters).HasDefaultValue(100);
+                entity.Property(b => b.IsMainBranch).HasDefaultValue(false);
+
+                entity.Property(b => b.LocationUrl).HasMaxLength(500);
+                entity.Property(b => b.WazeLocationUrl).HasMaxLength(500);
+                entity.Property(b => b.MenuUrl).HasMaxLength(500);
+                entity.Property(b => b.InstagramUrl).HasMaxLength(500);
+                entity.Property(b => b.FacebookUrl).HasMaxLength(500);
+                entity.Property(b => b.WhatsAppUrl).HasMaxLength(500);
+                entity.Property(b => b.TelegramUrl).HasMaxLength(500);
+                entity.Property(b => b.LinkedInUrl).HasMaxLength(500);
+
+                entity.HasIndex(b => b.TenantId);
+                entity.HasIndex(b => new { b.TenantId, b.IsActive });
+
+                entity.HasOne(b => b.Tenant)
+                    .WithMany(t => t.Branches)
+                    .HasForeignKey(b => b.TenantId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== ROOM ====
+            modelBuilder.Entity<Room>(entity =>
+            {
+                entity.ToTable("Rooms");
+                entity.HasKey(r => r.Id);
+                entity.Property(r => r.Name).IsRequired().HasMaxLength(200);
+                entity.Property(r => r.Type).HasMaxLength(100);
+                entity.Property(r => r.Description).HasMaxLength(2000);
+                entity.Property(r => r.OrderIndex).HasDefaultValue(0);
+                entity.Property(r => r.MinDeposit).HasColumnType("decimal(18,2)");
+
+                entity.HasIndex(r => r.BranchId);
+                entity.HasIndex(r => new { r.BranchId, r.IsActive });
+
+                entity.HasOne(r => r.Branch)
+                    .WithMany(b => b.Rooms)
+                    .HasForeignKey(r => r.BranchId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== ROOM FILE ====
+            modelBuilder.Entity<RoomFile>(entity =>
+            {
+                entity.ToTable("RoomFiles");
+                entity.HasKey(rf => rf.Id);
+                entity.Property(rf => rf.FileName).IsRequired().HasMaxLength(500);
+                entity.Property(rf => rf.Path).IsRequired().HasMaxLength(1000);
+                entity.Property(rf => rf.MediaType).IsRequired().HasMaxLength(20).HasDefaultValue("image");
+                entity.Property(rf => rf.ThumbnailPath).HasMaxLength(1000);
+                entity.Property(rf => rf.OrderIndex).HasDefaultValue(0);
+
+                entity.HasIndex(rf => rf.RoomId);
+                entity.HasIndex(rf => new { rf.RoomId, rf.MediaType });
+
+                entity.HasOne(rf => rf.Room)
+                    .WithMany(r => r.Files)
+                    .HasForeignKey(rf => rf.RoomId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
         }

@@ -13,6 +13,7 @@ using Loyalty.DataAccess.Repositories.Implementations.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Org.BouncyCastle.Asn1.Ocsp;
 using System;
 using System.Collections.Generic;
@@ -25,24 +26,59 @@ namespace Loyalty.Business.Services.Implementations.Main
 {
     public class TenantService : ITenantService
     {
+        // Filter cache TTL — 60s. Discover-də istifadəçilər tez-tez kateqoriya
+        // arasında geri-irəli keçir; eyni filter ilə təkrar request DB hit olmadan
+        // cache-dən cavab verir. IsCustomer per-user overlay cache-dən kənar
+        // qaldığı üçün təhlükəsizdir.
+        private static readonly TimeSpan _filterCacheTtl = TimeSpan.FromSeconds(60);
+
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly ITenantRepository _tenantRepository;
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IMemoryCache _cache;
 
         public TenantService(
             ITenantRepository tenantRepository,
             IMapper mapper,
             IUnitOfWork unitOfWork,
             LoyaltyWalletDbContext dbContext,
-            UserManager<ApplicationUser> userManager)
+            UserManager<ApplicationUser> userManager,
+            IMemoryCache cache)
         {
             _tenantRepository = tenantRepository;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
             _dbContext = dbContext;
             _userManager = userManager;
+            _cache = cache;
+        }
+
+        private static string _filterCacheKey(
+            string? name, int? categoryId, int? countryId, int? cityId,
+            int page, int pageSize)
+            => $"tenants:filter:{name}|{categoryId}|{countryId}|{cityId}|p{page}|s{pageSize}";
+
+        /// <summary>
+        /// Bütün filter-cache-lərini bir anda invalidate etmək üçün ortaq token.
+        /// Add/Update/Delete tenant zamanı CTS reset olur, bütün cache entry-ləri
+        /// avtomatik olaraq eviction olunur (token-based invalidation).
+        /// </summary>
+        private static CancellationTokenSource _filterCacheCts = new();
+
+        private void RegisterFilterCacheToken(MemoryCacheEntryOptions options)
+        {
+            options.AddExpirationToken(
+                new Microsoft.Extensions.Primitives.CancellationChangeToken(_filterCacheCts.Token));
+        }
+
+        private static void InvalidateAllFilterCache()
+        {
+            var oldCts = _filterCacheCts;
+            _filterCacheCts = new CancellationTokenSource();
+            oldCts.Cancel();
+            oldCts.Dispose();
         }
 
         public async Task<ServiceResult> Add(AddTenantDto Dto)
@@ -78,6 +114,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             // Reload tenant with TenantLocation for proper mapping
             var tenantWithLocation = await _tenantRepository.GetById(request.Id);
             var response = _mapper.Map<GetTenantDto>(tenantWithLocation);
+
+            InvalidateAllFilterCache();
             return new ServiceResult(true, response.Id);
         }
 
@@ -108,54 +146,103 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (pageSize > 100)
                 pageSize = 100;
 
-            // Build base query with Select projection (no heavy Include chains)
-            var query = _tenantRepository.GetActiveFiltered(
-                model?.Name,
-                model?.categoryId,
-                model?.countryId,
-                model?.cityId);
+            // === STEP 1: Filter kəşrini cache-dən oxu / DB-dən yarad ===
+            // Cache yalnız public data saxlayır (IsCustomer = false her zaman),
+            // per-user overlay sonra applied olur — cəsl saxlanması üçün təhlükəsizdir.
+            var cacheKey = _filterCacheKey(
+                model?.Name, model?.categoryId, model?.countryId, model?.cityId,
+                currentPage, pageSize);
 
-            // Execute count query first (single DB call)
-            var totalCount = await query.CountAsync();
+            (int totalCount, List<TenantDiscoverDto> tenants) cached;
 
-            // Apply pagination and project only the fields we need
-            var tenants = await query
-                .Skip((currentPage - 1) * pageSize)
-                .Take(pageSize)
-                .Select(t => new TenantDiscoverDto
-                {
-                    Id = t.Id,
-                    CompanyName = t.CompanyName,
-                    IsCustomer = false, // will be overridden below if authenticated
-                    Category = t.Category == null
-                        ? null
-                        : new TenantDiscoverCategoryDto { EnName = t.Category.EnName },
-                    LoyaltyPrograms = t.LoyaltyPrograms
-                        .Where(lp => lp.IsActive)
-                        .OrderBy(lp => lp.Id)
-                        .Select(lp => new TenantDiscoverProgramDto
-                        {
-                            Id = lp.Id,
-                            ProgramName = lp.ProgramName,
-                            Description = lp.Description,
-                            CardTemplate = lp.CardTemplate == null
-                                ? null
-                                : new TenantDiscoverCardTemplateDto
-                                {
-                                    BackgroundColor = lp.CardTemplate.BackgroundColor,
-                                    ForegroundColor = lp.CardTemplate.ForegroundColor,
-                                    LogoUrl = lp.CardTemplate.LogoUrl,
-                                    GoogleLogoUrl = lp.CardTemplate.GoogleLogoUrl
-                                }
-                        })
-                        .ToList()
-                })
-                .ToListAsync();
-
-            // Batch isCustomer lookup — single query, no N+1
-            if (currentUserId.HasValue && tenants.Count > 0)
+            if (_cache.TryGetValue<(int, List<TenantDiscoverDto>)>(cacheKey, out cached))
             {
-                var tenantIds = tenants.Select(t => t.Id).ToList();
+                // Cache hit — DB sorğusu olmadı.
+            }
+            else
+            {
+                var query = _tenantRepository.GetActiveFiltered(
+                    model?.Name,
+                    model?.categoryId,
+                    model?.countryId,
+                    model?.cityId);
+
+                var freshCount = await query.CountAsync();
+
+                var freshTenants = await query
+                    .Skip((currentPage - 1) * pageSize)
+                    .Take(pageSize)
+                    .Select(t => new TenantDiscoverDto
+                    {
+                        Id = t.Id,
+                        CompanyName = t.CompanyName,
+                        IsCustomer = false, // overlay step set edir
+                        Category = t.Category == null
+                            ? null
+                            : new TenantDiscoverCategoryDto { EnName = t.Category.EnName },
+                        LoyaltyPrograms = t.LoyaltyPrograms
+                            .Where(lp => lp.IsActive)
+                            .OrderBy(lp => lp.Id)
+                            .Select(lp => new TenantDiscoverProgramDto
+                            {
+                                Id = lp.Id,
+                                ProgramName = lp.ProgramName,
+                                Description = lp.Description,
+                                CardTemplate = lp.CardTemplate == null
+                                    ? null
+                                    : new TenantDiscoverCardTemplateDto
+                                    {
+                                        BackgroundColor = lp.CardTemplate.BackgroundColor,
+                                        ForegroundColor = lp.CardTemplate.ForegroundColor,
+                                        LogoUrl = lp.CardTemplate.LogoUrl,
+                                        GoogleLogoUrl = lp.CardTemplate.GoogleLogoUrl
+                                    }
+                            })
+                            .ToList(),
+                        Branches = t.Branches
+                            .Where(b => b.IsActive)
+                            .OrderByDescending(b => b.IsMainBranch)
+                            .ThenBy(b => b.Name)
+                            .Select(b => new TenantDiscoverBranchDto
+                            {
+                                Id = b.Id,
+                                Name = b.Name,
+                                Address = b.Address,
+                                Latitude = b.Latitude,
+                                Longitude = b.Longitude,
+                                PhotoUrl = b.PhotoUrl,
+                                LogoUrl = b.LogoUrl,
+                                IsMainBranch = b.IsMainBranch
+                            })
+                            .ToList()
+                    })
+                    .ToListAsync();
+
+                cached = (freshCount, freshTenants);
+
+                var entryOptions = new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = _filterCacheTtl,
+                };
+                RegisterFilterCacheToken(entryOptions);
+                _cache.Set(cacheKey, cached, entryOptions);
+            }
+
+            // === STEP 2: Per-user IsCustomer overlay (heç vaxt cache-lənmir) ===
+            // Cache obyektlərini mutate etməmək üçün shallow clone.
+            var resultTenants = cached.tenants.Select(t => new TenantDiscoverDto
+            {
+                Id = t.Id,
+                CompanyName = t.CompanyName,
+                IsCustomer = false,
+                Category = t.Category,
+                LoyaltyPrograms = t.LoyaltyPrograms,
+                Branches = t.Branches,
+            }).ToList();
+
+            if (currentUserId.HasValue && resultTenants.Count > 0)
+            {
+                var tenantIds = resultTenants.Select(t => t.Id).ToList();
 
                 var customerTenantIds = await _dbContext.Set<Customer>()
                     .AsNoTracking()
@@ -168,7 +255,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     .ToListAsync();
 
                 var customerSet = customerTenantIds.ToHashSet();
-                foreach (var tenant in tenants)
+                foreach (var tenant in resultTenants)
                 {
                     tenant.IsCustomer = customerSet.Contains(tenant.Id);
                 }
@@ -176,8 +263,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var response = new SearchResult<IEnumerable<TenantDiscoverDto>>
             {
-                Value = tenants,
-                DataCount = totalCount,
+                Value = resultTenants,
+                DataCount = cached.totalCount,
                 CurrentPage = currentPage,
                 PageSize = pageSize
             };
@@ -353,6 +440,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // Reload tenant with TenantLocation for proper mapping
                 var updatedTenant = await _tenantRepository.GetById(category.Id);
                 var response = _mapper.Map<GetTenantDto>(updatedTenant);
+
+                InvalidateAllFilterCache();
                 return new ServiceResult(true, response.Id);
             }
             return new ServiceResult(false);

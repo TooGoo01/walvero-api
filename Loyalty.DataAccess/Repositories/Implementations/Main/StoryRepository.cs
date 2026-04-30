@@ -16,6 +16,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         public async Task<IEnumerable<Story>> GetActiveStories()
         {
             return await GetAsQueryable()
+                .AsNoTracking()
                 .Where(x => x.IsActive)
                 .Include(x => x.Tenant)
                 .ToListAsync();
@@ -24,6 +25,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         public async Task<IEnumerable<Story>> GetAllStories()
         {
             return await GetAsQueryable()
+                .AsNoTracking()
                 .Include(x => x.Tenant)
                 .ToListAsync();
         }
@@ -31,6 +33,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         public async Task<Story?> GetStory(int storyId)
         {
             return await GetAsQueryable()
+                .AsNoTracking()
                 .Include(x => x.Tenant)
                 .FirstOrDefaultAsync(x => x.Id == storyId && x.IsActive);
         }
@@ -38,6 +41,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         public async Task<IEnumerable<Story>> GetStoriesByTenant(int tenantId)
         {
             return await GetAsQueryable()
+                .AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.IsActive)
                 .Include(x => x.Tenant)
                 .ToListAsync();

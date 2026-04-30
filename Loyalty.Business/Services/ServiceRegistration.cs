@@ -103,6 +103,8 @@ namespace Loyalty.Business.Services
             services.AddScoped<ICustomerSyncService, CustomerSyncService>();
             services.AddScoped<ISalesRepVisitService, SalesRepVisitService>();
             services.AddScoped<IPosSyncService, PosSyncService>();
+            services.AddScoped<IBranchService, BranchService>();
+            services.AddScoped<IRoomService, RoomService>();
 
             services.AddSignalR(options =>
             {

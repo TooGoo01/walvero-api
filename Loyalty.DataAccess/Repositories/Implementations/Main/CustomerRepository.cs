@@ -16,7 +16,10 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         {
         }
         
-        // Override GetByIdAsync to include related data for Currency mapping
+        // Override GetByIdAsync to include related data for Currency mapping.
+        // 3-level ThenInclude → AsSplitQuery Cartesian-i həll edir.
+        // ⚠️ AsNoTracking ƏLAVƏ ETMİRİK — UserCardService.Delete kimi yerlər
+        // bu metoddan qayıdan entity-i .IsActive = false ilə yeniləyir.
         public override async Task<Customer?> GetByIdAsync(int id, CancellationToken ct = default)
         {
             return await GetAsQueryable()
@@ -24,36 +27,51 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     .ThenInclude(x => x.LoyaltyProgram)
                         .ThenInclude(x => x.CardTemplate)
                 .Include(x => x.applicationUser)
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(x => x.Id == id, ct);
         }
-        
+
         public Task<Customer?> GetByEmailAsync(int tenantId, string email, CancellationToken ct = default)
           => GetAsQueryable().AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Email == email, ct);
 
+        // ⚠️ tracked qalır — CustomerEnrollmentService customer.IsActive = true ilə reactivate edir.
         public async Task<Customer?> GetByPhoneAsync(int tenantId, string phone, CancellationToken ct = default)
         {
-          return await  GetAsQueryable().Include(x=>x.LoyaltyCards).FirstOrDefaultAsync(x => x.TenantId == tenantId && x.PhoneNumber == phone && x.IsActive, ct);
+            return await GetAsQueryable()
+                .Include(x => x.LoyaltyCards)
+                .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.PhoneNumber == phone && x.IsActive, ct);
         }
 
+        // ⚠️ tracked qalır — PosSessionService / RedeemService update flow-larında istifadə edir.
         public async Task<Customer?> GetByWalveroIdAsync(int tenantId, long walveroId, CancellationToken ct = default)
         {
             return await GetAsQueryable()
                 .Include(x => x.LoyaltyCards)
                 .Include(x => x.applicationUser)
+                .AsSplitQuery()
                 .Where(x => x.TenantId == tenantId && x.IsActive && x.applicationUser != null && x.applicationUser.WalveroId == walveroId)
                 .FirstOrDefaultAsync(ct);
         }
 
         public async Task<List<Customer>> GetByTenant(int tenantId, int? userId)
         {
-            return await GetAsQueryable().Where(x => x.IsActive && x.TenantId==tenantId).Include(x => x.LoyaltyCards)
-            .ToListAsync();
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Where(x => x.IsActive && x.TenantId == tenantId)
+                .Include(x => x.LoyaltyCards)
+                .AsSplitQuery()
+                .ToListAsync();
         }
 
         public async Task<List<Customer>> GetByUserId(int userId)
         {
-            return await GetAsQueryable().Include(x=>x.applicationUser).Include(x => x.LoyaltyCards).Where(x=>x.applicationUserId==userId)
-            .ToListAsync();
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Include(x => x.applicationUser)
+                .Include(x => x.LoyaltyCards)
+                .AsSplitQuery()
+                .Where(x => x.applicationUserId == userId)
+                .ToListAsync();
         }
 
         public Task<List<Customer>> SearchAsync(int tenantId, string? q, int skip, int take, CancellationToken ct = default)

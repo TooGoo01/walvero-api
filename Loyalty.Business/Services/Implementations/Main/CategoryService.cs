@@ -1,4 +1,5 @@
 ﻿using AutoMapper;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
@@ -11,15 +12,35 @@ namespace Loyalty.Business.Services.Implementations.Main
 {
     public class CategoryService : ICategoryService
     {
+        // Cache key və TTL — kateqoriyalar nadir dəyişir, 5 dəq cache adekvatdır.
+        // Yazma əməliyyatlarında (Add/Update/Delete) cache açıq invalidate olunur.
+        private const string _cacheKeyActiveIdName = "categories:active:idname";
+        private const string _cacheKeyActive = "categories:active";
+        private const string _cacheKeyAll = "categories:all";
+        private static readonly TimeSpan _cacheTtl = TimeSpan.FromMinutes(5);
+
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly ICategoryRepository _categoryRepository;
+        private readonly IMemoryCache _cache;
 
-        public CategoryService(ICategoryRepository categoryRepository, IMapper mapper, IUnitOfWork unitOfWork)
+        public CategoryService(
+            ICategoryRepository categoryRepository,
+            IMapper mapper,
+            IUnitOfWork unitOfWork,
+            IMemoryCache cache)
         {
             _categoryRepository = categoryRepository;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
+            _cache = cache;
+        }
+
+        private void InvalidateCache()
+        {
+            _cache.Remove(_cacheKeyActiveIdName);
+            _cache.Remove(_cacheKeyActive);
+            _cache.Remove(_cacheKeyAll);
         }
 
         public async Task<ServiceResult> AddCategory(AddCategoryDto category)
@@ -28,6 +49,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             request.IsActive = true;
             await _unitOfWork.Repository<Category>().AddAsync(request);
             _unitOfWork.Commit();
+            InvalidateCache();
             var response = _mapper.Map<GetCategoryDto>(request);
             return new ServiceResult(true, response.Id);
         }
@@ -40,6 +62,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 category.IsActive = false;
                 _unitOfWork.Repository<Category>().Update(category);
                 _unitOfWork.Commit();
+                InvalidateCache();
                 return new ServiceResult(true);
             }
             return new ServiceResult(false);
@@ -58,10 +81,17 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
         public async Task<ServiceResult> GetActiveCategories()
         {
+            // Cache-ed: kateqoriyalar mobile app-da hər startup-da çağırılır.
+            if (_cache.TryGetValue(_cacheKeyActive, out ICollection<GetCategoryIdNameDto>? cached) && cached != null)
+            {
+                return new ServiceResult(true, cached);
+            }
+
             var categories = await _categoryRepository.GetActiveCategories();
             if (categories != null)
             {
                 var response = _mapper.Map<ICollection<GetCategoryIdNameDto>>(categories);
+                _cache.Set(_cacheKeyActive, response, _cacheTtl);
                 return new ServiceResult(true, response);
             }
 
@@ -81,10 +111,16 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> GetActiveCategoriesIdName()
         {
+            if (_cache.TryGetValue(_cacheKeyActiveIdName, out ICollection<GetCategoryIdNameDto>? cached) && cached != null)
+            {
+                return new ServiceResult(true, cached);
+            }
+
             var categories = await _categoryRepository.GetActiveCategoriesIdName();
             if (categories != null)
             {
                 var response = _mapper.Map<ICollection<GetCategoryIdNameDto>>(categories);
+                _cache.Set(_cacheKeyActiveIdName, response, _cacheTtl);
                 return new ServiceResult(true, response);
             }
 
@@ -153,6 +189,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 _unitOfWork.Repository<Category>().Update(category);
                 _unitOfWork.Commit();
+                InvalidateCache();
                 var response = _mapper.Map<GetCategoryDto>(category);
                 return new ServiceResult(true, response.Id);
             }

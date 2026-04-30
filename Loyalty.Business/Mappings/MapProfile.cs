@@ -1,13 +1,19 @@
 using AutoMapper;
 using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Dtos.Get.Main.Branch;
+using Loyalty.Business.Dtos.Get.Main.Room;
 using Loyalty.Business.Dtos.Get.Users;
 using Loyalty.Business.Dtos.Post.Main;
+using Loyalty.Business.Dtos.Post.Main.Branch;
+using Loyalty.Business.Dtos.Post.Main.Room;
 using Loyalty.Business.Dtos.Post.Users;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Entities.Users;
 using Loyalty.DataAccess.Models;
 using LoyaltyWalletApp.Business.Dtos.Get.Main;
 using System.Diagnostics.Metrics;
+using BranchEntity = Loyalty.DataAccess.Entities.Main.Branch;
+using RoomEntity = Loyalty.DataAccess.Entities.Main.Room;
 using TimeZone = Loyalty.DataAccess.Entities.Main.TimeZone;
 
 
@@ -159,8 +165,42 @@ namespace Loyalty.Business.Mappings
 
             #endregion
 
+            #region Branch & Room
+            CreateMap<BranchEntity, GetBranchDto>()
+                .ForMember(d => d.StaffCount, opt => opt.Ignore())
+                .ForMember(d => d.DistanceKm, opt => opt.Ignore());
+            CreateMap<BranchEntity, BranchSummaryDto>();
 
+            CreateMap<CreateBranchDto, BranchEntity>()
+                .ForMember(d => d.Id, opt => opt.Ignore())
+                .ForMember(d => d.RegDate, opt => opt.Ignore())
+                .ForMember(d => d.IsActive, opt => opt.Ignore())
+                .ForMember(d => d.RegUserId, opt => opt.Ignore())
+                .ForMember(d => d.EditDate, opt => opt.Ignore())
+                .ForMember(d => d.EditUserId, opt => opt.Ignore())
+                .ForMember(d => d.Tenant, opt => opt.Ignore())
+                .ForMember(d => d.TenantId, opt => opt.Ignore())
+                .ForMember(d => d.Rooms, opt => opt.Ignore())
+                .ForMember(d => d.RadiusMeters, opt => opt.MapFrom(s => s.RadiusMeters ?? 100))
+                .ForMember(d => d.IsMainBranch, opt => opt.MapFrom(s => s.IsMainBranch ?? false));
 
+            CreateMap<RoomEntity, GetRoomDto>()
+                .ForMember(d => d.MediaCount, opt => opt.MapFrom(s => s.Files != null ? s.Files.Count(f => f.IsActive) : 0));
+            CreateMap<RoomFile, GetRoomFileDto>()
+                .ForMember(d => d.Url, opt => opt.MapFrom(s => s.Path))
+                .ForMember(d => d.ThumbnailUrl, opt => opt.MapFrom(s => s.ThumbnailPath));
+
+            CreateMap<CreateRoomDto, RoomEntity>()
+                .ForMember(d => d.Id, opt => opt.Ignore())
+                .ForMember(d => d.RegDate, opt => opt.Ignore())
+                .ForMember(d => d.IsActive, opt => opt.Ignore())
+                .ForMember(d => d.RegUserId, opt => opt.Ignore())
+                .ForMember(d => d.EditDate, opt => opt.Ignore())
+                .ForMember(d => d.EditUserId, opt => opt.Ignore())
+                .ForMember(d => d.Branch, opt => opt.Ignore())
+                .ForMember(d => d.Files, opt => opt.Ignore())
+                .ForMember(d => d.OrderIndex, opt => opt.MapFrom(s => s.OrderIndex ?? 0));
+            #endregion
 
             #region User
             CreateMap<ApplicationUser, ApplicationUserDto>().ReverseMap();

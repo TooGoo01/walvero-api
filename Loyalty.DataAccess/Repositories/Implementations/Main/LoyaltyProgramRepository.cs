@@ -18,8 +18,10 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
 
         public async Task<List<LoyaltyProgram>> GetActive(CancellationToken ct = default)
         {
-            return await GetAsQueryable().Where(x=>x.IsActive==true)
-             .ToListAsync();
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Where(x => x.IsActive == true)
+                .ToListAsync(ct);
         }
 
         public Task<LoyaltyProgram?> GetByCodeAsync(int tenantId, string code, CancellationToken ct = default)
@@ -27,7 +29,13 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
 
         public async Task<LoyaltyProgram?> GetByIdNameAsync(int programId, CancellationToken ct = default)
         {
-          return  await GetAsQueryable().Include(x=>x.CardTemplate).ThenInclude(t => t.Icons).AsNoTracking().FirstOrDefaultAsync(x => x.Id == programId, ct);
+            // CardTemplate.Icons (1:N) → AsSplitQuery olmadan Cartesian product.
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Include(x => x.CardTemplate)
+                    .ThenInclude(t => t.Icons)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(x => x.Id == programId, ct);
         }
 
         public async Task<LoyaltyProgram?> GetByIdTrackedAsync(int programId, CancellationToken ct = default)
