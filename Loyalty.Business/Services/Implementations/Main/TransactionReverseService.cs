@@ -52,27 +52,39 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             try
             {
-                // Check idempotency - if this reverse was already processed
-                var existingReverse = await _dbContext.Set<Transaction>()
-                    .FirstOrDefaultAsync(
-                        t => t.OrderId == dto.OrderId &&
-                             t.Type == TransactionType.Adjusted, // Using Adjusted for reverse transactions
-                        ct);
-
-                if (existingReverse != null)
+                // Idempotency yalnız OrderId varsa və TransactionId üçün artıq Adjusted transaction yaradılmışsa
+                if (!string.IsNullOrWhiteSpace(dto.OrderId))
                 {
-                    // Already reversed, return current balance
-                    var card1 = await _loyaltyCardRepository.GetById(existingReverse.LoyaltyCardId, ct);
-                    if (card1 != null)
+                    // dto.OrderId → ReverseLastTransactionByCardAsync-də original.OrderId saxlanır.
+                    // Eyni OrderId üçün artıq Adjusted varsa, deməli bu reverse artıq tətbiq olunub.
+                    // Lakin original transaction-ın Status-u Reversed olmalıdır — yoxsa stale data deməkdir.
+                    var existingReverse = await _dbContext.Set<Transaction>()
+                        .FirstOrDefaultAsync(
+                            t => t.OrderId == dto.OrderId &&
+                                 t.Type == TransactionType.Adjusted,
+                            ct);
+
+                    if (existingReverse != null)
                     {
-                        return ServiceResult<ReverseTransactionResponseDto>.Ok(
-                            new ReverseTransactionResponseDto
+                        // Yalnız original artıq Reversed-dirsə qoru
+                        var orig = await _transactionRepository.GetByIdAsync(dto.TransactionId, ct);
+                        if (orig != null && orig.Status == RedeemStatus.Reversed)
+                        {
+                            var card1 = await _loyaltyCardRepository.GetById(existingReverse.LoyaltyCardId, ct);
+                            if (card1 != null)
                             {
-                                Status = "ALREADY_REVERSED",
-                                ReversedPoints = 0,
-                                UpdatedBalance = card1.CurrentPoints
-                            },
-                            "Transaction already reversed.");
+                                return ServiceResult<ReverseTransactionResponseDto>.Ok(
+                                    new ReverseTransactionResponseDto
+                                    {
+                                        Status = "ALREADY_REVERSED",
+                                        ReversedPoints = 0,
+                                        UpdatedBalance = card1.CurrentPoints
+                                    },
+                                    "Transaction already reversed.");
+                            }
+                        }
+                        // Stale Adjusted (original Status=Applied qalıb) — davam et və düzgün reverse-i tətbiq et
+                        _logger.LogWarning("Stale Adjusted transaction found for OrderId={OrderId}. Re-applying reverse.", dto.OrderId);
                     }
                 }
 
@@ -192,9 +204,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Description = $"Transaction reversed: {dto.Reason}. Original: {originalTransaction.Description}"
                 };
 
+                // Original transaction-ın status-unu Reversed et — eyni transaction yenidən reverse olunmasın
+                originalTransaction.Status = RedeemStatus.Reversed;
+
                 // Update card and save
                 cardRepo.Update(card);
                 var txRepo = _unitOfWork.Repository<Transaction>();
+                txRepo.Update(originalTransaction);
                 txRepo.Add(reverseTransaction);
                 _unitOfWork.Commit();
 
