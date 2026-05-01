@@ -112,48 +112,33 @@ namespace Loyalty.Business.Services.Implementations.Main
                     return ServiceResult<ReverseTransactionResponseDto>.Fail("Loyalty card not found.");
                 }
 
-                // Calculate the delta from the original transaction
-                // We need to find the transaction before this one to calculate the delta
-                var previousTransaction = await _dbContext.Set<Transaction>()
-                    .Where(t => t.LoyaltyCardId == originalTransaction.LoyaltyCardId &&
-                               t.Id < originalTransaction.Id)
-                    .OrderByDescending(t => t.Id)
-                    .FirstOrDefaultAsync(ct);
+                // Original delta: Transaction.Points həmişə Math.Abs(delta) saxlayır,
+                // işarə isə Type-a görə bilinir (Earned = +, Redeemed = -).
+                // Bu yanaşma BalanceAfter-dən asılı deyil və köhnə data üçün də etibarlıdır.
+                decimal originalDelta = originalTransaction.Type == TransactionType.Earned
+                    ? Math.Abs(originalTransaction.Points)
+                    : -Math.Abs(originalTransaction.Points);
 
-                decimal originalDeltaDecimal;
-                if (previousTransaction != null)
+                // Fallback: əgər Points 0-dırsa, BalanceAfter fərqindən hesabla
+                if (originalDelta == 0m)
                 {
-                    // Delta = BalanceAfter - PreviousBalanceAfter
-                    originalDeltaDecimal = originalTransaction.BalanceAfter - previousTransaction.BalanceAfter;
-                }
-                else
-                {
-                    // This is the first transaction, so delta = BalanceAfter
-                    originalDeltaDecimal = originalTransaction.BalanceAfter;
-                }
-                decimal originalDelta = originalDeltaDecimal;
+                    var previousTransaction = await _dbContext.Set<Transaction>()
+                        .Where(t => t.LoyaltyCardId == originalTransaction.LoyaltyCardId &&
+                                   t.Id < originalTransaction.Id)
+                        .OrderByDescending(t => t.Id)
+                        .FirstOrDefaultAsync(ct);
 
-                // Try to parse delta from description if calculation seems wrong
-                if (originalDelta == 0m && !string.IsNullOrEmpty(originalTransaction.Description))
+                    originalDelta = previousTransaction != null
+                        ? originalTransaction.BalanceAfter - previousTransaction.BalanceAfter
+                        : originalTransaction.BalanceAfter;
+                }
+
+                // Hələ də 0-dırsa — reverse mənasız, error qaytar
+                if (originalDelta == 0m)
                 {
-                    // Parse from description like "+5" or "-10.5"
-                    var desc = originalTransaction.Description;
-                    var plusIndex = desc.IndexOf('+');
-                    var minusIndex = desc.IndexOf('-');
-                    if (plusIndex >= 0)
-                    {
-                        var numStr = desc.Substring(plusIndex + 1).Split(' ', '\n', '\r')[0];
-                        if (decimal.TryParse(numStr, System.Globalization.NumberStyles.Any,
-                            System.Globalization.CultureInfo.InvariantCulture, out decimal parsed))
-                            originalDelta = parsed;
-                    }
-                    else if (minusIndex >= 0 && desc.IndexOf("xərcləndi") < 0) // Not the redeem description
-                    {
-                        var numStr = desc.Substring(minusIndex + 1).Split(' ', '\n', '\r')[0];
-                        if (decimal.TryParse(numStr, System.Globalization.NumberStyles.Any,
-                            System.Globalization.CultureInfo.InvariantCulture, out decimal parsed))
-                            originalDelta = -parsed;
-                    }
+                    _logger.LogWarning("Reverse skipped: originalDelta=0. TransactionId={TransactionId}", originalTransaction.Id);
+                    return ServiceResult<ReverseTransactionResponseDto>.Fail(
+                        "Original transaction-ın delta-sı 0-dır, reverse mənasız.");
                 }
 
                 // Calculate reverse delta (opposite of original)
