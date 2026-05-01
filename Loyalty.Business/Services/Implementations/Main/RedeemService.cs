@@ -809,6 +809,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 BalanceAfter = card.CurrentPoints,
                 ReferenceNumber = card.BarcodeValue,
                 Type = type,
+                Status = RedeemStatus.Applied,
                 OrderId = orderId,
                 Description = delta >= 0
                     ? $"Kart balansının artımı: +{delta}"

@@ -553,6 +553,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     {
                         LoyaltyCardId = card.Id,
                         Type = TransactionType.Earned,
+                        Status = RedeemStatus.Applied,
                         Points = earnedValue,
                         OrderId = request.Id,
                         Description = "POS collect",

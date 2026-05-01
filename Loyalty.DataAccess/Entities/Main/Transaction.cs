@@ -14,7 +14,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public int LoyaltyCardId { get; set; }
 
         public TransactionType Type { get; set; }
-        public RedeemStatus Status { get; set; } = RedeemStatus.Pending;
+        public RedeemStatus Status { get; set; } = RedeemStatus.Applied;
         public decimal Points { get; set; }
         public decimal? Amount { get; set; } 
 
