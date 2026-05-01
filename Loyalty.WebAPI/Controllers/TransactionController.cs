@@ -70,5 +70,22 @@ namespace Loyalty.WebAPI.Controllers
 
             return Ok(result);
         }
+
+        public sealed record ReverseLastByCardRequest(string CardNumber, string? Reason);
+
+        [HttpPost]
+        [ProducesResponseType(typeof(ServiceResult<ReverseTransactionResponseDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> ReverseLastByCard([FromBody] ReverseLastByCardRequest req, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(req?.CardNumber))
+                return BadRequest(new ServiceResult(false, "CardNumber is required"));
+
+            var result = await _transactionReverseService.ReverseLastTransactionByCardAsync(req.CardNumber, req.Reason, ct);
+            if (!result.Success)
+                return BadRequest(result);
+
+            return Ok(result);
+        }
     }
 }
