@@ -1698,7 +1698,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                         {
                             RequiresOldPhoneVerification = true,
                             RequiresNewPhoneVerification = false,
-                            Message = "OTP has been sent to your current phone number. Please verify to continue."
+                            Message = "OTP has been sent to your current phone number. Please verify to continue.",
+                            IsProfileCompleted = user.IsProfileCompleted
                         });
                     }
 
@@ -1766,12 +1767,20 @@ namespace Loyalty.Business.Services.Implementations.Users
                             RequiresOldPhoneVerification = false,
                             RequiresNewPhoneVerification = true,
                             Message = "OTP has been sent to your new phone number. Please verify to complete the update.",
-                            PendingNewPhoneNumber = newPhoneNumber // Yeni telefon nömrəsini qaytar ki, istifadəçi bilir hansı nömrəyə OTP göndərilib
+                            PendingNewPhoneNumber = newPhoneNumber, // Yeni telefon nömrəsini qaytar ki, istifadəçi bilir hansı nömrəyə OTP göndərilib
+                            IsProfileCompleted = user.IsProfileCompleted
                         });
                     }
                 }
 
                 // Telefon nömrəsi dəyişmir və ya telefon dəyişikliyi tamamlanıb, məlumatları yenilə
+                // Əsas məcburi sahələr doludursa profilin tam olduğunu nişanla.
+                user.IsProfileCompleted = !string.IsNullOrWhiteSpace(user.Name)
+                    && !string.IsNullOrWhiteSpace(user.Surname)
+                    && !string.IsNullOrWhiteSpace(user.Email)
+                    && !string.IsNullOrWhiteSpace(user.PhoneNumber)
+                    && user.DateOfBirth.HasValue;
+
                 var updateResult = await _userManager.UpdateAsync(user);
                 if (!updateResult.Succeeded)
                 {
@@ -1832,7 +1841,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                 {
                     RequiresOldPhoneVerification = false,
                     RequiresNewPhoneVerification = false,
-                    Message = message
+                    Message = message,
+                    IsProfileCompleted = user.IsProfileCompleted
                 });
             }
             catch (Exception ex)
