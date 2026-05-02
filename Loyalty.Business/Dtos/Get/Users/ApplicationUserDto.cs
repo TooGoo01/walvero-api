@@ -13,6 +13,7 @@ namespace Loyalty.Business.Dtos.Get.Users
         public string? Position { get; set; }
         public bool IsGuest { get; set; }
         public bool IsProfileCompleted { get; set; }
+        public DateTime? DateOfBirth { get; set; }
         public int? TenantId { get; set; }
         public GetTenantDto? Tenant { get; set; }
         public List<string>? Roles { get; set; }

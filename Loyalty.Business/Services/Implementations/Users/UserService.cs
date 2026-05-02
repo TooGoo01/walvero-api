@@ -1635,6 +1635,43 @@ namespace Loyalty.Business.Services.Implementations.Users
 
         // ========== PROFILE UPDATE METHODS ==========
 
+        public async Task<ServiceResult<ApplicationUserDto>> GetMyProfileAsync(CancellationToken ct = default)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                if (userId == null)
+                    return ServiceResult<ApplicationUserDto>.Fail("User not authenticated");
+
+                var user = await _dbContext.Users
+                    .FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+                if (user == null)
+                    return ServiceResult<ApplicationUserDto>.Fail("User not found");
+
+                var roles = await _userManager.GetRolesAsync(user);
+                var dto = new ApplicationUserDto
+                {
+                    Id = user.Id.ToString(),
+                    UserName = user.UserName!,
+                    Email = user.Email,
+                    PhoneNumber = user.PhoneNumber,
+                    Name = user.Name,
+                    Surname = user.Surname,
+                    IsGuest = user.IsGuest,
+                    IsProfileCompleted = user.IsProfileCompleted,
+                    DateOfBirth = user.DateOfBirth,
+                    TenantId = user.TenantId,
+                    Roles = roles.ToList(),
+                };
+                return ServiceResult<ApplicationUserDto>.Ok(dto, "Profile loaded");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "GetMyProfileAsync failed");
+                return ServiceResult<ApplicationUserDto>.Fail($"Failed to load profile: {ex.Message}");
+            }
+        }
+
         public async Task<ServiceResult<UpdateProfileResponseDto>> UpdateProfileAsync(UpdateProfileDto dto, CancellationToken ct = default)
         {
             try

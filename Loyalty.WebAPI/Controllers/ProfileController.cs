@@ -48,6 +48,20 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
+        /// JWT-dən cari user-i fetch edir və tam profil məlumatlarını qaytarır.
+        /// Frontend profile screen açılarkən cache yerinə server-dən təzə user data
+        /// almaq üçün istifadə edir (məs. başqa cihazdan dateOfBirth dəyişdirilibsə).
+        /// </summary>
+        [HttpGet("me")]
+        [ProducesResponseType(typeof(ServiceResult<ApplicationUserDto>), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> GetMyProfile()
+        {
+            var result = await _userService.GetMyProfileAsync();
+            if (!result.Success) return BadRequest(result);
+            return Ok(result);
+        }
+
+        /// <summary>
         /// Get profile completion status
         /// </summary>
         [HttpGet("status")]

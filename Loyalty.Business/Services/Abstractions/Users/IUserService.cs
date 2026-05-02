@@ -44,6 +44,7 @@ namespace Loyalty.Business.Services.Abstractions.Users
 
         // Profile update methods
         Task<ServiceResult<UpdateProfileResponseDto>> UpdateProfileAsync(UpdateProfileDto dto, CancellationToken ct = default);
+        Task<ServiceResult<ApplicationUserDto>> GetMyProfileAsync(CancellationToken ct = default);
         Task<ServiceResult> VerifyOldPhoneForUpdateAsync(string otpCode, CancellationToken ct = default);
         Task<ServiceResult> VerifyNewPhoneForUpdateAsync(string newPhoneNumber, string otpCode, CancellationToken ct = default);
         Task<ServiceResult> ResendPhoneUpdateOtpAsync(ResendPhoneUpdateOtpDto dto, CancellationToken ct = default);
