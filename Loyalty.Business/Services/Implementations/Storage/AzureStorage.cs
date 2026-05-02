@@ -64,13 +64,13 @@ namespace Loyalty.Business.Services.Implementations.Storage
             await _blobContainerClient.CreateIfNotExistsAsync();
             await _blobContainerClient.SetAccessPolicyAsync(PublicAccessType.BlobContainer);
 
-            // Hər video üçün ayrıca temp folder + ayrıca blob folder (variant playlists + segments).
+            // Hər video üçün ayrıca temp folder + blob folder.
+            // Tek-bitrate HLS (yalnız 720p) — Basic B1 (1 CPU) plan-da multi-bitrate çox yavaş idi.
+            // Adaptive bitrate-ə qayıtmaq üçün Standard S1+ plana keçilməlidir.
             var videoId = $"hls-{Guid.NewGuid():N}";
             var tempInput = Path.Combine(Path.GetTempPath(), $"vin_{videoId}{Path.GetExtension(file.FileName)}");
             var tempDir = Path.Combine(Path.GetTempPath(), videoId);
             Directory.CreateDirectory(tempDir);
-            Directory.CreateDirectory(Path.Combine(tempDir, "v0"));
-            Directory.CreateDirectory(Path.Combine(tempDir, "v1"));
 
             try
             {
@@ -88,10 +88,10 @@ namespace Loyalty.Business.Services.Implementations.Storage
                         $"Video 2 dəqiqədən uzun ola bilməz. Yüklənən video {duration:F1} saniyədir.");
                 }
 
-                // 3) ffmpeg multi-bitrate HLS encode (360p + 720p variants, 4s segments).
-                //    `-preset ultrafast` 3-5× sürətli encoding (fayl 10-15% böyük olur, key.fərqi yox).
-                //    `-threads 0` bütün CPU core-ları istifadə et.
-                //    `-keyint_min` və `-g` GOP-u 4s ilə hizalayır → segment seçimi düzgün olur.
+                // 3) ffmpeg tək-bitrate HLS encode (yalnız 720p, 4s segments).
+                //    `-preset ultrafast` ən sürətli encoding (60s video → ~10-20s B1 plan-da).
+                //    `-vf scale` videonu ən çox 720p hündürlüyə endirir (aspect ratio qoruyur).
+                //    Çıxış: tempDir/playlist.m3u8 + tempDir/seg_*.ts
                 var psi = new ProcessStartInfo
                 {
                     FileName = "ffmpeg",
@@ -101,30 +101,21 @@ namespace Loyalty.Business.Services.Implementations.Storage
                         "-hide_banner",
                         "-loglevel", "warning",
                         "-i", tempInput,
-                        "-filter_complex",
-                        "[0:v]split=2[v1][v2];" +
-                        "[v1]scale=w=640:h=360:force_original_aspect_ratio=decrease[v360];" +
-                        "[v2]scale=w=1280:h=720:force_original_aspect_ratio=decrease[v720]",
-                        "-map", "[v360]",
-                        "-c:v:0", "libx264", "-profile:v:0", "main",
-                        "-preset:v:0", "ultrafast",
-                        "-b:v:0", "800k", "-maxrate:v:0", "900k", "-bufsize:v:0", "1200k",
+                        "-vf", "scale='min(1280,iw)':'min(720,ih)':force_original_aspect_ratio=decrease",
+                        "-c:v", "libx264",
+                        "-profile:v", "main",
+                        "-preset", "ultrafast",
+                        "-b:v", "1500k",
+                        "-maxrate", "1800k",
+                        "-bufsize", "2500k",
                         "-g", "96", "-keyint_min", "96", "-sc_threshold", "0",
-                        "-map", "[v720]",
-                        "-c:v:1", "libx264", "-profile:v:1", "main",
-                        "-preset:v:1", "ultrafast",
-                        "-b:v:1", "2000k", "-maxrate:v:1", "2200k", "-bufsize:v:1", "3000k",
-                        "-g", "96", "-keyint_min", "96", "-sc_threshold", "0",
-                        "-map", "a:0?", "-c:a:0", "aac", "-b:a:0", "96k", "-ac:a:0", "2",
-                        "-map", "a:0?", "-c:a:1", "aac", "-b:a:1", "128k", "-ac:a:1", "2",
-                        "-var_stream_map", "v:0,a:0 v:1,a:1",
-                        "-master_pl_name", "master.m3u8",
+                        "-c:a", "aac", "-b:a", "128k", "-ac", "2",
                         "-hls_time", "4",
                         "-hls_playlist_type", "vod",
-                        "-hls_segment_filename", Path.Combine(tempDir, "v%v", "seg_%03d.ts"),
+                        "-hls_segment_filename", Path.Combine(tempDir, "seg_%03d.ts"),
                         "-threads", "0",
                         "-f", "hls",
-                        Path.Combine(tempDir, "v%v", "playlist.m3u8"),
+                        Path.Combine(tempDir, "playlist.m3u8"),
                     },
                     RedirectStandardError = true,
                     RedirectStandardOutput = true,
@@ -173,11 +164,11 @@ namespace Loyalty.Business.Services.Implementations.Storage
                 }
 
                 // 4) tempDir altında yaranan bütün faylları blob-a yüklə.
-                //    Folder strukturu: master.m3u8, v0/playlist.m3u8 + seg_*.ts, v1/...
+                //    Folder strukturu: playlist.m3u8 + seg_*.ts (tək-bitrate)
                 await UploadHlsFolderAsync(tempDir, videoId);
 
-                var masterUrl = $"https://walverostorage.blob.core.windows.net/{pathOrContainerName}/{videoId}/master.m3u8";
-                return (videoId, masterUrl);
+                var playlistUrl = $"https://walverostorage.blob.core.windows.net/{pathOrContainerName}/{videoId}/playlist.m3u8";
+                return (videoId, playlistUrl);
             }
             finally
             {
