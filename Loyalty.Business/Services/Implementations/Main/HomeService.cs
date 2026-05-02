@@ -51,6 +51,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // OPTIMIZATION: Use AutoMapper instead of manual mapping
                 var stories = _mapper.Map<List<HomeStoryDto>>(projections);
 
+                // MediaType-i frontend isVideo ayırd etmək üçün doldur
+                // (VideoUrl boş deyilsə "video", əks halda "image").
+                foreach (var s in stories)
+                {
+                    s.MediaType = !string.IsNullOrWhiteSpace(s.VideoUrl) ? "video" : "image";
+                }
+
                 return ServiceResult<List<HomeStoryDto>>.Ok(stories);
             }
             catch (Exception ex)

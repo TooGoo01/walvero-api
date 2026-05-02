@@ -89,6 +89,24 @@ namespace Loyalty.Business.Services.Implementations.Storage
             throw new NotImplementedException();
         }
 
+        /// <summary>
+        /// Local dev fallback — ffmpeg quraşdırılmadığı mühitlərdə video-nu olduğu kimi yazır
+        /// (HLS yaratmır). Production-da AzureStorage istifadə olunur.
+        /// </summary>
+        public async Task<(string fileName, string pathOrContainerName)> UploadVideoHlsAsync(
+            string pathOrContainerName,
+            IFormFile file)
+        {
+            var upload = Path.Combine("wwwroot", "resource", pathOrContainerName);
+            Directory.CreateDirectory(upload);
+            var name = Path.GetFileNameWithoutExtension(file.FileName)
+                + Random.Shared.Next(1000, 9999) + ".mp4";
+            var fullPath = Path.Combine(upload, name);
+            await using var fs = new FileStream(fullPath, FileMode.Create, FileAccess.Write);
+            await file.CopyToAsync(fs);
+            return (name, $"/resource/{pathOrContainerName}/{name}");
+        }
+
         public async Task<List<(string fileName, string pathOrContainerName)>> UploadAsync(string pathOrContainerName, IFormFileCollection files)
         {
             List<(string fileName, string pathOrContainerName)> datas = new();

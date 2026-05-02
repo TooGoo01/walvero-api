@@ -62,6 +62,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     RuTitle = s.RuTitle,
                     ImageUrl = s.ImageUrl,
                     SmallImageUrl = s.SmallImageUrl,
+                    VideoUrl = s.VideoUrl,
                     TenantId = s.TenantId
                 })
                 .ToListAsync(ct);

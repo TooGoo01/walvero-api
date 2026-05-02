@@ -33,19 +33,27 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> AddStory(AddStoryDto story)
         {
-            var request = _mapper.Map<Story>(story);
-            request.IsActive = true;
+            try
+            {
+                var request = _mapper.Map<Story>(story);
+                request.IsActive = true;
 
-            // Handle file uploads
-            var container = $"stories-tenant-{story.TenantId ?? 0}";
-            request.SmallImageUrl = await UploadOrUseUrl(container, "small", story.SmallImageFile, story.SmallImageUrl, null);
-            request.ImageUrl = await UploadOrUseUrl(container, "image", story.ImageFile, story.ImageUrl, null);
-            request.VideoUrl = await UploadOrUseUrl(container, "video", story.VideoFile, story.VideoUrl, null);
+                // Handle file uploads
+                var container = $"stories-tenant-{story.TenantId ?? 0}";
+                request.SmallImageUrl = await UploadOrUseUrl(container, "small", story.SmallImageFile, story.SmallImageUrl, null);
+                request.ImageUrl = await UploadOrUseUrl(container, "image", story.ImageFile, story.ImageUrl, null);
+                request.VideoUrl = await UploadOrUseUrl(container, "video", story.VideoFile, story.VideoUrl, null);
 
-            await _unitOfWork.Repository<Story>().AddAsync(request);
-            _unitOfWork.Commit();
-            var response = _mapper.Map<GetStoryDto>(request);
-            return new ServiceResult(true, response.Id);
+                await _unitOfWork.Repository<Story>().AddAsync(request);
+                _unitOfWork.Commit();
+                var response = _mapper.Map<GetStoryDto>(request);
+                return new ServiceResult(true, response.Id);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Validation errors (məs. video > 60s) admin-friendly mesajla qaytarılır
+                return new ServiceResult(false, ex.Message);
+            }
         }
 
         public async Task<ServiceResult> DeleteStory(int id)
@@ -113,41 +121,49 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> UpdateStory(AddStoryDto storyDto, int id)
         {
-            var story = await _storyRepository.GetStory(id);
-            if (story != null)
+            try
             {
-                if (!string.IsNullOrWhiteSpace(storyDto.AzTitle))
+                var story = await _storyRepository.GetStory(id);
+                if (story != null)
                 {
-                    story.AzTitle = storyDto.AzTitle.Trim();
+                    if (!string.IsNullOrWhiteSpace(storyDto.AzTitle))
+                    {
+                        story.AzTitle = storyDto.AzTitle.Trim();
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(storyDto.EnTitle))
+                    {
+                        story.EnTitle = storyDto.EnTitle.Trim();
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(storyDto.RuTitle))
+                    {
+                        story.RuTitle = storyDto.RuTitle.Trim();
+                    }
+
+                    if (storyDto.TenantId.HasValue)
+                    {
+                        story.TenantId = storyDto.TenantId;
+                    }
+
+                    // Handle file uploads
+                    var container = $"stories-tenant-{storyDto.TenantId ?? story.TenantId ?? 0}";
+                    story.SmallImageUrl = await UploadOrUseUrl(container, "small", storyDto.SmallImageFile, storyDto.SmallImageUrl, story.SmallImageUrl);
+                    story.ImageUrl = await UploadOrUseUrl(container, "image", storyDto.ImageFile, storyDto.ImageUrl, story.ImageUrl);
+                    story.VideoUrl = await UploadOrUseUrl(container, "video", storyDto.VideoFile, storyDto.VideoUrl, story.VideoUrl);
+
+                    _unitOfWork.Repository<Story>().Update(story);
+                    _unitOfWork.Commit();
+                    var response = _mapper.Map<GetStoryDto>(story);
+                    return new ServiceResult(true, response.Id);
                 }
-
-                if (!string.IsNullOrWhiteSpace(storyDto.EnTitle))
-                {
-                    story.EnTitle = storyDto.EnTitle.Trim();
-                }
-
-                if (!string.IsNullOrWhiteSpace(storyDto.RuTitle))
-                {
-                    story.RuTitle = storyDto.RuTitle.Trim();
-                }
-
-                if (storyDto.TenantId.HasValue)
-                {
-                    story.TenantId = storyDto.TenantId;
-                }
-
-                // Handle file uploads
-                var container = $"stories-tenant-{storyDto.TenantId ?? story.TenantId ?? 0}";
-                story.SmallImageUrl = await UploadOrUseUrl(container, "small", storyDto.SmallImageFile, storyDto.SmallImageUrl, story.SmallImageUrl);
-                story.ImageUrl = await UploadOrUseUrl(container, "image", storyDto.ImageFile, storyDto.ImageUrl, story.ImageUrl);
-                story.VideoUrl = await UploadOrUseUrl(container, "video", storyDto.VideoFile, storyDto.VideoUrl, story.VideoUrl);
-
-                _unitOfWork.Repository<Story>().Update(story);
-                _unitOfWork.Commit();
-                var response = _mapper.Map<GetStoryDto>(story);
-                return new ServiceResult(true, response.Id);
+                return new ServiceResult(false);
             }
-            return new ServiceResult(false);
+            catch (InvalidOperationException ex)
+            {
+                // Validation errors (məs. video > 60s) admin-friendly mesajla qaytarılır
+                return new ServiceResult(false, ex.Message);
+            }
         }
 
         private async Task<string?> UploadOrUseUrl(string container, string prefix, IFormFile? file, string? url, string? oldValue)
@@ -161,7 +177,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                         try { await _storage.DeleteAsync(container, oldName); } catch { }
                 }
 
-                // .webp-yə çevir
+                // Video upload yolu: ffmpeg ilə HLS multi-bitrate (360p+720p, 4s segments)
+                // — native player ilk segment yüklənən kimi play başlayır (YouTube-tipli açılma).
+                if (string.Equals(prefix, "video", StringComparison.OrdinalIgnoreCase))
+                {
+                    var (_, videoRelPath) = await _storage.UploadVideoHlsAsync(container, file);
+                    return EnsureRelative(videoRelPath);
+                }
+
+                // Şəkil yolu: .webp-yə çevir
                 using var inputStream = file.OpenReadStream();
                 using var image = await Image.LoadAsync(inputStream);
                 using var webpStream = new MemoryStream();
