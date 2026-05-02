@@ -89,6 +89,8 @@ namespace Loyalty.Business.Services.Implementations.Storage
                 }
 
                 // 3) ffmpeg multi-bitrate HLS encode (360p + 720p variants, 4s segments).
+                //    `-preset ultrafast` 3-5× sürətli encoding (fayl 10-15% böyük olur, key.fərqi yox).
+                //    `-threads 0` bütün CPU core-ları istifadə et.
                 //    `-keyint_min` və `-g` GOP-u 4s ilə hizalayır → segment seçimi düzgün olur.
                 var psi = new ProcessStartInfo
                 {
@@ -96,6 +98,8 @@ namespace Loyalty.Business.Services.Implementations.Storage
                     ArgumentList =
                     {
                         "-y",
+                        "-hide_banner",
+                        "-loglevel", "warning",
                         "-i", tempInput,
                         "-filter_complex",
                         "[0:v]split=2[v1][v2];" +
@@ -103,10 +107,12 @@ namespace Loyalty.Business.Services.Implementations.Storage
                         "[v2]scale=w=1280:h=720:force_original_aspect_ratio=decrease[v720]",
                         "-map", "[v360]",
                         "-c:v:0", "libx264", "-profile:v:0", "main",
+                        "-preset:v:0", "ultrafast",
                         "-b:v:0", "800k", "-maxrate:v:0", "900k", "-bufsize:v:0", "1200k",
                         "-g", "96", "-keyint_min", "96", "-sc_threshold", "0",
                         "-map", "[v720]",
                         "-c:v:1", "libx264", "-profile:v:1", "main",
+                        "-preset:v:1", "ultrafast",
                         "-b:v:1", "2000k", "-maxrate:v:1", "2200k", "-bufsize:v:1", "3000k",
                         "-g", "96", "-keyint_min", "96", "-sc_threshold", "0",
                         "-map", "a:0?", "-c:a:0", "aac", "-b:a:0", "96k", "-ac:a:0", "2",
@@ -116,6 +122,7 @@ namespace Loyalty.Business.Services.Implementations.Storage
                         "-hls_time", "4",
                         "-hls_playlist_type", "vod",
                         "-hls_segment_filename", Path.Combine(tempDir, "v%v", "seg_%03d.ts"),
+                        "-threads", "0",
                         "-f", "hls",
                         Path.Combine(tempDir, "v%v", "playlist.m3u8"),
                     },
@@ -125,14 +132,44 @@ namespace Loyalty.Business.Services.Implementations.Storage
                     CreateNoWindow = true,
                 };
 
-                using var proc = Process.Start(psi)
-                    ?? throw new InvalidOperationException("ffmpeg-i başlatmaq mümkün olmadı");
-
-                await proc.WaitForExitAsync();
-                if (proc.ExitCode != 0)
+                Process? proc;
+                try
                 {
-                    var stderr = await proc.StandardError.ReadToEndAsync();
-                    throw new InvalidOperationException($"ffmpeg uğursuz oldu (exit {proc.ExitCode}): {stderr}");
+                    proc = Process.Start(psi);
+                }
+                catch (System.ComponentModel.Win32Exception ex)
+                {
+                    // ffmpeg server-də quraşdırılmayıb (Linux: `apt install ffmpeg`).
+                    throw new InvalidOperationException(
+                        "Server-də ffmpeg tapılmadı. Linux-da quraşdırın: `sudo apt install -y ffmpeg`. " +
+                        $"(detail: {ex.Message})");
+                }
+                if (proc == null)
+                    throw new InvalidOperationException("ffmpeg prosesi başlatmaq mümkün olmadı");
+
+                using (proc)
+                {
+                    // ffmpeg STDERR-ə yazır (progress, errors). Tamamlanmasını gözləyərkən
+                    // 5 dəqiqəlik timeout-la qoruyuruq ki, server hang olmasın.
+                    var timeout = TimeSpan.FromMinutes(5);
+                    using var cts = new CancellationTokenSource(timeout);
+                    try
+                    {
+                        await proc.WaitForExitAsync(cts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        try { proc.Kill(entireProcessTree: true); } catch { }
+                        throw new InvalidOperationException(
+                            $"ffmpeg encoding 5 dəqiqədən uzun çəkdi və dayandırıldı. " +
+                            "Server CPU yetərsiz ola bilər və ya video çox böyükdür.");
+                    }
+
+                    if (proc.ExitCode != 0)
+                    {
+                        var stderr = await proc.StandardError.ReadToEndAsync();
+                        throw new InvalidOperationException($"ffmpeg uğursuz oldu (exit {proc.ExitCode}): {stderr}");
+                    }
                 }
 
                 // 4) tempDir altında yaranan bütün faylları blob-a yüklə.

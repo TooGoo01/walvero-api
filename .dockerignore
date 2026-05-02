@@ -1,0 +1,30 @@
+**/.dockerignore
+**/.git
+**/.gitignore
+**/.vs
+**/.vscode
+**/.idea
+**/bin
+**/obj
+**/out
+**/Debug
+**/Release
+**/publish
+**/*.user
+**/*.suo
+**/*.userprefs
+**/.DS_Store
+**/Thumbs.db
+
+# Test
+**/Loyalty.Tests
+**/*.Tests
+**/TestResults
+
+# Docs / non-runtime
+**/*.md
+**/*.postman_collection.json
+
+# Local dev
+appsettings.Development.json
+**/appsettings.Local.json
