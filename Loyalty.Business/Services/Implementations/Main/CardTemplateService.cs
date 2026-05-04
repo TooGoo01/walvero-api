@@ -120,7 +120,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _unitOfWork.Repository<LoyaltyProgram>().Update(program);
                 _unitOfWork.Commit();
             }
-            await _cardTemplateIconService.AddRangeAsync(dto, entity.Id, ct);
+            // Yalnız real icon məlumatı (file və ya url) gəlibsə AddRangeAsync çağır.
+            // User yeni icon əlavə etmirsə (boş list, null, və ya yalnız boş placeholder item-lər)
+            // → mövcud Icons cədvəlinə toxunmuruq.
+            var hasRealIcons = dto.Icons != null && dto.Icons.Any(i =>
+                (i.IconFile != null && i.IconFile.Length > 0) ||
+                !string.IsNullOrWhiteSpace(i.IconUrl));
+
+            if (hasRealIcons)
+                await _cardTemplateIconService.AddRangeAsync(dto, entity.Id, ct);
             // local obyekt üçün
             // 7) Cavab
             var result = MapToGetDto(entity);
