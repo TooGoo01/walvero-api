@@ -12,18 +12,19 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public interface IWalletCardDetailsService
     {
         /// <summary>
-        /// Get public tenant wallet information.
-        /// Returns ONLY tenant-level public info (branding, colors, descriptions).
-        /// NO customer-specific data is returned (no balance, points, card numbers, etc.).
+        /// Get wallet info for a tenant.
+        /// - Anonymous (applicationUserId == null): returns TenantOnly mode (public info).
+        /// - Authenticated (applicationUserId != null): if the user has an active card for this tenant,
+        ///   automatically upgrades response to CardDetails mode (full balance + customer data).
+        ///   If no card found, falls back to TenantOnly.
+        /// This eliminates frontend race conditions where cardId is not yet known.
         /// </summary>
         /// <param name="tenantId">Required: The tenant ID</param>
+        /// <param name="applicationUserId">Optional: ApplicationUser id from JWT claims; null for anonymous</param>
         /// <param name="ct">Cancellation token</param>
-        /// <returns>
-        /// Success with WalletCardDetailsResponseDto (Mode = TenantOnly, Card = null)
-        /// Failure if tenant not found
-        /// </returns>
         Task<ServiceResult<WalletCardDetailsResponseDto>> GetTenantWalletInfoAsync(
             int tenantId,
+            int? applicationUserId,
             CancellationToken ct = default);
 
         /// <summary>

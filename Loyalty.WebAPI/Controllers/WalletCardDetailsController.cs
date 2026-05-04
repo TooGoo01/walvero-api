@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Net;
+using System.Security.Claims;
 
 namespace Loyalty.WebAPI.Controllers
 {
@@ -26,16 +27,13 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
-        /// Get public tenant wallet information.
-        /// This endpoint returns ONLY tenant-level public info (branding, colors, logo, descriptions).
-        /// No authentication required. No customer-specific data is returned.
+        /// Get wallet info for a tenant.
+        /// - Anonymous request: returns TenantOnly mode (public branding, colors, logo, descriptions).
+        /// - Authenticated request (JWT bearer): if user has an active card for this tenant,
+        ///   automatically upgrades to CardDetails mode (full balance + customer info).
+        ///   This eliminates the frontend race where cardId is not yet known after fresh login.
+        /// JWT is OPTIONAL — endpoint accepts both.
         /// </summary>
-        /// <param name="tenantId">Required: The tenant ID</param>
-        /// <param name="ct">Cancellation token</param>
-        /// <returns>WalletCardDetailsResponseDto with Mode = TenantOnly</returns>
-        /// <response code="200">Success - returns tenant public info</response>
-        /// <response code="400">Bad request - invalid tenantId</response>
-        /// <response code="404">Not found - tenant not found</response>
         [HttpGet("wallet-info")]
         [AllowAnonymous]
         [ProducesResponseType(typeof(ServiceResult<WalletCardDetailsResponseDto>), (int)HttpStatusCode.OK)]
@@ -50,7 +48,22 @@ namespace Loyalty.WebAPI.Controllers
                 return BadRequest(ServiceResult<WalletCardDetailsResponseDto>.Fail("TenantId must be greater than 0"));
             }
 
-            var result = await _walletCardDetailsService.GetTenantWalletInfoAsync(tenantId, ct);
+            // JWT göndərilibsə (optional) user-i tap.
+            // [AllowAnonymous] olduğuna görə autentifikasiya middleware token-ı parse edir
+            // amma yoxluğuna görə 401 atmır. User?.Identity?.IsAuthenticated yalnız
+            // valid token olduqda true olur.
+            int? applicationUserId = null;
+            if (User?.Identity?.IsAuthenticated == true)
+            {
+                var idClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                              ?? User.FindFirst("sub")?.Value;
+                if (int.TryParse(idClaim, out var parsedId))
+                {
+                    applicationUserId = parsedId;
+                }
+            }
+
+            var result = await _walletCardDetailsService.GetTenantWalletInfoAsync(tenantId, applicationUserId, ct);
 
             if (!result.Success)
             {

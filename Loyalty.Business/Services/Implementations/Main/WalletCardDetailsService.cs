@@ -39,13 +39,40 @@ namespace Loyalty.Business.Services.Implementations.Main
         /// <inheritdoc />
         public async Task<ServiceResult<WalletCardDetailsResponseDto>> GetTenantWalletInfoAsync(
             int tenantId,
+            int? applicationUserId,
             CancellationToken ct = default)
         {
             var baseUrl = _configuration["App:BaseUrl"] ?? "https://appapi.walvero.com";
 
-            // Log without sensitive data
-            _logger.LogInformation("Fetching tenant wallet info for TenantId: {TenantId}", tenantId);
+            _logger.LogInformation(
+                "Fetching tenant wallet info for TenantId: {TenantId}, AuthUser: {UserId}",
+                tenantId, applicationUserId);
 
+            // İstifadəçi authenticated-dirsə, onun bu tenant üçün aktiv kartını ax.
+            // Tapılarsa CardDetails mode qaytar (frontend cardId bilməsə də).
+            if (applicationUserId.HasValue && applicationUserId.Value > 0)
+            {
+                var userCard = await _cardRepository.GetActiveCardForTenantAndUserAsync(
+                    tenantId, applicationUserId.Value, ct);
+
+                if (userCard != null)
+                {
+                    _logger.LogInformation(
+                        "Auto-upgraded wallet-info → CardDetails: TenantId={TenantId}, CardId={CardId}, UserId={UserId}",
+                        tenantId, userCard.Id, applicationUserId.Value);
+
+                    var cardResponse = new WalletCardDetailsResponseDto
+                    {
+                        Mode = WalletCardDetailsMode.CardDetails,
+                        Tenant = BuildTenantPublicDto(userCard.Tenant, userCard.LoyaltyProgram, userCard, baseUrl),
+                        Card = BuildCardPrivateDto(userCard, baseUrl)
+                    };
+
+                    return ServiceResult<WalletCardDetailsResponseDto>.Ok(cardResponse);
+                }
+            }
+
+            // Anonymous və ya kart tapılmadı → TenantOnly fallback
             var tenant = await _tenantRepository.GetTenantForWalletDetailsAsync(tenantId, ct);
             if (tenant == null)
             {
@@ -57,7 +84,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 Mode = WalletCardDetailsMode.TenantOnly,
                 Tenant = BuildTenantPublicDto(tenant, baseUrl),
-                Card = null // Explicitly null - no card-specific data
+                Card = null
             };
 
             return ServiceResult<WalletCardDetailsResponseDto>.Ok(response);
