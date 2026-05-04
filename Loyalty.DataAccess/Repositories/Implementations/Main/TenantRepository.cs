@@ -147,6 +147,17 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                         .OrderBy(lp => lp.Id)
                         .Select(lp => lp.CardTemplate!.GoogleLogoUrl)
                         .FirstOrDefault(),
+                    // App-specific .webp logo və strip — mobil app trending/brand list-ində istifadə edir
+                    AppLogoUrl = t.LoyaltyPrograms
+                        .Where(lp => lp.IsActive && lp.CardTemplate != null)
+                        .OrderBy(lp => lp.Id)
+                        .Select(lp => lp.CardTemplate!.AppLogoUrl)
+                        .FirstOrDefault(),
+                    AppStripUrl = t.LoyaltyPrograms
+                        .Where(lp => lp.IsActive && lp.CardTemplate != null)
+                        .OrderBy(lp => lp.Id)
+                        .Select(lp => lp.CardTemplate!.AppStripUrl)
+                        .FirstOrDefault(),
                     // Get RewardDescription from CardTemplate of first active program
                     // (CardTemplate.RewardDescription is the primary source for reward description)
                     RewardDescription = t.LoyaltyPrograms
