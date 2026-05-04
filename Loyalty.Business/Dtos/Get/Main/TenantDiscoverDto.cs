@@ -44,5 +44,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? ForegroundColor { get; set; }
         public string? LogoUrl { get; set; }
         public string? GoogleLogoUrl { get; set; }
+        public string? AppLogoUrl { get; set; }
+        public string? AppStripUrl { get; set; }
     }
 }

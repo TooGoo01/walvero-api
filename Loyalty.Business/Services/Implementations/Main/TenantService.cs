@@ -189,7 +189,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                                         BackgroundColor = lp.CardTemplate.BackgroundColor,
                                         ForegroundColor = lp.CardTemplate.ForegroundColor,
                                         LogoUrl = lp.CardTemplate.LogoUrl,
-                                        GoogleLogoUrl = lp.CardTemplate.GoogleLogoUrl
+                                        GoogleLogoUrl = lp.CardTemplate.GoogleLogoUrl,
+                                        AppLogoUrl = lp.CardTemplate.AppLogoUrl,
+                                        AppStripUrl = lp.CardTemplate.AppStripUrl
                                     }
                             })
                             .ToList(),
