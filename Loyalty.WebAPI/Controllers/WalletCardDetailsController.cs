@@ -1,6 +1,7 @@
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -48,27 +49,69 @@ namespace Loyalty.WebAPI.Controllers
                 return BadRequest(ServiceResult<WalletCardDetailsResponseDto>.Fail("TenantId must be greater than 0"));
             }
 
-            // JWT göndərilibsə (optional) user-i tap.
-            // [AllowAnonymous] olduğuna görə autentifikasiya middleware token-ı parse edir
-            // amma yoxluğuna görə 401 atmır. User?.Identity?.IsAuthenticated yalnız
-            // valid token olduqda true olur.
+            // [AllowAnonymous] endpoint-də ASP.NET Core auth pipeline JWT bearer scheme-ini
+            // avtomatik invoke etmir → User.Identity.IsAuthenticated həmişə false.
+            // Authorization header varsa, JWT-ni manual parse edib HttpContext.User-ı set edirik.
+            // Bu, optional auth pattern-idir: token varsa user tanınır, yoxsa anonymous davam.
             int? applicationUserId = null;
-            var isAuth = User?.Identity?.IsAuthenticated == true;
             string? idClaim = null;
-            if (isAuth)
+            var isAuth = false;
+            string? authFailureReason = null;
+            bool? authResultSucceeded = null;
+            bool? userPropertyAuthenticated = User?.Identity?.IsAuthenticated;
+
+            if (Request.Headers.ContainsKey("Authorization"))
             {
-                idClaim = User!.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                          ?? User.FindFirst("sub")?.Value;
-                if (int.TryParse(idClaim, out var parsedId))
+                try
                 {
-                    applicationUserId = parsedId;
+                    var authResult = await HttpContext.AuthenticateAsync(JwtBearerDefaults.AuthenticationScheme);
+                    authResultSucceeded = authResult.Succeeded;
+                    authFailureReason = authResult.Failure?.Message;
+
+                    if (authResult.Succeeded && authResult.Principal != null)
+                    {
+                        HttpContext.User = authResult.Principal;
+                        isAuth = true;
+                        idClaim = authResult.Principal.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                                  ?? authResult.Principal.FindFirst("sub")?.Value;
+                        if (int.TryParse(idClaim, out var parsedId))
+                        {
+                            applicationUserId = parsedId;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    authFailureReason = $"Exception: {ex.GetType().Name}: {ex.Message}";
+                }
+            }
+
+            // Fallback: əgər manual AuthenticateAsync uğursuzdusa, User.Identity-ni yoxla.
+            // UseAuthentication() middleware artıq token-i parse etmiş ola bilər (bəzi konfiqurasiyalarda).
+            if (!isAuth && User?.Identity?.IsAuthenticated == true)
+            {
+                isAuth = true;
+                idClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                          ?? User.FindFirst("sub")?.Value;
+                if (int.TryParse(idClaim, out var parsedId2))
+                {
+                    applicationUserId = parsedId2;
                 }
             }
 
             // DIAGNOSTIC: trace which path is taken — Application Insights / Azure log-da görünəcək
             var hasAuthHeader = Request.Headers.ContainsKey("Authorization");
+            var authHeaderPreview = hasAuthHeader
+                ? Request.Headers["Authorization"].ToString()
+                : "<none>";
+            if (authHeaderPreview.Length > 40) authHeaderPreview = authHeaderPreview.Substring(0, 40) + "...";
+
             Console.WriteLine(
                 $"[wallet-info] tenantId={tenantId}, hasAuthHeader={hasAuthHeader}, " +
+                $"hdrPreview={authHeaderPreview}, " +
+                $"userPropAuth={userPropertyAuthenticated}, " +
+                $"manualAuthSucceeded={authResultSucceeded}, " +
+                $"manualAuthFailure={authFailureReason ?? "<none>"}, " +
                 $"isAuth={isAuth}, idClaim={idClaim ?? "<null>"}, applicationUserId={applicationUserId?.ToString() ?? "<null>"}");
 
             var result = await _walletCardDetailsService.GetTenantWalletInfoAsync(tenantId, applicationUserId, ct);
