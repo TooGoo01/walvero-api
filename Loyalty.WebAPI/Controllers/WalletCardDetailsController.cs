@@ -53,17 +53,28 @@ namespace Loyalty.WebAPI.Controllers
             // amma yoxluğuna görə 401 atmır. User?.Identity?.IsAuthenticated yalnız
             // valid token olduqda true olur.
             int? applicationUserId = null;
-            if (User?.Identity?.IsAuthenticated == true)
+            var isAuth = User?.Identity?.IsAuthenticated == true;
+            string? idClaim = null;
+            if (isAuth)
             {
-                var idClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                              ?? User.FindFirst("sub")?.Value;
+                idClaim = User!.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                          ?? User.FindFirst("sub")?.Value;
                 if (int.TryParse(idClaim, out var parsedId))
                 {
                     applicationUserId = parsedId;
                 }
             }
 
+            // DIAGNOSTIC: trace which path is taken — Application Insights / Azure log-da görünəcək
+            var hasAuthHeader = Request.Headers.ContainsKey("Authorization");
+            Console.WriteLine(
+                $"[wallet-info] tenantId={tenantId}, hasAuthHeader={hasAuthHeader}, " +
+                $"isAuth={isAuth}, idClaim={idClaim ?? "<null>"}, applicationUserId={applicationUserId?.ToString() ?? "<null>"}");
+
             var result = await _walletCardDetailsService.GetTenantWalletInfoAsync(tenantId, applicationUserId, ct);
+
+            Console.WriteLine(
+                $"[wallet-info] result: success={result.Success}, mode={result.Data?.Mode}, hasCard={result.Data?.Card != null}");
 
             if (!result.Success)
             {
