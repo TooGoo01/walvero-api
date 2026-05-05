@@ -210,6 +210,33 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
             return BadRequest(result.Message);
         }
 
+        // POST /api/feedback/AdminCloseFeedback - Close feedback (Tenant Admin)
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> AdminCloseFeedback([FromQuery] int id)
+        {
+            var tenantId = _tenantProvider.CurrentTenantId;
+            if (!tenantId.HasValue)
+                return BadRequest("Tenant not found.");
+
+            var feedback = await _dbContext.StoreFeedbacks
+                .FirstOrDefaultAsync(f => f.Id == id && f.TenantId == tenantId.Value && f.IsActive);
+
+            if (feedback == null)
+                return BadRequest("Feedback not found.");
+
+            if (feedback.Status == DataAccess.Enums.FeedbackStatus.Closed)
+                return BadRequest("Feedback is already closed.");
+
+            feedback.Status = DataAccess.Enums.FeedbackStatus.Closed;
+            feedback.UpdatedAt = DateTime.UtcNow;
+            feedback.EditDate = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync();
+
+            return Ok(new { message = "Feedback closed successfully." });
+        }
+
         // POST /api/feedback/{id}/close - Close feedback (Customer)
         [HttpPost]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "CustomerOnly")]
