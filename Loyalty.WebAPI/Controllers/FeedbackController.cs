@@ -210,36 +210,9 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
             return BadRequest(result.Message);
         }
 
-        // POST /api/feedback/AdminCloseFeedback - Close feedback (Tenant Admin)
+        // POST /api/feedback/CloseFeedback - Close feedback (Customer or Tenant Admin/Moderator)
         [HttpPost]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
-        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> AdminCloseFeedback([FromQuery] int id)
-        {
-            var tenantId = _tenantProvider.CurrentTenantId;
-            if (!tenantId.HasValue)
-                return BadRequest("Tenant not found.");
-
-            var feedback = await _dbContext.StoreFeedbacks
-                .FirstOrDefaultAsync(f => f.Id == id && f.TenantId == tenantId.Value && f.IsActive);
-
-            if (feedback == null)
-                return BadRequest("Feedback not found.");
-
-            if (feedback.Status == DataAccess.Enums.FeedbackStatus.Closed)
-                return BadRequest("Feedback is already closed.");
-
-            feedback.Status = DataAccess.Enums.FeedbackStatus.Closed;
-            feedback.UpdatedAt = DateTime.UtcNow;
-            feedback.EditDate = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync();
-
-            return Ok(new { message = "Feedback closed successfully." });
-        }
-
-        // POST /api/feedback/{id}/close - Close feedback (Customer)
-        [HttpPost]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "CustomerOnly")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "CustomerOrTenantAdmin")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> CloseFeedback(int id)
         {
@@ -249,7 +222,6 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
                 return Unauthorized("User not authenticated.");
             }
 
-            // First get feedback to determine tenant
             var feedback = await _dbContext.StoreFeedbacks
                 .FirstOrDefaultAsync(f => f.Id == id && f.IsActive);
 
@@ -258,7 +230,23 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
                 return BadRequest("Feedback not found.");
             }
 
-            // Get customer for the specific tenant from feedback
+            // Tenant admin/moderator path: any feedback within their tenant
+            var user = await _dbContext.Users.FindAsync(userId);
+            if (user?.TenantId == feedback.TenantId
+                && (User.IsInRole("Tenant Admin") || User.IsInRole("Moderator")))
+            {
+                if (feedback.Status == FeedbackStatus.Closed)
+                    return BadRequest("Feedback is already closed.");
+
+                feedback.Status = FeedbackStatus.Closed;
+                feedback.UpdatedAt = DateTime.UtcNow;
+                feedback.EditDate = DateTime.UtcNow;
+                await _dbContext.SaveChangesAsync();
+
+                return Ok(new { message = "Feedback closed successfully." });
+            }
+
+            // Customer path: only the feedback's owner can close it
             var customer = await _dbContext.Customers
                 .FirstOrDefaultAsync(c => c.applicationUserId == userId && c.TenantId == feedback.TenantId);
 
@@ -268,7 +256,7 @@ namespace LoyaltyWalletApp.WEBUI.Controllers
             }
 
             var result = await _feedbackService.CloseFeedbackAsync(customer.Id, id);
-            
+
             if (result.Success)
             {
                 return Ok(new { message = result.Message });
