@@ -50,6 +50,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public ICollection<Branch> Branches { get; set; } = new List<Branch>();
         public ICollection<WalletCredential> WalletCredentials { get; set; } = new List<WalletCredential>();
         public ICollection<RestorantWifiInformation>? RestorantWifiInformation { get; set; } = new List<RestorantWifiInformation>();
+        public ICollection<TenantLink>? Links { get; set; } = new List<TenantLink>();
         public ICollection<TenantIntegration> TenantIntegrations { get; set; } = new List<TenantIntegration>();
     }
 }

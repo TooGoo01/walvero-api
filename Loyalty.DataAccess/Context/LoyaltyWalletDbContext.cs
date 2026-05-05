@@ -62,6 +62,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<MenuItem> MenuItems { get; set; }
         public DbSet<MenuItemImage> MenuItemImages { get; set; }
         public DbSet<RestorantWifiInformation> RestorantWifiInformations { get; set; }
+        public DbSet<TenantLink> TenantLinks { get; set; }
         public DbSet<IntegrationType> IntegrationTypes { get; set; }
         public DbSet<TenantIntegration> TenantIntegrations { get; set; }
         public DbSet<PosProductEarnRule> PosProductEarnRules { get; set; }
@@ -847,6 +848,24 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(t => t.RestorantWifiInformation)
                     .HasForeignKey(rwi => rwi.TenantId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<TenantLink>(entity =>
+            {
+                entity.ToTable("TenantLinks");
+                entity.HasKey(tl => tl.Id);
+                entity.Property(tl => tl.AzTitle).IsRequired().HasMaxLength(200);
+                entity.Property(tl => tl.EnTitle).HasMaxLength(200);
+                entity.Property(tl => tl.RuTitle).HasMaxLength(200);
+                entity.Property(tl => tl.Url).IsRequired().HasMaxLength(1000);
+                entity.Property(tl => tl.IconKey).HasMaxLength(50);
+
+                entity.HasIndex(tl => new { tl.TenantId, tl.SortOrder });
+
+                entity.HasOne(tl => tl.Tenant)
+                    .WithMany(t => t.Links)
+                    .HasForeignKey(tl => tl.TenantId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             // ==== INTEGRATION TYPE (reference/seed) ====

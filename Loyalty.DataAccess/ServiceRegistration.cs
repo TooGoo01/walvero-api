@@ -45,6 +45,7 @@ namespace Loyalty.DataAccess
             services.AddScoped<IMenuItemRepository, MenuItemRepository>();
             services.AddScoped<IMenuItemImageRepository, MenuItemImageRepository>();
             services.AddScoped<IRestorantWifiInformationRepository, RestorantWifiInformationRepository>();
+            services.AddScoped<ITenantLinkRepository, TenantLinkRepository>();
             services.AddScoped<IIntegrationTypeRepository, IntegrationTypeRepository>();
             services.AddScoped<ITenantIntegrationRepository, TenantIntegrationRepository>();
             services.AddScoped<IPosProductEarnRuleRepository, PosProductEarnRuleRepository>();
