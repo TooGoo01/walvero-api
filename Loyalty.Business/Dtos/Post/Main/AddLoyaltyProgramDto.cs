@@ -24,5 +24,10 @@ namespace Loyalty.Business.Dtos.Post.Main
         public bool IsLotteryEnabled { get; set; } = false;
         public int LotteryPurchaseThreshold { get; set; } = 5;
         public decimal? LotteryAmountThreshold { get; set; }
+
+        // HappyHours base rates (window xaricində)
+        public int? BasePercentCash { get; set; }
+        public int? BasePercentCard { get; set; }
+        public List<HappyHoursWindowDto>? HappyHoursWindows { get; set; }
     }
 }

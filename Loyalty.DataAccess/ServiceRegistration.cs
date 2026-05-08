@@ -31,6 +31,7 @@ namespace Loyalty.DataAccess
             services.AddScoped<ITenantRepository, TenantRepository>();
             services.AddScoped<ITenantBrandingRepository, TenantBrandingRepository>();
             services.AddScoped<ILoyaltyProgramRepository, LoyaltyProgramRepository>();
+            services.AddScoped<IHappyHoursWindowRepository, HappyHoursWindowRepository>();
             services.AddScoped<ILoyaltyCardRepository, LoyaltyCardRepository>();
             services.AddScoped<ICustomerRepository, CustomerRepository>();
             services.AddScoped<ICardTemplateRepository, CardTemplateRepository>();

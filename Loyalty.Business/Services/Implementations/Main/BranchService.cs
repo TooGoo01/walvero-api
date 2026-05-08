@@ -117,6 +117,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.WhatsAppUrl != null) branch.WhatsAppUrl = dto.WhatsAppUrl;
             if (dto.TelegramUrl != null) branch.TelegramUrl = dto.TelegramUrl;
             if (dto.LinkedInUrl != null) branch.LinkedInUrl = dto.LinkedInUrl;
+            if (dto.TiktokUrl != null) branch.TiktokUrl = dto.TiktokUrl;
+            if (dto.BackgroundColor != null) branch.BackgroundColor = dto.BackgroundColor;
+            if (dto.ForegroundColor != null) branch.ForegroundColor = dto.ForegroundColor;
 
             if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
             {

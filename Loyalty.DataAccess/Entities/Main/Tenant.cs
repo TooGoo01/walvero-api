@@ -35,7 +35,8 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? TeleqramUrl { get; set; } = string.Empty;
         public string? LinkedInUrl { get; set; } = string.Empty;
         public string? WazeLocationUrl { get; set; } = string.Empty;
-        
+        public string? TiktokUrl { get; set; } = string.Empty;
+
         public string? MenuUrl { get; set; } = string.Empty;
 
         // Navigation Properties

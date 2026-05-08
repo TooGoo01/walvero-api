@@ -23,6 +23,20 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? PhotoUrl { get; set; }
         public string? LogoUrl { get; set; }
         public bool IsMainBranch { get; set; }
+
+        public string? Phone { get; set; }
+        public string? LocationUrl { get; set; }
+        public string? WazeLocationUrl { get; set; }
+        public string? MenuUrl { get; set; }
+        public string? InstagramUrl { get; set; }
+        public string? FacebookUrl { get; set; }
+        public string? WhatsAppUrl { get; set; }
+        public string? TelegramUrl { get; set; }
+        public string? LinkedInUrl { get; set; }
+        public string? TiktokUrl { get; set; }
+
+        public string? BackgroundColor { get; set; }
+        public string? ForegroundColor { get; set; }
     }
 
     public class TenantDiscoverCategoryDto

@@ -75,6 +75,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<LotteryDraw> LotteryDraws { get; set; }
         public DbSet<LotteryTicket> LotteryTickets { get; set; }
         public DbSet<LotteryPrize> LotteryPrizes { get; set; }
+        public DbSet<HappyHoursWindow> HappyHoursWindows { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -248,6 +249,22 @@ namespace Loyalty.DataAccess.Context
                     .HasForeignKey(r => r.LoyaltyProgramId)
                     .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasMany(lp => lp.HappyHoursWindows)
+                    .WithOne(w => w.LoyaltyProgram)
+                    .HasForeignKey(w => w.LoyaltyProgramId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+            });
+
+            modelBuilder.Entity<HappyHoursWindow>(entity =>
+            {
+                entity.ToTable("HappyHoursWindows");
+                entity.HasKey(w => w.Id);
+                entity.Property(w => w.StartTime).HasColumnType("time");
+                entity.Property(w => w.EndTime).HasColumnType("time");
+                entity.Property(w => w.Label).HasMaxLength(100);
+                entity.HasIndex(w => new { w.LoyaltyProgramId, w.DayOfWeek, w.SpecificDate })
+                    .HasDatabaseName("IX_HappyHoursWindows_Program_Day_Date");
             });
             modelBuilder.Entity<LoyaltyCard>(entity =>
             {

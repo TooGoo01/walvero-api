@@ -6,6 +6,7 @@ using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.Business.Services.Abstractions.Storage;
 using Loyalty.DataAccess.Abstractions;
 using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 using System;
@@ -23,14 +24,16 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly ILoyaltyProgramRepository _repo;
+        private readonly IHappyHoursWindowRepository _happyHoursWindowRepo;
         private readonly IStorage _storage;
 
-        public LoyaltyProgramService(IStorage storage, ILoyaltyProgramRepository repo, IMapper mapper, IUnitOfWork unitOfWork)
+        public LoyaltyProgramService(IStorage storage, ILoyaltyProgramRepository repo, IMapper mapper, IUnitOfWork unitOfWork, IHappyHoursWindowRepository happyHoursWindowRepo)
         {
             _storage = storage;
             _repo = repo;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
+            _happyHoursWindowRepo = happyHoursWindowRepo;
         }
 
         public Task<ServiceResult> Add(AddLoyaltyProgramDto Dto)
@@ -63,6 +66,28 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.PointsExpiryDays is < 0)
                 return new ServiceResult(false, "PointsExpiryDays cannot be negative.");
 
+            // --- HappyHours validation ---
+            if (dto.ProgramType == LoyaltyProgramType.HappyHoursBased)
+            {
+                if ((dto.BasePercentCash ?? 0) < 0 || (dto.BasePercentCard ?? 0) < 0)
+                    return new ServiceResult(false, "Base percent values cannot be negative.");
+                if (dto.BasePercentCash is null && dto.BasePercentCard is null)
+                    return new ServiceResult(false, "At least one base percent (cash or card) is required for HappyHours program.");
+
+                if (dto.HappyHoursWindows != null)
+                {
+                    foreach (var w in dto.HappyHoursWindows)
+                    {
+                        if (w.EndTime <= w.StartTime)
+                            return new ServiceResult(false, "HappyHours window EndTime must be greater than StartTime.");
+                        if (w.PercentCash < 0 || w.PercentCard < 0)
+                            return new ServiceResult(false, "HappyHours window percent values cannot be negative.");
+                        if (w.DayOfWeek is not null && (w.DayOfWeek < 0 || w.DayOfWeek > 6))
+                            return new ServiceResult(false, "HappyHours window DayOfWeek must be 0..6.");
+                    }
+                }
+            }
+
             // --- Code normalize & ensure unique per-tenant ---
             var code = NormalizeCode(dto.Code, dto.ProgramName);
             code = await EnsureUniqueCodeAsync(tenantId.Value, code, ct);
@@ -84,9 +109,31 @@ namespace Loyalty.Business.Services.Implementations.Main
                 existingProgram.IsLotteryEnabled = dto.IsLotteryEnabled;
                 existingProgram.LotteryPurchaseThreshold = dto.LotteryPurchaseThreshold;
                 existingProgram.LotteryAmountThreshold = dto.LotteryAmountThreshold;
+                existingProgram.BasePercentCash = dto.BasePercentCash;
+                existingProgram.BasePercentCard = dto.BasePercentCard;
 
                 // Update entity in the database
                 _unitOfWork.Repository<LoyaltyProgram>().Update(existingProgram);
+
+                // Sync HappyHours windows: replace strategy
+                await _happyHoursWindowRepo.DeleteByProgramAsync(existingProgram.Id, ct);
+                if (dto.HappyHoursWindows is { Count: > 0 })
+                {
+                    foreach (var w in dto.HappyHoursWindows)
+                    {
+                        await _unitOfWork.Repository<HappyHoursWindow>().AddAsync(new HappyHoursWindow
+                        {
+                            LoyaltyProgramId = existingProgram.Id,
+                            DayOfWeek = w.DayOfWeek,
+                            SpecificDate = w.SpecificDate,
+                            StartTime = w.StartTime,
+                            EndTime = w.EndTime,
+                            PercentCash = w.PercentCash,
+                            PercentCard = w.PercentCard,
+                            Label = w.Label?.Trim()
+                        });
+                    }
+                }
 
                 // Commit changes
                  _unitOfWork.Commit();
@@ -106,7 +153,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     existingProgram.PointsExpiryDays,
                     existingProgram.IsLotteryEnabled,
                     existingProgram.LotteryPurchaseThreshold,
-                    existingProgram.LotteryAmountThreshold
+                    existingProgram.LotteryAmountThreshold,
+                    existingProgram.BasePercentCash,
+                    existingProgram.BasePercentCard,
+                    HappyHoursWindows = dto.HappyHoursWindows ?? new List<HappyHoursWindowDto>()
                 };
 
                 return new ServiceResult(true, result);
@@ -128,13 +178,33 @@ namespace Loyalty.Business.Services.Implementations.Main
                     IsActive = dto.IsActive,
                     IsLotteryEnabled = dto.IsLotteryEnabled,
                     LotteryPurchaseThreshold = dto.LotteryPurchaseThreshold,
-                    LotteryAmountThreshold = dto.LotteryAmountThreshold
+                    LotteryAmountThreshold = dto.LotteryAmountThreshold,
+                    BasePercentCash = dto.BasePercentCash,
+                    BasePercentCard = dto.BasePercentCard
                 };
 
                 await _unitOfWork.Repository<LoyaltyProgram>().AddAsync(entity);
+                _unitOfWork.Commit();
 
-                // Commit changes
-                 _unitOfWork.Commit();
+                // Add HappyHours windows after we have the program Id
+                if (dto.HappyHoursWindows is { Count: > 0 })
+                {
+                    foreach (var w in dto.HappyHoursWindows)
+                    {
+                        await _unitOfWork.Repository<HappyHoursWindow>().AddAsync(new HappyHoursWindow
+                        {
+                            LoyaltyProgramId = entity.Id,
+                            DayOfWeek = w.DayOfWeek,
+                            SpecificDate = w.SpecificDate,
+                            StartTime = w.StartTime,
+                            EndTime = w.EndTime,
+                            PercentCash = w.PercentCash,
+                            PercentCard = w.PercentCard,
+                            Label = w.Label?.Trim()
+                        });
+                    }
+                    _unitOfWork.Commit();
+                }
 
                 // Prepare result response for newly added program
                 var result = new
@@ -151,7 +221,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     entity.PointsExpiryDays,
                     entity.IsLotteryEnabled,
                     entity.LotteryPurchaseThreshold,
-                    entity.LotteryAmountThreshold
+                    entity.LotteryAmountThreshold,
+                    entity.BasePercentCash,
+                    entity.BasePercentCard,
+                    HappyHoursWindows = dto.HappyHoursWindows ?? new List<HappyHoursWindowDto>()
                 };
 
                 return new ServiceResult(true, result);

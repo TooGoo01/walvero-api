@@ -30,5 +30,9 @@ namespace Loyalty.Business.Dtos.Get.Main.Branch
         public string? WhatsAppUrl { get; set; }
         public string? TelegramUrl { get; set; }
         public string? LinkedInUrl { get; set; }
+        public string? TiktokUrl { get; set; }
+
+        public string? BackgroundColor { get; set; }
+        public string? ForegroundColor { get; set; }
     }
 }

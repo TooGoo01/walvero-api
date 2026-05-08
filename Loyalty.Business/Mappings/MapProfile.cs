@@ -73,6 +73,8 @@ namespace Loyalty.Business.Mappings
             CreateMap<LoyaltyProgram, AddLoyaltyProgramDto>().ReverseMap();
             CreateMap<LoyaltyProgram, GetLoyaltyProgramDto>().ReverseMap();
 
+            CreateMap<HappyHoursWindow, HappyHoursWindowDto>().ReverseMap();
+
             CreateMap<CardTemplate, AddCardTemplateDto>().ReverseMap();
             CreateMap<CardTemplate, GetCardTemplateDto>().ReverseMap();
 

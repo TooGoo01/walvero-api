@@ -37,5 +37,9 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
         [MaxLength(500)] public string? WhatsAppUrl { get; set; }
         [MaxLength(500)] public string? TelegramUrl { get; set; }
         [MaxLength(500)] public string? LinkedInUrl { get; set; }
+        [MaxLength(500)] public string? TiktokUrl { get; set; }
+
+        [MaxLength(20)] public string? BackgroundColor { get; set; }
+        [MaxLength(20)] public string? ForegroundColor { get; set; }
     }
 }

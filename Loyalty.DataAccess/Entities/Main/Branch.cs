@@ -32,6 +32,11 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? WhatsAppUrl { get; set; }
         public string? TelegramUrl { get; set; }
         public string? LinkedInUrl { get; set; }
+        public string? TiktokUrl { get; set; }
+
+        // Branch-a aid brand renkleri. Boshdursa LoyaltyProgram CardTemplate-den fallback olunur.
+        public string? BackgroundColor { get; set; }
+        public string? ForegroundColor { get; set; }
 
         public ICollection<Room> Rooms { get; set; } = new List<Room>();
 

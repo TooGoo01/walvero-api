@@ -1,4 +1,5 @@
-﻿using Loyalty.DataAccess.Enums;
+﻿using Loyalty.Business.Dtos.Post.Main;
+using Loyalty.DataAccess.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,6 +25,11 @@ namespace Loyalty.Business.Dtos.Get.Main
         public bool IsLotteryEnabled { get; set; }
         public int LotteryPurchaseThreshold { get; set; }
         public decimal? LotteryAmountThreshold { get; set; }
+
+        // HappyHours base rates
+        public int? BasePercentCash { get; set; }
+        public int? BasePercentCard { get; set; }
+        public List<HappyHoursWindowDto> HappyHoursWindows { get; set; } = new();
 
         public GetCardTemplateDto? CardTemplate { get; set; }
     }

@@ -208,7 +208,19 @@ namespace Loyalty.Business.Services.Implementations.Main
                                 Longitude = b.Longitude,
                                 PhotoUrl = b.PhotoUrl,
                                 LogoUrl = b.LogoUrl,
-                                IsMainBranch = b.IsMainBranch
+                                IsMainBranch = b.IsMainBranch,
+                                Phone = b.Phone,
+                                LocationUrl = b.LocationUrl,
+                                WazeLocationUrl = b.WazeLocationUrl,
+                                MenuUrl = b.MenuUrl,
+                                InstagramUrl = b.InstagramUrl,
+                                FacebookUrl = b.FacebookUrl,
+                                WhatsAppUrl = b.WhatsAppUrl,
+                                TelegramUrl = b.TelegramUrl,
+                                LinkedInUrl = b.LinkedInUrl,
+                                TiktokUrl = b.TiktokUrl,
+                                BackgroundColor = b.BackgroundColor,
+                                ForegroundColor = b.ForegroundColor
                             })
                             .ToList()
                     })
