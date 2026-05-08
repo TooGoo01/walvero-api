@@ -39,6 +39,15 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? WhatsAppUrl { get; set; }
         public string? TelegramUrl { get; set; }
         public string? MenuUrl { get; set; }
+        public string? LinkedInUrl { get; set; }
+        public string? TiktokUrl { get; set; }
+        public string? TripAdvisorUrl { get; set; }
+        public string? WebsiteUrl { get; set; }
+        public string? YoutubeUrl { get; set; }
+        public string? TwitterUrl { get; set; }
+        public string? YelpUrl { get; set; }
+        public string? ThreadsUrl { get; set; }
+        public string? PinterestUrl { get; set; }
         public string BackgroundColor { get; set; } = "#FFFFFF";
         public string ForegroundColor { get; set; } = "#000000";
         public decimal? CashbackPercent { get; set; }

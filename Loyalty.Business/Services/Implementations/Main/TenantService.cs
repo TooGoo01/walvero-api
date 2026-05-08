@@ -219,6 +219,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                                 TelegramUrl = b.TelegramUrl,
                                 LinkedInUrl = b.LinkedInUrl,
                                 TiktokUrl = b.TiktokUrl,
+                                TripAdvisorUrl = b.TripAdvisorUrl,
+                                WebsiteUrl = b.WebsiteUrl,
+                                YoutubeUrl = b.YoutubeUrl,
+                                TwitterUrl = b.TwitterUrl,
+                                YelpUrl = b.YelpUrl,
+                                ThreadsUrl = b.ThreadsUrl,
+                                PinterestUrl = b.PinterestUrl,
                                 BackgroundColor = b.BackgroundColor,
                                 ForegroundColor = b.ForegroundColor
                             })
@@ -358,6 +365,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                     category.WazeLocationUrl = dto.WazeLocationUrl;
                 if (dto.MenuUrl != null)
                     category.MenuUrl = dto.MenuUrl;
+                if (dto.TiktokUrl != null) category.TiktokUrl = dto.TiktokUrl;
+                if (dto.TripAdvisorUrl != null) category.TripAdvisorUrl = dto.TripAdvisorUrl;
+                if (dto.WebsiteUrl != null) category.WebsiteUrl = dto.WebsiteUrl;
+                if (dto.YoutubeUrl != null) category.YoutubeUrl = dto.YoutubeUrl;
+                if (dto.TwitterUrl != null) category.TwitterUrl = dto.TwitterUrl;
+                if (dto.YelpUrl != null) category.YelpUrl = dto.YelpUrl;
+                if (dto.ThreadsUrl != null) category.ThreadsUrl = dto.ThreadsUrl;
+                if (dto.PinterestUrl != null) category.PinterestUrl = dto.PinterestUrl;
                 category.ShowOnHome = dto.ShowOnHome;
                 category.AcceptAnonymus = dto.AcceptAnonymous;
                 category.IsHidden = dto.IsHidden;

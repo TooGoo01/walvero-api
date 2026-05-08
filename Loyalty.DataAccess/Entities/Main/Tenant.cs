@@ -36,6 +36,13 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? LinkedInUrl { get; set; } = string.Empty;
         public string? WazeLocationUrl { get; set; } = string.Empty;
         public string? TiktokUrl { get; set; } = string.Empty;
+        public string? TripAdvisorUrl { get; set; } = string.Empty;
+        public string? WebsiteUrl { get; set; } = string.Empty;
+        public string? YoutubeUrl { get; set; } = string.Empty;
+        public string? TwitterUrl { get; set; } = string.Empty;
+        public string? YelpUrl { get; set; } = string.Empty;
+        public string? ThreadsUrl { get; set; } = string.Empty;
+        public string? PinterestUrl { get; set; } = string.Empty;
 
         public string? MenuUrl { get; set; } = string.Empty;
 

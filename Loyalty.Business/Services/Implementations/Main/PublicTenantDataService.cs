@@ -133,6 +133,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                 WhatsAppUrl = tenant.WhatsAppUrl,
                 TelegramUrl = tenant.TeleqramUrl,
                 LinkedInUrl = tenant.LinkedInUrl,
+                TiktokUrl = tenant.TiktokUrl,
+                TripAdvisorUrl = tenant.TripAdvisorUrl,
+                WebsiteUrl = tenant.WebsiteUrl,
+                YoutubeUrl = tenant.YoutubeUrl,
+                TwitterUrl = tenant.TwitterUrl,
+                YelpUrl = tenant.YelpUrl,
+                ThreadsUrl = tenant.ThreadsUrl,
+                PinterestUrl = tenant.PinterestUrl,
                 Branding = tenant.Branding != null
                     ? new TenantConfigBrandingDto
                     {

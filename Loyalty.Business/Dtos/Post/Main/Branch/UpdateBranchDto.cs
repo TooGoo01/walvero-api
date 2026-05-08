@@ -38,6 +38,13 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
         [MaxLength(500)] public string? TelegramUrl { get; set; }
         [MaxLength(500)] public string? LinkedInUrl { get; set; }
         [MaxLength(500)] public string? TiktokUrl { get; set; }
+        [MaxLength(500)] public string? TripAdvisorUrl { get; set; }
+        [MaxLength(500)] public string? WebsiteUrl { get; set; }
+        [MaxLength(500)] public string? YoutubeUrl { get; set; }
+        [MaxLength(500)] public string? TwitterUrl { get; set; }
+        [MaxLength(500)] public string? YelpUrl { get; set; }
+        [MaxLength(500)] public string? ThreadsUrl { get; set; }
+        [MaxLength(500)] public string? PinterestUrl { get; set; }
 
         [MaxLength(20)] public string? BackgroundColor { get; set; }
         [MaxLength(20)] public string? ForegroundColor { get; set; }
