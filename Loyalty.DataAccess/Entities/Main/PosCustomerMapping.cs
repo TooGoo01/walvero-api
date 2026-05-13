@@ -12,6 +12,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public int TenantIntegrationId { get; set; }
         public string ExternalCustomerId { get; set; } = string.Empty;
         public int CustomerId { get; set; }
+        public bool IsEnrolledInProgram { get; set; }
 
         public TenantIntegration TenantIntegration { get; set; } = null!;
         public Customer Customer { get; set; } = null!;

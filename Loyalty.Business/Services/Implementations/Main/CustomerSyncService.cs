@@ -126,7 +126,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return CustomerSyncResult.Fail();
 
             var r = addResp[0];
-            await CreateMappingAsync(integration.Id, r.Id.ToString(), customerId, ct);
+            await CreateMappingAsync(integration.Id, r.Id.ToString(), customerId, true, ct);
             return CustomerSyncResult.Ok(null, barcode);
         }
 
@@ -176,33 +176,57 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (existingMapping == null)
             {
-                if (Guid.TryParse(integration.ExternalProgramId, out var programId))
+                var enrolled = await TryEnrollInIikoProgramAsync(integration, accessToken, orgId, result.Id, customerId, ct);
+                await CreateMappingAsync(integration.Id, result.Id.ToString(), customerId, enrolled, ct);
+            }
+            else if (!existingMapping.IsEnrolledInProgram)
+            {
+                var enrolled = await TryEnrollInIikoProgramAsync(integration, accessToken, orgId, result.Id, customerId, ct);
+                if (enrolled)
                 {
-                    var added = await _iikoClient.AddCustomerToProgramAsync(accessToken, orgId, result.Id, programId, ct);
-                    _logger.LogInformation(
-                        "iiko customer_program/add result={Result} customerId={CustomerId} iikoCustomerId={IikoCustomerId} programId={ProgramId} orgId={OrgId}",
-                        added, customerId, result.Id, programId, orgId);
+                    existingMapping.IsEnrolledInProgram = true;
+                    _mappingRepo.Update(existingMapping);
+                    await _uow.CommitAsync(ct);
                 }
-                else if (!string.IsNullOrEmpty(integration.ExternalProgramId))
-                {
-                    _logger.LogWarning(
-                        "iiko ExternalProgramId is not a valid GUID; skipping customer_program/add. value={Value} customerId={CustomerId}",
-                        integration.ExternalProgramId, customerId);
-                }
-
-                await CreateMappingAsync(integration.Id, result.Id.ToString(), customerId, ct);
             }
 
             return CustomerSyncResult.Ok(null, barcode);
         }
 
-        private async Task CreateMappingAsync(int integrationId, string externalId, int customerId, CancellationToken ct)
+        /// <summary>
+        /// iiko proqramına əlavə et. ExternalProgramId yoxdursa true qayıdır (heç bir iş yoxdur).
+        /// Çağrı edilibsə HTTP nəticəsi qaytarılır. Bad GUID — false + warning.
+        /// </summary>
+        private async Task<bool> TryEnrollInIikoProgramAsync(
+            TenantIntegration integration, string accessToken, Guid orgId, Guid iikoCustomerId,
+            int customerId, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(integration.ExternalProgramId))
+                return true; // proqram konfiqurasiya edilməyib — enroll lazım deyil
+
+            if (!Guid.TryParse(integration.ExternalProgramId, out var programId))
+            {
+                _logger.LogWarning(
+                    "iiko ExternalProgramId is not a valid GUID; skipping customer_program/add. value={Value} customerId={CustomerId}",
+                    integration.ExternalProgramId, customerId);
+                return false;
+            }
+
+            var added = await _iikoClient.AddCustomerToProgramAsync(accessToken, orgId, iikoCustomerId, programId, ct);
+            _logger.LogInformation(
+                "iiko customer_program/add result={Result} customerId={CustomerId} iikoCustomerId={IikoCustomerId} programId={ProgramId} orgId={OrgId}",
+                added, customerId, iikoCustomerId, programId, orgId);
+            return added;
+        }
+
+        private async Task CreateMappingAsync(int integrationId, string externalId, int customerId, bool isEnrolledInProgram, CancellationToken ct)
         {
             var mapping = new PosCustomerMapping
             {
                 TenantIntegrationId = integrationId,
                 ExternalCustomerId = externalId,
                 CustomerId = customerId,
+                IsEnrolledInProgram = isEnrolledInProgram,
                 RegUserId = 1,
                 RegDate = DateTime.UtcNow,
                 IsActive = true

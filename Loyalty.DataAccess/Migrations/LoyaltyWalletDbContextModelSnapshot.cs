@@ -1616,6 +1616,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsEnrolledInProgram")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime>("RegDate")
                         .HasColumnType("datetime2");
 
