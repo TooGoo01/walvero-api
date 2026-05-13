@@ -4,6 +4,7 @@ using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 using Loyalty.Infrastructure.Utilities.Security.Encryption;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Loyalty.DataAccess.Context;
 
 namespace Loyalty.Business.Services.Implementations.Main
@@ -19,6 +20,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ISensitiveDataProtector _protector;
         private readonly IUnitOfWork _uow;
         private readonly LoyaltyWalletDbContext _db;
+        private readonly ILogger<CustomerSyncService> _logger;
 
         public CustomerSyncService(
             ITenantIntegrationRepository tenantIntegrationRepo,
@@ -29,7 +31,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             IIikoPosApiClient iikoClient,
             ISensitiveDataProtector protector,
             IUnitOfWork uow,
-            LoyaltyWalletDbContext db)
+            LoyaltyWalletDbContext db,
+            ILogger<CustomerSyncService> logger)
         {
             _tenantIntegrationRepo = tenantIntegrationRepo;
             _customerRepo = customerRepo;
@@ -40,6 +43,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _protector = protector;
             _uow = uow;
             _db = db;
+            _logger = logger;
         }
 
         public async Task<CustomerSyncResult> SyncCustomerToPosAsync(int tenantId, int customerId, CancellationToken ct = default)
@@ -172,10 +176,18 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (existingMapping == null)
             {
-                // İlk sync — proqrama əlavə et (varsa). Uğursuzluğu PostRawAsync özü loglayır, sync uğurlu sayılır.
                 if (Guid.TryParse(integration.ExternalProgramId, out var programId))
                 {
-                    await _iikoClient.AddCustomerToProgramAsync(accessToken, orgId, result.Id, programId, ct);
+                    var added = await _iikoClient.AddCustomerToProgramAsync(accessToken, orgId, result.Id, programId, ct);
+                    _logger.LogInformation(
+                        "iiko customer_program/add result={Result} customerId={CustomerId} iikoCustomerId={IikoCustomerId} programId={ProgramId} orgId={OrgId}",
+                        added, customerId, result.Id, programId, orgId);
+                }
+                else if (!string.IsNullOrEmpty(integration.ExternalProgramId))
+                {
+                    _logger.LogWarning(
+                        "iiko ExternalProgramId is not a valid GUID; skipping customer_program/add. value={Value} customerId={CustomerId}",
+                        integration.ExternalProgramId, customerId);
                 }
 
                 await CreateMappingAsync(integration.Id, result.Id.ToString(), customerId, ct);
