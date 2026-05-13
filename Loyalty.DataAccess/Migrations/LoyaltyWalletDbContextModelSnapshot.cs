@@ -152,6 +152,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("PinterestUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("RadiusMeters")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
@@ -170,12 +173,24 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int>("TenantId")
                         .HasColumnType("int");
 
+                    b.Property<string>("ThreadsUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("TiktokUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TripAdvisorUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TwitterUrl")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("WazeLocationUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("WebsiteUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("WhatsAppUrl")
                         .HasMaxLength(500)
@@ -184,6 +199,12 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("WorkingHoursJson")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("YelpUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("YoutubeUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
@@ -2297,6 +2318,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("MenuUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("PinterestUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("RegDate")
                         .HasColumnType("datetime2");
 
@@ -2320,13 +2344,31 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("TeleqramUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ThreadsUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("TiktokUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TripAdvisorUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TwitterUrl")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("WazeLocationUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("WebsiteUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("WhatsAppUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("YelpUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("YoutubeUrl")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int?>("categoryId")
@@ -2451,6 +2493,10 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<int?>("EditUserId")
                         .HasColumnType("int");
+
+                    b.Property<string>("ExternalProgramId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("ExternalVenueId")
                         .HasMaxLength(100)

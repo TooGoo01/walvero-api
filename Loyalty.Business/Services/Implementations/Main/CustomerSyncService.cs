@@ -171,7 +171,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             if (existingMapping == null)
+            {
+                // İlk sync — proqrama əlavə et (varsa). Uğursuzluğu PostRawAsync özü loglayır, sync uğurlu sayılır.
+                if (Guid.TryParse(integration.ExternalProgramId, out var programId))
+                {
+                    await _iikoClient.AddCustomerToProgramAsync(accessToken, orgId, result.Id, programId, ct);
+                }
+
                 await CreateMappingAsync(integration.Id, result.Id.ToString(), customerId, ct);
+            }
 
             return CustomerSyncResult.Ok(null, barcode);
         }

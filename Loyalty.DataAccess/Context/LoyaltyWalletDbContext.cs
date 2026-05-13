@@ -909,6 +909,7 @@ namespace Loyalty.DataAccess.Context
                 entity.HasKey(ti => ti.Id);
                 entity.Property(ti => ti.DisplayName).HasMaxLength(200);
                 entity.Property(ti => ti.ExternalVenueId).HasMaxLength(100);
+                entity.Property(ti => ti.ExternalProgramId).HasMaxLength(100);
                 entity.Property(ti => ti.ApiBaseUrl).HasMaxLength(500);
                 entity.Property(ti => ti.ApiTokenEncrypted).HasMaxLength(2000);
                 entity.Property(ti => ti.WalletTokenHash).HasMaxLength(128);
