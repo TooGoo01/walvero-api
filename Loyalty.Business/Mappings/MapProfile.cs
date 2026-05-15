@@ -110,6 +110,28 @@ namespace Loyalty.Business.Mappings
                     }
                 })
                 .ReverseMap();
+
+            // Backward-compat DTO for /api/Customer/List — points serialized as int
+            CreateMap<LoyaltyCard, GetLoyaltyCardListItemDto>()
+                .ForMember(d => d.CurrentPoints, opt => opt.MapFrom(s => (int)s.CurrentPoints))
+                .ForMember(d => d.LifetimePoints, opt => opt.MapFrom(s => (int)s.LifetimePoints))
+                .AfterMap((src, dest) =>
+                {
+                    if (src.LoyaltyProgram?.CardTemplate != null)
+                    {
+                        dest.Currency = src.LoyaltyProgram.CardTemplate.Currency;
+                    }
+                });
+
+            CreateMap<Customer, GetCustomerListItemDto>()
+                .AfterMap((src, dest) =>
+                {
+                    var firstCard = src.LoyaltyCards?.FirstOrDefault(c => c.IsActive);
+                    if (firstCard?.LoyaltyProgram?.CardTemplate != null)
+                    {
+                        dest.Currency = firstCard.LoyaltyProgram.CardTemplate.Currency;
+                    }
+                });
             CreateMap<Icon, IconDto>().ReverseMap();
 
             CreateMap<StoreFeedback, GetStoreFeedbackDto>().ReverseMap();
