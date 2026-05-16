@@ -67,15 +67,29 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 try
                 {
-                    // Skip if already mapped
                     var existing = await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, customer.Id, ct);
+
                     if (existing != null)
                     {
-                        _logger.LogDebug("POS sync skipped (already mapped): IntegrationId={IntegrationId}, CustomerId={CustomerId}", integration.Id, customer.Id);
+                        // Mapping var. Yalnız iiko-da enrollment flag false-dursa retry et.
+                        if (isIiko && !existing.IsEnrolledInProgram && !string.IsNullOrEmpty(integration.ExternalProgramId))
+                        {
+                            var retried = await RetryIikoProgramEnrollmentAsync(integration, existing, customer.Id, ct);
+                            if (retried)
+                            {
+                                existing.IsEnrolledInProgram = true;
+                                _mappingRepo.Update(existing);
+                                await _uow.CommitAsync(ct);
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogDebug("POS sync skipped (already mapped): IntegrationId={IntegrationId}, CustomerId={CustomerId}", integration.Id, customer.Id);
+                        }
                         continue;
                     }
 
-                    var externalId = await SyncToSinglePosAsync(integration, customer, ct);
+                    var (externalId, enrolledInProgram) = await SyncToSinglePosAsync(integration, customer, ct);
 
                     // POS external ID qaytarmasa, öz customer ID-ni istifadə et
                     externalId ??= customer.Id.ToString();
@@ -88,6 +102,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                             TenantIntegrationId = integration.Id,
                             ExternalCustomerId = externalId,
                             CustomerId = customer.Id,
+                            IsEnrolledInProgram = enrolledInProgram,
                             RegUserId = 1,
                             RegDate = DateTime.UtcNow,
                             IsActive = true
@@ -96,8 +111,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                         await _uow.CommitAsync(ct);
 
                         _logger.LogInformation(
-                            "POS sync OK: IntegrationId={IntegrationId}, CustomerId={CustomerId}, ExternalId={ExternalId}",
-                            integration.Id, customer.Id, externalId);
+                            "POS sync OK: IntegrationId={IntegrationId}, CustomerId={CustomerId}, ExternalId={ExternalId}, EnrolledInProgram={Enrolled}",
+                            integration.Id, customer.Id, externalId, enrolledInProgram);
                     }
                 }
                 catch (Exception ex)
@@ -109,7 +124,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
         }
 
-        private async Task<string?> SyncToSinglePosAsync(TenantIntegration integration, Customer customer, CancellationToken ct)
+        private async Task<(string? ExternalId, bool EnrolledInProgram)> SyncToSinglePosAsync(TenantIntegration integration, Customer customer, CancellationToken ct)
         {
             // iiko POS üçün ayrı işləmə — iiko Cloud API endpoint-lərinə çağırış
             if (integration.IntegrationType?.Source == "iiko_pos")
@@ -227,37 +242,37 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 _logger.LogWarning("POS sync HTTP error: Status={StatusCode}, Body={Body}, Url={Url}",
                     response.StatusCode, responseBody, url);
-                return null;
+                return (null, true);
             }
 
             // Try to extract external customer ID from response
-            return ExtractExternalId(responseBody);
+            return (ExtractExternalId(responseBody), true);
         }
 
-        private async Task<string?> SyncCustomerToIikoAsync(TenantIntegration integration, Customer customer, CancellationToken ct)
+        private async Task<(string? ExternalId, bool EnrolledInProgram)> SyncCustomerToIikoAsync(TenantIntegration integration, Customer customer, CancellationToken ct)
         {
             if (string.IsNullOrEmpty(integration.ApiTokenEncrypted) || string.IsNullOrEmpty(integration.ExternalVenueId))
             {
                 _logger.LogWarning("iiko sync: ApiToken or ExternalVenueId is missing. IntegrationId={Id}", integration.Id);
-                return null;
+                return (null, false);
             }
 
             var apiLogin = _protector.Decrypt(integration.ApiTokenEncrypted);
             if (string.IsNullOrEmpty(apiLogin))
-                return null;
+                return (null, false);
 
             // iiko access token (55 dəq cache)
             var accessToken = await _iikoClient.GetAccessTokenAsync(apiLogin, ct);
             if (string.IsNullOrEmpty(accessToken))
             {
                 _logger.LogWarning("iiko sync: access_token alınmadı. IntegrationId={Id}", integration.Id);
-                return null;
+                return (null, false);
             }
 
             if (!Guid.TryParse(integration.ExternalVenueId, out var orgId))
             {
                 _logger.LogWarning("iiko sync: ExternalVenueId GUID deyil: {VenueId}", integration.ExternalVenueId);
-                return null;
+                return (null, false);
             }
 
             // BarcodeValue-nu LoyaltyCard-dan al
@@ -297,8 +312,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (result == null)
             {
                 _logger.LogWarning("iiko sync: CreateOrUpdate failed. CustomerId={CustomerId}", customer.Id);
-                return null;
+                return (null, false);
             }
+
+            // customer_program/add — yalnız ExternalProgramId konfiqurasiya edilibsə chağrılır.
+            var enrolledInProgram = await TryEnrollIikoCustomerInProgramAsync(
+                integration, accessToken, orgId, result.Id, customer.Id, ct);
 
             // 2-ci kart: WalveroId (əgər varsa)
             if (walveroId.HasValue)
@@ -339,7 +358,52 @@ namespace Loyalty.Business.Services.Implementations.Main
                 "iiko sync OK: IntegrationId={Id}, CustomerId={CustomerId}, iikoId={IikoId}",
                 integration.Id, customer.Id, result.Id);
 
-            return result.Id.ToString();
+            return (result.Id.ToString(), enrolledInProgram);
+        }
+
+        /// <summary>
+        /// iiko customer_program/add chağırışı. ExternalProgramId yoxdursa true qayıdır (nothing to do).
+        /// Bad GUID — false + warning. HTTP success/fail nəticəsi log-da result={True|False} kimi yazılır.
+        /// </summary>
+        private async Task<bool> TryEnrollIikoCustomerInProgramAsync(
+            TenantIntegration integration, string accessToken, Guid orgId, Guid iikoCustomerId,
+            int customerId, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(integration.ExternalProgramId))
+                return true;
+
+            if (!Guid.TryParse(integration.ExternalProgramId, out var programId))
+            {
+                _logger.LogWarning(
+                    "iiko ExternalProgramId is not a valid GUID; skipping customer_program/add. value={Value} customerId={CustomerId}",
+                    integration.ExternalProgramId, customerId);
+                return false;
+            }
+
+            var added = await _iikoClient.AddCustomerToProgramAsync(accessToken, orgId, iikoCustomerId, programId, ct);
+            _logger.LogInformation(
+                "iiko customer_program/add result={Result} customerId={CustomerId} iikoCustomerId={IikoCustomerId} programId={ProgramId} orgId={OrgId}",
+                added, customerId, iikoCustomerId, programId, orgId);
+            return added;
+        }
+
+        /// <summary>
+        /// Mövcud mapping üçün proqrama enrollment-i təkrar et. Token + GUID-lər valid deyilsə false.
+        /// </summary>
+        private async Task<bool> RetryIikoProgramEnrollmentAsync(
+            TenantIntegration integration, PosCustomerMapping mapping, int customerId, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(integration.ApiTokenEncrypted)) return false;
+            var apiLogin = _protector.Decrypt(integration.ApiTokenEncrypted);
+            if (string.IsNullOrEmpty(apiLogin)) return false;
+
+            var accessToken = await _iikoClient.GetAccessTokenAsync(apiLogin, ct);
+            if (string.IsNullOrEmpty(accessToken)) return false;
+
+            if (!Guid.TryParse(integration.ExternalVenueId, out var orgId)) return false;
+            if (!Guid.TryParse(mapping.ExternalCustomerId, out var iikoCustomerId)) return false;
+
+            return await TryEnrollIikoCustomerInProgramAsync(integration, accessToken, orgId, iikoCustomerId, customerId, ct);
         }
 
         public async Task SyncBalanceToPosAsync(int tenantId, int customerId, decimal currentPoints, CancellationToken ct = default)
