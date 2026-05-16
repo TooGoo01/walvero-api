@@ -630,14 +630,28 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (templateType == CardTemplateType.ProgressBased)
             {
-                // ProgressBased: sum=1 → 1 step əlavə
+                // ProgressBased: CurrentSteps modulo totalSteps, CompletedCycles += quotient (CollectAsync pattern)
                 var intDelta = (int)delta;
-                card.CurrentSteps += intDelta;
-                card.CurrentSteps = Math.Max(0, card.CurrentSteps);
-                card.CompletedCycles = card.CurrentSteps / totalSteps;
-                card.CurrentPoints = card.CurrentSteps;
-                if (intDelta > 0)
+                if (intDelta >= 0)
+                {
+                    int newSteps = card.CurrentSteps + intDelta;
+                    int cyclesEarned = newSteps / totalSteps;
+                    if (cyclesEarned > 0)
+                        card.CompletedCycles += cyclesEarned;
+                    card.CurrentSteps = newSteps % totalSteps;
+                    card.CurrentPoints = card.CurrentSteps;
                     card.LifetimePoints += intDelta;
+                }
+                else
+                {
+                    // Negative delta (Redeem): step-ləri azalt, lazım gəlsə cycle-dan götür
+                    int decrement = -intDelta;
+                    int totalAvailable = card.CompletedCycles * totalSteps + card.CurrentSteps;
+                    int remaining = Math.Max(0, totalAvailable - decrement);
+                    card.CompletedCycles = remaining / totalSteps;
+                    card.CurrentSteps = remaining % totalSteps;
+                    card.CurrentPoints = card.CurrentSteps;
+                }
             }
             else
             {
