@@ -108,7 +108,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 programId
             };
 
-            return await PostRawAsync(accessToken, "/api/1/loyalty/iiko/customer_program/add", payload, ct);
+            return await PostRawAsync(accessToken, "/api/1/loyalty/iiko/customer/program/add", payload, ct);
         }
 
         public async Task<bool> TopUpWalletAsync(
