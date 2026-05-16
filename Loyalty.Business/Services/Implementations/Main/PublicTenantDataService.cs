@@ -95,12 +95,29 @@ namespace Loyalty.Business.Services.Implementations.Main
                     .ThenInclude(tl => tl!.City)
                 .Include(t => t.TenantLocation)
                     .ThenInclude(tl => tl!.TimeZone)
+                .Include(t => t.Links!.Where(l => l.IsActive))
                 .Where(t => t.Subdomain == slug && t.IsActive && !t.IsHidden)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(ct);
 
             if (tenant == null)
                 return ServiceResult<RestaurantDataDto>.Fail("Restoran tapılmadı");
+
+            var links = (tenant.Links ?? new List<DataAccess.Entities.Main.TenantLink>())
+                .OrderBy(l => l.SortOrder)
+                .ThenBy(l => l.Id)
+                .Select(l => new RestaurantLinkDto
+                {
+                    Id = l.Id,
+                    AzTitle = l.AzTitle,
+                    EnTitle = l.EnTitle,
+                    RuTitle = l.RuTitle,
+                    Url = l.Url,
+                    IconKey = l.IconKey,
+                    SortOrder = l.SortOrder,
+                    OpenInNewTab = l.OpenInNewTab
+                })
+                .ToList();
 
             var dto = new RestaurantDataDto
             {
@@ -116,6 +133,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                 WhatsAppUrl = tenant.WhatsAppUrl,
                 TelegramUrl = tenant.TeleqramUrl,
                 LinkedInUrl = tenant.LinkedInUrl,
+                TiktokUrl = tenant.TiktokUrl,
+                TripAdvisorUrl = tenant.TripAdvisorUrl,
+                WebsiteUrl = tenant.WebsiteUrl,
+                YoutubeUrl = tenant.YoutubeUrl,
+                TwitterUrl = tenant.TwitterUrl,
+                YelpUrl = tenant.YelpUrl,
+                ThreadsUrl = tenant.ThreadsUrl,
+                PinterestUrl = tenant.PinterestUrl,
                 Branding = tenant.Branding != null
                     ? new TenantConfigBrandingDto
                     {
@@ -137,7 +162,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                         CityName = tenant.TenantLocation.City?.AzName,
                         TimeZoneName = tenant.TenantLocation.TimeZone?.Name
                     }
-                    : null
+                    : null,
+                Links = links
             };
 
             return ServiceResult<RestaurantDataDto>.Ok(dto);

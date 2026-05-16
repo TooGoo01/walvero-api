@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 2400" font-family="Segoe UI, Calibri, Arial, sans-serif">
+<rect width="1800" height="2400" fill="#FFFFFF"/>
+<text x="900.0" y="48" font-size="34" font-weight="700" fill="#0F1A3C" text-anchor="middle">End-to-End Business Flows</text>
+<rect x="160.0" y="70" width="360" height="90" rx="8" fill="#4F7CAC"/>
+<text x="340.0" y="108" font-size="22" font-weight="700" fill="#FFFFFF" text-anchor="middle">Customer</text>
+<text x="340.0" y="138" font-size="14" fill="#FFFFFF" opacity="0.85" text-anchor="middle">Mobile / web app</text>
+<rect x="720.0" y="70" width="360" height="90" rx="8" fill="#0F1A3C"/>
+<text x="900.0" y="108" font-size="22" font-weight="700" fill="#FFFFFF" text-anchor="middle">Walvero</text>
+<text x="900.0" y="138" font-size="14" fill="#FFFFFF" opacity="0.85" text-anchor="middle">Our platform</text>
+<rect x="1280.0" y="70" width="360" height="90" rx="8" fill="#F2C94C"/>
+<text x="1460.0" y="108" font-size="22" font-weight="700" fill="#0F1A3C" text-anchor="middle">1C / italdizan</text>
+<text x="1460.0" y="138" font-size="14" fill="#0F1A3C" opacity="0.85" text-anchor="middle">Client's POS / 1C</text>
+<rect x="40" y="200" width="1720" height="60" rx="6" fill="#F8F9FB" stroke="#4F7CAC" stroke-width="2"/>
+<rect x="40" y="200" width="6" height="60" fill="#4F7CAC"/>
+<text x="80" y="227" font-size="26" font-weight="800" fill="#4F7CAC">01</text>
+<text x="135" y="227" font-size="22" font-weight="700" fill="#0F1A3C">Customer Registration</text>
+<line x1="340.0" y1="280" x2="340.0" y2="870" stroke="#E4E9F2" stroke-width="2" stroke-dasharray="6,4"/>
+<line x1="900.0" y1="280" x2="900.0" y2="870" stroke="#E4E9F2" stroke-width="2" stroke-dasharray="6,4"/>
+<line x1="1460.0" y1="280" x2="1460.0" y2="870" stroke="#E4E9F2" stroke-width="2" stroke-dasharray="6,4"/>
+<rect x="358.0" y="306" width="100" height="34" rx="6" fill="#0F1A3C" stroke="#4F7CAC" stroke-width="2"/>
+<text x="408.0" y="328" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="600">internal</text>
+<circle cx="340.0" cy="323" r="10" fill="#4F7CAC" stroke="#0F1A3C" stroke-width="2"/>
+<text x="340.0" y="327" font-size="11" font-weight="700" fill="#0F1A3C" text-anchor="middle">1</text>
+<text x="478.0" y="320" font-size="13" fill="#1A2440">Fills the registration form</text>
+<text x="478.0" y="336" font-size="13" fill="#1A2440">(name, phone, etc.)</text>
+<line x1="340.0" y1="393" x2="900.0" y2="393" stroke="#4F7CAC" stroke-width="3"/>
+<polygon points="900.0,393 888.0,386 888.0,400" fill="#4F7CAC"/>
+<circle cx="340.0" cy="393" r="11" fill="#0F1A3C" stroke="#4F7CAC" stroke-width="2"/>
+<text x="340.0" y="397" font-size="11" font-weight="700" fill="#4F7CAC" text-anchor="middle">2</text>
+<text x="620.0" y="375" font-size="13" fill="#1A2440" text-anchor="middle">Submit form</text>
+<line x1="900.0" y1="463" x2="340.0" y2="463" stroke="#4F7CAC" stroke-width="3"/>
+<polygon points="340.0,463 352.0,456 352.0,470" fill="#4F7CAC"/>
+<circle cx="900.0" cy="463" r="11" fill="#0F1A3C" stroke="#4F7CAC" stroke-width="2"/>
+<text x="900.0" y="467" font-size="11" font-weight="700" fill="#4F7CAC" text-anchor="middle">3</text>
+<text x="620.0" y="445" font-size="13" fill="#1A2440" text-anchor="middle">Send OTP to phone</text>
+<line x1="340.0" y1="533" x2="900.0" y2="533" stroke="#4F7CAC" stroke-width="3"/>
+<polygon points="900.0,533 888.0,526 888.0,540" fill="#4F7CAC"/>
+<circle cx="340.0" cy="533" r="11" fill="#0F1A3C" stroke="#4F7CAC" stroke-width="2"/>
+<text x="340.0" y="537" font-size="11" font-weight="700" fill="#4F7CAC" text-anchor="middle">4</text>
+<text x="620.0" y="515" font-size="13" fill="#1A2440" text-anchor="middle">Verify OTP</text>
+<rect x="918.0" y="586" width="100" height="34" rx="6" fill="#0F1A3C" stroke="#4F7CAC" stroke-width="2"/>
+<text x="968.0" y="608" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="600">internal</text>
+<circle cx="900.0" cy="603" r="10" fill="#4F7CAC" stroke="#0F1A3C" stroke-width="2"/>
+<text x="900.0" y="607" font-size="11" font-weight="700" fill="#0F1A3C" text-anchor="middle">5</text>
+<text x="1038.0" y="600" font-size="13" fill="#1A2440">OTP valid → create customer</text>
+<text x="1038.0" y="616" font-size="13" fill="#1A2440">in Walvero</text>
+<line x1="900.0" y1="673" x2="1460.0" y2="673" stroke="#4F7CAC" stroke-width="3"/>
+<polygon points="1460.0,673 1448.0,666 1448.0,680" fill="#4F7CAC"/>
+<circle cx="900.0" cy="673" r="11" fill="#0F1A3C" stroke="#4F7CAC" stroke-width="2"/>
+<text x="900.0" y="677" font-size="11" font-weight="700" fill="#4F7CAC" text-anchor="middle">6</text>
+<text x="1180.0" y="655" font-size="13" fill="#1A2440" text-anchor="middle">Check by phone — exists?</text>
+<line x1="1460.0" y1="743" x2="900.0" y2="743" stroke="#4F7CAC" stroke-width="3"/>
+<polygon points="900.0,743 912.0,736 912.0,750" fill="#4F7CAC"/>
+<circle cx="1460.0" cy="743" r="11" fill="#0F1A3C" stroke="#4F7CAC" stroke-width="2"/>
+<text x="1460.0" y="747" font-size="11" font-weight="700" fill="#4F7CAC" text-anchor="middle">7</text>
+<text x="1180.0" y="693" font-size="13" fill="#1A2440" text-anchor="middle">If found → return ID + balance.</text>
+<text x="1180.0" y="709" font-size="13" fill="#1A2440" text-anchor="middle">If not → 'add customer' endpoint</text>
+<text x="1180.0" y="725" font-size="13" fill="#1A2440" text-anchor="middle">called and customer created.</text>
+<line x1="900.0" y1="813" x2="340.0" y2="813" stroke="#4F7CAC" stroke-width="3"/>
+<polygon points="340.0,813 352.0,806 352.0,820" fill="#4F7CAC"/>
+<circle cx="900.0" cy="813" r="11" fill="#0F1A3C" stroke="#4F7CAC" stroke-width="2"/>
+<text x="900.0" y="817" font-size="11" font-weight="700" fill="#4F7CAC" text-anchor="middle">8</text>
+<text x="620.0" y="795" font-size="13" fill="#1A2440" text-anchor="middle">Push Wallet card (Apple / Google)</text>
+<rect x="40" y="900" width="1720" height="60" rx="6" fill="#F8F9FB" stroke="#F2C94C" stroke-width="2"/>
+<rect x="40" y="900" width="6" height="60" fill="#F2C94C"/>
+<text x="80" y="927" font-size="26" font-weight="800" fill="#F2C94C">02</text>
+<text x="135" y="927" font-size="22" font-weight="700" fill="#0F1A3C">Earning a Bonus</text>
+<line x1="340.0" y1="980" x2="340.0" y2="1360" stroke="#E4E9F2" stroke-width="2" stroke-dasharray="6,4"/>
+<line x1="900.0" y1="980" x2="900.0" y2="1360" stroke="#E4E9F2" stroke-width="2" stroke-dasharray="6,4"/>
+<line x1="1460.0" y1="980" x2="1460.0" y2="1360" stroke="#E4E9F2" stroke-width="2" stroke-dasharray="6,4"/>
+<rect x="1478.0" y="1006" width="100" height="34" rx="6" fill="#0F1A3C" stroke="#F2C94C" stroke-width="2"/>
+<text x="1528.0" y="1028" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="600">internal</text>
+<circle cx="1460.0" cy="1023" r="10" fill="#F2C94C" stroke="#0F1A3C" stroke-width="2"/>
+<text x="1460.0" y="1027" font-size="11" font-weight="700" fill="#0F1A3C" text-anchor="middle">1</text>
+<text x="1598.0" y="1020" font-size="13" fill="#1A2440">Customer makes a purchase</text>
+<text x="1598.0" y="1036" font-size="13" fill="#1A2440">at an italdizan store</text>
+<line x1="1460.0" y1="1093" x2="900.0" y2="1093" stroke="#F2C94C" stroke-width="3"/>
+<polygon points="900.0,1093 912.0,1086 912.0,1100" fill="#F2C94C"/>
+<circle cx="1460.0" cy="1093" r="11" fill="#0F1A3C" stroke="#F2C94C" stroke-width="2"/>
+<text x="1460.0" y="1097" font-size="11" font-weight="700" fill="#F2C94C" text-anchor="middle">2</text>
+<text x="1180.0" y="1059" font-size="13" fill="#1A2440" text-anchor="middle">Send to Walvero: customer ID +</text>
+<text x="1180.0" y="1075" font-size="13" fill="#1A2440" text-anchor="middle">purchase amount (or bonus amount)</text>
+<rect x="918.0" y="1146" width="100" height="34" rx="6" fill="#0F1A3C" stroke="#F2C94C" stroke-width="2"/>
+<text x="968.0" y="1168" font-size="13" fill="#FFFFFF" text-anchor="middle" font-weight="600">internal</text>
+<circle cx="900.0" cy="1163" r="10" fill="#F2C94C" stroke="#0F1A3C" stroke-width="2"/>
+<text x="900.0" y="1167" font-size="11" font-weight="700" fill="#0F1A3C" text-anchor="middle">3</text>
+<text x="1038.0" y="1160" font-size="13" fill="#1A2440">Apply rule → update balance</text>
+<text x="1038.0" y="1176" font-size="13" fill="#1A2440">in the database</text>
+<line x1="900.0" y1="1233" x2="340.0" y2="1233" stroke="#F2C94C" stroke-width="3"/>
+<polygon points="340.0,1233 352.0,1226 352.0,1240" fill="#F2C94C"/>
+<circle cx="900.0" cy="1233" r="11" fill="#0F1A3C" stroke="#F2C94C" stroke-width="2"/>
+<text x="900.0" y="1237" font-size="11" font-weight="700" fill="#F2C94C" text-anchor="middle">4</text>
+<text x="620.0" y="1199" font-size="13" fill="#1A2440" text-anchor="middle">Wallet card updated</text>
+<text x="620.0" y="1215" font-size="13" fill="#1A2440" text-anchor="middle">(Apple + Google in real-time)</text>
+<line x1="900.0" y1="1303" x2="340.0" y2="1303" stroke="#F2C94C" stroke-width="3"/>
+<polygon points="340.0,1303 352.0,1296 352.0,1310" fill="#F2C94C"/>
+<circle cx="900.0" cy="1303" r="11" fill="#0F1A3C" stroke="#F2C94C" stroke-width="2"/>
+<text x="900.0" y="1307" font-size="11" font-weight="700" fill="#F2C94C" text-anchor="middle">5</text>
+<text x="620.0" y="1269" font-size="13" fill="#1A2440" text-anchor="middle">Push notification: 'Bonus earned —</text>
+<text x="620.0" y="1285" font-size="13" fill="#1A2440" text-anchor="middle">new balance is X'</text>
+<rect x="40" y="1390" width="1720" height="60" rx="6" fill="#F8F9FB" stroke="#22A06B" stroke-width="2"/>
+<rect x="40" y="1390" width="6" height="60" fill="#22A06B"/>
+<text x="80" y="1417" font-size="26" font-weight="800" fill="#22A06B">03</text>
+<text x="135" y="1417" font-size="22" font-weight="700" fill="#0F1A3C">Spending a Bonus</text>
+<line x1="340.0" y1="1470" x2="340.0" y2="1990" stroke="#E4E9F2" stroke-width="2" stroke-dasharray="6,4"/>
+<line x1="900.0" y1="1470" x2="900.0" y2="1990" stroke="#E4E9F2" stroke-width="2" stroke-dasharray="6,4"/>
+<line x1="1460.0" y1="1470" x2="1460.0" y2="1990" stroke="#E4E9F2" stroke-width="2" stroke-dasharray="6,4"/>
+<line x1="340.0" y1="1513" x2="1460.0" y2="1513" stroke="#22A06B" stroke-width="3"/>
+<polygon points="1460.0,1513 1448.0,1506 1448.0,1520" fill="#22A06B"/>
+<circle cx="340.0" cy="1513" r="11" fill="#0F1A3C" stroke="#22A06B" stroke-width="2"/>
+<text x="340.0" y="1517" font-size="11" font-weight="700" fill="#22A06B" text-anchor="middle">1</text>
+<text x="900.0" y="1479" font-size="13" fill="#1A2440" text-anchor="middle">Customer asks to spend X AZN</text>
+<text x="900.0" y="1495" font-size="13" fill="#1A2440" text-anchor="middle">at the cashier</text>
+<line x1="1460.0" y1="1583" x2="900.0" y2="1583" stroke="#22A06B" stroke-width="3"/>
+<polygon points="900.0,1583 912.0,1576 912.0,1590" fill="#22A06B"/>
+<circle cx="1460.0" cy="1583" r="11" fill="#0F1A3C" stroke="#22A06B" stroke-width="2"/>
+<text x="1460.0" y="1587" font-size="11" font-weight="700" fill="#22A06B" text-anchor="middle">2</text>
+<text x="1180.0" y="1565" font-size="13" fill="#1A2440" text-anchor="middle">Request OTP for customer</text>
+<line x1="900.0" y1="1653" x2="340.0" y2="1653" stroke="#22A06B" stroke-width="3"/>
+<polygon points="340.0,1653 352.0,1646 352.0,1660" fill="#22A06B"/>
+<circle cx="900.0" cy="1653" r="11" fill="#0F1A3C" stroke="#22A06B" stroke-width="2"/>
+<text x="900.0" y="1657" font-size="11" font-weight="700" fill="#22A06B" text-anchor="middle">3</text>
+<text x="620.0" y="1635" font-size="13" fill="#1A2440" text-anchor="middle">SMS with OTP code</text>
+<line x1="340.0" y1="1723" x2="1460.0" y2="1723" stroke="#22A06B" stroke-width="3"/>
+<polygon points="1460.0,1723 1448.0,1716 1448.0,1730" fill="#22A06B"/>
+<circle cx="340.0" cy="1723" r="11" fill="#0F1A3C" stroke="#22A06B" stroke-width="2"/>
+<text x="340.0" y="1727" font-size="11" font-weight="700" fill="#22A06B" text-anchor="middle">4</text>
+<text x="900.0" y="1689" font-size="13" fill="#1A2440" text-anchor="middle">Customer dictates OTP →</text>
+<text x="900.0" y="1705" font-size="13" fill="#1A2440" text-anchor="middle">cashier enters into 1C</text>
+<line x1="1460.0" y1="1793" x2="900.0" y2="1793" stroke="#22A06B" stroke-width="3"/>
+<polygon points="900.0,1793 912.0,1786 912.0,1800" fill="#22A06B"/>
+<circle cx="1460.0" cy="1793" r="11" fill="#0F1A3C" stroke="#22A06B" stroke-width="2"/>
+<text x="1460.0" y="1797" font-size="11" font-weight="700" fill="#22A06B" text-anchor="middle">5</text>
+<text x="1180.0" y="1759" font-size="13" fill="#1A2440" text-anchor="middle">Call /api/wallet/set_verify</text>
+<text x="1180.0" y="1775" font-size="13" fill="#1A2440" text-anchor="middle">with OTP + amount</text>
+<line x1="900.0" y1="1863" x2="1460.0" y2="1863" stroke="#22A06B" stroke-width="3"/>
+<polygon points="1460.0,1863 1448.0,1856 1448.0,1870" fill="#22A06B"/>
+<circle cx="900.0" cy="1863" r="11" fill="#0F1A3C" stroke="#22A06B" stroke-width="2"/>
+<text x="900.0" y="1867" font-size="11" font-weight="700" fill="#22A06B" text-anchor="middle">6</text>
+<text x="1180.0" y="1813" font-size="13" fill="#1A2440" text-anchor="middle">If OTP valid → deduct balance,</text>
+<text x="1180.0" y="1829" font-size="13" fill="#1A2440" text-anchor="middle">return success status</text>
+<text x="1180.0" y="1845" font-size="13" fill="#1A2440" text-anchor="middle">(or return error)</text>
+<line x1="900.0" y1="1933" x2="340.0" y2="1933" stroke="#22A06B" stroke-width="3"/>
+<polygon points="340.0,1933 352.0,1926 352.0,1940" fill="#22A06B"/>
+<circle cx="900.0" cy="1933" r="11" fill="#0F1A3C" stroke="#22A06B" stroke-width="2"/>
+<text x="900.0" y="1937" font-size="11" font-weight="700" fill="#22A06B" text-anchor="middle">7</text>
+<text x="620.0" y="1899" font-size="13" fill="#1A2440" text-anchor="middle">On success → push notification</text>
+<text x="620.0" y="1915" font-size="13" fill="#1A2440" text-anchor="middle">to the customer</text>
+<text x="900.0" y="2375" font-size="13" fill="#5A6478" text-anchor="middle" font-style="italic">Walvero Loyallıq → italdizan  •  info@walvero.com</text>
+</svg>

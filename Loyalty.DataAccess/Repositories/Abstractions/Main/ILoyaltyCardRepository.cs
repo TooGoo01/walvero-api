@@ -68,5 +68,13 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         /// Check if a card belongs to a specific application user (for authorization).
         /// </summary>
         Task<bool> CardBelongsToUserAsync(int cardId, int applicationUserId, CancellationToken ct = default);
+
+        /// <summary>
+        /// Find the user's active card for a given tenant — used by the public
+        /// wallet-info endpoint to upgrade response from TenantOnly → CardDetails
+        /// when JWT is present and user has a card for that tenant.
+        /// Eager-loads same relations as GetCardWithOwnerCheckAsync for full detail render.
+        /// </summary>
+        Task<LoyaltyCard?> GetActiveCardForTenantAndUserAsync(int tenantId, int applicationUserId, CancellationToken ct = default);
     }
 }

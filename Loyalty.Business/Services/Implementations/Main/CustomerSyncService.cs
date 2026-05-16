@@ -4,6 +4,7 @@ using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 using Loyalty.Infrastructure.Utilities.Security.Encryption;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Loyalty.DataAccess.Context;
 
 namespace Loyalty.Business.Services.Implementations.Main
@@ -19,6 +20,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ISensitiveDataProtector _protector;
         private readonly IUnitOfWork _uow;
         private readonly LoyaltyWalletDbContext _db;
+        private readonly ILogger<CustomerSyncService> _logger;
 
         public CustomerSyncService(
             ITenantIntegrationRepository tenantIntegrationRepo,
@@ -29,7 +31,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             IIikoPosApiClient iikoClient,
             ISensitiveDataProtector protector,
             IUnitOfWork uow,
-            LoyaltyWalletDbContext db)
+            LoyaltyWalletDbContext db,
+            ILogger<CustomerSyncService> logger)
         {
             _tenantIntegrationRepo = tenantIntegrationRepo;
             _customerRepo = customerRepo;
@@ -40,6 +43,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _protector = protector;
             _uow = uow;
             _db = db;
+            _logger = logger;
         }
 
         public async Task<CustomerSyncResult> SyncCustomerToPosAsync(int tenantId, int customerId, CancellationToken ct = default)
@@ -122,7 +126,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return CustomerSyncResult.Fail();
 
             var r = addResp[0];
-            await CreateMappingAsync(integration.Id, r.Id.ToString(), customerId, ct);
+            await CreateMappingAsync(integration.Id, r.Id.ToString(), customerId, true, ct);
             return CustomerSyncResult.Ok(null, barcode);
         }
 
@@ -171,18 +175,58 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             if (existingMapping == null)
-                await CreateMappingAsync(integration.Id, result.Id.ToString(), customerId, ct);
+            {
+                var enrolled = await TryEnrollInIikoProgramAsync(integration, accessToken, orgId, result.Id, customerId, ct);
+                await CreateMappingAsync(integration.Id, result.Id.ToString(), customerId, enrolled, ct);
+            }
+            else if (!existingMapping.IsEnrolledInProgram)
+            {
+                var enrolled = await TryEnrollInIikoProgramAsync(integration, accessToken, orgId, result.Id, customerId, ct);
+                if (enrolled)
+                {
+                    existingMapping.IsEnrolledInProgram = true;
+                    _mappingRepo.Update(existingMapping);
+                    await _uow.CommitAsync(ct);
+                }
+            }
 
             return CustomerSyncResult.Ok(null, barcode);
         }
 
-        private async Task CreateMappingAsync(int integrationId, string externalId, int customerId, CancellationToken ct)
+        /// <summary>
+        /// iiko proqramına əlavə et. ExternalProgramId yoxdursa true qayıdır (heç bir iş yoxdur).
+        /// Çağrı edilibsə HTTP nəticəsi qaytarılır. Bad GUID — false + warning.
+        /// </summary>
+        private async Task<bool> TryEnrollInIikoProgramAsync(
+            TenantIntegration integration, string accessToken, Guid orgId, Guid iikoCustomerId,
+            int customerId, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(integration.ExternalProgramId))
+                return true; // proqram konfiqurasiya edilməyib — enroll lazım deyil
+
+            if (!Guid.TryParse(integration.ExternalProgramId, out var programId))
+            {
+                _logger.LogWarning(
+                    "iiko ExternalProgramId is not a valid GUID; skipping customer_program/add. value={Value} customerId={CustomerId}",
+                    integration.ExternalProgramId, customerId);
+                return false;
+            }
+
+            var added = await _iikoClient.AddCustomerToProgramAsync(accessToken, orgId, iikoCustomerId, programId, ct);
+            _logger.LogInformation(
+                "iiko customer_program/add result={Result} customerId={CustomerId} iikoCustomerId={IikoCustomerId} programId={ProgramId} orgId={OrgId}",
+                added, customerId, iikoCustomerId, programId, orgId);
+            return added;
+        }
+
+        private async Task CreateMappingAsync(int integrationId, string externalId, int customerId, bool isEnrolledInProgram, CancellationToken ct)
         {
             var mapping = new PosCustomerMapping
             {
                 TenantIntegrationId = integrationId,
                 ExternalCustomerId = externalId,
                 CustomerId = customerId,
+                IsEnrolledInProgram = isEnrolledInProgram,
                 RegUserId = 1,
                 RegDate = DateTime.UtcNow,
                 IsActive = true

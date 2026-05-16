@@ -96,7 +96,7 @@ UserManager<ApplicationUser> userManager,
             var partners = await _customerRepo.GetByTenant(tenantId,1);
             if (partners != null)
             {
-                var response = _mapper.Map<ICollection<GetCustomerDto>>(partners);
+                var response = _mapper.Map<ICollection<GetCustomerListItemDto>>(partners);
                 return new ServiceResult(true, response);
             }
 

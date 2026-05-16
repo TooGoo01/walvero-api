@@ -28,18 +28,22 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? BronzeIconUrl { get; set; }
         public int? BronzeThreshold { get; set; }
         public int? BronzePercent { get; set; }
+        public int? BronzePercentCash { get; set; }
 
         public string? SilverIconUrl { get; set; }
         public int? SilverThreshold { get; set; }
         public int? SilverPercent { get; set; }
+        public int? SilverPercentCash { get; set; }
 
         public string? GoldIconUrl { get; set; }
         public int? GoldThreshold { get; set; }
         public int? GoldPercent { get; set; }
+        public int? GoldPercentCash { get; set; }
 
         public string? PlatinumIconUrl { get; set; }
         public int? PlatinumThreshold { get; set; }
         public int? PlatinumPercent { get; set; }
+        public int? PlatinumPercentCash { get; set; }
 
         // Fayl yükləmələri (opsional)
         public IFormFile? BronzeIconFile { get; set; }

@@ -85,6 +85,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("BackgroundColor")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime?>("EditDate")
                         .HasColumnType("datetime2");
 
@@ -98,6 +101,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("FacebookUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ForegroundColor")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("InstagramUrl")
                         .HasMaxLength(500)
@@ -146,6 +152,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("PinterestUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("RadiusMeters")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
@@ -164,9 +173,24 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int>("TenantId")
                         .HasColumnType("int");
 
+                    b.Property<string>("ThreadsUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TiktokUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TripAdvisorUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TwitterUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("WazeLocationUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("WebsiteUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("WhatsAppUrl")
                         .HasMaxLength(500)
@@ -175,6 +199,12 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("WorkingHoursJson")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("YelpUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("YoutubeUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
@@ -690,6 +720,62 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("DeviceTokens");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.HappyHoursWindow", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<byte?>("DayOfWeek")
+                        .HasColumnType("tinyint");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<TimeOnly>("EndTime")
+                        .HasColumnType("time");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("LoyaltyProgramId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PercentCard")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PercentCash")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly?>("SpecificDate")
+                        .HasColumnType("date");
+
+                    b.Property<TimeOnly>("StartTime")
+                        .HasColumnType("time");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoyaltyProgramId", "DayOfWeek", "SpecificDate")
+                        .HasDatabaseName("IX_HappyHoursWindows_Program_Day_Date");
+
+                    b.ToTable("HappyHoursWindows", (string)null);
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Icon", b =>
                 {
                     b.Property<int>("Id")
@@ -1060,6 +1146,12 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("BasePercentCard")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("BasePercentCash")
+                        .HasColumnType("int");
 
                     b.Property<int?>("CardTemplateId")
                         .HasColumnType("int");
@@ -1522,6 +1614,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("nvarchar(100)");
 
                     b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsEnrolledInProgram")
                         .HasColumnType("bit");
 
                     b.Property<DateTime>("RegDate")
@@ -2226,6 +2321,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("MenuUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("PinterestUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("RegDate")
                         .HasColumnType("datetime2");
 
@@ -2249,10 +2347,31 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("TeleqramUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ThreadsUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TiktokUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TripAdvisorUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TwitterUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("WazeLocationUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("WebsiteUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("WhatsAppUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("YelpUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("YoutubeUrl")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int?>("categoryId")
@@ -2378,6 +2497,10 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int?>("EditUserId")
                         .HasColumnType("int");
 
+                    b.Property<string>("ExternalProgramId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("ExternalVenueId")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -2423,6 +2546,67 @@ namespace Loyalty.DataAccess.Migrations
                         .IsUnique();
 
                     b.ToTable("TenantIntegrations", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AzTitle")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EnTitle")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("IconKey")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("OpenInNewTab")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RuTitle")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "SortOrder");
+
+                    b.ToTable("TenantLinks", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantLocation", b =>
@@ -3430,6 +3614,17 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.HappyHoursWindow", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", "LoyaltyProgram")
+                        .WithMany("HappyHoursWindows")
+                        .HasForeignKey("LoyaltyProgramId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LoyaltyProgram");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Icon", b =>
                 {
                     b.HasOne("Loyalty.DataAccess.Entities.Main.CardTemplate", "CardTemplate")
@@ -3765,6 +3960,17 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantLink", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                        .WithMany("Links")
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantLocation", b =>
                 {
                     b.HasOne("Loyalty.DataAccess.Entities.Main.City", "City")
@@ -4022,6 +4228,8 @@ namespace Loyalty.DataAccess.Migrations
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", b =>
                 {
+                    b.Navigation("HappyHoursWindows");
+
                     b.Navigation("LotteryDraws");
 
                     b.Navigation("LoyaltyCards");
@@ -4058,6 +4266,8 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("Branding");
 
                     b.Navigation("Customers");
+
+                    b.Navigation("Links");
 
                     b.Navigation("LoyaltyPrograms");
 

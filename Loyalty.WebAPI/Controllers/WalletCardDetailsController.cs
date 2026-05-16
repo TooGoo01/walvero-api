@@ -1,10 +1,12 @@
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Net;
+using System.Security.Claims;
 
 namespace Loyalty.WebAPI.Controllers
 {
@@ -26,16 +28,13 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
-        /// Get public tenant wallet information.
-        /// This endpoint returns ONLY tenant-level public info (branding, colors, logo, descriptions).
-        /// No authentication required. No customer-specific data is returned.
+        /// Get wallet info for a tenant.
+        /// - Anonymous request: returns TenantOnly mode (public branding, colors, logo, descriptions).
+        /// - Authenticated request (JWT bearer): if user has an active card for this tenant,
+        ///   automatically upgrades to CardDetails mode (full balance + customer info).
+        ///   This eliminates the frontend race where cardId is not yet known after fresh login.
+        /// JWT is OPTIONAL — endpoint accepts both.
         /// </summary>
-        /// <param name="tenantId">Required: The tenant ID</param>
-        /// <param name="ct">Cancellation token</param>
-        /// <returns>WalletCardDetailsResponseDto with Mode = TenantOnly</returns>
-        /// <response code="200">Success - returns tenant public info</response>
-        /// <response code="400">Bad request - invalid tenantId</response>
-        /// <response code="404">Not found - tenant not found</response>
         [HttpGet("wallet-info")]
         [AllowAnonymous]
         [ProducesResponseType(typeof(ServiceResult<WalletCardDetailsResponseDto>), (int)HttpStatusCode.OK)]
@@ -50,7 +49,75 @@ namespace Loyalty.WebAPI.Controllers
                 return BadRequest(ServiceResult<WalletCardDetailsResponseDto>.Fail("TenantId must be greater than 0"));
             }
 
-            var result = await _walletCardDetailsService.GetTenantWalletInfoAsync(tenantId, ct);
+            // [AllowAnonymous] endpoint-də ASP.NET Core auth pipeline JWT bearer scheme-ini
+            // avtomatik invoke etmir → User.Identity.IsAuthenticated həmişə false.
+            // Authorization header varsa, JWT-ni manual parse edib HttpContext.User-ı set edirik.
+            // Bu, optional auth pattern-idir: token varsa user tanınır, yoxsa anonymous davam.
+            int? applicationUserId = null;
+            string? idClaim = null;
+            var isAuth = false;
+            string? authFailureReason = null;
+            bool? authResultSucceeded = null;
+            bool? userPropertyAuthenticated = User?.Identity?.IsAuthenticated;
+
+            if (Request.Headers.ContainsKey("Authorization"))
+            {
+                try
+                {
+                    var authResult = await HttpContext.AuthenticateAsync(JwtBearerDefaults.AuthenticationScheme);
+                    authResultSucceeded = authResult.Succeeded;
+                    authFailureReason = authResult.Failure?.Message;
+
+                    if (authResult.Succeeded && authResult.Principal != null)
+                    {
+                        HttpContext.User = authResult.Principal;
+                        isAuth = true;
+                        idClaim = authResult.Principal.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                                  ?? authResult.Principal.FindFirst("sub")?.Value;
+                        if (int.TryParse(idClaim, out var parsedId))
+                        {
+                            applicationUserId = parsedId;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    authFailureReason = $"Exception: {ex.GetType().Name}: {ex.Message}";
+                }
+            }
+
+            // Fallback: əgər manual AuthenticateAsync uğursuzdusa, User.Identity-ni yoxla.
+            // UseAuthentication() middleware artıq token-i parse etmiş ola bilər (bəzi konfiqurasiyalarda).
+            if (!isAuth && User?.Identity?.IsAuthenticated == true)
+            {
+                isAuth = true;
+                idClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                          ?? User.FindFirst("sub")?.Value;
+                if (int.TryParse(idClaim, out var parsedId2))
+                {
+                    applicationUserId = parsedId2;
+                }
+            }
+
+            // DIAGNOSTIC: trace which path is taken — Application Insights / Azure log-da görünəcək
+            var hasAuthHeader = Request.Headers.ContainsKey("Authorization");
+            var authHeaderPreview = hasAuthHeader
+                ? Request.Headers["Authorization"].ToString()
+                : "<none>";
+            if (authHeaderPreview.Length > 40) authHeaderPreview = authHeaderPreview.Substring(0, 40) + "...";
+
+            Console.WriteLine(
+                $"[wallet-info] tenantId={tenantId}, hasAuthHeader={hasAuthHeader}, " +
+                $"hdrPreview={authHeaderPreview}, " +
+                $"userPropAuth={userPropertyAuthenticated}, " +
+                $"manualAuthSucceeded={authResultSucceeded}, " +
+                $"manualAuthFailure={authFailureReason ?? "<none>"}, " +
+                $"isAuth={isAuth}, idClaim={idClaim ?? "<null>"}, applicationUserId={applicationUserId?.ToString() ?? "<null>"}");
+
+            var result = await _walletCardDetailsService.GetTenantWalletInfoAsync(tenantId, applicationUserId, ct);
+
+            Console.WriteLine(
+                $"[wallet-info] result: success={result.Success}, mode={result.Data?.Mode}, hasCard={result.Data?.Card != null}");
 
             if (!result.Success)
             {

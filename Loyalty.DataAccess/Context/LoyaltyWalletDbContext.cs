@@ -62,6 +62,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<MenuItem> MenuItems { get; set; }
         public DbSet<MenuItemImage> MenuItemImages { get; set; }
         public DbSet<RestorantWifiInformation> RestorantWifiInformations { get; set; }
+        public DbSet<TenantLink> TenantLinks { get; set; }
         public DbSet<IntegrationType> IntegrationTypes { get; set; }
         public DbSet<TenantIntegration> TenantIntegrations { get; set; }
         public DbSet<PosProductEarnRule> PosProductEarnRules { get; set; }
@@ -74,6 +75,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<LotteryDraw> LotteryDraws { get; set; }
         public DbSet<LotteryTicket> LotteryTickets { get; set; }
         public DbSet<LotteryPrize> LotteryPrizes { get; set; }
+        public DbSet<HappyHoursWindow> HappyHoursWindows { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -247,6 +249,22 @@ namespace Loyalty.DataAccess.Context
                     .HasForeignKey(r => r.LoyaltyProgramId)
                     .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasMany(lp => lp.HappyHoursWindows)
+                    .WithOne(w => w.LoyaltyProgram)
+                    .HasForeignKey(w => w.LoyaltyProgramId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+            });
+
+            modelBuilder.Entity<HappyHoursWindow>(entity =>
+            {
+                entity.ToTable("HappyHoursWindows");
+                entity.HasKey(w => w.Id);
+                entity.Property(w => w.StartTime).HasColumnType("time");
+                entity.Property(w => w.EndTime).HasColumnType("time");
+                entity.Property(w => w.Label).HasMaxLength(100);
+                entity.HasIndex(w => new { w.LoyaltyProgramId, w.DayOfWeek, w.SpecificDate })
+                    .HasDatabaseName("IX_HappyHoursWindows_Program_Day_Date");
             });
             modelBuilder.Entity<LoyaltyCard>(entity =>
             {
@@ -849,6 +867,24 @@ namespace Loyalty.DataAccess.Context
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
+            modelBuilder.Entity<TenantLink>(entity =>
+            {
+                entity.ToTable("TenantLinks");
+                entity.HasKey(tl => tl.Id);
+                entity.Property(tl => tl.AzTitle).IsRequired().HasMaxLength(200);
+                entity.Property(tl => tl.EnTitle).HasMaxLength(200);
+                entity.Property(tl => tl.RuTitle).HasMaxLength(200);
+                entity.Property(tl => tl.Url).IsRequired().HasMaxLength(1000);
+                entity.Property(tl => tl.IconKey).HasMaxLength(50);
+
+                entity.HasIndex(tl => new { tl.TenantId, tl.SortOrder });
+
+                entity.HasOne(tl => tl.Tenant)
+                    .WithMany(t => t.Links)
+                    .HasForeignKey(tl => tl.TenantId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
             // ==== INTEGRATION TYPE (reference/seed) ====
             modelBuilder.Entity<IntegrationType>(entity =>
             {
@@ -873,6 +909,7 @@ namespace Loyalty.DataAccess.Context
                 entity.HasKey(ti => ti.Id);
                 entity.Property(ti => ti.DisplayName).HasMaxLength(200);
                 entity.Property(ti => ti.ExternalVenueId).HasMaxLength(100);
+                entity.Property(ti => ti.ExternalProgramId).HasMaxLength(100);
                 entity.Property(ti => ti.ApiBaseUrl).HasMaxLength(500);
                 entity.Property(ti => ti.ApiTokenEncrypted).HasMaxLength(2000);
                 entity.Property(ti => ti.WalletTokenHash).HasMaxLength(128);

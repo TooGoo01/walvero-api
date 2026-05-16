@@ -50,6 +50,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.LoyaltyProgramId <= 0) return new ServiceResult(false, "LoyaltyProgramId is required.");
             if (string.IsNullOrWhiteSpace(dto.TemplateName)) return new ServiceResult(false, "TemplateName is required.");
 
+            // Tier sahələri yalnız TierBased üçün relevantdir — başqa tipdə təmizlə
+            if (dto.TemplateType != CardTemplateType.TierBased)
+            {
+                dto.BronzeThreshold = dto.SilverThreshold = dto.GoldThreshold = dto.PlatinumThreshold = null;
+                dto.BronzePercent = dto.SilverPercent = dto.GoldPercent = dto.PlatinumPercent = null;
+                dto.BronzePercentCash = dto.SilverPercentCash = dto.GoldPercentCash = dto.PlatinumPercentCash = null;
+            }
+
             // 1) Mövcud template
             var entity = await _repo.GetByLoyaltyProgramIdAsync(dto.LoyaltyProgramId, ct)
                         ?? new CardTemplate { LoyaltyProgramId = dto.LoyaltyProgramId };
@@ -85,12 +93,16 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             entity.BronzeThreshold = dto.BronzeThreshold;
             entity.BronzePercent = dto.BronzePercent;
+            entity.BronzePercentCash = dto.BronzePercentCash;
             entity.SilverThreshold = dto.SilverThreshold;
             entity.SilverPercent = dto.SilverPercent;
+            entity.SilverPercentCash = dto.SilverPercentCash;
             entity.GoldThreshold = dto.GoldThreshold;
             entity.GoldPercent = dto.GoldPercent;
+            entity.GoldPercentCash = dto.GoldPercentCash;
             entity.PlatinumThreshold = dto.PlatinumThreshold;
             entity.PlatinumPercent = dto.PlatinumPercent;
+            entity.PlatinumPercentCash = dto.PlatinumPercentCash;
             entity.LoyaltyProgramId = dto.LoyaltyProgramId;
             entity.BackgroundColor = dto.BackgroundColor;
             entity.ForegroundColor = dto.ForegroundColor;
@@ -120,7 +132,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _unitOfWork.Repository<LoyaltyProgram>().Update(program);
                 _unitOfWork.Commit();
             }
-            await _cardTemplateIconService.AddRangeAsync(dto, entity.Id, ct);
+            // Yalnız real icon məlumatı (file və ya url) gəlibsə AddRangeAsync çağır.
+            // User yeni icon əlavə etmirsə (boş list, null, və ya yalnız boş placeholder item-lər)
+            // → mövcud Icons cədvəlinə toxunmuruq.
+            var hasRealIcons = dto.Icons != null && dto.Icons.Any(i =>
+                (i.IconFile != null && i.IconFile.Length > 0) ||
+                !string.IsNullOrWhiteSpace(i.IconUrl));
+
+            if (hasRealIcons)
+                await _cardTemplateIconService.AddRangeAsync(dto, entity.Id, ct);
             // local obyekt üçün
             // 7) Cavab
             var result = MapToGetDto(entity);
@@ -263,6 +283,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                 BronzePercent = e.BronzePercent,
                 GoldPercent = e.GoldPercent,
                 PlatinumPercent = e.PlatinumPercent,
+                BronzePercentCash = e.BronzePercentCash,
+                SilverPercentCash = e.SilverPercentCash,
+                GoldPercentCash = e.GoldPercentCash,
+                PlatinumPercentCash = e.PlatinumPercentCash,
                 BronzeColor = e.BronzeColor,
                 SilverColor = e.SilverColor,
                 GoldColor = e.GoldColor,

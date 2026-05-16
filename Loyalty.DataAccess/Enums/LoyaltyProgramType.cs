@@ -10,6 +10,7 @@ namespace Loyalty.DataAccess.Enums
     {
         ProgressBased = 1,  // Coffee card style
         PointsBased = 2,    // Traditional points
-        TierBased = 3       // Bronze/Silver/Gold tiers
+        TierBased = 3,      // Bronze/Silver/Gold tiers
+        HappyHoursBased = 4 // Time-window cashback boosts (base + windows)
     }
 }

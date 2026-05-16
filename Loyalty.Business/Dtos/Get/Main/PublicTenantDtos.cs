@@ -66,12 +66,23 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? WhatsAppUrl { get; set; }
         public string? TelegramUrl { get; set; }
         public string? LinkedInUrl { get; set; }
+        public string? TiktokUrl { get; set; }
+        public string? TripAdvisorUrl { get; set; }
+        public string? WebsiteUrl { get; set; }
+        public string? YoutubeUrl { get; set; }
+        public string? TwitterUrl { get; set; }
+        public string? YelpUrl { get; set; }
+        public string? ThreadsUrl { get; set; }
+        public string? PinterestUrl { get; set; }
 
         // Branding
         public TenantConfigBrandingDto? Branding { get; set; }
 
         // Location
         public RestaurantLocationDto? Location { get; set; }
+
+        // Dinamik linklər (sıralı)
+        public List<RestaurantLinkDto> Links { get; set; } = new();
     }
 
     public class RestaurantLocationDto
@@ -79,6 +90,18 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? CountryName { get; set; }
         public string? CityName { get; set; }
         public string? TimeZoneName { get; set; }
+    }
+
+    public class RestaurantLinkDto
+    {
+        public int Id { get; set; }
+        public string AzTitle { get; set; } = string.Empty;
+        public string? EnTitle { get; set; }
+        public string? RuTitle { get; set; }
+        public string Url { get; set; } = string.Empty;
+        public string? IconKey { get; set; }
+        public int SortOrder { get; set; }
+        public bool OpenInNewTab { get; set; }
     }
 
     /// <summary>

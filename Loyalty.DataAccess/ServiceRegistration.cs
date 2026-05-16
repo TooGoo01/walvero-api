@@ -31,6 +31,7 @@ namespace Loyalty.DataAccess
             services.AddScoped<ITenantRepository, TenantRepository>();
             services.AddScoped<ITenantBrandingRepository, TenantBrandingRepository>();
             services.AddScoped<ILoyaltyProgramRepository, LoyaltyProgramRepository>();
+            services.AddScoped<IHappyHoursWindowRepository, HappyHoursWindowRepository>();
             services.AddScoped<ILoyaltyCardRepository, LoyaltyCardRepository>();
             services.AddScoped<ICustomerRepository, CustomerRepository>();
             services.AddScoped<ICardTemplateRepository, CardTemplateRepository>();
@@ -45,6 +46,7 @@ namespace Loyalty.DataAccess
             services.AddScoped<IMenuItemRepository, MenuItemRepository>();
             services.AddScoped<IMenuItemImageRepository, MenuItemImageRepository>();
             services.AddScoped<IRestorantWifiInformationRepository, RestorantWifiInformationRepository>();
+            services.AddScoped<ITenantLinkRepository, TenantLinkRepository>();
             services.AddScoped<IIntegrationTypeRepository, IntegrationTypeRepository>();
             services.AddScoped<ITenantIntegrationRepository, TenantIntegrationRepository>();
             services.AddScoped<IPosProductEarnRuleRepository, PosProductEarnRuleRepository>();

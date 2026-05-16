@@ -378,5 +378,27 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     ct);
         }
 
+        /// <inheritdoc />
+        public async Task<LoyaltyCard?> GetActiveCardForTenantAndUserAsync(int tenantId, int applicationUserId, CancellationToken ct = default)
+        {
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Include(c => c.Customer)
+                .Include(c => c.LoyaltyProgram)
+                    .ThenInclude(p => p.CardTemplate)
+                        .ThenInclude(ct => ct!.Icons)
+                .Include(c => c.Tenant)
+                    .ThenInclude(t => t.Branding)
+                .Include(c => c.Tenant)
+                    .ThenInclude(t => t.Category)
+                .Where(c => c.TenantId == tenantId &&
+                            c.IsActive &&
+                            c.Customer != null &&
+                            c.Customer.applicationUserId == applicationUserId)
+                .OrderByDescending(c => c.Id)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(ct);
+        }
+
     }
 }

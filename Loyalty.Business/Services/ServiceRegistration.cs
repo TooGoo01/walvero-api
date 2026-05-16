@@ -94,6 +94,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IMenuItemService, MenuItemService>();
             services.AddScoped<IMenuItemImageService, MenuItemImageService>();
             services.AddScoped<IRestorantWifiInformationService, RestorantWifiInformationService>();
+            services.AddScoped<ITenantLinkService, TenantLinkService>();
             services.AddScoped<ITenantIntegrationResolver, TenantIntegrationResolver>();
             services.AddScoped<ITenantIntegrationService, TenantIntegrationService>();
             services.AddScoped<IPosProductEarnRuleService, PosProductEarnRuleService>();

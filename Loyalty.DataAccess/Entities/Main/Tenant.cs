@@ -35,7 +35,15 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? TeleqramUrl { get; set; } = string.Empty;
         public string? LinkedInUrl { get; set; } = string.Empty;
         public string? WazeLocationUrl { get; set; } = string.Empty;
-        
+        public string? TiktokUrl { get; set; } = string.Empty;
+        public string? TripAdvisorUrl { get; set; } = string.Empty;
+        public string? WebsiteUrl { get; set; } = string.Empty;
+        public string? YoutubeUrl { get; set; } = string.Empty;
+        public string? TwitterUrl { get; set; } = string.Empty;
+        public string? YelpUrl { get; set; } = string.Empty;
+        public string? ThreadsUrl { get; set; } = string.Empty;
+        public string? PinterestUrl { get; set; } = string.Empty;
+
         public string? MenuUrl { get; set; } = string.Empty;
 
         // Navigation Properties
@@ -50,6 +58,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public ICollection<Branch> Branches { get; set; } = new List<Branch>();
         public ICollection<WalletCredential> WalletCredentials { get; set; } = new List<WalletCredential>();
         public ICollection<RestorantWifiInformation>? RestorantWifiInformation { get; set; } = new List<RestorantWifiInformation>();
+        public ICollection<TenantLink>? Links { get; set; } = new List<TenantLink>();
         public ICollection<TenantIntegration> TenantIntegrations { get; set; } = new List<TenantIntegration>();
     }
 }

@@ -67,7 +67,7 @@ namespace Loyalty.WebAPI.Controllers
         [HttpGet]
         [Authorize(Policy = "TenantAdminOrModerator")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
-        [ProducesResponseType(typeof(ServiceResult<List<GetCustomerDto>>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult<List<GetCustomerListItemDto>>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]

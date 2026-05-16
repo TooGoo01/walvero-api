@@ -42,6 +42,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 IntegrationTypeId = dto.IntegrationTypeId,
                 DisplayName = dto.DisplayName,
                 ExternalVenueId = dto.ExternalVenueId,
+                ExternalProgramId = dto.ExternalProgramId,
                 LoyaltyProgramId = dto.LoyaltyProgramId,
                 ApiBaseUrl = dto.ApiBaseUrl?.Trim(),
                 ApiUsername = dto.ApiUsername?.Trim(),
@@ -103,6 +104,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Source = it?.Source ?? "",
                 DisplayName = ti.DisplayName,
                 ExternalVenueId = ti.ExternalVenueId,
+                ExternalProgramId = ti.ExternalProgramId,
                 LoyaltyProgramId = ti.LoyaltyProgramId,
                 ApiBaseUrl = ti.ApiBaseUrl,
                 ApiUsername = ti.ApiUsername,
@@ -119,6 +121,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (dto.DisplayName != null) ti.DisplayName = dto.DisplayName;
             if (dto.ExternalVenueId != null) ti.ExternalVenueId = dto.ExternalVenueId;
+            if (dto.ExternalProgramId != null) ti.ExternalProgramId = dto.ExternalProgramId;
             if (dto.LoyaltyProgramId.HasValue) ti.LoyaltyProgramId = dto.LoyaltyProgramId;
             if (dto.ApiBaseUrl != null) ti.ApiBaseUrl = dto.ApiBaseUrl.Trim();
             if (dto.ApiUsername != null) ti.ApiUsername = dto.ApiUsername.Trim();

@@ -98,6 +98,19 @@ namespace Loyalty.Business.Services.Implementations.Main
             return result;
         }
 
+        public async Task<bool> AddCustomerToProgramAsync(
+            string accessToken, Guid organizationId, Guid customerId, Guid programId, CancellationToken ct = default)
+        {
+            var payload = new
+            {
+                organizationId,
+                customerId,
+                programId
+            };
+
+            return await PostRawAsync(accessToken, "/api/1/loyalty/iiko/customer_program/add", payload, ct);
+        }
+
         public async Task<bool> TopUpWalletAsync(
             string accessToken, Guid organizationId, Guid customerId, Guid walletId, decimal amount, CancellationToken ct = default)
         {

@@ -117,6 +117,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.WhatsAppUrl != null) branch.WhatsAppUrl = dto.WhatsAppUrl;
             if (dto.TelegramUrl != null) branch.TelegramUrl = dto.TelegramUrl;
             if (dto.LinkedInUrl != null) branch.LinkedInUrl = dto.LinkedInUrl;
+            if (dto.TiktokUrl != null) branch.TiktokUrl = dto.TiktokUrl;
+            if (dto.TripAdvisorUrl != null) branch.TripAdvisorUrl = dto.TripAdvisorUrl;
+            if (dto.WebsiteUrl != null) branch.WebsiteUrl = dto.WebsiteUrl;
+            if (dto.YoutubeUrl != null) branch.YoutubeUrl = dto.YoutubeUrl;
+            if (dto.TwitterUrl != null) branch.TwitterUrl = dto.TwitterUrl;
+            if (dto.YelpUrl != null) branch.YelpUrl = dto.YelpUrl;
+            if (dto.ThreadsUrl != null) branch.ThreadsUrl = dto.ThreadsUrl;
+            if (dto.PinterestUrl != null) branch.PinterestUrl = dto.PinterestUrl;
+            if (dto.BackgroundColor != null) branch.BackgroundColor = dto.BackgroundColor;
+            if (dto.ForegroundColor != null) branch.ForegroundColor = dto.ForegroundColor;
 
             if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
             {

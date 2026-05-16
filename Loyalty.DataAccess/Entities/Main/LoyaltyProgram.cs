@@ -34,10 +34,15 @@ namespace Loyalty.DataAccess.Entities.Main
         public int LotteryPurchaseThreshold { get; set; } = 5;
         public decimal? LotteryAmountThreshold { get; set; }
 
+        // HappyHours base rates (window xaricində istifadə olunur)
+        public int? BasePercentCash { get; set; }
+        public int? BasePercentCard { get; set; }
+
         // Navigation Properties
         public Tenant Tenant { get; set; } = null!;
         public ICollection<LoyaltyCard> LoyaltyCards { get; set; } = new List<LoyaltyCard>();
         public ICollection<Reward> Rewards { get; set; } = new List<Reward>();
         public ICollection<LotteryDraw> LotteryDraws { get; set; } = new List<LotteryDraw>();
+        public ICollection<HappyHoursWindow> HappyHoursWindows { get; set; } = new List<HappyHoursWindow>();
     }
 }
