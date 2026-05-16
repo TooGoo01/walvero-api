@@ -81,6 +81,10 @@ namespace Loyalty.WebAPI.Controllers
                     ChangedOn = request.ChangedOn
                 }, ct);
 
+                _logger.LogInformation(
+                    "iiko webhook processed: txId={TxId} type={Type} sum={Sum} customerId={CustomerId} success={Success} message={Message}",
+                    request.TransactionId, request.TransactionType, request.Sum, request.CustomerId, result.Success, result.Message);
+
                 return Ok(new { success = result.Success, message = result.Message });
             }
             catch (Exception ex)
