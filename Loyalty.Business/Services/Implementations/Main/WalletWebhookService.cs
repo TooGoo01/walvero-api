@@ -1,9 +1,11 @@
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Models.TenantIntegration;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
+using Microsoft.Extensions.Logging;
 
 namespace Loyalty.Business.Services.Implementations.Main
 {
@@ -18,6 +20,9 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ICustomerRepository _customerRepo;
         private readonly IRedeemService _redeemService;
         private readonly ITenantRepository _tenantRepo;
+        private readonly IWalletRouter _walletRouter;
+        private readonly ITenantBrandingRepository _brandingRepo;
+        private readonly ILogger<WalletWebhookService> _logger;
         private readonly IUnitOfWork _uow;
 
         public WalletWebhookService(
@@ -30,6 +35,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             ICustomerRepository customerRepo,
             IRedeemService redeemService,
             ITenantRepository tenantRepo,
+            IWalletRouter walletRouter,
+            ITenantBrandingRepository brandingRepo,
+            ILogger<WalletWebhookService> logger,
             IUnitOfWork uow)
         {
             _loyaltyCardRepo = loyaltyCardRepo;
@@ -41,6 +49,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             _customerRepo = customerRepo;
             _redeemService = redeemService;
             _tenantRepo = tenantRepo;
+            _walletRouter = walletRouter;
+            _brandingRepo = brandingRepo;
+            _logger = logger;
             _uow = uow;
         }
 
@@ -685,6 +696,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             _uow.Repository<Transaction>().Add(tx);
             await _uow.CommitAsync(ct);
 
+            // Wallet pass push (Apple + Google) — DB commit-dən sonra fire-and-forget pattern
+            try
+            {
+                await PushWalletUpdateAsync(card, program, delta, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "iiko webhook: wallet push failed. CardId={CardId}", card.Id);
+            }
+
             return new IikoTransactionResponse
             {
                 Success = true,
@@ -695,6 +716,64 @@ namespace Loyalty.Business.Services.Implementations.Main
                     _ => $"Points: {card.CurrentPoints}"
                 }
             };
+        }
+
+        private async Task PushWalletUpdateAsync(LoyaltyCard card, LoyaltyProgram? program, decimal delta, CancellationToken ct)
+        {
+            if (program?.CardTemplate == null)
+            {
+                _logger.LogDebug("Wallet push skipped: program/CardTemplate is null. CardId={CardId}", card.Id);
+                return;
+            }
+
+            var branding = await _brandingRepo.GetByTenantIdAsync(card.TenantId, ct);
+            const string baseUrl = "https://appapi.walvero.com";
+            string ToAbs(string? dbPath)
+            {
+                if (string.IsNullOrWhiteSpace(dbPath)) return string.Empty;
+                if (dbPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                    dbPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return dbPath;
+                var normalizedBaseUrl = baseUrl.TrimEnd('/', '\\');
+                var normalizedPath = dbPath.TrimStart('~').TrimStart('/', '\\');
+                normalizedPath = string.IsNullOrWhiteSpace(normalizedPath) ? "/" : "/" + normalizedPath;
+                return normalizedBaseUrl + normalizedPath;
+            }
+
+            var snapshot = CardTemplateSnapshotFactory.From(program, program.CardTemplate, branding, ToAbs);
+            var primaryPlatform = card.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
+            var secondaryPlatform = card.IsIOS ? WalletPlatform.GooglePay : WalletPlatform.AppleWallet;
+            var intDelta = (int)delta;
+
+            // ⚠️ CancellationToken.None: DB commit tamamlandıqdan sonra push ləğv olunmamalıdır
+            _logger.LogInformation("iiko webhook: routing wallet push to PRIMARY {Platform}. CardId={CardId}", primaryPlatform, card.Id);
+            try
+            {
+                var primaryRes = await _walletRouter.RouteAsync(
+                    primaryPlatform, card.Id, snapshot,
+                    card.CurrentPoints, card.CurrentSteps, card.CompletedCycles, intDelta,
+                    CancellationToken.None);
+                if (!primaryRes.Success)
+                    _logger.LogWarning("iiko webhook: wallet push FAILED on PRIMARY {Platform}. CardId={CardId}", primaryPlatform, card.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "iiko webhook: wallet push error on PRIMARY {Platform}. CardId={CardId}", primaryPlatform, card.Id);
+            }
+
+            _logger.LogInformation("iiko webhook: trying SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
+            try
+            {
+                var secondaryRes = await _walletRouter.RouteAsync(
+                    secondaryPlatform, card.Id, snapshot,
+                    card.CurrentPoints, card.CurrentSteps, card.CompletedCycles, intDelta,
+                    CancellationToken.None);
+                if (!secondaryRes.Success)
+                    _logger.LogWarning("iiko webhook: wallet push FAILED on SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "iiko webhook: wallet push error on SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
+            }
         }
     }
 }
