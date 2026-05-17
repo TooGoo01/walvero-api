@@ -48,10 +48,16 @@ namespace Loyalty.WebAPI.Controllers
                     return Ok(new { success = false, message = "organizationId is required" });
 
                 var ctx = await _resolver.ResolveByVenueAndSourceAsync(request.OrganizationId, IikoSource, ct);
+                if (ctx == null && !string.IsNullOrWhiteSpace(request.UocId))
+                {
+                    ctx = await _resolver.ResolveByVenueAndSourceAsync(request.UocId, IikoSource, ct);
+                }
                 if (ctx == null)
                 {
-                    _logger.LogWarning("iiko webhook: tenant not found for organizationId={OrgId}", request.OrganizationId);
-                    return Ok(new { success = false, message = "Tenant integration not found for organizationId" });
+                    _logger.LogWarning(
+                        "iiko webhook: tenant not found. organizationId={OrgId} uocId={UocId}",
+                        request.OrganizationId, request.UocId);
+                    return Ok(new { success = false, message = "Tenant integration not found" });
                 }
 
                 var result = await _webhookService.ProcessIikoTransactionAsync(ctx, new IikoTransactionRequest
@@ -74,6 +80,10 @@ namespace Loyalty.WebAPI.Controllers
                     SubscriptionPassword = request.SubscriptionPassword,
                     ChangedOn = request.ChangedOn
                 }, ct);
+
+                _logger.LogInformation(
+                    "iiko webhook processed: txId={TxId} type={Type} sum={Sum} customerId={CustomerId} success={Success} message={Message}",
+                    request.TransactionId, request.TransactionType, request.Sum, request.CustomerId, result.Success, result.Message);
 
                 return Ok(new { success = result.Success, message = result.Message });
             }
