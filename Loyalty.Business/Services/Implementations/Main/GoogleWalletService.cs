@@ -485,6 +485,18 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
         try
         {
+            // Log class review state — push only fires for production users when class is APPROVED.
+            try
+            {
+                var cls = await _svc.Loyaltyclass.Get(ClassId).ExecuteAsync(ct);
+                _log?.LogWarning("[GW-PUSH-CHECK] ClassId={ClassId} reviewStatus={ReviewStatus} — Google Wallet push will only reach production users when this is APPROVED. UNDER_REVIEW = only Trusted Testers (service account email).",
+                    ClassId, cls?.ReviewStatus ?? "(null)");
+            }
+            catch (Exception clsEx)
+            {
+                _log?.LogWarning(clsEx, "[GW-PUSH-CHECK] Could not fetch class state for {ClassId}", ClassId);
+            }
+
             // displayInterval = 7 days. Google requires it to trigger a push on Android Wallet —
             // without it some devices treat the message as silent (in-app only).
             var start = System.DateTime.UtcNow;
