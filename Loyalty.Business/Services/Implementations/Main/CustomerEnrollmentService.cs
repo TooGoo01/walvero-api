@@ -542,6 +542,13 @@ UserManager<ApplicationUser> userManager,
             }
             var snapshot = CardTemplateSnapshotFactory.From(program, program.CardTemplate, branding, ToAbs);
 
+            // Tenant company name for wallet header (separate query — avoids cycle issues from Include).
+            snapshot.TenantCompanyName = await _dbContext.Set<Tenant>()
+                .AsNoTracking()
+                .Where(t => t.Id == tenantId)
+                .Select(t => t.CompanyName)
+                .FirstOrDefaultAsync(ct);
+
             // Google save link
             string? googleUrl = null, appleUrl = null;
             if(dto.DevicePlatform == "android")
@@ -549,9 +556,7 @@ UserManager<ApplicationUser> userManager,
                 try
                 {
                     var gw = await _googleFactory.CreateForTenantAsync(tenantId, program.Id, ct);
-                    var issuerName = snapshot.TenantCompanyName
-                        ?? program.Tenant?.CompanyName
-                        ?? program.ProgramName;
+                    var issuerName = snapshot.TenantCompanyName ?? program.ProgramName;
                     await gw.EnsureClassAsync(snapshot, issuerName, ct);
                     await gw.CreateOrGetObjectByCardIdAsync(
                         loyaltyCardId: card.Id,

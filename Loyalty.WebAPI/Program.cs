@@ -32,7 +32,13 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 });
 
 // === Controllers & CORS & SignalR ===
-builder.Services.AddControllers();
+// EF navigation cycles (e.g. Tenant.Admins.Tenant…) cause JsonException at depth 32.
+// IgnoreCycles writes null when a back-reference would recurse — safer global default.
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+    });
 
 // === Request body size limit (250MB for video uploads) ===
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
