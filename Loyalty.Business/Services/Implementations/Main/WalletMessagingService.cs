@@ -109,19 +109,22 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 foreach (var card in group)
                 {
-                    if (card.IsAndroid)
+                    // Always attempt Google push — IsAndroid flag is set only when the user clicks
+                    // "Save to Google Wallet", but the LoyaltyObject may exist on Google's side
+                    // (e.g. user enrolled via web). AddMessageToObjectAsync returns silently with
+                    // "Object not found" if the pass is not on Google yet.
+                    try
                     {
-                        try
-                        {
-                            gw ??= await _googleFactory.CreateForTenantAsync(group.Key.TenantId, group.Key.LoyaltyProgramId, ct);
-                            var objectId = gw.BuildObjectIdForCard(group.Key.TenantId, group.Key.LoyaltyProgramId, card.Id);
-                            var res = await gw.AddMessageToObjectAsync(objectId, title, body, ct);
-                            if (res.Success) delivered++;
-                        }
-                        catch (Exception ex)
-                        {
-                            _log.LogWarning(ex, "Google Wallet push failed. CardId={CardId}", card.Id);
-                        }
+                        gw ??= await _googleFactory.CreateForTenantAsync(group.Key.TenantId, group.Key.LoyaltyProgramId, ct);
+                        var objectId = gw.BuildObjectIdForCard(group.Key.TenantId, group.Key.LoyaltyProgramId, card.Id);
+                        _log.LogInformation("[GW-TRY] Sending addmessage to Google Wallet. CardId={CardId} ObjectId={ObjectId}", card.Id, objectId);
+                        var res = await gw.AddMessageToObjectAsync(objectId, title, body, ct);
+                        if (res.Success) delivered++;
+                        else _log.LogInformation("[GW-TRY] Google push skipped. CardId={CardId} Reason={Reason}", card.Id, res.Message);
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogWarning(ex, "Google Wallet push failed. CardId={CardId}", card.Id);
                     }
 
                     if (card.IsIOS && !string.IsNullOrWhiteSpace(card.AppleSerial))
