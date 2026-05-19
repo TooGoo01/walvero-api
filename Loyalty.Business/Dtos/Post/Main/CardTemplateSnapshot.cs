@@ -16,6 +16,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string ProgramName { get; set; } = "Loyalty";
         public string? ProgramDescription { get; set; }
         public string ProgramCode { get; set; } = string.Empty; // LP.Code
+        public string? TenantCompanyName { get; set; } // Wallet pass top header
 
         // ---- Template meta ----
         public string TemplateName { get; set; } = string.Empty;

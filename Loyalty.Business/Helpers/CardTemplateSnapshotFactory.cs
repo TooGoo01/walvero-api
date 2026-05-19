@@ -33,6 +33,7 @@ namespace Loyalty.Business.Helpers
                 ProgramName = string.IsNullOrWhiteSpace(lp.ProgramName) ? "Loyalty" : lp.ProgramName,
                 ProgramDescription = lp.Description,
                 ProgramCode = lp.Code,
+                TenantCompanyName = lp.Tenant?.CompanyName,
 
                 // Template meta
                 TemplateName = ct.TemplateName ?? string.Empty,

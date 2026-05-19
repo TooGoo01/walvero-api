@@ -35,6 +35,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Include(x => x.CardTemplate)
                     .ThenInclude(t => t.Icons)
                 .Include(x => x.HappyHoursWindows)
+                .Include(x => x.Tenant)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(x => x.Id == programId, ct);
         }

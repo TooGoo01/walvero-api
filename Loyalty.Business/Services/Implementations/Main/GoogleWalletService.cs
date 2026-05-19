@@ -105,6 +105,12 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
     public string GetIssuerId() => _issuerId;
 
+    // Wallet collapsed/list view top line = tenant company name; fall back to program/template name.
+    private static string ResolveIssuerName(CardTemplateSnapshot tpl) =>
+        !string.IsNullOrWhiteSpace(tpl.TenantCompanyName) ? tpl.TenantCompanyName!
+        : !string.IsNullOrWhiteSpace(tpl.ProgramName) ? tpl.ProgramName
+        : tpl.TemplateName;
+
     // =================== 1) CLASS ===================
     public async Task EnsureClassAsync(CardTemplateSnapshot tpl, string programName, CancellationToken ct = default)
     {
@@ -212,7 +218,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
         try
         {
-            await EnsureClassAsync(tpl, programName: tpl.ProgramName, ct);
+            await EnsureClassAsync(tpl, programName: ResolveIssuerName(tpl), ct);
 
             var objectId = ObjectIdForCard(_issuerId, tpl.TenantId, tpl.LoyaltyProgramId, loyaltyCardId);
 
@@ -384,8 +390,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 Id = objectId,
                 ClassId = ClassId,
                 State = "ACTIVE",
-                AccountId = null,
-                AccountName = "",
+                AccountId = loyaltyCardId.ToString(),
+                AccountName = accountName ?? string.Empty,
 
                 // Only set LoyaltyPoints for non-ProgressBased
                 LoyaltyPoints = isProgressBased ? null : new LoyaltyPoints
@@ -463,6 +469,44 @@ public sealed class GoogleWalletService : IGoogleWalletService
         }
     }
     private static string ObjectIdForCard(string issuerId, int tenantId, int programId, int loyaltyCardId) => $"{issuerId}.{tenantId}.{programId}.lc-{loyaltyCardId}";
+
+    public string BuildObjectIdForCard(int tenantId, int programId, int loyaltyCardId)
+        => ObjectIdForCard(_issuerId, tenantId, programId, loyaltyCardId);
+
+    public async Task<ServiceResult> AddMessageToObjectAsync(string objectId, string title, string body, CancellationToken ct = default)
+    {
+        if (!_isInitialized || _svc == null)
+        {
+            _log?.LogWarning("Google Wallet service not initialized. Skipping AddMessage. ObjectId={ObjectId}", objectId);
+            return new ServiceResult(false, "Google Wallet service not initialized");
+        }
+
+        try
+        {
+            var req = new AddMessageRequest
+            {
+                Message = new Message
+                {
+                    Header = title,
+                    Body = body,
+                    MessageType = "TEXT"
+                }
+            };
+            await _svc.Loyaltyobject.Addmessage(req, objectId).ExecuteAsync(ct);
+            _log?.LogInformation("GW addmessage OK. ObjectId={ObjectId}", objectId);
+            return new ServiceResult(true, "OK");
+        }
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound)
+        {
+            _log?.LogWarning("GW addmessage: object not found {ObjectId}", objectId);
+            return new ServiceResult(false, "Object not found");
+        }
+        catch (Exception ex)
+        {
+            _log?.LogError(ex, "AddMessageToObjectAsync failed for {ObjectId}", objectId);
+            return new ServiceResult(false, ex.Message);
+        }
+    }
     // =================== 3) REDEEM / UPDATE ===================
     public async Task<ServiceResult> RedeemByCardIdAsync(
        int loyaltyCardId,
@@ -487,7 +531,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
         try
         {
-            await EnsureClassAsync(tpl, programName: tpl.ProgramName, ct);
+            await EnsureClassAsync(tpl, programName: ResolveIssuerName(tpl), ct);
 
             // FIX A: Use ObjectIdForCard instead of hardcoded format
             var objectId = ObjectIdForCard(_issuerId, tpl.TenantId, tpl.LoyaltyProgramId, loyaltyCardId);

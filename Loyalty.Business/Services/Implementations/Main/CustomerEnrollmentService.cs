@@ -549,7 +549,10 @@ UserManager<ApplicationUser> userManager,
                 try
                 {
                     var gw = await _googleFactory.CreateForTenantAsync(tenantId, program.Id, ct);
-                    await gw.EnsureClassAsync(snapshot, program.ProgramName, ct);
+                    var issuerName = snapshot.TenantCompanyName
+                        ?? program.Tenant?.CompanyName
+                        ?? program.ProgramName;
+                    await gw.EnsureClassAsync(snapshot, issuerName, ct);
                     await gw.CreateOrGetObjectByCardIdAsync(
                         loyaltyCardId: card.Id,
                         tpl: snapshot,
