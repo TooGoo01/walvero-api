@@ -25,5 +25,11 @@ namespace Loyalty.Business.Services.Abstractions.Main
         int lotteryTickets = 0,
         string? lotteryWinPrize = null,
         DateTime? lotteryDrawDate = null);
+
+        Task<ServiceResult> PushNotificationToCardAsync(
+            int loyaltyCardId,
+            string title,
+            string body,
+            CancellationToken ct = default);
     }
 }

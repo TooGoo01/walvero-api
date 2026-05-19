@@ -52,7 +52,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             return await _googleCredential.UnderlyingCredential.GetAccessTokenForRequestAsync();
         }
 
-        private async Task<bool> SendMessageAsync(object message)
+        private async Task<bool> SendMessageAsync(string deviceToken, object message)
         {
             var accessToken = await GetAccessTokenAsync();
 
@@ -73,8 +73,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
             catch
             {
-                // ❗ Networ error, timeout → exception atmırıq
-                Console.WriteLine($"❌ FCM NETWORK ERROR for token {((dynamic)message).token}");
+                Console.WriteLine($"❌ FCM NETWORK ERROR for token {deviceToken}");
                 return false;
             }
 
@@ -82,13 +81,37 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (!response.IsSuccessStatusCode)
             {
-                Console.WriteLine($@"
-❌ FCM failed 
-Token: {((dynamic)message).token}
+                // UNREGISTERED / INVALID_ARGUMENT → stale token, delete from DB so it's not retried.
+                var isStale = response.StatusCode == System.Net.HttpStatusCode.NotFound
+                              || responseBody.Contains("UNREGISTERED", StringComparison.OrdinalIgnoreCase)
+                              || responseBody.Contains("INVALID_ARGUMENT", StringComparison.OrdinalIgnoreCase);
+
+                if (isStale)
+                {
+                    try
+                    {
+                        var stale = _db.DeviceTokens.Where(t => t.Token == deviceToken).ToList();
+                        if (stale.Count > 0)
+                        {
+                            _db.DeviceTokens.RemoveRange(stale);
+                            await _db.SaveChangesAsync();
+                            Console.WriteLine($"🗑 Stale FCM token deleted: {deviceToken}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠ Failed to delete stale token {deviceToken}: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($@"
+❌ FCM failed
+Token: {deviceToken}
 Status: {response.StatusCode}
 Body: {responseBody}
-Payload: {json}
 ");
+                }
                 return false;
             }
 
@@ -99,7 +122,7 @@ Payload: {json}
 
         public async Task SendToDeviceAsync(string deviceToken, string title, string body, object data = null)
         {
-            await SendMessageAsync(new
+            await SendMessageAsync(deviceToken, new
             {
                 token = deviceToken,
                 notification = new { title, body },

@@ -68,6 +68,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IUserCardService, UserCardService>();
             services.AddScoped<IDeviceTokenService, DeviceTokenService>();
             services.AddScoped<INotificationService, FcmNotificationService>();
+            services.AddScoped<IWalletMessagingService, WalletMessagingService>();
             services.AddScoped<ICategoryService, CategoryService>();
             services.AddScoped<IAppVersionService, AppVersionService>();
             services.AddScoped<IFeedbackService, FeedbackService>();

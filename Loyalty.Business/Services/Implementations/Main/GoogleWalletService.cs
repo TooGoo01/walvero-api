@@ -105,6 +105,12 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
     public string GetIssuerId() => _issuerId;
 
+    // Wallet collapsed/list view top line = tenant company name; fall back to program/template name.
+    private static string ResolveIssuerName(CardTemplateSnapshot tpl) =>
+        !string.IsNullOrWhiteSpace(tpl.TenantCompanyName) ? tpl.TenantCompanyName!
+        : !string.IsNullOrWhiteSpace(tpl.ProgramName) ? tpl.ProgramName
+        : tpl.TemplateName;
+
     // =================== 1) CLASS ===================
     public async Task EnsureClassAsync(CardTemplateSnapshot tpl, string programName, CancellationToken ct = default)
     {
@@ -118,6 +124,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
         try
         {
             existing = await _svc.Loyaltyclass.Get(ClassId).ExecuteAsync(ct);
+            _log?.LogInformation("[GW-CLASS] State check. ClassId={ClassId} reviewStatus={ReviewStatus} (APPROVED required for production push)",
+                ClassId, existing?.ReviewStatus ?? "(null)");
         }
         catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound)
         {
@@ -177,17 +185,21 @@ public sealed class GoogleWalletService : IGoogleWalletService
         if (existing is null)
         {
             var toCreate = BuildDesired();
-            toCreate.ReviewStatus = "UNDER_REVIEW"; // yalnız INSERT-də
+            toCreate.ReviewStatus = "UNDER_REVIEW"; // initial submit only — Console must approve before push fires for real users.
             await _svc.Loyaltyclass.Insert(toCreate).ExecuteAsync(ct);
-            _log?.LogInformation("Google Wallet class CREATED: {ClassId}", ClassId);
+            _log?.LogInformation("Google Wallet class CREATED: {ClassId} (review status UNDER_REVIEW — approve in Google Pay Console for production push)", ClassId);
         }
         else
         {
+            // Google's Loyaltyclass.Update rejects bodies without reviewStatus ("Review status must be set" 400),
+            // but blindly setting "UNDER_REVIEW" would downgrade an already-approved class.
+            // Preserve whatever state the class currently has so Google validation passes and APPROVED stays APPROVED.
             var toUpdate = BuildDesired();
-            toUpdate.ReviewStatus = "UNDER_REVIEW";
-            // UPDATE-də ReviewStatus göndərmirik
+            toUpdate.ReviewStatus = string.IsNullOrWhiteSpace(existing.ReviewStatus)
+                ? "UNDER_REVIEW"
+                : existing.ReviewStatus;
             await _svc.Loyaltyclass.Update(toUpdate, ClassId).ExecuteAsync(ct);
-            _log?.LogInformation("Google Wallet class UPDATED: {ClassId}", ClassId);
+            _log?.LogInformation("Google Wallet class UPDATED: {ClassId} reviewStatus={ReviewStatus}", ClassId, toUpdate.ReviewStatus);
         }
     }
 
@@ -212,7 +224,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
         try
         {
-            await EnsureClassAsync(tpl, programName: tpl.ProgramName, ct);
+            await EnsureClassAsync(tpl, programName: ResolveIssuerName(tpl), ct);
 
             var objectId = ObjectIdForCard(_issuerId, tpl.TenantId, tpl.LoyaltyProgramId, loyaltyCardId);
 
@@ -384,8 +396,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 Id = objectId,
                 ClassId = ClassId,
                 State = "ACTIVE",
-                AccountId = null,
-                AccountName = "",
+                AccountId = loyaltyCardId.ToString(),
+                AccountName = accountName ?? string.Empty,
 
                 // Only set LoyaltyPoints for non-ProgressBased
                 LoyaltyPoints = isProgressBased ? null : new LoyaltyPoints
@@ -463,6 +475,93 @@ public sealed class GoogleWalletService : IGoogleWalletService
         }
     }
     private static string ObjectIdForCard(string issuerId, int tenantId, int programId, int loyaltyCardId) => $"{issuerId}.{tenantId}.{programId}.lc-{loyaltyCardId}";
+
+    public string BuildObjectIdForCard(int tenantId, int programId, int loyaltyCardId)
+        => ObjectIdForCard(_issuerId, tenantId, programId, loyaltyCardId);
+
+    public async Task<ServiceResult> AddMessageToObjectAsync(string objectId, string title, string body, CancellationToken ct = default)
+    {
+        if (!_isInitialized || _svc == null)
+        {
+            _log?.LogWarning("Google Wallet service not initialized. Skipping AddMessage. ObjectId={ObjectId}", objectId);
+            return new ServiceResult(false, "Google Wallet service not initialized");
+        }
+
+        try
+        {
+            // Log class review state — push only fires for production users when class is APPROVED.
+            try
+            {
+                var cls = await _svc.Loyaltyclass.Get(ClassId).ExecuteAsync(ct);
+                _log?.LogWarning("[GW-PUSH-CHECK] ClassId={ClassId} reviewStatus={ReviewStatus} — Google Wallet push will only reach production users when this is APPROVED. UNDER_REVIEW = only Trusted Testers (service account email).",
+                    ClassId, cls?.ReviewStatus ?? "(null)");
+            }
+            catch (Exception clsEx)
+            {
+                _log?.LogWarning(clsEx, "[GW-PUSH-CHECK] Could not fetch class state for {ClassId}", ClassId);
+            }
+
+            // displayInterval = 7 days. Google requires it to trigger a push on Android Wallet —
+            // without it some devices treat the message as silent (in-app only).
+            var start = System.DateTime.UtcNow;
+            var end = start.AddDays(7);
+            var req = new AddMessageRequest
+            {
+                Message = new Message
+                {
+                    Header = title,
+                    Body = body,
+                    Id = $"notif-{Guid.NewGuid():N}",
+                    MessageType = "TEXT",
+                    DisplayInterval = new TimeInterval
+                    {
+                        Start = new Google.Apis.Walletobjects.v1.Data.DateTime
+                        {
+                            Date = start.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                        },
+                        End = new Google.Apis.Walletobjects.v1.Data.DateTime
+                        {
+                            Date = end.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                        }
+                    }
+                }
+            };
+            await _svc.Loyaltyobject.Addmessage(req, objectId).ExecuteAsync(ct);
+            _log?.LogInformation("GW addmessage OK. ObjectId={ObjectId}", objectId);
+
+            // PUSH-TRIGGER HACK: addmessage alone is optional-push on Google Wallet — Android only
+            // fires a system notification when the user toggled per-pass notifications ON.
+            // Forcing a state change (ACTIVE -> INACTIVE -> ACTIVE) is treated by Google as a
+            // significant card update and pushes a banner reliably across all devices.
+            try
+            {
+                await _svc.Loyaltyobject.Patch(
+                    new LoyaltyObject { State = "INACTIVE" },
+                    objectId).ExecuteAsync(ct);
+                await Task.Delay(250, ct);
+                await _svc.Loyaltyobject.Patch(
+                    new LoyaltyObject { State = "ACTIVE" },
+                    objectId).ExecuteAsync(ct);
+                _log?.LogInformation("GW state-cycle bump OK. ObjectId={ObjectId} (INACTIVE -> ACTIVE)", objectId);
+            }
+            catch (Exception bumpEx)
+            {
+                _log?.LogWarning(bumpEx, "GW state-cycle bump failed (message still delivered). ObjectId={ObjectId}", objectId);
+            }
+
+            return new ServiceResult(true, "OK");
+        }
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound)
+        {
+            _log?.LogWarning("GW addmessage: object not found {ObjectId}", objectId);
+            return new ServiceResult(false, "Object not found");
+        }
+        catch (Exception ex)
+        {
+            _log?.LogError(ex, "AddMessageToObjectAsync failed for {ObjectId}", objectId);
+            return new ServiceResult(false, ex.Message);
+        }
+    }
     // =================== 3) REDEEM / UPDATE ===================
     public async Task<ServiceResult> RedeemByCardIdAsync(
        int loyaltyCardId,
@@ -487,11 +586,28 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
         try
         {
-            await EnsureClassAsync(tpl, programName: tpl.ProgramName, ct);
+            await EnsureClassAsync(tpl, programName: ResolveIssuerName(tpl), ct);
 
             // FIX A: Use ObjectIdForCard instead of hardcoded format
             var objectId = ObjectIdForCard(_issuerId, tpl.TenantId, tpl.LoyaltyProgramId, loyaltyCardId);
             var existing = await _svc.Loyaltyobject.Get(objectId).ExecuteAsync(ct);
+
+            // Resolve customer full name: caller-provided wins, else load from card, else AccountName, else "Card #N".
+            if (string.IsNullOrWhiteSpace(accountName) && _cardRepo != null)
+            {
+                try
+                {
+                    var cardForName = await _cardRepo.GetById(loyaltyCardId, ct);
+                    if (cardForName?.Customer != null)
+                    {
+                        var full = $"{cardForName.Customer.FirstName} {cardForName.Customer.LastName}".Trim();
+                        if (!string.IsNullOrWhiteSpace(full)) accountName = full;
+                    }
+                }
+                catch { /* fallback below */ }
+            }
+            if (string.IsNullOrWhiteSpace(accountName)) accountName = existing.AccountName;
+            if (string.IsNullOrWhiteSpace(accountName)) accountName = $"Card #{loyaltyCardId}";
 
             var nextPoints = currentPoints;
             bool isProgressBased = tpl.TemplateType == CardTemplateType.ProgressBased;
@@ -545,7 +661,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     ? "bonus"
                     : tpl.FreeRewardLabel;
 
-                // 1) Large "Reward Card" title
+                // 1) Customer name (was: hard-coded "Reward Card" placeholder).
                 var rewardCard = textList.FirstOrDefault(t => t.Id == "rewardCard");
                 if (rewardCard == null)
                 {
@@ -553,7 +669,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     textList.Add(rewardCard);
                 }
                 rewardCard.Header = "";
-                rewardCard.Body = "Reward Card";
+                rewardCard.Body = accountName;
 
                 // 2) Free reward label + big number (use FreeRewardLabel from template)
                 var pulsuzIcki = textList.FirstOrDefault(t => t.Id == "pulsuzIcki");
@@ -604,13 +720,15 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     cashbackText = $"{percent}%";
                 }
 
-                // customer
+                // customer — always update so renamed customers reflect on the pass.
                 var customer = textList.FirstOrDefault(t => t.Id == "customer");
                 if (customer == null)
                 {
-                    customer = new TextModuleData { Id = "customer", Header = "Customer", Body = existing.AccountName ?? $"Card #{loyaltyCardId}" };
+                    customer = new TextModuleData { Id = "customer" };
                     textList.Add(customer);
                 }
+                customer.Header = "Customer";
+                customer.Body = accountName;
 
                 // balance
                 var balance = textList.FirstOrDefault(t => t.Id == "balance");
@@ -706,7 +824,10 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 },
                 SecondaryLoyaltyPoints = secondaryLoyaltyPoints,
                 TextModulesData = textList,
-                ImageModulesData = imageModules
+                ImageModulesData = imageModules,
+                // Account fields shown in collapsed/list view of Google Wallet.
+                AccountId = loyaltyCardId.ToString(),
+                AccountName = accountName
             };
 
             var patched = await _svc.Loyaltyobject.Patch(patch, objectId)

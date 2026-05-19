@@ -614,23 +614,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (card == null)
                 return new IikoTransactionResponse { Success = false, Message = "Active loyalty card not found" };
 
-            // 4) iiko POS-dan gələn sum artıq hesablanmış point-dir — birbaşa əlavə et
+            // sum = delta (yalnız transaction log / LifetimePoints earn üçün); balance = absolute state.
             var delta = request.Sum;
-            if (delta == 0)
-                return new IikoTransactionResponse { Success = true, Message = "Zero sum, no action" };
-
-            // Balans yoxlaması: çıxış əməliyyatında balans kifayət edirmi?
-            if (delta < 0 && card.CurrentPoints < Math.Abs(delta))
-            {
-                Console.WriteLine($"⚠️ Insufficient balance: CardId={card.Id}, Balance={card.CurrentPoints}, Requested={Math.Abs(delta)}");
-                return new IikoTransactionResponse
-                {
-                    Success = false,
-                    Message = $"Insufficient balance. Current: {card.CurrentPoints}, Requested: {Math.Abs(delta)}"
-                };
-            }
-
-            var txType = delta > 0 ? TransactionType.Earned : TransactionType.Redeemed;
+            var txType = delta > 0 ? TransactionType.Earned : (delta < 0 ? TransactionType.Redeemed : TransactionType.Earned);
 
             // Program + CardTemplate yüklə (ProgressBased/PointsBased fərqi üçün)
             var program = await _loyaltyProgramRepo.GetByIdNameAsync(context.LoyaltyProgramId!.Value);
@@ -639,36 +625,23 @@ namespace Loyalty.Business.Services.Implementations.Main
             var templateType = template?.TemplateType ?? CardTemplateType.PointsBased;
             var totalSteps = template?.TotalSteps ?? 10;
 
+            // iiko-nun authoritative `balance` field-i istifadə olunur (absolute state, drift yox).
+            // `sum` (delta) yalnız Transaction log-da, LifetimePoints earn tracking və UI mesajı üçün saxlanır.
+            var absBalance = Math.Max(0m, request.Balance);
+
             if (templateType == CardTemplateType.ProgressBased)
             {
-                // ProgressBased: CurrentSteps modulo totalSteps, CompletedCycles += quotient (CollectAsync pattern)
-                var intDelta = (int)delta;
-                if (intDelta >= 0)
-                {
-                    int newSteps = card.CurrentSteps + intDelta;
-                    int cyclesEarned = newSteps / totalSteps;
-                    if (cyclesEarned > 0)
-                        card.CompletedCycles += cyclesEarned;
-                    card.CurrentSteps = newSteps % totalSteps;
-                    card.CurrentPoints = card.CurrentSteps;
-                    card.LifetimePoints += intDelta;
-                }
-                else
-                {
-                    // Negative delta (Redeem): step-ləri azalt, lazım gəlsə cycle-dan götür
-                    int decrement = -intDelta;
-                    int totalAvailable = card.CompletedCycles * totalSteps + card.CurrentSteps;
-                    int remaining = Math.Max(0, totalAvailable - decrement);
-                    card.CompletedCycles = remaining / totalSteps;
-                    card.CurrentSteps = remaining % totalSteps;
-                    card.CurrentPoints = card.CurrentSteps;
-                }
+                int absBalanceInt = (int)absBalance;
+                card.CompletedCycles = absBalanceInt / totalSteps;
+                card.CurrentSteps = absBalanceInt % totalSteps;
+                card.CurrentPoints = absBalanceInt;
+                if (delta > 0)
+                    card.LifetimePoints += (int)delta;
             }
             else
             {
-                // PointsBased/TierBased: sum birbaşa point kimi (POS artıq hesablayıb)
-                card.CurrentPoints += delta;
-                card.CurrentPoints = Math.Max(0, card.CurrentPoints);
+                // PointsBased/TierBased: iiko-nun absolute balance-i
+                card.CurrentPoints = absBalance;
                 if (delta > 0)
                     card.LifetimePoints += delta;
             }

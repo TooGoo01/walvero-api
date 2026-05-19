@@ -48,6 +48,16 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// Get IssuerId for constructing object IDs
         string GetIssuerId();
 
+        /// Build deterministic Google Wallet object ID for a loyalty card.
+        string BuildObjectIdForCard(int tenantId, int programId, int loyaltyCardId);
+
+        /// Push a message ("notification") onto the LoyaltyObject — wallet will surface it to the user.
+        Task<ServiceResult> AddMessageToObjectAsync(
+            string objectId,
+            string title,
+            string body,
+            CancellationToken ct = default);
+
       
         Task<ServiceResult> RedeemByCardIdAsync(
      int loyaltyCardId,

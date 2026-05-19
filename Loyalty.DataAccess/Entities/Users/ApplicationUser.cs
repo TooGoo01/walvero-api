@@ -1,6 +1,7 @@
 ﻿using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Enums;
 using Microsoft.AspNetCore.Identity;
+using System.Text.Json.Serialization;
 
 namespace Loyalty.DataAccess.Entities.Users
 {
@@ -12,8 +13,11 @@ namespace Loyalty.DataAccess.Entities.Users
         public Gender? Gender { get; set; }
         public DateTime? DateOfBirth { get; set; }
         public int? TenantId { get; set; }
+        // Skip during JSON serialization — breaks Tenant.Admins.Tenant.Admins.* cycle.
+        [JsonIgnore]
         public Tenant? Tenant { get; set; }
         public int? BranchId { get; set; }
+        [JsonIgnore]
         public Branch? Branch { get; set; }
         public ICollection<DeviceToken>? DeviceTokens { get; set; } = new List<DeviceToken>();
         public ICollection<Customer>? Customers { get; set; }
