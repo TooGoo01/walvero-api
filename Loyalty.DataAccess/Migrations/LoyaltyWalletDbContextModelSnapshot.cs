@@ -2266,6 +2266,10 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<bool>("AcceptAnonymus")
                         .HasColumnType("bit");
 
+                    b.Property<string>("AlertWhatsappPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("CompanyName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -2292,6 +2296,9 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<int?>("EditUserId")
                         .HasColumnType("int");
+
+                    b.Property<bool>("EnableSuspiciousAlert")
+                        .HasColumnType("bit");
 
                     b.Property<string>("FacebookUrl")
                         .HasColumnType("nvarchar(max)");
@@ -2321,6 +2328,10 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("MenuUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<decimal?>("OcrToleranceAzn")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<string>("PinterestUrl")
                         .HasColumnType("nvarchar(max)");
 
@@ -2333,6 +2344,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<bool>("RequireConfirmation")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("RequireReceiptOcr")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("ShowOnHome")
                         .HasColumnType("bit");
 
@@ -2343,6 +2357,10 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<DateTime?>("SubscriptionExpiryDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("SuspiciousAmountCap")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("TeleqramUrl")
                         .HasColumnType("nvarchar(max)");
@@ -2723,11 +2741,18 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsSuspicious")
+                        .HasColumnType("bit");
+
                     b.Property<DateTimeOffset>("LocalOccurredAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<int>("LoyaltyCardId")
                         .HasColumnType("int");
+
+                    b.Property<decimal?>("OcrExtractedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("OrderId")
                         .HasColumnType("nvarchar(max)");
@@ -2735,6 +2760,10 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<decimal>("Points")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ReceiptImageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<string>("ReferenceNumber")
                         .HasColumnType("nvarchar(max)");
@@ -2750,6 +2779,10 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
+
+                    b.Property<string>("SuspiciousReason")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("TimeZoneIdUsed")
                         .IsRequired()

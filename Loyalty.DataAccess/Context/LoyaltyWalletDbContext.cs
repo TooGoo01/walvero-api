@@ -125,6 +125,12 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(t => t.IsHasMenu)
                     .IsRequired()
                     .HasDefaultValue(false);
+
+                // Receipt OCR + suspicious-tx config (decimal precision)
+                entity.Property(t => t.OcrToleranceAzn).HasPrecision(18, 2);
+                entity.Property(t => t.SuspiciousAmountCap).HasPrecision(18, 2);
+                entity.Property(t => t.AlertWhatsappPhone).HasMaxLength(20);
+
                   entity.HasOne(t => t.TenantLocation)
                    .WithOne(tl => tl.Tenant)
                    .HasForeignKey<Tenant>(t => t.tenantLocationId)
@@ -385,6 +391,9 @@ namespace Loyalty.DataAccess.Context
             {
                 entity.Property(t => t.Points).HasPrecision(18, 2);
                 entity.Property(t => t.BalanceAfter).HasPrecision(18, 2);
+                entity.Property(t => t.OcrExtractedAmount).HasPrecision(18, 2);
+                entity.Property(t => t.ReceiptImageUrl).HasMaxLength(500);
+                entity.Property(t => t.SuspiciousReason).HasMaxLength(100);
             });
 
             modelBuilder.Entity<WalletPass>(entity =>

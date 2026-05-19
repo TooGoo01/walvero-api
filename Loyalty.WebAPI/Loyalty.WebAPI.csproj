@@ -44,4 +44,10 @@
     <Folder Include="Controllers\Pos\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="tessdata\**\*.traineddata">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
