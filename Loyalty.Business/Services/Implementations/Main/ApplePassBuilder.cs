@@ -68,14 +68,15 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             static object SerializeField(PassField f)
             {
-                var dict = new Dictionary<string, object?>
+                var dict = new Dictionary<string, object>
                 {
                     ["key"] = f.Key,
-                    ["label"] = f.Label,
-                    ["value"] = f.Value
+                    ["value"] = f.Value ?? string.Empty
                 };
+                if (!string.IsNullOrWhiteSpace(f.Label))
+                    dict["label"] = f.Label!;
                 if (!string.IsNullOrWhiteSpace(f.ChangeMessage))
-                    dict["changeMessage"] = f.ChangeMessage;
+                    dict["changeMessage"] = f.ChangeMessage!;
                 return dict;
             }
 
