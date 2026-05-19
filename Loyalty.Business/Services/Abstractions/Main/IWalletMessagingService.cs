@@ -8,6 +8,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
     {
         Task<ServiceResult> SendToCardAsync(int loyaltyCardId, string title, string body, CancellationToken ct = default);
         Task<ServiceResult> SendToUserAsync(int applicationUserId, string title, string body, CancellationToken ct = default);
+        Task<ServiceResult> SendToCustomerAsync(int customerId, string title, string body, CancellationToken ct = default);
         Task<ServiceResult> SendToTenantAsync(int tenantId, string title, string body, CancellationToken ct = default);
         Task<ServiceResult> SendToAllAsync(string title, string body, CancellationToken ct = default);
     }

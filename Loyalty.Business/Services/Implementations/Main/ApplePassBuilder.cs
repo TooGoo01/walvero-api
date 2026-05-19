@@ -66,23 +66,32 @@ namespace Loyalty.Business.Services.Implementations.Main
             var storeCard = new Dictionary<string, object?>();
 
 
+            static object SerializeField(PassField f)
+            {
+                var dict = new Dictionary<string, object?>
+                {
+                    ["key"] = f.Key,
+                    ["label"] = f.Label,
+                    ["value"] = f.Value
+                };
+                if (!string.IsNullOrWhiteSpace(f.ChangeMessage))
+                    dict["changeMessage"] = f.ChangeMessage;
+                return dict;
+            }
+
             if (req.PrimaryFields?.Any() == true)
-                storeCard["primaryFields"] = req.PrimaryFields
-                    .Select(f => new { key = f.Key, label = f.Label, value = f.Value }).ToArray();
+                storeCard["primaryFields"] = req.PrimaryFields.Select(SerializeField).ToArray();
 
             if (req.SecondaryFields?.Any() == true)
-                storeCard["secondaryFields"] = req.SecondaryFields
-                    .Select(f => new { key = f.Key, label = f.Label, value = f.Value }).ToArray();
+                storeCard["secondaryFields"] = req.SecondaryFields.Select(SerializeField).ToArray();
             if (req.HeaderFields?.Any() == true)
-                storeCard["headerFields"] = req.HeaderFields
-                    .Select(f => new { key = f.Key, label = f.Label, value = f.Value }).ToArray();
+                storeCard["headerFields"] = req.HeaderFields.Select(SerializeField).ToArray();
             if (req.BackFields?.Any() == true)
-                storeCard["backFields"] = req.BackFields
-                    .Select(f => new { key = f.Key, label = f.Label, value = f.Value }).ToArray();
+                storeCard["backFields"] = req.BackFields.Select(SerializeField).ToArray();
             // >>> ADI QR-KODUN ÜSTÜNDƏ GÖSTƏRMƏK
             var aux = new List<object>();
             if (req.AuxiliaryFields?.Any() == true)
-                aux.AddRange(req.AuxiliaryFields.Select(f => new { key = f.Key, label = f.Label, value = f.Value }));
+                aux.AddRange(req.AuxiliaryFields.Select(SerializeField));
 
           
             if (aux.Count > 0)

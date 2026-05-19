@@ -70,6 +70,72 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(new { success = true, message = "Notification göndərildi.", appDelivered, walletDelivered });
         }
 
+        // Customer-ə göndər (customer-də ApplicationUser yoxdursa app-i silently skip et)
+        public sealed record SendToCustomerRequest(int CustomerId, string Title, string Body, bool ToApp = true, bool ToWallet = false);
+
+        [HttpPost]
+        public async Task<IActionResult> SendToCustomer([FromBody] SendToCustomerRequest request, CancellationToken ct)
+        {
+            if (!request.ToApp && !request.ToWallet)
+                return BadRequest(new { success = false, message = "At least one channel (App or Wallet) must be selected." });
+
+            var customer = await _db.Customers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == request.CustomerId && c.IsActive, ct);
+
+            if (customer == null)
+                return NotFound(new { success = false, message = $"Customer {request.CustomerId} not found or inactive." });
+
+            bool appDelivered = false;
+            bool appSkipped = false;
+            int walletDelivered = 0;
+
+            if (request.ToApp)
+            {
+                if (customer.applicationUserId.HasValue)
+                {
+                    var appUserId = customer.applicationUserId.Value;
+                    var notification = new Notification
+                    {
+                        UserId = appUserId,
+                        Title = request.Title,
+                        Body = request.Body,
+                        IsRead = false,
+                        CreatedAt = DateTime.UtcNow,
+                        RegUserId = 1,
+                        RegDate = DateTime.UtcNow,
+                        IsActive = true
+                    };
+                    await _db.Notifications.AddAsync(notification, ct);
+                    await _db.SaveChangesAsync(ct);
+
+                    await _notificationService.SendToUserAsync(appUserId, request.Title, request.Body);
+                    appDelivered = true;
+                }
+                else
+                {
+                    appSkipped = true;
+                }
+            }
+
+            if (request.ToWallet)
+            {
+                var walletResult = await _walletMessaging.SendToCustomerAsync(request.CustomerId, request.Title, request.Body, ct);
+                walletDelivered = walletResult.Data is int n ? n : 0;
+            }
+
+            return Ok(new
+            {
+                success = true,
+                message = appSkipped
+                    ? $"App skipped (no app account). Wallet: {walletDelivered} channel."
+                    : $"App: {(appDelivered ? "sent" : "off")}, Wallet: {walletDelivered} channel.",
+                appDelivered,
+                appSkipped,
+                walletDelivered
+            });
+        }
+
         // Bütün userlərə göndər (tenantId lazım deyil)
         public sealed record SendToAllRequest(string Title, string Body, bool ToApp = true, bool ToWallet = false);
 

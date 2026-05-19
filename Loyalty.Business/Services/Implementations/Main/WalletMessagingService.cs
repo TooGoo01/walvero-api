@@ -13,21 +13,18 @@ namespace Loyalty.Business.Services.Implementations.Main
     {
         private readonly LoyaltyWalletDbContext _db;
         private readonly IGoogleWalletServiceFactory _googleFactory;
-        private readonly IPasskitPushService _applePush;
-        private readonly IWalletCredentialProvider _credProvider;
+        private readonly IAppleWalletService _appleService;
         private readonly ILogger<WalletMessagingService> _log;
 
         public WalletMessagingService(
             LoyaltyWalletDbContext db,
             IGoogleWalletServiceFactory googleFactory,
-            IPasskitPushService applePush,
-            IWalletCredentialProvider credProvider,
+            IAppleWalletService appleService,
             ILogger<WalletMessagingService> log)
         {
             _db = db;
             _googleFactory = googleFactory;
-            _applePush = applePush;
-            _credProvider = credProvider;
+            _appleService = appleService;
             _log = log;
         }
 
@@ -54,6 +51,20 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (cards.Count == 0)
                 return new ServiceResult(true, 0, "User has no active wallet cards.");
+
+            var deliveries = await PushToCardsAsync(cards, title, body, ct);
+            return new ServiceResult(true, deliveries, $"Wallet message delivered to {deliveries} channel(s) across {cards.Count} card(s).");
+        }
+
+        public async Task<ServiceResult> SendToCustomerAsync(int customerId, string title, string body, CancellationToken ct = default)
+        {
+            var cards = await _db.LoyaltyCards
+                .AsNoTracking()
+                .Where(c => c.CustomerId == customerId && c.Status == CardStatus.Active)
+                .ToListAsync(ct);
+
+            if (cards.Count == 0)
+                return new ServiceResult(true, 0, "Customer has no active wallet cards.");
 
             var deliveries = await PushToCardsAsync(cards, title, body, ct);
             return new ServiceResult(true, deliveries, $"Wallet message delivered to {deliveries} channel(s) across {cards.Count} card(s).");
@@ -92,11 +103,9 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             int delivered = 0;
 
-            // Group by tenant+program so we can reuse a single GoogleWalletService per group.
             foreach (var group in cards.GroupBy(c => new { c.TenantId, c.LoyaltyProgramId }))
             {
                 IGoogleWalletService? gw = null;
-                AppleWalletRuntimeCreds? appleCreds = null;
 
                 foreach (var card in group)
                 {
@@ -119,18 +128,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                     {
                         try
                         {
-                            appleCreds ??= await _credProvider.GetAppleAsync(group.Key.TenantId, ct);
-                            if (appleCreds != null && !string.IsNullOrWhiteSpace(appleCreds.PassTypeIdentifier))
-                            {
-                                await _applePush.NotifyUpdatedMessageAsync(
-                                    group.Key.TenantId,
-                                    appleCreds.PassTypeIdentifier,
-                                    card.AppleSerial!,
-                                    title,
-                                    body,
-                                    ct);
-                                delivered++;
-                            }
+                            // Rebuilds pass with notification backField + changeMessage,
+                            // signs, saves, and triggers APNs refetch — iOS surfaces a
+                            // lock-screen notification when it pulls the new pass.
+                            var res = await _appleService.PushNotificationToCardAsync(card.Id, title, body, ct);
+                            if (res.Success) delivered++;
+                            else _log.LogWarning("Apple Wallet push failed. CardId={CardId} Reason={Reason}", card.Id, res.Message);
                         }
                         catch (Exception ex)
                         {

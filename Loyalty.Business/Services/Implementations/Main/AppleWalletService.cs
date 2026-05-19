@@ -1,4 +1,5 @@
 ﻿using Loyalty.Business.Dtos.Post.Main;
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Entities.Main;
@@ -24,6 +25,8 @@ public sealed class AppleWalletService : IAppleWalletService
     private readonly IPasskitPushService _passkitPush;
     private readonly IWalletCredentialProvider _credProvider;
     private readonly IBranchRepository? _branchRepo;
+    private readonly ILoyaltyProgramRepository? _programRepo;
+    private readonly ITenantBrandingRepository? _brandingRepo;
     private readonly ILogger<AppleWalletService> _logger;
 
     public AppleWalletService(
@@ -35,7 +38,9 @@ public sealed class AppleWalletService : IAppleWalletService
         IWalletCredentialProvider credProvider,
         ILoyaltyCardRepository loyaltyCardRepository,
         ILogger<AppleWalletService> logger,
-        IBranchRepository? branchRepo = null)
+        IBranchRepository? branchRepo = null,
+        ILoyaltyProgramRepository? programRepo = null,
+        ITenantBrandingRepository? brandingRepo = null)
     {
         _builder = builder;
         _signer = signer;
@@ -46,13 +51,15 @@ public sealed class AppleWalletService : IAppleWalletService
         _loyaltyCardRepository = loyaltyCardRepository;
         _logger = logger;
         _branchRepo = branchRepo;
+        _programRepo = programRepo;
+        _brandingRepo = brandingRepo;
     }
 
     private static readonly ConcurrentDictionary<int, SemaphoreSlim> _passLocks = new();
 
-    public async Task<ServiceResult> GeneratePassUrlByCardIdAsync(
+    public Task<ServiceResult> GeneratePassUrlByCardIdAsync(
         int loyaltyCardId,
-        AppleWalletRuntimeCreds creds,               // istəsən bu parametri çıxarıb içəridə credProvider-dən götür
+        AppleWalletRuntimeCreds creds,
         CardTemplateSnapshot snapshot,
         string customerFullName,
         string barcodeValue,
@@ -60,6 +67,20 @@ public sealed class AppleWalletService : IAppleWalletService
         int lotteryTickets = 0,
         string? lotteryWinPrize = null,
         DateTime? lotteryDrawDate = null)
+        => GeneratePassUrlByCardIdAsync(loyaltyCardId, creds, snapshot, customerFullName,
+            barcodeValue, ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate, extraBackFields: null);
+
+    public async Task<ServiceResult> GeneratePassUrlByCardIdAsync(
+        int loyaltyCardId,
+        AppleWalletRuntimeCreds creds,
+        CardTemplateSnapshot snapshot,
+        string customerFullName,
+        string barcodeValue,
+        CancellationToken ct,
+        int lotteryTickets,
+        string? lotteryWinPrize,
+        DateTime? lotteryDrawDate,
+        IEnumerable<PassField>? extraBackFields)
     {
         var card = await _loyaltyCardRepository.GetByIdAsync(loyaltyCardId, ct);
         if (card is null) return new ServiceResult(false, "Card not found.");
@@ -191,6 +212,12 @@ public sealed class AppleWalletService : IAppleWalletService
                     auxiliaryFields.Add(new PassField("cashback", cashbackText, cashback));
                     secondaryFields.Add(new PassField("name", customerFullName, "Customer"));
                 }
+                if (extraBackFields != null)
+                {
+                    foreach (var extra in extraBackFields)
+                        backFields.Add(extra);
+                }
+
                 backFields.Add(new PassField(
     "about",
     "POS ilə inteqrasiya olunan sadiqlik proqramı. Müştəri bağlılığını artırın və təkrar alışları təşviq edin.",
@@ -390,6 +417,65 @@ public sealed class AppleWalletService : IAppleWalletService
             return 15; // Gold tier
         else
             return 20; // Platinum tier
+    }
+
+    public async Task<ServiceResult> PushNotificationToCardAsync(
+        int loyaltyCardId,
+        string title,
+        string body,
+        CancellationToken ct = default)
+    {
+        if (_programRepo == null || _brandingRepo == null)
+            return new ServiceResult(false, "AppleWalletService: program/branding repository not configured for notifications.");
+
+        var card = await _loyaltyCardRepository.GetByIdAsync(loyaltyCardId, ct);
+        if (card is null) return new ServiceResult(false, "Card not found.");
+
+        if (!card.IsIOS || string.IsNullOrWhiteSpace(card.AppleSerial))
+            return new ServiceResult(false, "Card is not on Apple Wallet (no AppleSerial / IsIOS=false).");
+
+        var creds = await _credProvider.GetAppleAsync(card.TenantId, ct);
+        if (!HasValidCreds(creds, out var credsReason))
+        {
+            _logger.LogWarning("Apple credentials missing for tenant {TenantId}: {Reason}", card.TenantId, credsReason);
+            return new ServiceResult(false, $"Apple credentials missing: {credsReason}");
+        }
+
+        var program = await _programRepo.GetByIdNameAsync(card.LoyaltyProgramId, ct);
+        if (program?.CardTemplate is null)
+            return new ServiceResult(false, "Program or card template missing.");
+
+        var branding = await _brandingRepo.GetByTenantIdAsync(card.TenantId);
+
+        string baseUrl = "https://appapi.walvero.com";
+        string ToAbs(string? dbPath)
+        {
+            if (string.IsNullOrWhiteSpace(dbPath)) return string.Empty;
+            if (dbPath.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return dbPath;
+            var rel = "/" + dbPath.TrimStart('/', '\\');
+            return baseUrl + rel;
+        }
+        var snapshot = CardTemplateSnapshotFactory.From(program, program.CardTemplate, branding, ToAbs);
+
+        // Unique value forces iOS to detect a field change → render changeMessage on lock screen.
+        var stamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
+        var notifValue = $"[{stamp}] {title}\n{body}";
+        var notifField = new PassField("notification", notifValue, "Bildiriş", "%@");
+
+        var customerFullName = $"{card.Customer?.FirstName} {card.Customer?.LastName}".Trim();
+        if (string.IsNullOrEmpty(customerFullName)) customerFullName = $"Card #{card.Id}";
+
+        return await GeneratePassUrlByCardIdAsync(
+            loyaltyCardId: card.Id,
+            creds: creds,
+            snapshot: snapshot,
+            customerFullName: customerFullName,
+            barcodeValue: card.BarcodeValue ?? card.Id.ToString(),
+            ct: ct,
+            lotteryTickets: 0,
+            lotteryWinPrize: null,
+            lotteryDrawDate: null,
+            extraBackFields: new[] { notifField });
     }
 
     public async Task<ServiceResult> RedeemByCardIdAsync(
