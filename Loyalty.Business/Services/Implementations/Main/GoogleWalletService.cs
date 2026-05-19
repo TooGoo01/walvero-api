@@ -124,6 +124,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
         try
         {
             existing = await _svc.Loyaltyclass.Get(ClassId).ExecuteAsync(ct);
+            _log?.LogInformation("[GW-CLASS] State check. ClassId={ClassId} reviewStatus={ReviewStatus} (APPROVED required for production push)",
+                ClassId, existing?.ReviewStatus ?? "(null)");
         }
         catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound)
         {
