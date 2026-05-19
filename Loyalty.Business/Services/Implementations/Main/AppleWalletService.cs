@@ -428,7 +428,8 @@ public sealed class AppleWalletService : IAppleWalletService
         if (_programRepo == null || _brandingRepo == null)
             return new ServiceResult(false, "AppleWalletService: program/branding repository not configured for notifications.");
 
-        var card = await _loyaltyCardRepository.GetByIdAsync(loyaltyCardId, ct);
+        // GetById (not GetByIdAsync) Includes Customer — needed for FirstName/LastName.
+        var card = await _loyaltyCardRepository.GetById(loyaltyCardId, ct);
         if (card is null) return new ServiceResult(false, "Card not found.");
 
         if (!card.IsIOS || string.IsNullOrWhiteSpace(card.AppleSerial))

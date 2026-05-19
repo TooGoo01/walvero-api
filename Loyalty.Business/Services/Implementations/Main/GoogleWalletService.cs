@@ -183,15 +183,15 @@ public sealed class GoogleWalletService : IGoogleWalletService
         if (existing is null)
         {
             var toCreate = BuildDesired();
-            toCreate.ReviewStatus = "UNDER_REVIEW"; // yalnız INSERT-də
+            toCreate.ReviewStatus = "UNDER_REVIEW"; // initial submit only — Console must approve before push fires for real users.
             await _svc.Loyaltyclass.Insert(toCreate).ExecuteAsync(ct);
-            _log?.LogInformation("Google Wallet class CREATED: {ClassId}", ClassId);
+            _log?.LogInformation("Google Wallet class CREATED: {ClassId} (review status UNDER_REVIEW — approve in Google Pay Console for production push)", ClassId);
         }
         else
         {
+            // Do NOT touch ReviewStatus on update — would knock an APPROVED class back to UNDER_REVIEW
+            // and silently block push notifications for production users.
             var toUpdate = BuildDesired();
-            toUpdate.ReviewStatus = "UNDER_REVIEW";
-            // UPDATE-də ReviewStatus göndərmirik
             await _svc.Loyaltyclass.Update(toUpdate, ClassId).ExecuteAsync(ct);
             _log?.LogInformation("Google Wallet class UPDATED: {ClassId}", ClassId);
         }
@@ -483,13 +483,29 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
         try
         {
+            // displayInterval = 7 days. Google requires it to trigger a push on Android Wallet —
+            // without it some devices treat the message as silent (in-app only).
+            var start = System.DateTime.UtcNow;
+            var end = start.AddDays(7);
             var req = new AddMessageRequest
             {
                 Message = new Message
                 {
                     Header = title,
                     Body = body,
-                    MessageType = "TEXT"
+                    Id = $"notif-{Guid.NewGuid():N}",
+                    MessageType = "TEXT",
+                    DisplayInterval = new TimeInterval
+                    {
+                        Start = new Google.Apis.Walletobjects.v1.Data.DateTime
+                        {
+                            Date = start.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                        },
+                        End = new Google.Apis.Walletobjects.v1.Data.DateTime
+                        {
+                            Date = end.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                        }
+                    }
                 }
             };
             await _svc.Loyaltyobject.Addmessage(req, objectId).ExecuteAsync(ct);
@@ -536,6 +552,23 @@ public sealed class GoogleWalletService : IGoogleWalletService
             // FIX A: Use ObjectIdForCard instead of hardcoded format
             var objectId = ObjectIdForCard(_issuerId, tpl.TenantId, tpl.LoyaltyProgramId, loyaltyCardId);
             var existing = await _svc.Loyaltyobject.Get(objectId).ExecuteAsync(ct);
+
+            // Resolve customer full name: caller-provided wins, else load from card, else AccountName, else "Card #N".
+            if (string.IsNullOrWhiteSpace(accountName) && _cardRepo != null)
+            {
+                try
+                {
+                    var cardForName = await _cardRepo.GetById(loyaltyCardId, ct);
+                    if (cardForName?.Customer != null)
+                    {
+                        var full = $"{cardForName.Customer.FirstName} {cardForName.Customer.LastName}".Trim();
+                        if (!string.IsNullOrWhiteSpace(full)) accountName = full;
+                    }
+                }
+                catch { /* fallback below */ }
+            }
+            if (string.IsNullOrWhiteSpace(accountName)) accountName = existing.AccountName;
+            if (string.IsNullOrWhiteSpace(accountName)) accountName = $"Card #{loyaltyCardId}";
 
             var nextPoints = currentPoints;
             bool isProgressBased = tpl.TemplateType == CardTemplateType.ProgressBased;
@@ -589,7 +622,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     ? "bonus"
                     : tpl.FreeRewardLabel;
 
-                // 1) Large "Reward Card" title
+                // 1) Customer name (was: hard-coded "Reward Card" placeholder).
                 var rewardCard = textList.FirstOrDefault(t => t.Id == "rewardCard");
                 if (rewardCard == null)
                 {
@@ -597,7 +630,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     textList.Add(rewardCard);
                 }
                 rewardCard.Header = "";
-                rewardCard.Body = "Reward Card";
+                rewardCard.Body = accountName;
 
                 // 2) Free reward label + big number (use FreeRewardLabel from template)
                 var pulsuzIcki = textList.FirstOrDefault(t => t.Id == "pulsuzIcki");
@@ -648,13 +681,15 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     cashbackText = $"{percent}%";
                 }
 
-                // customer
+                // customer — always update so renamed customers reflect on the pass.
                 var customer = textList.FirstOrDefault(t => t.Id == "customer");
                 if (customer == null)
                 {
-                    customer = new TextModuleData { Id = "customer", Header = "Customer", Body = existing.AccountName ?? $"Card #{loyaltyCardId}" };
+                    customer = new TextModuleData { Id = "customer" };
                     textList.Add(customer);
                 }
+                customer.Header = "Customer";
+                customer.Body = accountName;
 
                 // balance
                 var balance = textList.FirstOrDefault(t => t.Id == "balance");
@@ -750,7 +785,10 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 },
                 SecondaryLoyaltyPoints = secondaryLoyaltyPoints,
                 TextModulesData = textList,
-                ImageModulesData = imageModules
+                ImageModulesData = imageModules,
+                // Account fields shown in collapsed/list view of Google Wallet.
+                AccountId = loyaltyCardId.ToString(),
+                AccountName = accountName
             };
 
             var patched = await _svc.Loyaltyobject.Patch(patch, objectId)
