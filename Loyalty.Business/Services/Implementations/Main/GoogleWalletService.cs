@@ -524,6 +524,32 @@ public sealed class GoogleWalletService : IGoogleWalletService
             };
             await _svc.Loyaltyobject.Addmessage(req, objectId).ExecuteAsync(ct);
             _log?.LogInformation("GW addmessage OK. ObjectId={ObjectId}", objectId);
+
+            // PUSH-TRIGGER HACK: Google's addmessage is optional-push (only fires when device-side
+            // pass notifications are explicitly enabled). To force a system notification we bump
+            // the object: write a tiny TextModule with a fresh value — Google treats any object
+            // mutation as "card updated" and pushes a notification reliably.
+            try
+            {
+                var bumpStamp = System.DateTime.UtcNow.ToString("HHmmss.fff");
+                var pushModule = new TextModuleData
+                {
+                    Id = "lastPushBump",
+                    Header = string.Empty,
+                    Body = bumpStamp
+                };
+                var patch = new LoyaltyObject
+                {
+                    TextModulesData = new List<TextModuleData> { pushModule }
+                };
+                await _svc.Loyaltyobject.Patch(patch, objectId).ExecuteAsync(ct);
+                _log?.LogInformation("GW push-bump OK. ObjectId={ObjectId} stamp={Stamp}", objectId, bumpStamp);
+            }
+            catch (Exception bumpEx)
+            {
+                _log?.LogWarning(bumpEx, "GW push-bump failed (message still delivered). ObjectId={ObjectId}", objectId);
+            }
+
             return new ServiceResult(true, "OK");
         }
         catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound)
