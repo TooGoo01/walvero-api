@@ -191,11 +191,15 @@ public sealed class GoogleWalletService : IGoogleWalletService
         }
         else
         {
-            // Do NOT touch ReviewStatus on update — would knock an APPROVED class back to UNDER_REVIEW
-            // and silently block push notifications for production users.
+            // Google's Loyaltyclass.Update rejects bodies without reviewStatus ("Review status must be set" 400),
+            // but blindly setting "UNDER_REVIEW" would downgrade an already-approved class.
+            // Preserve whatever state the class currently has so Google validation passes and APPROVED stays APPROVED.
             var toUpdate = BuildDesired();
+            toUpdate.ReviewStatus = string.IsNullOrWhiteSpace(existing.ReviewStatus)
+                ? "UNDER_REVIEW"
+                : existing.ReviewStatus;
             await _svc.Loyaltyclass.Update(toUpdate, ClassId).ExecuteAsync(ct);
-            _log?.LogInformation("Google Wallet class UPDATED: {ClassId}", ClassId);
+            _log?.LogInformation("Google Wallet class UPDATED: {ClassId} reviewStatus={ReviewStatus}", ClassId, toUpdate.ReviewStatus);
         }
     }
 
@@ -525,29 +529,24 @@ public sealed class GoogleWalletService : IGoogleWalletService
             await _svc.Loyaltyobject.Addmessage(req, objectId).ExecuteAsync(ct);
             _log?.LogInformation("GW addmessage OK. ObjectId={ObjectId}", objectId);
 
-            // PUSH-TRIGGER HACK: Google's addmessage is optional-push (only fires when device-side
-            // pass notifications are explicitly enabled). To force a system notification we bump
-            // the object: write a tiny TextModule with a fresh value — Google treats any object
-            // mutation as "card updated" and pushes a notification reliably.
+            // PUSH-TRIGGER HACK: addmessage alone is optional-push on Google Wallet — Android only
+            // fires a system notification when the user toggled per-pass notifications ON.
+            // Forcing a state change (ACTIVE -> INACTIVE -> ACTIVE) is treated by Google as a
+            // significant card update and pushes a banner reliably across all devices.
             try
             {
-                var bumpStamp = System.DateTime.UtcNow.ToString("HHmmss.fff");
-                var pushModule = new TextModuleData
-                {
-                    Id = "lastPushBump",
-                    Header = string.Empty,
-                    Body = bumpStamp
-                };
-                var patch = new LoyaltyObject
-                {
-                    TextModulesData = new List<TextModuleData> { pushModule }
-                };
-                await _svc.Loyaltyobject.Patch(patch, objectId).ExecuteAsync(ct);
-                _log?.LogInformation("GW push-bump OK. ObjectId={ObjectId} stamp={Stamp}", objectId, bumpStamp);
+                await _svc.Loyaltyobject.Patch(
+                    new LoyaltyObject { State = "INACTIVE" },
+                    objectId).ExecuteAsync(ct);
+                await Task.Delay(250, ct);
+                await _svc.Loyaltyobject.Patch(
+                    new LoyaltyObject { State = "ACTIVE" },
+                    objectId).ExecuteAsync(ct);
+                _log?.LogInformation("GW state-cycle bump OK. ObjectId={ObjectId} (INACTIVE -> ACTIVE)", objectId);
             }
             catch (Exception bumpEx)
             {
-                _log?.LogWarning(bumpEx, "GW push-bump failed (message still delivered). ObjectId={ObjectId}", objectId);
+                _log?.LogWarning(bumpEx, "GW state-cycle bump failed (message still delivered). ObjectId={ObjectId}", objectId);
             }
 
             return new ServiceResult(true, "OK");
