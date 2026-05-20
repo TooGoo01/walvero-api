@@ -45,6 +45,14 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? BackgroundColor { get; set; }
         public string? ForegroundColor { get; set; }
 
+        // --- Receipt OCR + suspicious-tx config (branch override, tenant fallback) ---
+        public bool RequireReceiptOcr { get; set; } = false;
+        public decimal? OcrToleranceAzn { get; set; }              // null → fallback to tenant or 1 AZN
+        public decimal? SuspiciousAmountCap { get; set; }          // null → fallback to tenant
+        public int? SuspiciousSpendCountCap { get; set; }          // null → fallback to tenant
+        public bool EnableSuspiciousAlert { get; set; } = false;
+        public string? AlertWhatsappPhone { get; set; }            // E.164; null → fallback to tenant
+
         public ICollection<Room> Rooms { get; set; } = new List<Room>();
 
         // Inverse navigation collections — DbContext-də HasOne(...).WithMany(b => b.Staff/Transactions)

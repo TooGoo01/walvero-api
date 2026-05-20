@@ -14,10 +14,16 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> GetStatsAsync(int branchId);
 
         /// <summary>
-        /// Branch foto/logo ??kli üçün generic upload — Azure Blob-a yaz?r, URL qaytar?r.
-        /// DB-d? heç bir yaz? saxlan?lm?r; ça??ran t?r?f qaytar?lan URL-i CreateBranch/UpdateBranch
+        /// Branch foto/logo ??kli ï¿½ï¿½ï¿½n generic upload ï¿½ Azure Blob-a yaz?r, URL qaytar?r.
+        /// DB-d? heï¿½ bir yaz? saxlan?lm?r; ï¿½a??ran t?r?f qaytar?lan URL-i CreateBranch/UpdateBranch
         /// DTO-sundak? PhotoUrl v? ya LogoUrl sah?sind? istifad? edir.
         /// </summary>
         Task<ServiceResult> UploadImageAsync(IFormFile file);
+
+        /// <summary>
+        /// Operatorun (waiter/moderator) baÄŸlÄ± olduÄŸu branchÄ± tap. JWT-dÉ™ branch_id yoxdursa
+        /// DB-dÉ™ ApplicationUser.BranchId Ã¼zÉ™rindÉ™n resolve edÉ™n fallback. TapÄ±lmasa null.
+        /// </summary>
+        Task<int?> GetBranchIdByOperatorIdAsync(int operatorId, CancellationToken ct = default);
     }
 }

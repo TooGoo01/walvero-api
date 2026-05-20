@@ -104,6 +104,12 @@ namespace Loyalty.Infrastructure.Utilities.Security.Jwt
                 claims.Add(new Claim("program_id", user.Tenant.LoyaltyPrograms.FirstOrDefault().Id.ToString()!));
             }
 
+            // Branch-scoped operator / branch admin — scanner JWT-də branchı daşımalıdır
+            if (user.BranchId != null && !claims.Any(x => x.Type == "branch_id"))
+            {
+                claims.Add(new Claim("branch_id", user.BranchId.Value.ToString()));
+            }
+
             return claims;
         }
 

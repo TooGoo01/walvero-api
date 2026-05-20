@@ -158,6 +158,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true);
         }
 
+        public async Task<int?> GetBranchIdByOperatorIdAsync(int operatorId, CancellationToken ct = default)
+        {
+            return await _dbContext.Users
+                .AsNoTracking()
+                .Where(u => u.Id == operatorId)
+                .Select(u => u.BranchId)
+                .FirstOrDefaultAsync(ct);
+        }
+
         public async Task<ServiceResult> GetStatsAsync(int branchId)
         {
             var branch = await _dbContext.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == branchId);

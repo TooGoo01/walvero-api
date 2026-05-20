@@ -311,6 +311,13 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             var earnCount = txList.Count(t => t.Type == DataAccess.Entities.Main.TransactionType.Earned || t.Type == DataAccess.Entities.Main.TransactionType.Bonus);
             var spendCount2 = txList.Count(t => t.Type == DataAccess.Entities.Main.TransactionType.Redeemed);
 
+            // Receipt-OCR feature flag — scanner istifadəçidən foto tələb etməlimi qərar verir
+            var requireReceiptOcr = await _dbContext.Tenants
+                .AsNoTracking()
+                .Where(t => t.Id == tenantId)
+                .Select(t => t.RequireReceiptOcr)
+                .FirstOrDefaultAsync(ct);
+
             return Ok(new
             {
                 success = true,
@@ -327,7 +334,8 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 tierPercentCash,
                 tierIconUrl,
                 earnCount,
-                spendCount = spendCount2
+                spendCount = spendCount2,
+                requireReceiptOcr
             });
         }
 

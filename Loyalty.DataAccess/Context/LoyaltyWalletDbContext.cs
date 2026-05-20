@@ -339,6 +339,11 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(b => b.PhotoUrl).HasMaxLength(500);
                 entity.Property(b => b.WorkingHoursJson).HasMaxLength(2000);
 
+                // Suspicious-tx config (branch override, tenant fallback)
+                entity.Property(b => b.OcrToleranceAzn).HasPrecision(18, 2);
+                entity.Property(b => b.SuspiciousAmountCap).HasPrecision(18, 2);
+                entity.Property(b => b.AlertWhatsappPhone).HasMaxLength(20);
+
                 entity.HasIndex(b => new { b.TenantId, b.IsActive });
 
                 entity.HasOne(b => b.Tenant)
@@ -363,6 +368,9 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(b => b.Transactions)
                     .HasForeignKey(t => t.BranchId)
                     .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(t => t.BranchId)
+                    .HasDatabaseName("IX_Transactions_BranchId");
             });
 
             modelBuilder.Entity<LotteryDraw>(entity =>
@@ -394,6 +402,17 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(t => t.OcrExtractedAmount).HasPrecision(18, 2);
                 entity.Property(t => t.ReceiptImageUrl).HasMaxLength(500);
                 entity.Property(t => t.SuspiciousReason).HasMaxLength(100);
+            });
+
+            modelBuilder.Entity<RedeemRequest>(entity =>
+            {
+                entity.Property(t => t.OcrExtractedAmount).HasPrecision(18, 2);
+                entity.Property(t => t.ReceiptImageUrl).HasMaxLength(500);
+
+                entity.HasOne(t => t.Branch)
+                    .WithMany()
+                    .HasForeignKey(t => t.BranchId)
+                    .OnDelete(DeleteBehavior.SetNull);
             });
 
             modelBuilder.Entity<WalletPass>(entity =>

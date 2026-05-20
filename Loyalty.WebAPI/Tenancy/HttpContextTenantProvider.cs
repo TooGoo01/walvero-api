@@ -14,7 +14,7 @@ namespace Loyalty.WebAPI.Tenancy
 
         public int? CurrentTenantId => GetIntHeader("X-Tenant-Id") ?? GetIntClaimOrCookie("tenant_id", "TenantId");
         public int? CurrentProgramId => GetIntHeader("X-Program-Id") ?? GetIntClaim("program_id");
-        public int? CurrentBranchId => GetIntHeader("X-Branch-Id");
+        public int? CurrentBranchId => GetIntClaim("branch_id") ?? GetIntHeader("X-Branch-Id");
         public string? CurrentUserId => GetClaim(ClaimTypes.NameIdentifier);
 
         private ClaimsPrincipal? User =>
