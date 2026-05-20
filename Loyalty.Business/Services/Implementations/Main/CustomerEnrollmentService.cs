@@ -203,12 +203,15 @@ UserManager<ApplicationUser> userManager,
                     _uow.Commit();
                 }
 
-                // Sync new customer to POS systems (fire-and-forget)
-                _ = Task.Run(async () =>
+                // Sync new customer to POS systems
+                try
                 {
-                    try { await _posSyncService.SyncCustomerToPosAsync(tenantId, customer); }
-                    catch (Exception ex) { _logger?.LogWarning(ex, "POS sync failed for customer {CustomerId}", customer.Id); }
-                });
+                    await _posSyncService.SyncCustomerToPosAsync(tenantId, customer, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "POS sync failed for customer {CustomerId}", customer.Id);
+                }
             }
             customer.applicationUserId = int.Parse(userId);
             // 3) Son aktiv kartı reuse et / yoxdursa deactive kartı aktivləşdir / yoxdursa yarat
