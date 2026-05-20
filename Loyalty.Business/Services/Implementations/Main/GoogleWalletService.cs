@@ -191,15 +191,13 @@ public sealed class GoogleWalletService : IGoogleWalletService
         }
         else
         {
-            // Google's Loyaltyclass.Update rejects bodies without reviewStatus ("Review status must be set" 400),
-            // but blindly setting "UNDER_REVIEW" would downgrade an already-approved class.
-            // Preserve whatever state the class currently has so Google validation passes and APPROVED stays APPROVED.
+            // reviewStatus is read-only via API once Console approves the class:
+            //   - sending "APPROVED" → 400 "Invalid review status"
+            //   - sending "UNDER_REVIEW" → demotes the class back into review
+            // Patch (vs Update) lets us omit reviewStatus entirely so the server-side value is preserved.
             var toUpdate = BuildDesired();
-            toUpdate.ReviewStatus = string.IsNullOrWhiteSpace(existing.ReviewStatus)
-                ? "UNDER_REVIEW"
-                : existing.ReviewStatus;
-            await _svc.Loyaltyclass.Update(toUpdate, ClassId).ExecuteAsync(ct);
-            _log?.LogInformation("Google Wallet class UPDATED: {ClassId} reviewStatus={ReviewStatus}", ClassId, toUpdate.ReviewStatus);
+            await _svc.Loyaltyclass.Patch(toUpdate, ClassId).ExecuteAsync(ct);
+            _log?.LogInformation("Google Wallet class PATCHED: {ClassId} (reviewStatus preserved={ReviewStatus})", ClassId, existing.ReviewStatus ?? "(null)");
         }
     }
 
