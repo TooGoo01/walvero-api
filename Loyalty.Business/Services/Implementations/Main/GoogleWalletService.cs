@@ -511,7 +511,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     Header = title,
                     Body = body,
                     Id = $"notif-{Guid.NewGuid():N}",
-                    MessageType = "TEXT",
+                    MessageType = "TEXT_AND_NOTIFY",
                     DisplayInterval = new TimeInterval
                     {
                         Start = new Google.Apis.Walletobjects.v1.Data.DateTime
