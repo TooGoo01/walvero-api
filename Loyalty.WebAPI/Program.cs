@@ -137,7 +137,7 @@ builder.Services
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("TenantAdminOrModerator", policy =>
-        policy.RequireRole("Tenant Admin", "Branch Admin", "Moderator"));
+        policy.RequireRole("Tenant Admin", "Branch Admin", "Moderator", "Branch Moderator"));
     options.AddPolicy("SuperAdminOnly", policy =>
        policy.RequireRole("Super Admin"));
 
@@ -151,6 +151,10 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("BranchAdminOnly", policy =>
         policy.RequireRole("Branch Admin"));
 
+    // Branch-scoped moderator (ops only; BranchId required on user).
+    options.AddPolicy("BranchModeratorOnly", policy =>
+        policy.RequireRole("Branch Moderator"));
+
     // Branch Admin or any higher-level admin (used for branch settings / approve flagged tx)
     options.AddPolicy("BranchAdminOrAbove", policy =>
         policy.RequireRole("Branch Admin", "Tenant Admin", "Super Admin"));
@@ -159,10 +163,10 @@ builder.Services.AddAuthorization(options =>
         policy.RequireRole("Customer"));
 
     options.AddPolicy("CustomerOrTenantAdmin", policy =>
-        policy.RequireRole("Customer", "Tenant Admin", "Branch Admin", "Moderator"));
+        policy.RequireRole("Customer", "Tenant Admin", "Branch Admin", "Moderator", "Branch Moderator"));
 
     options.AddPolicy("SalesManagerOrAbove", policy =>
-        policy.RequireRole("Sales Manager", "Tenant Admin", "Branch Admin", "Moderator", "Super Admin"));
+        policy.RequireRole("Sales Manager", "Tenant Admin", "Branch Admin", "Moderator", "Branch Moderator", "Super Admin"));
 
     // FullProfileOnly policy - requires non-guest user with completed profile
     options.AddPolicy("FullProfileOnly", policy =>
@@ -291,7 +295,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
-    foreach (var roleName in new[] { "Super Admin", "Tenant Admin", "Branch Admin", "Moderator", "Customer", "Sales Manager" })
+    foreach (var roleName in new[] { "Super Admin", "Tenant Admin", "Branch Admin", "Moderator", "Branch Moderator", "Customer", "Sales Manager" })
     {
         if (!await roleManager.RoleExistsAsync(roleName))
         {

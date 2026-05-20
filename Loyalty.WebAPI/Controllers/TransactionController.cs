@@ -42,8 +42,9 @@ namespace Loyalty.WebAPI.Controllers
             if (id <= 0)
                 return BadRequest(new ServiceResult(false, "TenantId is required"));
 
-            // Branch Admin və Moderator yalnız öz branch tx-lərini görür. Tenant/Super Admin filter-i seçə bilər.
-            int? effectiveBranchId = IsBranchAdmin() || IsModeratorOnly()
+            // Branch Admin, Branch Moderator və köhnə Moderator yalnız öz branch tx-lərini görür.
+            // Tenant/Super Admin filter-i seçə bilər.
+            int? effectiveBranchId = IsBranchScoped()
                 ? _tenantProvider.CurrentBranchId
                 : branchId;
 
@@ -53,6 +54,14 @@ namespace Loyalty.WebAPI.Controllers
 
         private bool IsModeratorOnly()
             => User.IsInRole("Moderator") && !User.IsInRole("Tenant Admin") && !User.IsInRole("Super Admin");
+
+        // True if user is any branch-scoped role (Branch Admin / Branch Moderator / legacy Moderator).
+        private bool IsBranchScoped()
+            => !User.IsInRole("Tenant Admin")
+               && !User.IsInRole("Super Admin")
+               && (User.IsInRole("Branch Admin")
+                   || User.IsInRole("Branch Moderator")
+                   || User.IsInRole("Moderator"));
 
         [HttpGet]
         [Authorize(Policy = "TenantAdminOrModerator")]
