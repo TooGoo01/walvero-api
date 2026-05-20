@@ -264,6 +264,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 // === Branch-aware fraud-prevention pipeline ===
                 var operatorBranchId = _tenantProvider.CurrentBranchId;
+                var claimBranchId = operatorBranchId;
                 // JWT-də claim yoxdursa (köhnə token), ApplicationUser.BranchId-ə fallback
                 if (!operatorBranchId.HasValue)
                 {
@@ -279,10 +280,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
                 var cfg = await ResolveCfgAsync(request.TenantId, operatorBranchId, ct);
 
-                // Receipt OCR — yalnız "pay" rejimi (delta < 0). Block hard if mismatch.
+                _logger.LogInformation(
+                    "Fraud cfg resolved. UserId={Uid} claimBranch={ClaimBranch} dbBranch={DbBranch} " +
+                    "RequireOcr={Req} AmountCap={Cap} SpendCap={SCap} HasReceipt={HasImg}",
+                    _tenantProvider.CurrentUserId, claimBranchId, operatorBranchId,
+                    cfg.RequireOcr, cfg.AmountCap, cfg.SpendCountCap, request.ReceiptImage != null);
+
+                // Receipt OCR — earn (delta > 0) və pay (delta < 0) hər iki rejimdə.
+                // Earn-də də doğrulama lazımdır ki, kassir 500 yazsa çek 500 olduğu üçün bonus düzgün hesablansın.
                 string? receiptUrl = null;
                 decimal? ocrAmount = null;
-                if (cfg.RequireOcr && delta < 0)
+                if (cfg.RequireOcr && delta != 0)
                 {
                     if (request.ReceiptImage is null)
                     {
@@ -290,8 +298,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                             request.TenantId, operatorBranchId);
                         return Fail("Çekin şəklini yükləyin.");
                     }
+                    // OCR çek məbləği ilə kassirin daxil etdiyi orijinal məbləği müqayisə edir
+                    // (earn rejimində delta artıq tier percent ilə çevrilib, ona görə OriginalAmount istifadə edirik).
+                    var amountForOcr = request.OriginalAmount ?? delta;
                     var ocr = await _receiptValidation.ValidateAsync(
-                        request.ReceiptImage, delta, cfg.Tolerance, ct);
+                        request.ReceiptImage, amountForOcr, cfg.Tolerance, ct);
                     if (!ocr.IsValid)
                     {
                         _logger.LogWarning("Receipt OCR mismatch: {Error}", ocr.Error);
@@ -666,17 +677,31 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var groupName = $"user-{appUserId.Value}";
                     var data = new Dictionary<string, string> { { "type", "normal" } };
 
-                    await _hubContext
-                        .Clients
-                        .Group(groupName)
-                        .SendAsync("CardUpdated", message, cancellationToken: CancellationToken.None);
+                    try
+                    {
+                        await _hubContext
+                            .Clients
+                            .Group(groupName)
+                            .SendAsync("CardUpdated", message, cancellationToken: CancellationToken.None);
+                    }
+                    catch (Exception hubEx)
+                    {
+                        _logger.LogWarning(hubEx, "SignalR CardUpdated send failed. CardId={CardId}", card.Id);
+                    }
 
                     var currency = snapshot.Currency ?? "AZN"; // Default: AZN
                     var message1 = delta > 0
                         ? $"{snapshot.ProgramName} balansınıza {delta} {currency} əlavə olundu!"
                         : $"{snapshot.ProgramName} balansınızdan {delta * -1} {currency} çıxıldı!";
 
-                    await _notificationService.SendToUserAsync(appUserId.Value, snapshot.ProgramName, message1, data);
+                    try
+                    {
+                        await _notificationService.SendToUserAsync(appUserId.Value, snapshot.ProgramName, message1, data);
+                    }
+                    catch (Exception fcmEx)
+                    {
+                        _logger.LogWarning(fcmEx, "FCM notification failed (non-fatal). CardId={CardId}", card.Id);
+                    }
                 }
 
               
@@ -877,10 +902,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var groupName = $"user-{appUserId.Value}";
                     var data = new Dictionary<string, string> { { "type", "normal" } };
 
-                    await _hubContext
-                        .Clients
-                        .Group(groupName)
-                        .SendAsync("CardUpdated", message, cancellationToken: CancellationToken.None);
+                    try
+                    {
+                        await _hubContext
+                            .Clients
+                            .Group(groupName)
+                            .SendAsync("CardUpdated", message, cancellationToken: CancellationToken.None);
+                    }
+                    catch (Exception hubEx)
+                    {
+                        _logger.LogWarning(hubEx, "SignalR CardUpdated send failed (confirm). CardId={CardId}", card.Id);
+                    }
 
                     string message1;
                     if (snapshot.TemplateType == CardTemplateType.ProgressBased)
@@ -899,7 +931,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                             : $"{snapshot.ProgramName} balansınızdan {Math.Abs(displayDelta)} {currency} çıxıldı!";
                     }
 
-                    await _notificationService.SendToUserAsync(appUserId.Value, snapshot.ProgramName, message1, data);
+                    try
+                    {
+                        await _notificationService.SendToUserAsync(appUserId.Value, snapshot.ProgramName, message1, data);
+                    }
+                    catch (Exception fcmEx)
+                    {
+                        _logger.LogWarning(fcmEx, "FCM notification failed (non-fatal, confirm). CardId={CardId}", card.Id);
+                    }
                 }
 
                 _logger.LogInformation("Confirm completed successfully. CardId={CardId}, AppliedDelta={Delta}", card.Id, displayDelta);

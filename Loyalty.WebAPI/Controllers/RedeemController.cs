@@ -530,6 +530,10 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             else
                 percent = tierPercent;
 
+            // OCR doğrulaması üçün kassirin daxil etdiyi orijinal məbləği saxla (percent çevrilməsindən əvvəl).
+            // Pay rejimi-də delta artıq mənfi, abs() faktiki çek məbləğidir.
+            decimal originalAmount = Math.Abs(delta);
+
             if (delta > 0 && percent.HasValue) {
                 // decimal arithmetic — kəsr saxlanır (məs. 25 * 5 / 100m = 1.25m)
                 delta = delta * percent.Value / 100m;
@@ -545,7 +549,8 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 OrderId = orderIdIn,
                 TenantId = tenantId.Value,
                 SpendCount = spendCountIn, // Add SpendCount for "Xərclə" mode
-                ReceiptImage = receiptImage
+                ReceiptImage = receiptImage,
+                OriginalAmount = originalAmount
             };
 
             var res = await _redeemService.RedeemAsync(dto, ct);

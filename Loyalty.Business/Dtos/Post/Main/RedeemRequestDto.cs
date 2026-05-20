@@ -37,8 +37,12 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? Note { get; set; }                                                // səbəb/şərh (audit)
         public int? SpendCount { get; set; }                                             // Free reward xərcləmə sayı (kassirin daxil etdiyi)
 
-        // Receipt OCR — tenant/branch RequireReceiptOcr=true olduqda pay rejimi üçün məcburi
+        // Receipt OCR — tenant/branch RequireReceiptOcr=true olduqda earn + pay üçün məcburi
         public IFormFile? ReceiptImage { get; set; }
+
+        // OCR doğrulaması üçün orijinal çek məbləği (kassirin daxil etdiyi, percent tətbiq edilməmiş).
+        // Earn rejimində Delta tier percent ilə çevrildiyi üçün ayrıca saxlayırıq.
+        public decimal? OriginalAmount { get; set; }
     }
 
     /// <summary>
