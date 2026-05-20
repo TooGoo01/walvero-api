@@ -447,6 +447,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     .ThenInclude(u => u.Tenant)
                     .ThenInclude(t => t.LoyaltyPrograms)
                         .ThenInclude(lp => lp.CardTemplate)
+                    .Include(rt => rt.User)
+                    .ThenInclude(u => u.Branch)
                     .FirstOrDefaultAsync(rt => rt.Token == dto.RefreshToken);
 
                 if (refreshToken == null)
@@ -502,6 +504,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     Id = user.Id,
                     TenantId = user.TenantId,
                     ProgramId = programId,
+                    BranchId = user.BranchId,
+                    BranchName = user.Branch?.Name,
                     UserName = user.UserName,
                     FirstName = user.Name ?? "",
                     LastName = user.Surname ?? "",

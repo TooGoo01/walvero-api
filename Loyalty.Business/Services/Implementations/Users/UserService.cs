@@ -172,6 +172,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                         .Include(x => x.Tenant)
                         .ThenInclude(x => x.LoyaltyPrograms)
                         .ThenInclude(x => x.CardTemplate)
+                        .Include(x => x.Branch)
                         .FirstOrDefaultAsync(x => x.UserName == normalizedInput
                             || x.PhoneNumber == normalizedInput
                             || x.NormalizedUserName == normalizedUpper);
@@ -217,6 +218,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                                 Roles = rolem,
                                 TenantId = user.TenantId,
                                 ProgramId = user.Tenant?.LoyaltyPrograms?.FirstOrDefault()?.Id,
+                                BranchId = user.BranchId,
+                                BranchName = user.Branch?.Name,
                                 Token = token.Token,
                                 Expiration = token.Expiration,
                                 RefreshToken = token.RefreshToken,
@@ -819,6 +822,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     .Include(x => x.Tenant)
                     .ThenInclude(x => x.LoyaltyPrograms)
                     .ThenInclude(x => x.CardTemplate)
+                    .Include(x => x.Branch)
                     .FirstOrDefaultAsync(x => x.Id == userId);
                 
                 if (user == null)
@@ -914,6 +918,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                             BirthDate = user.DateOfBirth ?? DateTime.Now,
                             Roles = roles.ToList(),
                             TenantId = user.TenantId,
+                            BranchId = user.BranchId,
+                            BranchName = user.Branch?.Name,
                             Token = token.Token,
                             Expiration = token.Expiration,
                             RefreshToken = token.RefreshToken,
@@ -1328,6 +1334,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     .Include(x => x.Tenant)
                     .ThenInclude(x => x.LoyaltyPrograms)
                     .ThenInclude(x => x.CardTemplate)
+                    .Include(x => x.Branch)
                     .FirstOrDefaultAsync(x => x.PhoneNumber == request.Phone || x.UserName == request.Phone, ct);
 
                 if (user == null)
@@ -1405,6 +1412,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                         Roles = roles.ToList(),
                         TenantId = user.TenantId,
                         ProgramId = user.Tenant?.LoyaltyPrograms?.FirstOrDefault()?.Id,
+                        BranchId = user.BranchId,
+                        BranchName = user.Branch?.Name,
                         WalveroId = user.WalveroId,
                         Token = token.Token,
                         Expiration = token.Expiration,
@@ -1457,6 +1466,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     .Include(x => x.Tenant)
                     .ThenInclude(x => x.LoyaltyPrograms)
                     .ThenInclude(x => x.CardTemplate)
+                    .Include(x => x.Branch)
                     .FirstOrDefaultAsync(u => u.Id == request.UserId, ct);
 
                 if (user == null)
@@ -1556,6 +1566,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     Roles = roles.ToList(),
                     TenantId = user.TenantId,
                     ProgramId = user.Tenant?.LoyaltyPrograms?.FirstOrDefault()?.Id,
+                    BranchId = user.BranchId,
+                    BranchName = user.Branch?.Name,
                     Token = token.Token,
                     Expiration = token.Expiration,
                     RefreshToken = token.RefreshToken,

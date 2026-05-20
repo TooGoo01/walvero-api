@@ -7,6 +7,8 @@ namespace Loyalty.DataAccess.Models
         public int Id { get; set; }
         public int? TenantId { get; set; }
         public int? ProgramId { get; set; }
+        public int? BranchId { get; set; }
+        public string? BranchName { get; set; }
         public long? WalveroId { get; set; }
         public string UserName { get; set; } = string.Empty;
         public string FirstName { get; set; } = string.Empty;

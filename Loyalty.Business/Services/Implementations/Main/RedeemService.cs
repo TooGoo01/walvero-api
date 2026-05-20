@@ -264,6 +264,19 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 // === Branch-aware fraud-prevention pipeline ===
                 var operatorBranchId = _tenantProvider.CurrentBranchId;
+                // JWT-də claim yoxdursa (köhnə token), ApplicationUser.BranchId-ə fallback
+                if (!operatorBranchId.HasValue)
+                {
+                    var userIdStr = _tenantProvider.CurrentUserId;
+                    if (int.TryParse(userIdStr, out var uid))
+                    {
+                        operatorBranchId = await _dbContext.Users
+                            .AsNoTracking()
+                            .Where(u => u.Id == uid)
+                            .Select(u => u.BranchId)
+                            .FirstOrDefaultAsync(ct);
+                    }
+                }
                 var cfg = await ResolveCfgAsync(request.TenantId, operatorBranchId, ct);
 
                 // Receipt OCR — yalnız "pay" rejimi (delta < 0). Block hard if mismatch.
