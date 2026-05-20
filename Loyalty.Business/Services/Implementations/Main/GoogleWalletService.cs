@@ -191,13 +191,14 @@ public sealed class GoogleWalletService : IGoogleWalletService
         }
         else
         {
-            // reviewStatus is read-only via API once Console approves the class:
-            //   - sending "APPROVED" → 400 "Invalid review status"
-            //   - sending "UNDER_REVIEW" → demotes the class back into review
-            // Patch (vs Update) lets us omit reviewStatus entirely so the server-side value is preserved.
-            var toUpdate = BuildDesired();
-            await _svc.Loyaltyclass.Patch(toUpdate, ClassId).ExecuteAsync(ct);
-            _log?.LogInformation("Google Wallet class PATCHED: {ClassId} (reviewStatus preserved={ReviewStatus})", ClassId, existing.ReviewStatus ?? "(null)");
+            // Class already exists. Do NOT write on the hot path (Redeem / CreateObject):
+            //   - sending reviewStatus="APPROVED" → 400 "Invalid review status"
+            //   - sending "UNDER_REVIEW" on an approved class → demotes it back into review
+            //   - even Patch can echo server-side reviewStatus depending on SDK round-trip
+            // Class metadata edits (logo, colors, ProgramName) must go through an explicit
+            // admin/re-submit endpoint, not runtime card operations.
+            _log?.LogInformation("Google Wallet class exists ({ClassId}) — skipping update during runtime op. ReviewStatus={ReviewStatus}",
+                ClassId, existing.ReviewStatus ?? "(null)");
         }
     }
 
