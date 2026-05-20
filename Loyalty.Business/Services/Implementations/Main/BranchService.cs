@@ -128,6 +128,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.BackgroundColor != null) branch.BackgroundColor = dto.BackgroundColor;
             if (dto.ForegroundColor != null) branch.ForegroundColor = dto.ForegroundColor;
 
+            // Fraud-prevention config
+            if (dto.RequireReceiptOcr.HasValue) branch.RequireReceiptOcr = dto.RequireReceiptOcr.Value;
+            if (dto.OcrToleranceAzn.HasValue) branch.OcrToleranceAzn = dto.OcrToleranceAzn;
+            if (dto.SuspiciousAmountCap.HasValue) branch.SuspiciousAmountCap = dto.SuspiciousAmountCap;
+            if (dto.SuspiciousSpendCountCap.HasValue) branch.SuspiciousSpendCountCap = dto.SuspiciousSpendCountCap;
+            if (dto.EnableSuspiciousAlert.HasValue) branch.EnableSuspiciousAlert = dto.EnableSuspiciousAlert.Value;
+            if (dto.AlertWhatsappPhone != null) branch.AlertWhatsappPhone = dto.AlertWhatsappPhone;
+
             if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
             {
                 await ResetMainBranchAsync(branch.TenantId);

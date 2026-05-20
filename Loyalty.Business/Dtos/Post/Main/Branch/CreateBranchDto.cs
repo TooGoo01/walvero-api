@@ -49,5 +49,13 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
 
         [MaxLength(20)] public string? BackgroundColor { get; set; }
         [MaxLength(20)] public string? ForegroundColor { get; set; }
+
+        // --- Receipt OCR + suspicious-tx config (branch override; tenant fallback) ---
+        public bool? RequireReceiptOcr { get; set; }
+        public decimal? OcrToleranceAzn { get; set; }
+        public decimal? SuspiciousAmountCap { get; set; }
+        public int? SuspiciousSpendCountCap { get; set; }
+        public bool? EnableSuspiciousAlert { get; set; }
+        [MaxLength(20)] public string? AlertWhatsappPhone { get; set; }
     }
 }

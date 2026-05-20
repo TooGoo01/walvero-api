@@ -67,6 +67,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             return await GetAsQueryable()
                 .Include(t => t.LoyaltyCard)
                     .ThenInclude(lc => lc.Customer)
+                .Include(t => t.Branch)
                 .Where(t =>
                     t.LoyaltyCard.TenantId == tenantId &&
                     t.LocalOccurredAt.Date >= startDate.ToDateTime(TimeOnly.MinValue) &&

@@ -387,6 +387,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                 category.RequireConfirmation = dto.RequireConfirmation;
                 category.ConfirmationTtlMinutes = dto.ConfirmationTtlMinutes;
 
+                // Fraud-prevention config (tenant-level fallback for branches)
+                if (dto.RequireReceiptOcr.HasValue) category.RequireReceiptOcr = dto.RequireReceiptOcr.Value;
+                if (dto.OcrToleranceAzn.HasValue) category.OcrToleranceAzn = dto.OcrToleranceAzn;
+                if (dto.SuspiciousAmountCap.HasValue) category.SuspiciousAmountCap = dto.SuspiciousAmountCap;
+                if (dto.SuspiciousSpendCountCap.HasValue) category.SuspiciousSpendCountCap = dto.SuspiciousSpendCountCap;
+                if (dto.EnableSuspiciousAlert.HasValue) category.EnableSuspiciousAlert = dto.EnableSuspiciousAlert.Value;
+                if (dto.AlertWhatsappPhone != null) category.AlertWhatsappPhone = dto.AlertWhatsappPhone;
+
                 // Handle TenantLocation
                 if (dto.countryId.HasValue || dto.cityId.HasValue || dto.timeZoneId.HasValue)
                 {

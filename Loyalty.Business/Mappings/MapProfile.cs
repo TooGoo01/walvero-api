@@ -207,7 +207,8 @@ namespace Loyalty.Business.Mappings
                         : null))
                 .ForMember(d => d.CardNumber, opt => opt.MapFrom(s =>
                     s.LoyaltyCard != null ? s.LoyaltyCard.CardNumber : null))
-                .ForMember(d => d.CreatedAt, opt => opt.MapFrom(s => s.RegDate));
+                .ForMember(d => d.CreatedAt, opt => opt.MapFrom(s => s.RegDate))
+                .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null));
 
             #endregion
 

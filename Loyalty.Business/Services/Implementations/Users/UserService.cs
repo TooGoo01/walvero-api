@@ -2195,7 +2195,7 @@ namespace Loyalty.Business.Services.Implementations.Users
         {
             try
             {
-                var users = await _dbContext.Users.Include(u => u.Tenant).ToListAsync();
+                var users = await _dbContext.Users.Include(u => u.Tenant).Include(u => u.Branch).ToListAsync();
                 var result = new List<ApplicationUserDto>();
 
                 foreach (var user in users)
@@ -2213,7 +2213,9 @@ namespace Loyalty.Business.Services.Implementations.Users
                         IsProfileCompleted = user.IsProfileCompleted,
                         TenantId = user.TenantId,
                         Roles = roles.ToList(),
-                        CreatedAt = null
+                        CreatedAt = null,
+                        BranchId = user.BranchId,
+                        BranchName = user.Branch?.Name
                     });
                 }
 
@@ -2282,7 +2284,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             }
         }
 
-        public async Task<ServiceResult> UpdateAdminUserAsync(string userId, string? role, int? tenantId, List<string>? roles = null)
+        public async Task<ServiceResult> UpdateAdminUserAsync(string userId, string? role, int? tenantId, List<string>? roles = null, int? branchId = null, bool clearBranchId = false)
         {
             try
             {
@@ -2292,6 +2294,11 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 if (tenantId.HasValue)
                     user.TenantId = tenantId.Value;
+
+                if (clearBranchId)
+                    user.BranchId = null;
+                else if (branchId.HasValue)
+                    user.BranchId = branchId.Value;
 
                 await _userManager.UpdateAsync(user);
 

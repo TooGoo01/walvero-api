@@ -41,6 +41,9 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly ITimeZoneService _timeZoneService;
         private readonly ILotteryRepository _lotteryRepository;
+        private readonly IReceiptValidationService _receiptValidation;
+        private readonly IWhatsAppAlertService _whatsappAlert;
+        private readonly ITenantProvider _tenantProvider;
         public RedeemService(
             ILoyaltyCardRepository cardSvc,
             ILoyaltyProgramRepository programSvc,
@@ -56,7 +59,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             ICustomerRepository customerRepo,
             LoyaltyWalletDbContext dbContext,
             ITimeZoneService timeZoneService,
-            ILotteryRepository lotteryRepository)
+            ILotteryRepository lotteryRepository,
+            IReceiptValidationService receiptValidation,
+            IWhatsAppAlertService whatsappAlert,
+            ITenantProvider tenantProvider)
         {
             _cardSvc = cardSvc;
             _programSvc = programSvc;
@@ -75,6 +81,71 @@ namespace Loyalty.Business.Services.Implementations.Main
             _dbContext = dbContext;
             _timeZoneService = timeZoneService;
             _lotteryRepository = lotteryRepository;
+            _receiptValidation = receiptValidation;
+            _whatsappAlert = whatsappAlert;
+            _tenantProvider = tenantProvider;
+        }
+
+        // Resolved per-redeem fraud config (branch override + tenant fallback)
+        private sealed class EffectiveSuspiciousCfg
+        {
+            public bool RequireOcr { get; init; }
+            public decimal Tolerance { get; init; } = 1m;
+            public decimal? AmountCap { get; init; }
+            public int? SpendCountCap { get; init; }
+            public bool AlertEnabled { get; init; }
+            public string? AlertPhone { get; init; }
+            public string TenantName { get; init; } = string.Empty;
+        }
+
+        private async Task<EffectiveSuspiciousCfg> ResolveCfgAsync(int tenantId, int? branchId, CancellationToken ct)
+        {
+            var tenant = await _dbContext.Tenants
+                .AsNoTracking()
+                .Where(t => t.Id == tenantId)
+                .Select(t => new
+                {
+                    t.CompanyName,
+                    t.RequireReceiptOcr,
+                    t.OcrToleranceAzn,
+                    t.SuspiciousAmountCap,
+                    t.SuspiciousSpendCountCap,
+                    t.EnableSuspiciousAlert,
+                    t.AlertWhatsappPhone
+                })
+                .FirstOrDefaultAsync(ct);
+
+            if (tenant is null)
+                return new EffectiveSuspiciousCfg();
+
+            var branch = branchId.HasValue
+                ? await _dbContext.Branches
+                    .AsNoTracking()
+                    .Where(b => b.Id == branchId.Value)
+                    .Select(b => new
+                    {
+                        b.RequireReceiptOcr,
+                        b.OcrToleranceAzn,
+                        b.SuspiciousAmountCap,
+                        b.SuspiciousSpendCountCap,
+                        b.EnableSuspiciousAlert,
+                        b.AlertWhatsappPhone
+                    })
+                    .FirstOrDefaultAsync(ct)
+                : null;
+
+            return new EffectiveSuspiciousCfg
+            {
+                RequireOcr = tenant.RequireReceiptOcr || (branch?.RequireReceiptOcr ?? false),
+                Tolerance = branch?.OcrToleranceAzn ?? tenant.OcrToleranceAzn ?? 1m,
+                AmountCap = branch?.SuspiciousAmountCap ?? tenant.SuspiciousAmountCap,
+                SpendCountCap = branch?.SuspiciousSpendCountCap ?? tenant.SuspiciousSpendCountCap,
+                AlertEnabled = (branch?.EnableSuspiciousAlert ?? false) || tenant.EnableSuspiciousAlert,
+                AlertPhone = !string.IsNullOrWhiteSpace(branch?.AlertWhatsappPhone)
+                    ? branch.AlertWhatsappPhone
+                    : tenant.AlertWhatsappPhone,
+                TenantName = tenant.CompanyName ?? string.Empty
+            };
         }
 
         // START (Auto / ForcePending / ForceApply)
@@ -191,13 +262,56 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _logger.LogInformation("Snapshot built. TemplateType={TemplateType}, RequireConfirmation={RequireConfirmation}",
                     snapshot.TemplateType, policy.RequireConfirmation);
 
+                // === Branch-aware fraud-prevention pipeline ===
+                var operatorBranchId = _tenantProvider.CurrentBranchId;
+                var cfg = await ResolveCfgAsync(request.TenantId, operatorBranchId, ct);
+
+                // Receipt OCR — yalnız "pay" rejimi (delta < 0). Block hard if mismatch.
+                string? receiptUrl = null;
+                decimal? ocrAmount = null;
+                if (cfg.RequireOcr && delta < 0)
+                {
+                    if (request.ReceiptImage is null)
+                    {
+                        _logger.LogWarning("Receipt OCR required but no image. TenantId={TenantId}, BranchId={BranchId}",
+                            request.TenantId, operatorBranchId);
+                        return Fail("Çekin şəklini yükləyin.");
+                    }
+                    var ocr = await _receiptValidation.ValidateAsync(
+                        request.ReceiptImage, delta, cfg.Tolerance, ct);
+                    if (!ocr.IsValid)
+                    {
+                        _logger.LogWarning("Receipt OCR mismatch: {Error}", ocr.Error);
+                        return Fail(ocr.Error ?? "Çek məbləği uyğun deyil.");
+                    }
+                    receiptUrl = ocr.ReceiptUrl;
+                    ocrAmount = ocr.ExtractedAmount;
+                }
+
+                // Suspicious check — amount cap OR spendCount cap
+                bool isSuspicious = false;
+                string? suspiciousReason = null;
+                if (cfg.AmountCap.HasValue && Math.Abs(delta) > cfg.AmountCap.Value)
+                {
+                    isSuspicious = true;
+                    suspiciousReason = "AmountExceedsCap";
+                }
+                else if (cfg.SpendCountCap.HasValue && request.SpendCount.HasValue
+                         && request.SpendCount.Value > cfg.SpendCountCap.Value)
+                {
+                    isSuspicious = true;
+                    suspiciousReason = "SpendCountExceedsCap";
+                }
+
                 // Check for free reward spending (ProgressBased only)
                 if (request.SpendCount.HasValue && request.SpendCount.Value > 0)
                 {
                     // Free reward xərcləməsi
                     request.Delta = 0; // Delta-nı 0-a set et ki, ApplyDelta çağırılmasın
                     string freeRewardLabel = GetFreeRewardLabel(snapshot);
-                    return await RedeemFreeRewardAsync(card, request, snapshot, freeRewardLabel, ct);
+                    return await RedeemFreeRewardAsync(
+                        card, request, snapshot, freeRewardLabel,
+                        operatorBranchId, receiptUrl, ocrAmount, isSuspicious, suspiciousReason, cfg, ct);
                 }
 
                 // Safety: ProgressBased-də delta=0 və spendCount yoxdur/0-dırsa, heç nə etmə
@@ -250,7 +364,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                         IdempotencyKey = request.IdempotencyKey,
                         OperatorId = request.OperatorId,
                         OrderId = request.OrderId,
-                        Note = request.Note
+                        Note = request.Note,
+                        BranchId = operatorBranchId,
+                        ReceiptImageUrl = receiptUrl,
+                        OcrExtractedAmount = ocrAmount
                     };
 
                     await uow.Repository<RedeemRequest>().AddAsync(rr);
@@ -324,6 +441,45 @@ namespace Loyalty.Business.Services.Implementations.Main
                     };
                 }
 
+                // Suspicious → flag-only, balansa toxunma; admin review etməlidir
+                if (isSuspicious)
+                {
+                    var (sLocalTime, sTzId) = await _timeZoneService.GetTenantLocalTimeAsync(request.TenantId, null, CancellationToken.None);
+                    var stx = BuildTransaction(card, delta, request.OrderId, request.Note,
+                        delta < 0 ? TransactionType.Redeemed : TransactionType.Earned,
+                        sLocalTime, sTzId);
+                    stx.Status = RedeemStatus.FlaggedForReview;
+                    stx.BranchId = operatorBranchId;
+                    stx.ReceiptImageUrl = receiptUrl;
+                    stx.OcrExtractedAmount = ocrAmount;
+                    stx.IsSuspicious = true;
+                    stx.SuspiciousReason = suspiciousReason;
+
+                    uow.Repository<Transaction>().Add(stx);
+                    uow.Commit();
+
+                    _logger.LogWarning("Suspicious tx flagged. CardId={CardId}, Reason={Reason}, Delta={Delta}, AmountCap={AmountCap}, SpendCountCap={SpendCountCap}",
+                        card.Id, suspiciousReason, delta, cfg.AmountCap, cfg.SpendCountCap);
+
+                    if (cfg.AlertEnabled && !string.IsNullOrWhiteSpace(cfg.AlertPhone))
+                    {
+                        var customerName = card.Customer?.applicationUser?.UserName;
+                        var txRef = stx.OrderId ?? stx.Id.ToString();
+                        _ = Task.Run(() => _whatsappAlert.SendSuspiciousTxAlertAsync(
+                            cfg.AlertPhone!, cfg.TenantName, customerName,
+                            Math.Abs(delta), cfg.AmountCap ?? 0,
+                            request.OperatorId, txRef, CancellationToken.None));
+                    }
+
+                    return new RedeemResultDto
+                    {
+                        Success = true,
+                        Message = "Şübhəli əməliyyat kimi qeyd olundu. Admin yoxlamasına gözləyir.",
+                        LoyaltyCardId = card.Id,
+                        AppliedDelta = 0,
+                    };
+                }
+
                 var beforePoints = card.CurrentPoints;
                 var beforeSteps = card.CurrentSteps;
                 var beforeCompletedCycles = card.CompletedCycles;
@@ -334,6 +490,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var (localTime, timeZoneId) = await _timeZoneService.GetTenantLocalTimeAsync(request.TenantId, null, CancellationToken.None);
 
                 var tx = BuildTransaction(card, delta, request.OrderId, request.Note, TransactionType.Earned, localTime, timeZoneId);
+                tx.BranchId = operatorBranchId;
+                tx.ReceiptImageUrl = receiptUrl;
+                tx.OcrExtractedAmount = ocrAmount;
                 uow.Repository<LoyaltyCard>().Update(card);
                 uow.Repository<Transaction>().Add(tx);
                 uow.Commit();
@@ -611,6 +770,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
 
                 var tx = BuildTransaction(card, displayDelta, rr.OrderId, rr.Note, TransactionType.Redeemed, localTime, timeZoneId);
+                tx.BranchId = rr.BranchId;
+                tx.ReceiptImageUrl = rr.ReceiptImageUrl;
+                tx.OcrExtractedAmount = rr.OcrExtractedAmount;
                 rr.Status = RedeemStatus.Applied;
 
                 uow.Repository<LoyaltyCard>().Update(card);
@@ -847,6 +1009,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             RedeemRequestDto request,
             CardTemplateSnapshot snapshot,
             string freeRewardLabel,
+            int? branchId,
+            string? receiptUrl,
+            decimal? ocrAmount,
+            bool isSuspicious,
+            string? suspiciousReason,
+            EffectiveSuspiciousCfg cfg,
             CancellationToken ct)
         {
             try
@@ -862,6 +1030,50 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // ✅ Balans yoxlaması
                 if (dbCard.CompletedCycles < spendCount)
                     return Fail($"Kifayət qədər balans yoxdur. Mövcud: {dbCard.CompletedCycles} {freeRewardLabel}.");
+
+                // Suspicious → balansa toxunmadan flag-only Transaction yarat
+                if (isSuspicious)
+                {
+                    var stx = new Transaction
+                    {
+                        LoyaltyCardId = dbCard.Id,
+                        Type = TransactionType.Redeemed,
+                        Status = RedeemStatus.FlaggedForReview,
+                        OrderId = request.OrderId,
+                        ReferenceNumber = dbCard.BarcodeValue,
+                        Points = spendCount,
+                        BalanceAfter = dbCard.CompletedCycles,
+                        BranchId = branchId,
+                        ReceiptImageUrl = receiptUrl,
+                        OcrExtractedAmount = ocrAmount,
+                        IsSuspicious = true,
+                        SuspiciousReason = suspiciousReason,
+                        Description = $"Şübhəli: {spendCount} {freeRewardLabel} xərcləmə (cap={cfg.SpendCountCap}). Admin review."
+                    };
+                    _dbContext.Set<Transaction>().Add(stx);
+                    await _dbContext.SaveChangesAsync(CancellationToken.None);
+
+                    _logger.LogWarning("Suspicious free-reward flagged. CardId={CardId}, Reason={Reason}, SpendCount={SpendCount}",
+                        dbCard.Id, suspiciousReason, spendCount);
+
+                    if (cfg.AlertEnabled && !string.IsNullOrWhiteSpace(cfg.AlertPhone))
+                    {
+                        var customerName = card.Customer?.applicationUser?.UserName;
+                        var txRef = stx.OrderId ?? stx.Id.ToString();
+                        _ = Task.Run(() => _whatsappAlert.SendSuspiciousTxAlertAsync(
+                            cfg.AlertPhone!, cfg.TenantName, customerName,
+                            spendCount, cfg.SpendCountCap ?? 0,
+                            request.OperatorId, txRef, CancellationToken.None));
+                    }
+
+                    return new RedeemResultDto
+                    {
+                        Success = true,
+                        Message = "Şübhəli əməliyyat kimi qeyd olundu. Admin yoxlamasına gözləyir.",
+                        LoyaltyCardId = dbCard.Id,
+                        AppliedDelta = 0
+                    };
+                }
 
                 var before = dbCard.CompletedCycles;
                 var beforePoints = dbCard.CurrentPoints;
@@ -916,6 +1128,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ReferenceNumber = dbCard.BarcodeValue,
                     Points = spendCount,
                     BalanceAfter = dbCard.CompletedCycles,
+                    BranchId = branchId,
+                    ReceiptImageUrl = receiptUrl,
+                    OcrExtractedAmount = ocrAmount,
                     Description = $"{spendCount} {freeRewardLabel} xərcləndi. Balans: {before} -> {dbCard.CompletedCycles}"
                 };
 

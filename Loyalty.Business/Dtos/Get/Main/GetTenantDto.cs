@@ -36,6 +36,14 @@ namespace Loyalty.Business.Dtos.Get.Main
         public bool AcceptAnonymous { get; set; } = false;
         public bool RequireConfirmation { get; set; } = true;
         public int ConfirmationTtlMinutes { get; set; } = 10;
+
+        // Fraud-prevention config (tenant-level)
+        public bool RequireReceiptOcr { get; set; }
+        public decimal? OcrToleranceAzn { get; set; }
+        public decimal? SuspiciousAmountCap { get; set; }
+        public int? SuspiciousSpendCountCap { get; set; }
+        public bool EnableSuspiciousAlert { get; set; }
+        public string? AlertWhatsappPhone { get; set; }
         public DateTime? SubscriptionExpiryDate { get; set; }
         public DateTime? CreatedAt { get; set; }
         public List<ApplicationUserDto> Admins { get; set; }

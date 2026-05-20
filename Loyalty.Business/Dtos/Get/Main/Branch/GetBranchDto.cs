@@ -41,5 +41,13 @@ namespace Loyalty.Business.Dtos.Get.Main.Branch
 
         public string? BackgroundColor { get; set; }
         public string? ForegroundColor { get; set; }
+
+        // Fraud-prevention config
+        public bool RequireReceiptOcr { get; set; }
+        public decimal? OcrToleranceAzn { get; set; }
+        public decimal? SuspiciousAmountCap { get; set; }
+        public int? SuspiciousSpendCountCap { get; set; }
+        public bool EnableSuspiciousAlert { get; set; }
+        public string? AlertWhatsappPhone { get; set; }
     }
 }

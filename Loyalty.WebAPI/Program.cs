@@ -137,7 +137,7 @@ builder.Services
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("TenantAdminOrModerator", policy =>
-        policy.RequireRole("Tenant Admin", "Moderator"));
+        policy.RequireRole("Tenant Admin", "Branch Admin", "Moderator"));
     options.AddPolicy("SuperAdminOnly", policy =>
        policy.RequireRole("Super Admin"));
 
@@ -147,14 +147,22 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("TenantModeratorOnly", policy =>
         policy.RequireRole("Moderator"));
 
+    // Branch-scoped admin (ops + branch statistics; BranchId required on user).
+    options.AddPolicy("BranchAdminOnly", policy =>
+        policy.RequireRole("Branch Admin"));
+
+    // Branch Admin or any higher-level admin (used for branch settings / approve flagged tx)
+    options.AddPolicy("BranchAdminOrAbove", policy =>
+        policy.RequireRole("Branch Admin", "Tenant Admin", "Super Admin"));
+
     options.AddPolicy("CustomerOnly", policy =>
         policy.RequireRole("Customer"));
 
     options.AddPolicy("CustomerOrTenantAdmin", policy =>
-        policy.RequireRole("Customer", "Tenant Admin", "Moderator"));
+        policy.RequireRole("Customer", "Tenant Admin", "Branch Admin", "Moderator"));
 
     options.AddPolicy("SalesManagerOrAbove", policy =>
-        policy.RequireRole("Sales Manager", "Tenant Admin", "Moderator", "Super Admin"));
+        policy.RequireRole("Sales Manager", "Tenant Admin", "Branch Admin", "Moderator", "Super Admin"));
 
     // FullProfileOnly policy - requires non-guest user with completed profile
     options.AddPolicy("FullProfileOnly", policy =>
@@ -277,6 +285,20 @@ builder.Host.UseSerilog((ctx, services, lc) =>
 });
 
 var app = builder.Build();
+
+// === Seed roles (idempotent) ===
+// "Branch Admin" — branch-scoped admin rolu; mövcud olmasa yarat.
+using (var scope = app.Services.CreateScope())
+{
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
+    foreach (var roleName in new[] { "Super Admin", "Tenant Admin", "Branch Admin", "Moderator", "Customer", "Sales Manager" })
+    {
+        if (!await roleManager.RoleExistsAsync(roleName))
+        {
+            await roleManager.CreateAsync(new ApplicationRole { Name = roleName });
+        }
+    }
+}
 
 // === Forwarded Headers (MUST be before UseHttpsRedirection for Azure/reverse proxy) ===
 // This is critical for Apple PassKit Web Service to work correctly in Azure
