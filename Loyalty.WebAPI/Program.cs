@@ -61,6 +61,9 @@ static void EnsureTesseractSymlinks()
     {
         ("/usr/lib/x86_64-linux-gnu/liblept.so.5", Path.Combine(x64Dir, "libleptonica-1.82.0.so")),
         ("/usr/lib/x86_64-linux-gnu/libtesseract.so.5", Path.Combine(x64Dir, "libtesseract50.so")),
+        // Tesseract NuGet `dlopen("libdl")` çağırır — Debian 12-də versiyasız `libdl.so` yox, yalnız `.so.2`
+        ("/lib/x86_64-linux-gnu/libdl.so.2", Path.Combine(x64Dir, "libdl.so")),
+        ("/lib/x86_64-linux-gnu/libdl.so.2", Path.Combine(AppContext.BaseDirectory, "libdl.so")),
     };
 
     foreach (var (source, link) in pairs)
