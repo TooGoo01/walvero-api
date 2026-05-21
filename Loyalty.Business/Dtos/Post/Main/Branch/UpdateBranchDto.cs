@@ -7,6 +7,9 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
         [MaxLength(200)]
         public string? Name { get; set; }
 
+        [MaxLength(64)]
+        public string? Slug { get; set; }
+
         [MaxLength(500)]
         public string? Address { get; set; }
 

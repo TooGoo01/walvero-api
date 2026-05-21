@@ -16,6 +16,9 @@ namespace Loyalty.Business.Dtos.Get.Main
         public double DiscountPrice { get; set; }
         public int MenuCategoryId { get; set; }
         public GetMenuCategorySummaryDto? MenuCategory { get; set; }
+        public int? TenantId { get; set; }
+        public int? BranchId { get; set; }
+        public string? BranchName { get; set; }
         public List<GetMenuItemImageDto>? MenuItemImages { get; set; }
     }
 }

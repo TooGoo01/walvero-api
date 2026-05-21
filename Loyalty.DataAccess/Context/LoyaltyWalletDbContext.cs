@@ -333,6 +333,7 @@ namespace Loyalty.DataAccess.Context
                 entity.ToTable("Branches");
                 entity.HasKey(b => b.Id);
                 entity.Property(b => b.Name).IsRequired().HasMaxLength(200);
+                entity.Property(b => b.Slug).HasMaxLength(64);
                 entity.Property(b => b.Address).HasMaxLength(500);
                 entity.Property(b => b.Phone).HasMaxLength(50);
                 entity.Property(b => b.Email).HasMaxLength(200);
@@ -345,6 +346,9 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(b => b.AlertWhatsappPhone).HasMaxLength(20);
 
                 entity.HasIndex(b => new { b.TenantId, b.IsActive });
+                entity.HasIndex(b => new { b.TenantId, b.Slug })
+                    .IsUnique()
+                    .HasFilter("[Slug] IS NOT NULL");
 
                 entity.HasOne(b => b.Tenant)
                     .WithMany(t => t.Branches)
@@ -833,6 +837,13 @@ namespace Loyalty.DataAccess.Context
                     .HasForeignKey(mc => mc.TenantId)
                     .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasOne(mc => mc.Branch)
+                    .WithMany()
+                    .HasForeignKey(mc => mc.BranchId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(mc => new { mc.TenantId, mc.BranchId });
+
                 entity.HasMany(mc => mc.MenuItems)
                     .WithOne(mi => mi.MenuCategory)
                     .HasForeignKey(mi => mi.MenuCategoryId)
@@ -860,6 +871,18 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(mc => mc.MenuItems)
                     .HasForeignKey(mi => mi.MenuCategoryId)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(mi => mi.Tenant)
+                    .WithMany()
+                    .HasForeignKey(mi => mi.TenantId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasOne(mi => mi.Branch)
+                    .WithMany()
+                    .HasForeignKey(mi => mi.BranchId)
+                    .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(mi => new { mi.TenantId, mi.BranchId, mi.MenuCategoryId });
 
                 entity.HasMany(mi => mi.MenuItemImages)
                     .WithOne(mii => mii.MenuItem)

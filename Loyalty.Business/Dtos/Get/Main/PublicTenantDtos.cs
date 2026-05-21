@@ -25,6 +25,20 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? MenuApiUrl { get; set; }
         public List<TenantConfigWifiDto> WifiInformation { get; set; } = new();
         public TenantConfigBrandingDto? Branding { get; set; }
+
+        /// <summary>
+        /// Slug-lı (URL-lı) branchlar. Slug yoxdursa exclude — backward compat üçün.
+        /// </summary>
+        public List<TenantConfigBranchDto> Branches { get; set; } = new();
+    }
+
+    public class TenantConfigBranchDto
+    {
+        public int Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string? Address { get; set; }
+        public bool IsMainBranch { get; set; }
     }
 
     public class TenantConfigWifiDto

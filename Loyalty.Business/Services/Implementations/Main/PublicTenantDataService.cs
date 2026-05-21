@@ -54,6 +54,22 @@ namespace Loyalty.Business.Services.Implementations.Main
                 })
                 .ToList() ?? new List<TenantConfigWifiDto>();
 
+            // Yalnız slug-lı + aktiv branchlar — slug yoxsa public URL qura bilmərik
+            var branches = await _dbContext.Branches
+                .AsNoTracking()
+                .Where(b => b.TenantId == tenant.Id && b.IsActive && b.Slug != null)
+                .OrderByDescending(b => b.IsMainBranch)
+                .ThenBy(b => b.Name)
+                .Select(b => new TenantConfigBranchDto
+                {
+                    Id = b.Id,
+                    Slug = b.Slug!,
+                    Name = b.Name,
+                    Address = b.Address,
+                    IsMainBranch = b.IsMainBranch
+                })
+                .ToListAsync(ct);
+
             var config = new TenantConfigDto
             {
                 Id = tenant.Id,
@@ -65,6 +81,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Domain = tenant.Subdomain,
                 MenuApiUrl = tenant.IsHasMenu && !string.IsNullOrWhiteSpace(tenant.MenuUrl) ? tenant.MenuUrl : null,
                 WifiInformation = wifiList,
+                Branches = branches,
                 Branding = tenant.Branding != null
                     ? new TenantConfigBrandingDto
                     {
@@ -169,21 +186,41 @@ namespace Loyalty.Business.Services.Implementations.Main
             return ServiceResult<RestaurantDataDto>.Ok(dto);
         }
 
-        public async Task<ServiceResult<List<MenuCategoryGroupDto>>> GetMenuBySlugAsync(string slug, CancellationToken ct = default)
+        public Task<ServiceResult<List<MenuCategoryGroupDto>>> GetMenuBySlugAsync(string slug, CancellationToken ct = default)
+            => GetMenuBySlugAsync(slug, null, ct);
+
+        public async Task<ServiceResult<List<MenuCategoryGroupDto>>> GetMenuBySlugAsync(string tenantSlug, string? branchSlug, CancellationToken ct = default)
         {
             var tenant = await _dbContext.Tenants
                 .AsNoTracking()
-                .Where(t => t.Subdomain == slug && t.IsActive && !t.IsHidden)
+                .Where(t => t.Subdomain == tenantSlug && t.IsActive && !t.IsHidden)
                 .Select(t => new { t.Id })
                 .FirstOrDefaultAsync(ct);
 
             if (tenant == null)
                 return ServiceResult<List<MenuCategoryGroupDto>>.Fail("Tenant tapılmadı");
 
-            var categories = await _dbContext.MenuCategories
+            int? branchId = null;
+            if (!string.IsNullOrWhiteSpace(branchSlug))
+            {
+                var branch = await _dbContext.Branches
+                    .AsNoTracking()
+                    .Where(b => b.TenantId == tenant.Id && b.Slug == branchSlug && b.IsActive)
+                    .Select(b => new { b.Id })
+                    .FirstOrDefaultAsync(ct);
+                if (branch == null)
+                    return ServiceResult<List<MenuCategoryGroupDto>>.Fail("Branch tapılmadı");
+                branchId = branch.Id;
+            }
+
+            var categoriesQuery = _dbContext.MenuCategories
                 .AsNoTracking()
-                .Where(mc => mc.TenantId == tenant.Id && mc.IsActive)
-                .Include(mc => mc.MenuItems.Where(mi => mi.IsActive))
+                .Where(mc => mc.TenantId == tenant.Id && mc.IsActive
+                          && (mc.BranchId == null || (branchId != null && mc.BranchId == branchId)));
+
+            var categories = await categoriesQuery
+                .Include(mc => mc.MenuItems.Where(mi => mi.IsActive
+                          && (mi.BranchId == null || (branchId != null && mi.BranchId == branchId))))
                     .ThenInclude(mi => mi.MenuItemImages)
                 .OrderBy(mc => mc.Id)
                 .ToListAsync(ct);

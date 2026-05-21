@@ -100,6 +100,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new ServiceResult(false, "Branch not found");
 
             if (dto.Name != null) branch.Name = dto.Name;
+            if (dto.Slug != null) branch.Slug = string.IsNullOrWhiteSpace(dto.Slug) ? null : dto.Slug.Trim();
             if (dto.Address != null) branch.Address = dto.Address;
             if (dto.Latitude.HasValue) branch.Latitude = dto.Latitude;
             if (dto.Longitude.HasValue) branch.Longitude = dto.Longitude;

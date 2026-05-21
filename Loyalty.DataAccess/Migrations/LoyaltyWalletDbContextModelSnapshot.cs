@@ -180,6 +180,10 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<bool>("RequireReceiptOcr")
                         .HasColumnType("bit");
 
+                    b.Property<string>("Slug")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<decimal?>("SuspiciousAmountCap")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -232,6 +236,10 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasIndex("TenantId");
 
                     b.HasIndex("TenantId", "IsActive");
+
+                    b.HasIndex("TenantId", "Slug")
+                        .IsUnique()
+                        .HasFilter("[Slug] IS NOT NULL");
 
                     b.ToTable("Branches", (string)null);
                 });
@@ -1260,6 +1268,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int?>("BranchId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("EditDate")
                         .HasColumnType("datetime2");
 
@@ -1298,7 +1309,9 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TenantId");
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("TenantId", "BranchId");
 
                     b.ToTable("MenuCategories", (string)null);
                 });
@@ -1319,6 +1332,9 @@ namespace Loyalty.DataAccess.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("BranchId")
+                        .HasColumnType("int");
 
                     b.Property<string>("Currency")
                         .IsRequired()
@@ -1376,9 +1392,16 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int?>("TenantId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
+                    b.HasIndex("BranchId");
+
                     b.HasIndex("MenuCategoryId");
+
+                    b.HasIndex("TenantId", "BranchId", "MenuCategoryId");
 
                     b.ToTable("MenuItems", (string)null);
                 });
@@ -3794,24 +3817,45 @@ namespace Loyalty.DataAccess.Migrations
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.MenuCategory", b =>
                 {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany()
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Branch");
+
                     b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.MenuItem", b =>
                 {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Loyalty.DataAccess.Entities.Main.MenuCategory", "MenuCategory")
                         .WithMany("MenuItems")
                         .HasForeignKey("MenuCategoryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Branch");
+
                     b.Navigation("MenuCategory");
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.MenuItemImage", b =>

@@ -171,12 +171,14 @@ namespace Loyalty.Business.Mappings
             // Menu related mappings
             CreateMap<MenuCategory, AddMenuCategoryDto>().ReverseMap();
             CreateMap<MenuCategory, UpdateMenuCategoryDto>().ReverseMap();
-            CreateMap<MenuCategory, GetMenuCategoryDto>().ReverseMap();
+            CreateMap<MenuCategory, GetMenuCategoryDto>()
+                .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null));
             CreateMap<MenuCategory, GetMenuCategorySummaryDto>(); // No MenuItems - used in GetMenuItemDto to avoid JSON cycle
 
             CreateMap<MenuItem, AddMenuItemDto>().ReverseMap();
             CreateMap<MenuItem, UpdateMenuItemDto>().ReverseMap();
-            CreateMap<MenuItem, GetMenuItemDto>().ReverseMap();
+            CreateMap<MenuItem, GetMenuItemDto>()
+                .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null));
 
             CreateMap<Transaction, GetTransactionDto>()
                 .ForMember(d => d.CustomerName,

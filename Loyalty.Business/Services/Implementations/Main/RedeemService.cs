@@ -480,6 +480,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         sLocalTime, sTzId);
                     stx.Status = RedeemStatus.FlaggedForReview;
                     stx.BranchId = operatorBranchId;
+                    stx.Amount = request.OriginalAmount;
                     stx.ReceiptImageUrl = receiptUrl;
                     stx.OcrExtractedAmount = ocrAmount;
                     stx.IsSuspicious = true;
@@ -521,6 +522,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 var tx = BuildTransaction(card, delta, request.OrderId, request.Note, TransactionType.Earned, localTime, timeZoneId);
                 tx.BranchId = operatorBranchId;
+                tx.Amount = request.OriginalAmount;
                 tx.ReceiptImageUrl = receiptUrl;
                 tx.OcrExtractedAmount = ocrAmount;
                 uow.Repository<LoyaltyCard>().Update(card);
@@ -1100,6 +1102,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         OrderId = request.OrderId,
                         ReferenceNumber = dbCard.BarcodeValue,
                         Points = spendCount,
+                        Amount = request.OriginalAmount,
                         BalanceAfter = dbCard.CompletedCycles,
                         BranchId = branchId,
                         ReceiptImageUrl = receiptUrl,
@@ -1185,6 +1188,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     OrderId = idemKey,
                     ReferenceNumber = dbCard.BarcodeValue,
                     Points = spendCount,
+                    Amount = request.OriginalAmount,
                     BalanceAfter = dbCard.CompletedCycles,
                     BranchId = branchId,
                     ReceiptImageUrl = receiptUrl,

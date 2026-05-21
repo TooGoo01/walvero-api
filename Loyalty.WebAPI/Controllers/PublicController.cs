@@ -145,7 +145,7 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
-        /// Menyu datası kateqoriyaya görə qruplaşdırılmış.
+        /// Menyu datası kateqoriyaya görə qruplaşdırılmış (yalnız tenant-wide).
         /// </summary>
         [HttpGet("menu/{slug}")]
         [ProducesResponseType(typeof(ServiceResult<List<MenuCategoryGroupDto>>), (int)HttpStatusCode.OK)]
@@ -154,6 +154,22 @@ namespace Loyalty.WebAPI.Controllers
         public async Task<ActionResult<ServiceResult<List<MenuCategoryGroupDto>>>> GetMenuBySlug(string slug, CancellationToken ct)
         {
             var result = await _publicTenantDataService.GetMenuBySlugAsync(slug, ct);
+            if (!result.Success)
+                return NotFound(result);
+
+            return Ok(result);
+        }
+
+        /// <summary>
+        /// Branch-spesifik menyu: tenant-wide + branch item union.
+        /// </summary>
+        [HttpGet("menu/{tenantSlug}/{branchSlug}")]
+        [ProducesResponseType(typeof(ServiceResult<List<MenuCategoryGroupDto>>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult<List<MenuCategoryGroupDto>>), (int)HttpStatusCode.NotFound)]
+        [ResponseCache(Duration = 60, VaryByQueryKeys = new[] { "tenantSlug", "branchSlug" })]
+        public async Task<ActionResult<ServiceResult<List<MenuCategoryGroupDto>>>> GetMenuByTenantAndBranch(string tenantSlug, string branchSlug, CancellationToken ct)
+        {
+            var result = await _publicTenantDataService.GetMenuBySlugAsync(tenantSlug, branchSlug, ct);
             if (!result.Success)
                 return NotFound(result);
 

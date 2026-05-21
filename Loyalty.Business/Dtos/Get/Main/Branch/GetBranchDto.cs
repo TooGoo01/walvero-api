@@ -7,6 +7,7 @@ namespace Loyalty.Business.Dtos.Get.Main.Branch
         public int Id { get; set; }
         public int TenantId { get; set; }
         public string Name { get; set; } = string.Empty;
+        public string? Slug { get; set; }
         public string? Address { get; set; }
         public decimal? Latitude { get; set; }
         public decimal? Longitude { get; set; }
