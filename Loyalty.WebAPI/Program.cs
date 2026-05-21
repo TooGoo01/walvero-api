@@ -1,3 +1,4 @@
+using Hangfire;
 using Loyalty.Business.Exceptions;
 using Loyalty.Business.Hubs;
 using Loyalty.Business.Services;
@@ -273,6 +274,28 @@ builder.Services.AddDbContext<LoyaltyWalletDbContext>(options =>
             maxRetryDelay: TimeSpan.FromSeconds(10),
             errorNumbersToAdd: null)));
 
+// === Hangfire (async OCR jobs) ===
+builder.Services.AddHangfire(cfg => cfg
+    .SetDataCompatibilityLevel(Hangfire.CompatibilityLevel.Version_180)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UseSqlServerStorage(
+        builder.Configuration.GetConnectionString("LoyaltyDbConnection"),
+        new Hangfire.SqlServer.SqlServerStorageOptions
+        {
+            SchemaName = "Hangfire",
+            CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
+            SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
+            QueuePollInterval = TimeSpan.FromSeconds(2),
+            UseRecommendedIsolationLevel = true,
+            DisableGlobalLocks = true
+        }));
+builder.Services.AddHangfireServer(opts =>
+{
+    opts.WorkerCount = 2; // OCR CPU-bound — kicik tutmaq
+    opts.Queues = new[] { "ocr", "default" };
+});
+
 // HttpClientFactory
 builder.Services.AddHttpClient();
 
@@ -429,6 +452,12 @@ app.UseSession();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Hangfire dashboard — yalnız Tenant Admin / Super Admin
+app.UseHangfireDashboard("/hangfire", new Hangfire.DashboardOptions
+{
+    Authorization = new[] { new Loyalty.WebAPI.Hangfire.TenantAdminDashboardFilter() }
+});
 
 // 🔹 Minimal hostingda ayrı `UseRouting/UseEndpoints` ehtiyac yoxdur
 app.MapControllers();

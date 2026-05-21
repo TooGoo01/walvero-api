@@ -2639,6 +2639,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int?>("BranchId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("EditDate")
                         .HasColumnType("datetime2");
 
@@ -2682,7 +2685,11 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BranchId");
+
                     b.HasIndex("TenantId", "SortOrder");
+
+                    b.HasIndex("TenantId", "BranchId", "SortOrder");
 
                     b.ToTable("TenantLinks", (string)null);
                 });
@@ -3820,7 +3827,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasOne("Loyalty.DataAccess.Entities.Main.Branch", "Branch")
                         .WithMany()
                         .HasForeignKey("BranchId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany()
@@ -3838,7 +3845,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasOne("Loyalty.DataAccess.Entities.Main.Branch", "Branch")
                         .WithMany()
                         .HasForeignKey("BranchId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("Loyalty.DataAccess.Entities.Main.MenuCategory", "MenuCategory")
                         .WithMany("MenuItems")
@@ -3849,7 +3856,7 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany()
                         .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("Branch");
 
@@ -4087,11 +4094,18 @@ namespace Loyalty.DataAccess.Migrations
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantLink", b =>
                 {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
                         .WithMany("Links")
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Branch");
 
                     b.Navigation("Tenant");
                 });

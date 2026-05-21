@@ -10,6 +10,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> Delete(int id);
         Task<ServiceResult> GetById(int id);
         Task<ServiceResult> GetByTenantId(int tenantId);
+        Task<ServiceResult> GetByTenantAndBranchAsync(int tenantId, int? branchId, bool branchScoped);
         Task<ServiceResult> Reorder(ReorderTenantLinksDto dto);
     }
 }

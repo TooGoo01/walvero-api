@@ -199,7 +199,8 @@ namespace Loyalty.Business.Mappings
 
             CreateMap<TenantLink, AddTenantLinkDto>().ReverseMap();
             CreateMap<TenantLink, UpdateTenantLinkDto>().ReverseMap();
-            CreateMap<TenantLink, GetTenantLinkDto>().ReverseMap();
+            CreateMap<TenantLink, GetTenantLinkDto>()
+                .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null));
 
             CreateMap<Transaction, GetTransactionDto>()
                 .ForMember(d => d.Status, opt => opt.MapFrom(s => (int)s.Status))

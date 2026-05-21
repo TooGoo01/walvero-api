@@ -66,7 +66,27 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Slug = b.Slug!,
                     Name = b.Name,
                     Address = b.Address,
-                    IsMainBranch = b.IsMainBranch
+                    IsMainBranch = b.IsMainBranch,
+                    Phone = b.Phone,
+                    Email = b.Email,
+                    PhotoUrl = b.PhotoUrl,
+                    LogoUrl = b.LogoUrl,
+                    LocationUrl = b.LocationUrl,
+                    WazeLocationUrl = b.WazeLocationUrl,
+                    MenuUrl = b.MenuUrl,
+                    InstagramUrl = b.InstagramUrl,
+                    FacebookUrl = b.FacebookUrl,
+                    WhatsAppUrl = b.WhatsAppUrl,
+                    TelegramUrl = b.TelegramUrl,
+                    LinkedInUrl = b.LinkedInUrl,
+                    TiktokUrl = b.TiktokUrl,
+                    TripAdvisorUrl = b.TripAdvisorUrl,
+                    WebsiteUrl = b.WebsiteUrl,
+                    YoutubeUrl = b.YoutubeUrl,
+                    TwitterUrl = b.TwitterUrl,
+                    YelpUrl = b.YelpUrl,
+                    ThreadsUrl = b.ThreadsUrl,
+                    PinterestUrl = b.PinterestUrl
                 })
                 .ToListAsync(ct);
 
@@ -112,7 +132,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     .ThenInclude(tl => tl!.City)
                 .Include(t => t.TenantLocation)
                     .ThenInclude(tl => tl!.TimeZone)
-                .Include(t => t.Links!.Where(l => l.IsActive))
+                .Include(t => t.Links!.Where(l => l.IsActive && l.BranchId == null))
                 .Where(t => t.Subdomain == slug && t.IsActive && !t.IsHidden)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(ct);

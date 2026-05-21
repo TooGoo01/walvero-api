@@ -4,6 +4,8 @@ namespace Loyalty.Business.Dtos.Get.Main
     {
         public int Id { get; set; }
         public int TenantId { get; set; }
+        public int? BranchId { get; set; }
+        public string? BranchName { get; set; }
         public string AzTitle { get; set; } = string.Empty;
         public string? EnTitle { get; set; }
         public string? RuTitle { get; set; }

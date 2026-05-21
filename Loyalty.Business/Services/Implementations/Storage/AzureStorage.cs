@@ -35,6 +35,16 @@ namespace Loyalty.Business.Services.Implementations.Storage
             return _blobContainerClient.GetBlobs().Any(b => b.Name == fileName);
         }
 
+        public async Task<byte[]?> DownloadAsync(string containerName, string fileName, CancellationToken ct = default)
+        {
+            var container = _blobServiceClient.GetBlobContainerClient(containerName);
+            if (!await container.ExistsAsync(ct)) return null;
+            var blob = container.GetBlobClient(fileName);
+            if (!await blob.ExistsAsync(ct)) return null;
+            var resp = await blob.DownloadContentAsync(ct);
+            return resp.Value.Content.ToArray();
+        }
+
         public async Task<List<(string fileName, string pathOrContainerName)>> UploadAsync(string pathOrContainerName, IFormFileCollection files)
         {
             _blobContainerClient = _blobServiceClient.GetBlobContainerClient(pathOrContainerName);

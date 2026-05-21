@@ -54,6 +54,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IRedeemService, RedeemService>();
             services.AddScoped<IReceiptValidationService, ReceiptValidationService>();
             services.AddScoped<IWhatsAppAlertService, TwilioWhatsAppAlertService>();
+            services.AddScoped<ReceiptOcrJob>();
             services.AddScoped<IOtpGenerator, OtpGenerator>();
             services.AddScoped<IWalletCredentialProvider, WalletCredentialProvider>();
             services.AddScoped<IAppleWalletFactory, AppleWalletFactory>();

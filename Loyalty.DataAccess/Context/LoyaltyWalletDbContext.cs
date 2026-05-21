@@ -840,7 +840,7 @@ namespace Loyalty.DataAccess.Context
                 entity.HasOne(mc => mc.Branch)
                     .WithMany()
                     .HasForeignKey(mc => mc.BranchId)
-                    .OnDelete(DeleteBehavior.SetNull);
+                    .OnDelete(DeleteBehavior.NoAction);
 
                 entity.HasIndex(mc => new { mc.TenantId, mc.BranchId });
 
@@ -875,12 +875,12 @@ namespace Loyalty.DataAccess.Context
                 entity.HasOne(mi => mi.Tenant)
                     .WithMany()
                     .HasForeignKey(mi => mi.TenantId)
-                    .OnDelete(DeleteBehavior.SetNull);
+                    .OnDelete(DeleteBehavior.NoAction);
 
                 entity.HasOne(mi => mi.Branch)
                     .WithMany()
                     .HasForeignKey(mi => mi.BranchId)
-                    .OnDelete(DeleteBehavior.SetNull);
+                    .OnDelete(DeleteBehavior.NoAction);
 
                 entity.HasIndex(mi => new { mi.TenantId, mi.BranchId, mi.MenuCategoryId });
 
@@ -934,6 +934,13 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(t => t.Links)
                     .HasForeignKey(tl => tl.TenantId)
                     .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(tl => tl.Branch)
+                    .WithMany()
+                    .HasForeignKey(tl => tl.BranchId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(tl => new { tl.TenantId, tl.BranchId, tl.SortOrder });
             });
 
             // ==== INTEGRATION TYPE (reference/seed) ====

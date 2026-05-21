@@ -1,4 +1,5 @@
 ﻿// Business/Services/Implementations/Main/RedeemService.cs
+using Hangfire;
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Dtos.Realtime;
@@ -44,6 +45,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IReceiptValidationService _receiptValidation;
         private readonly IWhatsAppAlertService _whatsappAlert;
         private readonly ITenantProvider _tenantProvider;
+        private readonly Hangfire.IBackgroundJobClient _jobClient;
         public RedeemService(
             ILoyaltyCardRepository cardSvc,
             ILoyaltyProgramRepository programSvc,
@@ -62,7 +64,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             ILotteryRepository lotteryRepository,
             IReceiptValidationService receiptValidation,
             IWhatsAppAlertService whatsappAlert,
-            ITenantProvider tenantProvider)
+            ITenantProvider tenantProvider,
+            Hangfire.IBackgroundJobClient jobClient)
         {
             _cardSvc = cardSvc;
             _programSvc = programSvc;
@@ -84,6 +87,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _receiptValidation = receiptValidation;
             _whatsappAlert = whatsappAlert;
             _tenantProvider = tenantProvider;
+            _jobClient = jobClient;
         }
 
         // Resolved per-redeem fraud config (branch override + tenant fallback)
@@ -301,23 +305,58 @@ namespace Loyalty.Business.Services.Implementations.Main
                             request.TenantId, operatorBranchId);
                         return Fail("Çekin şəklini yükləyin.");
                     }
-                    // OCR çek məbləği ilə kassirin daxil etdiyi orijinal məbləği müqayisə edir
-                    // (earn rejimində delta artıq tier percent ilə çevrilib, ona görə OriginalAmount istifadə edirik).
-                    var amountForOcr = request.OriginalAmount ?? delta;
-                    var ocr = await _receiptValidation.ValidateAsync(
-                        request.ReceiptImage, amountForOcr, cfg.Tolerance, ct);
 
-                    receiptUrl = ocr.ReceiptUrl;
-                    ocrAmount = ocr.ExtractedAmount;
-
-                    // OCR uğursuz olsa belə əməliyyatı bloklamırıq — Flagged kimi saxlayır, admin
-                    // yoxlama nəticəsini təsdiqləyəndə tətbiq olunur. Eyni yolla WhatsApp alert gedir.
-                    if (!ocr.IsValid)
+                    // Yeni async axın: çekin şəklini blob-a sync yüklə (kicik), sonra Hangfire-ə OCR job buy.
+                    // Mobile cavabı dərhal qaytarır — OCR background-da getsin, waiter növbəti customer-ə keçsin.
+                    string blobUrl;
+                    try
                     {
-                        _logger.LogWarning("Receipt OCR mismatch — flagging for admin review: {Error}", ocr.Error);
-                        isSuspicious = true;
-                        suspiciousReason = ocrAmount.HasValue ? "OcrMismatch" : "OcrUnreadable";
+                        var uploaded = await _receiptValidation.UploadReceiptOnlyAsync(request.ReceiptImage, ct);
+                        blobUrl = uploaded.url;
                     }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Receipt blob upload failed at PendingOcr stage");
+                        return Fail("Çek faylının yüklənməsi alınmadı.");
+                    }
+
+                    // Transaction yarat PendingOcr status ilə, balansa toxunma
+                    var (localTimePending, tzPending) = await _timeZoneService.GetTenantLocalTimeAsync(request.TenantId, null, CancellationToken.None);
+                    var pendingTx = BuildTransaction(card, delta, request.OrderId, request.Note,
+                        delta < 0 ? TransactionType.Redeemed : TransactionType.Earned, localTimePending, tzPending);
+                    pendingTx.Status = RedeemStatus.PendingOcr;
+                    pendingTx.BranchId = operatorBranchId;
+                    pendingTx.Amount = request.OriginalAmount;
+                    pendingTx.ReceiptImageUrl = blobUrl;
+
+                    uow.Repository<Transaction>().Add(pendingTx);
+                    uow.Commit();
+
+                    // Job-a göndər
+                    var amountForOcr = request.OriginalAmount ?? Math.Abs(delta);
+                    var customerName = card.Customer?.applicationUser?.UserName;
+                    _jobClient.Enqueue<ReceiptOcrJob>(j => j.ProcessAsync(
+                        pendingTx.Id,
+                        amountForOcr,
+                        cfg.Tolerance,
+                        cfg.AlertEnabled,
+                        cfg.AlertPhone,
+                        cfg.TenantName,
+                        customerName,
+                        request.OperatorId,
+                        cfg.AmountCap ?? 0,
+                        CancellationToken.None));
+
+                    _logger.LogInformation("PendingOcr tx queued. TxId={TxId} CardId={CardId}", pendingTx.Id, card.Id);
+
+                    return new RedeemResultDto
+                    {
+                        Success = true,
+                        IsPending = true,
+                        LoyaltyCardId = card.Id,
+                        AppliedDelta = 0,
+                        Message = "Çek OCR yoxlaması üçün göndərildi. Balans yoxlamadan sonra yenilənəcək."
+                    };
                 }
 
                 // Suspicious check — amount cap OR spendCount cap (OCR-də flag olunmuş ola bilər artıq)

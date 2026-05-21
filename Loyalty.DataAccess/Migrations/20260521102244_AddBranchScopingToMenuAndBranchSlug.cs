@@ -81,7 +81,7 @@ namespace Loyalty.DataAccess.Migrations
                 column: "BranchId",
                 principalTable: "Branches",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.SetNull);
+                onDelete: ReferentialAction.NoAction);
 
             migrationBuilder.AddForeignKey(
                 name: "FK_MenuItems_Branches_BranchId",
@@ -89,7 +89,7 @@ namespace Loyalty.DataAccess.Migrations
                 column: "BranchId",
                 principalTable: "Branches",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.SetNull);
+                onDelete: ReferentialAction.NoAction);
 
             migrationBuilder.AddForeignKey(
                 name: "FK_MenuItems_Tenants_TenantId",
@@ -97,7 +97,7 @@ namespace Loyalty.DataAccess.Migrations
                 column: "TenantId",
                 principalTable: "Tenants",
                 principalColumn: "Id",
-                onDelete: ReferentialAction.SetNull);
+                onDelete: ReferentialAction.NoAction);
         }
 
         /// <inheritdoc />
