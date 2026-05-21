@@ -43,24 +43,24 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 
 static void EnsureTesseractSymlinks()
 {
-    // /usr/lib write permission yoxdur Kudu SSH və app user-də. Ona görə user-writable folder
-    // /home/site/wwwroot/native istifadə edirik. App Service Configuration-da LD_LIBRARY_PATH bu
-    // folder-i göstərməlidir (yoxsa P/Invoke tapmayacaq).
-    var nativeDir = "/home/site/wwwroot/native";
+    // Tesseract NuGet (5.2.0) `InteropDotNet.LibraryLoader` sistem path-larını (/usr/lib və LD_LIBRARY_PATH)
+    // İGNORE edir. Yalnız Tesseract.dll yanındakı `x64/` (və ya `x86/`) qovluğunda axtarır.
+    // Ona görə apt-installed `.so` fayllarına symlink-ləri appBase/x64/ içində yaradırıq.
+    var x64Dir = Path.Combine(AppContext.BaseDirectory, "x64");
     try
     {
-        System.IO.Directory.CreateDirectory(nativeDir);
+        System.IO.Directory.CreateDirectory(x64Dir);
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[Tesseract] cannot create {nativeDir}: {ex.Message}");
+        Console.WriteLine($"[Tesseract] cannot create {x64Dir}: {ex.Message}");
         return;
     }
 
     var pairs = new (string source, string link)[]
     {
-        ("/usr/lib/x86_64-linux-gnu/liblept.so.5", $"{nativeDir}/libleptonica-1.82.0.so"),
-        ("/usr/lib/x86_64-linux-gnu/libtesseract.so.5", $"{nativeDir}/libtesseract50.so"),
+        ("/usr/lib/x86_64-linux-gnu/liblept.so.5", Path.Combine(x64Dir, "libleptonica-1.82.0.so")),
+        ("/usr/lib/x86_64-linux-gnu/libtesseract.so.5", Path.Combine(x64Dir, "libtesseract50.so")),
     };
 
     foreach (var (source, link) in pairs)
@@ -88,12 +88,6 @@ static void EnsureTesseractSymlinks()
         {
             Console.WriteLine($"[Tesseract] symlink error for {link}: {ex.Message}");
         }
-    }
-
-    var currentLd = Environment.GetEnvironmentVariable("LD_LIBRARY_PATH") ?? string.Empty;
-    if (!currentLd.Contains(nativeDir))
-    {
-        Console.WriteLine($"[Tesseract] WARNING: LD_LIBRARY_PATH={currentLd}. Add '{nativeDir}' in App Service Configuration → Application settings.");
     }
 }
 
