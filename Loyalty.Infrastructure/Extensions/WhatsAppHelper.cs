@@ -78,6 +78,9 @@ namespace Loyalty.Infrastructure.Extensions
             if (!string.IsNullOrEmpty(env))
                 configurationManager.AddJsonFile($"appsettings.{env}.json", optional: true, reloadOnChange: false);
 
+            // Azure App Service env vars (Twilio:AccountSid və s.) — JSON-dan üstündür.
+            configurationManager.AddEnvironmentVariables();
+
             return configurationManager;
         }
     }
