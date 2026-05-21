@@ -47,6 +47,22 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (image.Length > 5 * 1024 * 1024)
                 return new(false, null, null, "Çekin şəkli 5 MB-dan böyükdür.");
 
+            // Tesseract native binary və tessdata mövcudluğunu əvvəldən yoxla — sonradan opaque crash yox.
+            var tessdataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
+            if (!Directory.Exists(tessdataPath))
+            {
+                _logger.LogError("tessdata directory missing at {Path}", tessdataPath);
+                return new(false, null, null, "OCR data faylları tapılmadı (server konfiqurasiya xətası).");
+            }
+            var azeData = Path.Combine(tessdataPath, "aze.traineddata");
+            var engData = Path.Combine(tessdataPath, "eng.traineddata");
+            if (!System.IO.File.Exists(azeData) || !System.IO.File.Exists(engData))
+            {
+                _logger.LogError("tessdata lang files missing. aze={Aze} eng={Eng}",
+                    System.IO.File.Exists(azeData), System.IO.File.Exists(engData));
+                return new(false, null, null, "OCR dil faylları tapılmadı (aze/eng).");
+            }
+
             byte[] rawBytes;
             using (var ms = new MemoryStream())
             {
@@ -61,26 +77,44 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Receipt image preprocessing failed");
-                return new(false, null, null, "Çek şəkli oxunmadı.");
+                _logger.LogWarning(ex, "Receipt image preprocessing failed. RawSize={Size}", rawBytes.Length);
+                return new(false, null, null, "Çek şəkli oxunmadı (format dəstəklənmir və ya korlanıb).");
             }
 
             string ocrText;
             try
             {
-                ocrText = RunOcr(preprocessed);
+                ocrText = RunOcr(preprocessed, tessdataPath);
+            }
+            catch (DllNotFoundException ex)
+            {
+                _logger.LogError(ex, "Tesseract native library missing (DllNotFound). OS={OS}",
+                    System.Runtime.InteropServices.RuntimeInformation.OSDescription);
+                return new(false, null, null,
+                    "OCR mühərriki serverdə qurulmayıb. Docker image-də tesseract-ocr paketinin olduğundan əmin olun.");
+            }
+            catch (TypeInitializationException ex)
+            {
+                _logger.LogError(ex, "Tesseract engine type init failed (often P/Invoke arch mismatch).");
+                return new(false, null, null,
+                    "OCR mühərriki başlana bilmədi (arch uyğunsuzluğu və ya tessdata problemi).");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Tesseract OCR call failed");
-                return new(false, null, null, "OCR uğursuz oldu.");
+                _logger.LogError(ex, "Tesseract OCR call failed. ExType={Type}, Msg={Msg}",
+                    ex.GetType().Name, ex.Message);
+                return new(false, null, null, $"OCR uğursuz oldu: {ex.Message}");
             }
+
+            _logger.LogInformation("OCR completed. TextLen={Len}, Preview={Preview}",
+                ocrText.Length,
+                ocrText.Length > 0 ? ocrText.Substring(0, Math.Min(120, ocrText.Length)).Replace('\n', ' ') : "<empty>");
 
             var extracted = ExtractAmount(ocrText);
             if (extracted is null)
             {
-                _logger.LogInformation("OCR found no amount in receipt text. TextLen={Len}", ocrText.Length);
-                return new(false, null, null, "Çekdə məbləğ tapılmadı.");
+                _logger.LogInformation("OCR found no amount in receipt text.");
+                return new(false, null, null, "Çekdə məbləğ tapılmadı. Yenidən aydın şəkil çəkin.");
             }
 
             var entered = Math.Abs(enteredAmount);
@@ -113,6 +147,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         private static async Task<byte[]> PreprocessAsync(byte[] input, CancellationToken ct)
         {
+            // ImageSharp avtomatik format detect (jpeg/png/webp). L8 = 8-bit grayscale.
             using var image = Image.Load<L8>(input);
             image.Mutate(x =>
                 x.Resize(image.Width * 2, image.Height * 2)
@@ -122,9 +157,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             return outMs.ToArray();
         }
 
-        private static string RunOcr(byte[] imageBytes)
+        private static string RunOcr(byte[] imageBytes, string tessdataPath)
         {
-            var tessdataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
             using var engine = new TesseractEngine(tessdataPath, "aze+eng", EngineMode.Default);
             using var pix = Pix.LoadFromMemory(imageBytes);
             using var page = engine.Process(pix);
