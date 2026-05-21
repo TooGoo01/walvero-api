@@ -290,6 +290,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // Earn-də də doğrulama lazımdır ki, kassir 500 yazsa çek 500 olduğu üçün bonus düzgün hesablansın.
                 string? receiptUrl = null;
                 decimal? ocrAmount = null;
+                bool isSuspicious = false;
+                string? suspiciousReason = null;
+
                 if (cfg.RequireOcr && delta != 0)
                 {
                     if (request.ReceiptImage is null)
@@ -303,24 +306,27 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var amountForOcr = request.OriginalAmount ?? delta;
                     var ocr = await _receiptValidation.ValidateAsync(
                         request.ReceiptImage, amountForOcr, cfg.Tolerance, ct);
-                    if (!ocr.IsValid)
-                    {
-                        _logger.LogWarning("Receipt OCR mismatch: {Error}", ocr.Error);
-                        return Fail(ocr.Error ?? "Çek məbləği uyğun deyil.");
-                    }
+
                     receiptUrl = ocr.ReceiptUrl;
                     ocrAmount = ocr.ExtractedAmount;
+
+                    // OCR uğursuz olsa belə əməliyyatı bloklamırıq — Flagged kimi saxlayır, admin
+                    // yoxlama nəticəsini təsdiqləyəndə tətbiq olunur. Eyni yolla WhatsApp alert gedir.
+                    if (!ocr.IsValid)
+                    {
+                        _logger.LogWarning("Receipt OCR mismatch — flagging for admin review: {Error}", ocr.Error);
+                        isSuspicious = true;
+                        suspiciousReason = ocrAmount.HasValue ? "OcrMismatch" : "OcrUnreadable";
+                    }
                 }
 
-                // Suspicious check — amount cap OR spendCount cap
-                bool isSuspicious = false;
-                string? suspiciousReason = null;
-                if (cfg.AmountCap.HasValue && Math.Abs(delta) > cfg.AmountCap.Value)
+                // Suspicious check — amount cap OR spendCount cap (OCR-də flag olunmuş ola bilər artıq)
+                if (!isSuspicious && cfg.AmountCap.HasValue && Math.Abs(delta) > cfg.AmountCap.Value)
                 {
                     isSuspicious = true;
                     suspiciousReason = "AmountExceedsCap";
                 }
-                else if (cfg.SpendCountCap.HasValue && request.SpendCount.HasValue
+                else if (!isSuspicious && cfg.SpendCountCap.HasValue && request.SpendCount.HasValue
                          && request.SpendCount.Value > cfg.SpendCountCap.Value)
                 {
                     isSuspicious = true;
