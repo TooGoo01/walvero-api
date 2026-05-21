@@ -43,10 +43,24 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 
 static void EnsureTesseractSymlinks()
 {
+    // /usr/lib write permission yoxdur Kudu SSH və app user-də. Ona görə user-writable folder
+    // /home/site/wwwroot/native istifadə edirik. App Service Configuration-da LD_LIBRARY_PATH bu
+    // folder-i göstərməlidir (yoxsa P/Invoke tapmayacaq).
+    var nativeDir = "/home/site/wwwroot/native";
+    try
+    {
+        System.IO.Directory.CreateDirectory(nativeDir);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Tesseract] cannot create {nativeDir}: {ex.Message}");
+        return;
+    }
+
     var pairs = new (string source, string link)[]
     {
-        ("/usr/lib/x86_64-linux-gnu/liblept.so.5", "/usr/lib/x86_64-linux-gnu/libleptonica-1.82.0.so"),
-        ("/usr/lib/x86_64-linux-gnu/libtesseract.so.5", "/usr/lib/x86_64-linux-gnu/libtesseract50.so"),
+        ("/usr/lib/x86_64-linux-gnu/liblept.so.5", $"{nativeDir}/libleptonica-1.82.0.so"),
+        ("/usr/lib/x86_64-linux-gnu/libtesseract.so.5", $"{nativeDir}/libtesseract50.so"),
     };
 
     foreach (var (source, link) in pairs)
@@ -74,6 +88,12 @@ static void EnsureTesseractSymlinks()
         {
             Console.WriteLine($"[Tesseract] symlink error for {link}: {ex.Message}");
         }
+    }
+
+    var currentLd = Environment.GetEnvironmentVariable("LD_LIBRARY_PATH") ?? string.Empty;
+    if (!currentLd.Contains(nativeDir))
+    {
+        Console.WriteLine($"[Tesseract] WARNING: LD_LIBRARY_PATH={currentLd}. Add '{nativeDir}' in App Service Configuration → Application settings.");
     }
 }
 
