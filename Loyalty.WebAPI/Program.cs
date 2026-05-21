@@ -24,12 +24,58 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Sinks.ApplicationInsights.TelemetryConverters;
+using System.Runtime.InteropServices;
+
+// Tesseract NuGet (5.2.0) literal lib adı axtarır (`libleptonica-1.82.0.so`, `libtesseract50.so`).
+// Linux App Service apt-get tesseract-ocr fərqli SONAME quraşdırır (`liblept.so.5`, `libtesseract.so.5`).
+// Boot zamanı symlink yaradırıq — startup command-dan asılı olmayaq.
+// Linux deyilsə (local Windows dev) bu blok keçilir.
+if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+{
+    EnsureTesseractSymlinks();
+}
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     Args = args,
     WebRootPath = "wwwroot"
 });
+
+static void EnsureTesseractSymlinks()
+{
+    var pairs = new (string source, string link)[]
+    {
+        ("/usr/lib/x86_64-linux-gnu/liblept.so.5", "/usr/lib/x86_64-linux-gnu/libleptonica-1.82.0.so"),
+        ("/usr/lib/x86_64-linux-gnu/libtesseract.so.5", "/usr/lib/x86_64-linux-gnu/libtesseract50.so"),
+    };
+
+    foreach (var (source, link) in pairs)
+    {
+        try
+        {
+            if (System.IO.File.Exists(link)) continue;
+            if (!System.IO.File.Exists(source))
+            {
+                Console.WriteLine($"[Tesseract] source missing: {source} — apt tesseract-ocr quraşdırılmayıb?");
+                continue;
+            }
+
+            var psi = new System.Diagnostics.ProcessStartInfo("ln", $"-sf {source} {link}")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            p?.WaitForExit(3000);
+            Console.WriteLine($"[Tesseract] symlink {(System.IO.File.Exists(link) ? "OK" : "FAIL")}: {link} -> {source}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Tesseract] symlink error for {link}: {ex.Message}");
+        }
+    }
+}
 
 // === Controllers & CORS & SignalR ===
 // EF navigation cycles (e.g. Tenant.Admins.Tenant…) cause JsonException at depth 32.

@@ -24,15 +24,26 @@ RUN dotnet publish "Loyalty.WebAPI.csproj" \
 # ---------- Runtime stage ----------
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 
-# ffmpeg + ffprobe quraşdır (HLS encoding üçün)
-# `--no-install-recommends` ilə yalnız vacib paketlər → kiçik image
+# ffmpeg (HLS encoding) + tesseract-ocr (Receipt OCR) quraşdır
+# `--no-install-recommends` ilə kiçik image
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        tesseract-ocr \
+        tesseract-ocr-aze \
+        tesseract-ocr-eng \
+        libtesseract-dev \
+        libleptonica-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Tesseract NuGet 5.2.0 literal lib adı axtarır (`libleptonica-1.82.0.so`, `libtesseract50.so`).
+# apt fərqli SONAME quraşdırır (`liblept.so.5`, `libtesseract.so.5`). Symlink ilə bağlayırıq.
+RUN ln -sf /usr/lib/x86_64-linux-gnu/liblept.so.5 /usr/lib/x86_64-linux-gnu/libleptonica-1.82.0.so \
+    && ln -sf /usr/lib/x86_64-linux-gnu/libtesseract.so.5 /usr/lib/x86_64-linux-gnu/libtesseract50.so
+
 # Yoxlama (build zamanı log-da görünür)
-RUN ffmpeg -version | head -1 && ffprobe -version | head -1
+RUN ffmpeg -version | head -1 && ffprobe -version | head -1 && tesseract --version 2>&1 | head -1 && tesseract --list-langs && ls -la /usr/lib/x86_64-linux-gnu/libleptonica-1.82.0.so /usr/lib/x86_64-linux-gnu/libtesseract50.so
 
 WORKDIR /app
 COPY --from=build /app/publish .
