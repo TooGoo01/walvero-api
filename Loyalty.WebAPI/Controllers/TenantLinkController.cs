@@ -144,6 +144,19 @@ namespace Loyalty.WebAPI.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
+            if (IsBranchScoped())
+            {
+                var ownBranchId = _tenantProvider.CurrentBranchId;
+                var ids = dto.Items.Select(i => i.Id).ToList();
+                var ownership = await _db.TenantLinks.AsNoTracking()
+                    .Where(tl => ids.Contains(tl.Id))
+                    .Select(tl => new { tl.Id, tl.BranchId })
+                    .ToListAsync();
+                if (ownership.Any(o => o.BranchId != ownBranchId))
+                    return StatusCode((int)HttpStatusCode.Forbidden,
+                        new ServiceResult(false, "Yalnız öz filialınızın linklərini sıralaya bilərsiniz"));
+            }
+
             var result = await _tenantLinkService.Reorder(dto);
             if (result.Success)
                 return Ok(result);
