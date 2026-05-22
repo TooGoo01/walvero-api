@@ -3,10 +3,13 @@ using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
+using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Loyalty.Business.Services.Implementations.Main
@@ -16,15 +19,18 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IRestorantWifiInformationRepository _restorantWifiInformationRepository;
+        private readonly LoyaltyWalletDbContext _db;
 
         public RestorantWifiInformationService(
             IUnitOfWork unitOfWork,
             IMapper mapper,
-            IRestorantWifiInformationRepository restorantWifiInformationRepository)
+            IRestorantWifiInformationRepository restorantWifiInformationRepository,
+            LoyaltyWalletDbContext db)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _restorantWifiInformationRepository = restorantWifiInformationRepository;
+            _db = db;
         }
 
         public async Task<ServiceResult> Add(AddRestorantWifiInformationDto dto)
@@ -89,6 +95,23 @@ namespace Loyalty.Business.Services.Implementations.Main
         public async Task<ServiceResult> GetByTenantId(int tenantId)
         {
             var entities = await _restorantWifiInformationRepository.GetByTenantIdAsync(tenantId);
+            var response = _mapper.Map<List<GetRestorantWifiInformationDto>>(entities);
+            return new ServiceResult(true, response);
+        }
+
+        public async Task<ServiceResult> GetByTenantAndBranchAsync(int tenantId, int? branchId, bool branchScoped)
+        {
+            var query = _db.RestorantWifiInformations
+                .AsNoTracking()
+                .Include(w => w.Branch)
+                .Where(w => w.TenantId == tenantId && w.IsActive);
+
+            if (branchScoped)
+                query = query.Where(w => w.BranchId == branchId);
+            else if (branchId.HasValue)
+                query = query.Where(w => w.BranchId == branchId.Value);
+
+            var entities = await query.OrderBy(w => w.Id).ToListAsync();
             var response = _mapper.Map<List<GetRestorantWifiInformationDto>>(entities);
             return new ServiceResult(true, response);
         }

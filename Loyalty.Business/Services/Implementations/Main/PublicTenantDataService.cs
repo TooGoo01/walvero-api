@@ -44,8 +44,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (tenant == null)
                 return ServiceResult<TenantConfigDto>.Fail("Tenant tapılmadı");
 
+            // Tenant-wide WiFi (BranchId=null). Branch-spesifik WiFi yalnız branch URL açıldıqda göstərilir.
             var wifiList = tenant.RestorantWifiInformation?
-                .Where(w => w.IsActive)
+                .Where(w => w.IsActive && w.BranchId == null)
                 .Select(w => new TenantConfigWifiDto
                 {
                     Id = w.Id,
@@ -121,8 +122,21 @@ namespace Loyalty.Business.Services.Implementations.Main
             return ServiceResult<TenantConfigDto>.Ok(config);
         }
 
-        public async Task<ServiceResult<RestaurantDataDto>> GetRestaurantBySlugAsync(string slug, CancellationToken ct = default)
+        public Task<ServiceResult<RestaurantDataDto>> GetRestaurantBySlugAsync(string slug, CancellationToken ct = default)
+            => GetRestaurantBySlugAsync(slug, null, ct);
+
+        public async Task<ServiceResult<RestaurantDataDto>> GetRestaurantBySlugAsync(string slug, string? branchSlug, CancellationToken ct = default)
         {
+            int? branchIdFilter = null;
+            if (!string.IsNullOrWhiteSpace(branchSlug))
+            {
+                var br = await _dbContext.Branches.AsNoTracking()
+                    .Where(b => b.Slug == branchSlug && b.IsActive)
+                    .Select(b => new { b.Id, b.TenantId })
+                    .FirstOrDefaultAsync(ct);
+                branchIdFilter = br?.Id;
+            }
+
             var tenant = await _dbContext.Tenants
                 .AsNoTracking()
                 .Include(t => t.Branding)
@@ -132,7 +146,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     .ThenInclude(tl => tl!.City)
                 .Include(t => t.TenantLocation)
                     .ThenInclude(tl => tl!.TimeZone)
-                .Include(t => t.Links!.Where(l => l.IsActive && l.BranchId == null))
+                .Include(t => t.Links!.Where(l => l.IsActive
+                    && (l.BranchId == null || (branchIdFilter != null && l.BranchId == branchIdFilter))))
                 .Where(t => t.Subdomain == slug && t.IsActive && !t.IsHidden)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(ct);

@@ -37,6 +37,9 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> GetById([FromQuery] int id)
         {
+            if (IsBranchScoped() && _tenantProvider.CurrentBranchId != id)
+                return StatusCode((int)HttpStatusCode.Forbidden, new ServiceResult(false, "Bu branch-a icazəniz yoxdur"));
+
             var result = await _branchService.GetByIdAsync(id);
             if (!result.Success)
                 return NotFound(result);
@@ -68,6 +71,9 @@ namespace Loyalty.WebAPI.Controllers
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
+
+            if (IsBranchScoped() && _tenantProvider.CurrentBranchId != id)
+                return StatusCode((int)HttpStatusCode.Forbidden, new ServiceResult(false, "Bu branch-ı dəyişməyə icazəniz yoxdur"));
 
             var result = await _branchService.UpdateAsync(id, dto);
             if (!result.Success)
@@ -123,5 +129,12 @@ namespace Loyalty.WebAPI.Controllers
             }
             return _tenantProvider.CurrentTenantId;
         }
+
+        private bool IsBranchScoped()
+            => !User.IsInRole("Tenant Admin")
+               && !User.IsInRole("Super Admin")
+               && (User.IsInRole("Branch Admin")
+                   || User.IsInRole("Branch Moderator")
+                   || User.IsInRole("Moderator"));
     }
 }

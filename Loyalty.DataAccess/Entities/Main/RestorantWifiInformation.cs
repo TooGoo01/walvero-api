@@ -14,5 +14,8 @@ namespace Loyalty.DataAccess.Entities.Main
         public string SSID { get; set; }
         public int TenantId { get; set; }
         public Tenant Tenant { get; set; }
+
+        public int? BranchId { get; set; }
+        public Branch? Branch { get; set; }
     }
 }

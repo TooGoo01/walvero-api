@@ -916,6 +916,13 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(t => t.RestorantWifiInformation)
                     .HasForeignKey(rwi => rwi.TenantId)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(rwi => rwi.Branch)
+                    .WithMany()
+                    .HasForeignKey(rwi => rwi.BranchId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(rwi => new { rwi.TenantId, rwi.BranchId });
             });
 
             modelBuilder.Entity<TenantLink>(entity =>

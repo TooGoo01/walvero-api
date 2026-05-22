@@ -195,7 +195,8 @@ namespace Loyalty.Business.Mappings
 
             CreateMap<RestorantWifiInformation, AddRestorantWifiInformationDto>().ReverseMap();
             CreateMap<RestorantWifiInformation, UpdateRestorantWifiInformationDto>().ReverseMap();
-            CreateMap<RestorantWifiInformation, GetRestorantWifiInformationDto>().ReverseMap();
+            CreateMap<RestorantWifiInformation, GetRestorantWifiInformationDto>()
+                .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null));
 
             CreateMap<TenantLink, AddTenantLinkDto>().ReverseMap();
             CreateMap<TenantLink, UpdateTenantLinkDto>().ReverseMap();
