@@ -145,6 +145,21 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
+        /// Branch konteksti ilə restoran datası: branch override (logo, sosial) + tenant link + branch wifi union.
+        /// </summary>
+        [HttpGet("restaurants/{tenantSlug}/{branchSlug}")]
+        [ProducesResponseType(typeof(ServiceResult<RestaurantDataDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult<RestaurantDataDto>), (int)HttpStatusCode.NotFound)]
+        [ResponseCache(Duration = 60, VaryByQueryKeys = new[] { "tenantSlug", "branchSlug" })]
+        public async Task<ActionResult<ServiceResult<RestaurantDataDto>>> GetRestaurantByTenantAndBranch(string tenantSlug, string branchSlug, CancellationToken ct)
+        {
+            var result = await _publicTenantDataService.GetRestaurantBySlugAsync(tenantSlug, branchSlug, ct);
+            if (!result.Success)
+                return NotFound(result);
+            return Ok(result);
+        }
+
+        /// <summary>
         /// Menyu datası kateqoriyaya görə qruplaşdırılmış (yalnız tenant-wide).
         /// </summary>
         [HttpGet("menu/{slug}")]
