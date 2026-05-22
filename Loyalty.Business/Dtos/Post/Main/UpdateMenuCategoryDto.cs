@@ -19,5 +19,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? AzDescription { get; set; }
         public string? EnDescription { get; set; }
         public string? RuDescription { get; set; }
+
+        public int? BranchId { get; set; }
     }
 }

@@ -100,6 +100,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new ServiceResult(false, "Branch not found");
 
             if (dto.Name != null) branch.Name = dto.Name;
+            if (dto.Slug != null) branch.Slug = string.IsNullOrWhiteSpace(dto.Slug) ? null : dto.Slug.Trim();
             if (dto.Address != null) branch.Address = dto.Address;
             if (dto.Latitude.HasValue) branch.Latitude = dto.Latitude;
             if (dto.Longitude.HasValue) branch.Longitude = dto.Longitude;
@@ -127,6 +128,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.PinterestUrl != null) branch.PinterestUrl = dto.PinterestUrl;
             if (dto.BackgroundColor != null) branch.BackgroundColor = dto.BackgroundColor;
             if (dto.ForegroundColor != null) branch.ForegroundColor = dto.ForegroundColor;
+
+            // Fraud-prevention config
+            if (dto.RequireReceiptOcr.HasValue) branch.RequireReceiptOcr = dto.RequireReceiptOcr.Value;
+            if (dto.OcrToleranceAzn.HasValue) branch.OcrToleranceAzn = dto.OcrToleranceAzn;
+            if (dto.SuspiciousAmountCap.HasValue) branch.SuspiciousAmountCap = dto.SuspiciousAmountCap;
+            if (dto.SuspiciousSpendCountCap.HasValue) branch.SuspiciousSpendCountCap = dto.SuspiciousSpendCountCap;
+            if (dto.EnableSuspiciousAlert.HasValue) branch.EnableSuspiciousAlert = dto.EnableSuspiciousAlert.Value;
+            if (dto.AlertWhatsappPhone != null) branch.AlertWhatsappPhone = dto.AlertWhatsappPhone;
 
             if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
             {
@@ -156,6 +165,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             _unitOfWork.Commit();
 
             return new ServiceResult(true);
+        }
+
+        public async Task<int?> GetBranchIdByOperatorIdAsync(int operatorId, CancellationToken ct = default)
+        {
+            return await _dbContext.Users
+                .AsNoTracking()
+                .Where(u => u.Id == operatorId)
+                .Select(u => u.BranchId)
+                .FirstOrDefaultAsync(ct);
         }
 
         public async Task<ServiceResult> GetStatsAsync(int branchId)

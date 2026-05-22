@@ -8,6 +8,9 @@ namespace Loyalty.DataAccess.Entities.Main
         public int TenantId { get; set; }
         public Tenant Tenant { get; set; } = default!;
 
+        public int? BranchId { get; set; }
+        public Branch? Branch { get; set; }
+
         public string AzTitle { get; set; } = default!;
         public string? EnTitle { get; set; }
         public string? RuTitle { get; set; }

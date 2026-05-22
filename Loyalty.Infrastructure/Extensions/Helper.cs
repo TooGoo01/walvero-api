@@ -228,13 +228,16 @@ namespace Loyalty.Infrastructure.Extensions
 
             configurationManager.SetBasePath(webApiPath);
             configurationManager.AddJsonFile("appsettings.json", optional: false, reloadOnChange: false);
-            
+
             // Environment-specific appsettings faylını da əlavə et (əgər varsa)
             var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
             if (!string.IsNullOrEmpty(env))
             {
                 configurationManager.AddJsonFile($"appsettings.{env}.json", optional: true, reloadOnChange: false);
             }
+
+            // Azure App Service env vars JSON-dan üstün — secret keys orada saxlanır
+            configurationManager.AddEnvironmentVariables();
 
             return configurationManager;
         }

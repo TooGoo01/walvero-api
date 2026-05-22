@@ -3,9 +3,11 @@ using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
+using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -17,15 +19,18 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IMenuCategoryRepository _menuCategoryRepository;
+        private readonly LoyaltyWalletDbContext _db;
 
         public MenuCategoryService(
             IUnitOfWork unitOfWork,
             IMapper mapper,
-            IMenuCategoryRepository menuCategoryRepository)
+            IMenuCategoryRepository menuCategoryRepository,
+            LoyaltyWalletDbContext db)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _menuCategoryRepository = menuCategoryRepository;
+            _db = db;
         }
 
         public async Task<ServiceResult> Add(AddMenuCategoryDto dto)
@@ -104,6 +109,27 @@ namespace Loyalty.Business.Services.Implementations.Main
         public async Task<ServiceResult> GetActive()
         {
             var entities = await _menuCategoryRepository.GetActiveAsync();
+            var response = _mapper.Map<List<GetMenuCategoryDto>>(entities);
+            return new ServiceResult(true, response);
+        }
+
+        public async Task<ServiceResult> GetByTenantAndBranchAsync(int tenantId, int? branchId, bool branchScoped)
+        {
+            var query = _db.MenuCategories
+                .AsNoTracking()
+                .Include(mc => mc.Branch)
+                .Where(mc => mc.TenantId == tenantId && mc.IsActive);
+
+            if (branchScoped)
+            {
+                query = query.Where(mc => mc.BranchId == branchId);
+            }
+            else if (branchId.HasValue)
+            {
+                query = query.Where(mc => mc.BranchId == branchId.Value);
+            }
+
+            var entities = await query.OrderBy(mc => mc.Id).ToListAsync();
             var response = _mapper.Map<List<GetMenuCategoryDto>>(entities);
             return new ServiceResult(true, response);
         }

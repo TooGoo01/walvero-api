@@ -21,6 +21,16 @@ namespace Loyalty.DataAccess.Entities.Main
         public DateTime? SubscriptionExpiryDate { get; set; }
         public bool RequireConfirmation { get; set; } = true; // tenant setting
         public int ConfirmationTtlMinutes { get; set; } = 10;
+
+        // --- Receipt OCR validation (per-tenant feature flag) ---
+        public bool RequireReceiptOcr { get; set; } = false;
+        public decimal? OcrToleranceAzn { get; set; } // null → defaults to 1 AZN at runtime
+
+        // --- Suspicious-transaction cap + WhatsApp alert (per-tenant; branch override exists) ---
+        public decimal? SuspiciousAmountCap { get; set; } // null → no cap
+        public int? SuspiciousSpendCountCap { get; set; } // null → no count cap (ProgressBased spendCount)
+        public bool EnableSuspiciousAlert { get; set; } = false;
+        public string? AlertWhatsappPhone { get; set; } // E.164, e.g. +994551234567
         public bool AcceptAnonymus { get; set; } = false;
         public bool ShowOnHome { get; set; } = false;
         public bool IsHidden { get; set; } = false; // Hidden tenants (e.g., Walvero shadow tenant) never appear in listings

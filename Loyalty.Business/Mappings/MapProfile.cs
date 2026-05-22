@@ -171,12 +171,14 @@ namespace Loyalty.Business.Mappings
             // Menu related mappings
             CreateMap<MenuCategory, AddMenuCategoryDto>().ReverseMap();
             CreateMap<MenuCategory, UpdateMenuCategoryDto>().ReverseMap();
-            CreateMap<MenuCategory, GetMenuCategoryDto>().ReverseMap();
+            CreateMap<MenuCategory, GetMenuCategoryDto>()
+                .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null));
             CreateMap<MenuCategory, GetMenuCategorySummaryDto>(); // No MenuItems - used in GetMenuItemDto to avoid JSON cycle
 
             CreateMap<MenuItem, AddMenuItemDto>().ReverseMap();
             CreateMap<MenuItem, UpdateMenuItemDto>().ReverseMap();
-            CreateMap<MenuItem, GetMenuItemDto>().ReverseMap();
+            CreateMap<MenuItem, GetMenuItemDto>()
+                .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null));
 
             CreateMap<Transaction, GetTransactionDto>()
                 .ForMember(d => d.CustomerName,
@@ -193,11 +195,13 @@ namespace Loyalty.Business.Mappings
 
             CreateMap<RestorantWifiInformation, AddRestorantWifiInformationDto>().ReverseMap();
             CreateMap<RestorantWifiInformation, UpdateRestorantWifiInformationDto>().ReverseMap();
-            CreateMap<RestorantWifiInformation, GetRestorantWifiInformationDto>().ReverseMap();
+            CreateMap<RestorantWifiInformation, GetRestorantWifiInformationDto>()
+                .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null));
 
             CreateMap<TenantLink, AddTenantLinkDto>().ReverseMap();
             CreateMap<TenantLink, UpdateTenantLinkDto>().ReverseMap();
-            CreateMap<TenantLink, GetTenantLinkDto>().ReverseMap();
+            CreateMap<TenantLink, GetTenantLinkDto>()
+                .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null));
 
             CreateMap<Transaction, GetTransactionDto>()
                 .ForMember(d => d.Status, opt => opt.MapFrom(s => (int)s.Status))
@@ -207,7 +211,8 @@ namespace Loyalty.Business.Mappings
                         : null))
                 .ForMember(d => d.CardNumber, opt => opt.MapFrom(s =>
                     s.LoyaltyCard != null ? s.LoyaltyCard.CardNumber : null))
-                .ForMember(d => d.CreatedAt, opt => opt.MapFrom(s => s.RegDate));
+                .ForMember(d => d.CreatedAt, opt => opt.MapFrom(s => s.RegDate))
+                .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null));
 
             #endregion
 

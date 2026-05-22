@@ -1,3 +1,4 @@
+using Hangfire;
 using Loyalty.Business.Exceptions;
 using Loyalty.Business.Hubs;
 using Loyalty.Business.Services;
@@ -24,12 +25,75 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Sinks.ApplicationInsights.TelemetryConverters;
+using System.Runtime.InteropServices;
+
+// Tesseract NuGet (5.2.0) literal lib adı axtarır (`libleptonica-1.82.0.so`, `libtesseract50.so`).
+// Linux App Service apt-get tesseract-ocr fərqli SONAME quraşdırır (`liblept.so.5`, `libtesseract.so.5`).
+// Boot zamanı symlink yaradırıq — startup command-dan asılı olmayaq.
+// Linux deyilsə (local Windows dev) bu blok keçilir.
+if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+{
+    EnsureTesseractSymlinks();
+}
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
     Args = args,
     WebRootPath = "wwwroot"
 });
+
+static void EnsureTesseractSymlinks()
+{
+    // Tesseract NuGet (5.2.0) `InteropDotNet.LibraryLoader` sistem path-larını (/usr/lib və LD_LIBRARY_PATH)
+    // İGNORE edir. Yalnız Tesseract.dll yanındakı `x64/` (və ya `x86/`) qovluğunda axtarır.
+    // Ona görə apt-installed `.so` fayllarına symlink-ləri appBase/x64/ içində yaradırıq.
+    var x64Dir = Path.Combine(AppContext.BaseDirectory, "x64");
+    try
+    {
+        System.IO.Directory.CreateDirectory(x64Dir);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Tesseract] cannot create {x64Dir}: {ex.Message}");
+        return;
+    }
+
+    var pairs = new (string source, string link)[]
+    {
+        ("/usr/lib/x86_64-linux-gnu/liblept.so.5", Path.Combine(x64Dir, "libleptonica-1.82.0.so")),
+        ("/usr/lib/x86_64-linux-gnu/libtesseract.so.5", Path.Combine(x64Dir, "libtesseract50.so")),
+        // Tesseract NuGet `dlopen("libdl")` çağırır — Debian 12-də versiyasız `libdl.so` yox, yalnız `.so.2`
+        ("/lib/x86_64-linux-gnu/libdl.so.2", Path.Combine(x64Dir, "libdl.so")),
+        ("/lib/x86_64-linux-gnu/libdl.so.2", Path.Combine(AppContext.BaseDirectory, "libdl.so")),
+    };
+
+    foreach (var (source, link) in pairs)
+    {
+        try
+        {
+            if (System.IO.File.Exists(link)) continue;
+            if (!System.IO.File.Exists(source))
+            {
+                Console.WriteLine($"[Tesseract] source missing: {source} — apt tesseract-ocr quraşdırılmayıb?");
+                continue;
+            }
+
+            var psi = new System.Diagnostics.ProcessStartInfo("ln", $"-sf {source} {link}")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            p?.WaitForExit(3000);
+            Console.WriteLine($"[Tesseract] symlink {(System.IO.File.Exists(link) ? "OK" : "FAIL")}: {link} -> {source}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Tesseract] symlink error for {link}: {ex.Message}");
+        }
+    }
+}
 
 // === Controllers & CORS & SignalR ===
 // EF navigation cycles (e.g. Tenant.Admins.Tenant…) cause JsonException at depth 32.
@@ -137,7 +201,7 @@ builder.Services
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("TenantAdminOrModerator", policy =>
-        policy.RequireRole("Tenant Admin", "Moderator"));
+        policy.RequireRole("Tenant Admin", "Branch Admin", "Moderator", "Branch Moderator"));
     options.AddPolicy("SuperAdminOnly", policy =>
        policy.RequireRole("Super Admin"));
 
@@ -147,14 +211,26 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("TenantModeratorOnly", policy =>
         policy.RequireRole("Moderator"));
 
+    // Branch-scoped admin (ops + branch statistics; BranchId required on user).
+    options.AddPolicy("BranchAdminOnly", policy =>
+        policy.RequireRole("Branch Admin"));
+
+    // Branch-scoped moderator (ops only; BranchId required on user).
+    options.AddPolicy("BranchModeratorOnly", policy =>
+        policy.RequireRole("Branch Moderator"));
+
+    // Branch Admin or any higher-level admin (used for branch settings / approve flagged tx)
+    options.AddPolicy("BranchAdminOrAbove", policy =>
+        policy.RequireRole("Branch Admin", "Tenant Admin", "Super Admin"));
+
     options.AddPolicy("CustomerOnly", policy =>
         policy.RequireRole("Customer"));
 
     options.AddPolicy("CustomerOrTenantAdmin", policy =>
-        policy.RequireRole("Customer", "Tenant Admin", "Moderator"));
+        policy.RequireRole("Customer", "Tenant Admin", "Branch Admin", "Moderator", "Branch Moderator"));
 
     options.AddPolicy("SalesManagerOrAbove", policy =>
-        policy.RequireRole("Sales Manager", "Tenant Admin", "Moderator", "Super Admin"));
+        policy.RequireRole("Sales Manager", "Tenant Admin", "Branch Admin", "Moderator", "Branch Moderator", "Super Admin"));
 
     // FullProfileOnly policy - requires non-guest user with completed profile
     options.AddPolicy("FullProfileOnly", policy =>
@@ -197,6 +273,28 @@ builder.Services.AddDbContext<LoyaltyWalletDbContext>(options =>
             maxRetryCount: 5,
             maxRetryDelay: TimeSpan.FromSeconds(10),
             errorNumbersToAdd: null)));
+
+// === Hangfire (async OCR jobs) ===
+builder.Services.AddHangfire(cfg => cfg
+    .SetDataCompatibilityLevel(Hangfire.CompatibilityLevel.Version_180)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UseSqlServerStorage(
+        builder.Configuration.GetConnectionString("LoyaltyDbConnection"),
+        new Hangfire.SqlServer.SqlServerStorageOptions
+        {
+            SchemaName = "Hangfire",
+            CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
+            SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
+            QueuePollInterval = TimeSpan.FromSeconds(2),
+            UseRecommendedIsolationLevel = true,
+            DisableGlobalLocks = true
+        }));
+builder.Services.AddHangfireServer(opts =>
+{
+    opts.WorkerCount = 2; // OCR CPU-bound — kicik tutmaq
+    opts.Queues = new[] { "ocr", "default" };
+});
 
 // HttpClientFactory
 builder.Services.AddHttpClient();
@@ -278,6 +376,20 @@ builder.Host.UseSerilog((ctx, services, lc) =>
 
 var app = builder.Build();
 
+// === Seed roles (idempotent) ===
+// "Branch Admin" — branch-scoped admin rolu; mövcud olmasa yarat.
+using (var scope = app.Services.CreateScope())
+{
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
+    foreach (var roleName in new[] { "Super Admin", "Tenant Admin", "Branch Admin", "Moderator", "Branch Moderator", "Customer", "Sales Manager" })
+    {
+        if (!await roleManager.RoleExistsAsync(roleName))
+        {
+            await roleManager.CreateAsync(new ApplicationRole { Name = roleName });
+        }
+    }
+}
+
 // === Forwarded Headers (MUST be before UseHttpsRedirection for Azure/reverse proxy) ===
 // This is critical for Apple PassKit Web Service to work correctly in Azure
 // Without this, requests from Apple servers behind load balancer may get 301/405 errors
@@ -340,6 +452,12 @@ app.UseSession();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Hangfire dashboard — yalnız Tenant Admin / Super Admin
+app.UseHangfireDashboard("/hangfire", new Hangfire.DashboardOptions
+{
+    Authorization = new[] { new Loyalty.WebAPI.Hangfire.TenantAdminDashboardFilter() }
+});
 
 // 🔹 Minimal hostingda ayrı `UseRouting/UseEndpoints` ehtiyac yoxdur
 app.MapControllers();

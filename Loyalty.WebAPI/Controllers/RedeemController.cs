@@ -311,6 +311,38 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             var earnCount = txList.Count(t => t.Type == DataAccess.Entities.Main.TransactionType.Earned || t.Type == DataAccess.Entities.Main.TransactionType.Bonus);
             var spendCount2 = txList.Count(t => t.Type == DataAccess.Entities.Main.TransactionType.Redeemed);
 
+            // Receipt-OCR feature flag — OR(tenant, branch). Operator-un branch-i JWT branch_id claim-dən.
+            var tenantOcr = await _dbContext.Tenants
+                .AsNoTracking()
+                .Where(t => t.Id == tenantId)
+                .Select(t => t.RequireReceiptOcr)
+                .FirstOrDefaultAsync(ct);
+
+            var operatorBranchId = _tenantProvider.CurrentBranchId;
+            // JWT-də claim yoxdursa (köhnə token), DB-də ApplicationUser.BranchId-ə fallback
+            if (!operatorBranchId.HasValue)
+            {
+                var userIdStr = _tenantProvider.CurrentUserId;
+                if (int.TryParse(userIdStr, out var uid))
+                {
+                    operatorBranchId = await _dbContext.Users
+                        .AsNoTracking()
+                        .Where(u => u.Id == uid)
+                        .Select(u => u.BranchId)
+                        .FirstOrDefaultAsync(ct);
+                }
+            }
+
+            var branchOcr = operatorBranchId.HasValue
+                ? await _dbContext.Branches
+                    .AsNoTracking()
+                    .Where(b => b.Id == operatorBranchId.Value)
+                    .Select(b => (bool?)b.RequireReceiptOcr)
+                    .FirstOrDefaultAsync(ct)
+                : null;
+
+            var requireReceiptOcr = tenantOcr || (branchOcr ?? false);
+
             return Ok(new
             {
                 success = true,
@@ -327,24 +359,71 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 tierPercentCash,
                 tierIconUrl,
                 earnCount,
-                spendCount = spendCount2
+                spendCount = spendCount2,
+                requireReceiptOcr
             });
         }
 
         // === START REDEEM ===
         public sealed record StartRedeemRequest( string Code, decimal Delta, string? OrderId,string mode,string? paymentMethod, int? spendCount);
 
+        // Multipart form variant (receiptImage support for OCR-required tenants/branches)
+        public sealed class StartRedeemForm
+        {
+            public string Code { get; set; } = string.Empty;
+            public decimal Delta { get; set; }
+            public string? OrderId { get; set; }
+            public string mode { get; set; } = "earn";
+            public string? paymentMethod { get; set; }
+            public int? spendCount { get; set; }
+            public IFormFile? ReceiptImage { get; set; }
+        }
+
+        private static readonly HashSet<string> _allowedReceiptMimes = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "image/jpeg", "image/jpg", "image/png", "image/webp"
+        };
+
         [HttpPost]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> Start([FromBody] StartRedeemRequest model, CancellationToken ct)
+        public Task<IActionResult> Start([FromBody] StartRedeemRequest model, CancellationToken ct)
+            => HandleStartAsync(model.Code, model.Delta, model.OrderId, model.mode, model.paymentMethod, model.spendCount, null, ct);
+
+        [HttpPost]
+        [Consumes("multipart/form-data")]
+        [RequestSizeLimit(10_000_000)] // 10 MB margin (receipt validation rejects >5MB internally)
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public Task<IActionResult> StartWithReceipt([FromForm] StartRedeemForm form, CancellationToken ct)
         {
-            _logger.LogInformation("Start redeem called: ProgramId={ProgramId}, Code={Code}, Delta={Delta}, Mode={Mode}",
-               model.Code, model.Delta, model.mode);
+            if (form.ReceiptImage is { Length: > 0 } img)
+            {
+                if (img.Length > 5_000_000)
+                    return Task.FromResult<IActionResult>(BadRequest(new { success = false, message = "Çek şəkli 5 MB-dan böyükdür." }));
+
+                if (!string.IsNullOrEmpty(img.ContentType) && !_allowedReceiptMimes.Contains(img.ContentType))
+                    return Task.FromResult<IActionResult>(BadRequest(new { success = false, message = "Çek şəkli formatı dəstəklənmir (jpeg/png/webp)." }));
+            }
+
+            return HandleStartAsync(form.Code, form.Delta, form.OrderId, form.mode, form.paymentMethod, form.spendCount, form.ReceiptImage, ct);
+        }
+
+        private async Task<IActionResult> HandleStartAsync(
+            string codeIn,
+            decimal deltaIn,
+            string? orderIdIn,
+            string mode,
+            string? paymentMethod,
+            int? spendCountIn,
+            IFormFile? receiptImage,
+            CancellationToken ct)
+        {
+            _logger.LogInformation("Start redeem called: Code={Code}, Delta={Delta}, Mode={Mode}, HasReceipt={HasReceipt}",
+               codeIn, deltaIn, mode, receiptImage is not null);
 
             // If mode is "pay", ensure delta is negative (convert positive to negative)
             // If mode is "earn", ensure delta is positive (convert negative to positive)
-            decimal delta = model.Delta;
-            if (string.Equals(model.mode, "pay", StringComparison.OrdinalIgnoreCase))
+            decimal delta = deltaIn;
+            if (string.Equals(mode, "pay", StringComparison.OrdinalIgnoreCase))
             {
                 if (delta > 0)
                 {
@@ -352,7 +431,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                     delta = -delta;
                 }
             }
-            else if (string.Equals(model.mode, "earn", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(mode, "earn", StringComparison.OrdinalIgnoreCase))
             {
                 if (delta < 0)
                 {
@@ -369,7 +448,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 return BadRequest(new { success = false, message = "Tenant subdomendən təyin olunmadı." });
             }
 
-            var code = (model.Code ?? "").Trim();
+            var code = (codeIn ?? "").Trim();
             GetLoyaltyCardDto? card = null;
             GetCustomerDto? customer = null;
 
@@ -446,26 +525,32 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             // PayMentType=false (0) olduqda həmişə percent üzərindən hesabla,
             // PayMentType=true olduqda cash üçün tierPercentCash istifadə et (null-dursa percent-ə fallback)
             int? percent;
-            if (tpl.PayMentType && model.paymentMethod == "cash")
+            if (tpl.PayMentType && paymentMethod == "cash")
                 percent = tierPercentCash ?? tierPercent;
             else
                 percent = tierPercent;
+
+            // OCR doğrulaması üçün kassirin daxil etdiyi orijinal məbləği saxla (percent çevrilməsindən əvvəl).
+            // Pay rejimi-də delta artıq mənfi, abs() faktiki çek məbləğidir.
+            decimal originalAmount = Math.Abs(delta);
 
             if (delta > 0 && percent.HasValue) {
                 // decimal arithmetic — kəsr saxlanır (məs. 25 * 5 / 100m = 1.25m)
                 delta = delta * percent.Value / 100m;
             }
-          
+
 
 
             var dto = new RedeemRequestDto
             {
                 LoyaltyProgramId = programId,
-                Code = (model.Code ?? "").Trim(),
+                Code = code,
                 Delta = delta,
-                OrderId = model.OrderId,
+                OrderId = orderIdIn,
                 TenantId = tenantId.Value,
-                SpendCount = model.spendCount // Add SpendCount for "Xərclə" mode
+                SpendCount = spendCountIn, // Add SpendCount for "Xərclə" mode
+                ReceiptImage = receiptImage,
+                OriginalAmount = originalAmount
             };
 
             var res = await _redeemService.RedeemAsync(dto, ct);

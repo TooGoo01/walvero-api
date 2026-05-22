@@ -35,6 +35,16 @@ namespace Loyalty.Business.Services.Implementations.Storage
             return _blobContainerClient.GetBlobs().Any(b => b.Name == fileName);
         }
 
+        public async Task<byte[]?> DownloadAsync(string containerName, string fileName, CancellationToken ct = default)
+        {
+            var container = _blobServiceClient.GetBlobContainerClient(containerName);
+            if (!await container.ExistsAsync(ct)) return null;
+            var blob = container.GetBlobClient(fileName);
+            if (!await blob.ExistsAsync(ct)) return null;
+            var resp = await blob.DownloadContentAsync(ct);
+            return resp.Value.Content.ToArray();
+        }
+
         public async Task<List<(string fileName, string pathOrContainerName)>> UploadAsync(string pathOrContainerName, IFormFileCollection files)
         {
             _blobContainerClient = _blobServiceClient.GetBlobContainerClient(pathOrContainerName);
@@ -60,93 +70,31 @@ namespace Loyalty.Business.Services.Implementations.Storage
             string pathOrContainerName,
             IFormFile file)
         {
+            // ffmpeg pipeline (HLS / faststart) müvəqqəti deaktiv edilib — Basic B1 plan-da
+            // synchronous encoding reverse proxy timeout-una düşürdü.
+            // Hazırda video olduğu kimi blob-a yüklənir. Sürətli açılma üçün gələcəkdə:
+            //   1) Plan upgrade (S1+) sonra HLS-i bərpa et, və ya
+            //   2) Asynchronous job pattern (background queue) tətbiq et.
             _blobContainerClient = _blobServiceClient.GetBlobContainerClient(pathOrContainerName);
             await _blobContainerClient.CreateIfNotExistsAsync();
             await _blobContainerClient.SetAccessPolicyAsync(PublicAccessType.BlobContainer);
 
-            // Hər video üçün ayrıca temp folder + ayrıca blob folder (variant playlists + segments).
-            var videoId = $"hls-{Guid.NewGuid():N}";
-            var tempInput = Path.Combine(Path.GetTempPath(), $"vin_{videoId}{Path.GetExtension(file.FileName)}");
-            var tempDir = Path.Combine(Path.GetTempPath(), videoId);
-            Directory.CreateDirectory(tempDir);
-            Directory.CreateDirectory(Path.Combine(tempDir, "v0"));
-            Directory.CreateDirectory(Path.Combine(tempDir, "v1"));
+            var name = Path.GetFileNameWithoutExtension(file.FileName)
+                + Random.Shared.Next(1000, 9999) + Path.GetExtension(file.FileName);
+            var blobClient = _blobContainerClient.GetBlobClient(name);
 
-            try
+            await using var stream = file.OpenReadStream();
+            await blobClient.UploadAsync(stream, new BlobUploadOptions
             {
-                // 1) Upload-edilmiş faylı temp-də saxla
-                await using (var fs = new FileStream(tempInput, FileMode.Create, FileAccess.Write))
+                HttpHeaders = new BlobHttpHeaders
                 {
-                    await file.CopyToAsync(fs);
+                    ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "video/mp4" : file.ContentType,
+                    ContentDisposition = "inline",
+                    CacheControl = "public, max-age=31536000, immutable",
                 }
+            });
 
-                // 2) Müddət yoxlaması — 2 dəqiqədən uzun olmamalıdır
-                var duration = await GetVideoDurationSecondsAsync(tempInput);
-                if (duration > 120.5) // 0.5s tolerance encoding rounding üçün
-                {
-                    throw new InvalidOperationException(
-                        $"Video 2 dəqiqədən uzun ola bilməz. Yüklənən video {duration:F1} saniyədir.");
-                }
-
-                // 3) ffmpeg multi-bitrate HLS encode (360p + 720p variants, 4s segments).
-                //    `-keyint_min` və `-g` GOP-u 4s ilə hizalayır → segment seçimi düzgün olur.
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "ffmpeg",
-                    ArgumentList =
-                    {
-                        "-y",
-                        "-i", tempInput,
-                        "-filter_complex",
-                        "[0:v]split=2[v1][v2];" +
-                        "[v1]scale=w=640:h=360:force_original_aspect_ratio=decrease[v360];" +
-                        "[v2]scale=w=1280:h=720:force_original_aspect_ratio=decrease[v720]",
-                        "-map", "[v360]",
-                        "-c:v:0", "libx264", "-profile:v:0", "main",
-                        "-b:v:0", "800k", "-maxrate:v:0", "900k", "-bufsize:v:0", "1200k",
-                        "-g", "96", "-keyint_min", "96", "-sc_threshold", "0",
-                        "-map", "[v720]",
-                        "-c:v:1", "libx264", "-profile:v:1", "main",
-                        "-b:v:1", "2000k", "-maxrate:v:1", "2200k", "-bufsize:v:1", "3000k",
-                        "-g", "96", "-keyint_min", "96", "-sc_threshold", "0",
-                        "-map", "a:0?", "-c:a:0", "aac", "-b:a:0", "96k", "-ac:a:0", "2",
-                        "-map", "a:0?", "-c:a:1", "aac", "-b:a:1", "128k", "-ac:a:1", "2",
-                        "-var_stream_map", "v:0,a:0 v:1,a:1",
-                        "-master_pl_name", "master.m3u8",
-                        "-hls_time", "4",
-                        "-hls_playlist_type", "vod",
-                        "-hls_segment_filename", Path.Combine(tempDir, "v%v", "seg_%03d.ts"),
-                        "-f", "hls",
-                        Path.Combine(tempDir, "v%v", "playlist.m3u8"),
-                    },
-                    RedirectStandardError = true,
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-
-                using var proc = Process.Start(psi)
-                    ?? throw new InvalidOperationException("ffmpeg-i başlatmaq mümkün olmadı");
-
-                await proc.WaitForExitAsync();
-                if (proc.ExitCode != 0)
-                {
-                    var stderr = await proc.StandardError.ReadToEndAsync();
-                    throw new InvalidOperationException($"ffmpeg uğursuz oldu (exit {proc.ExitCode}): {stderr}");
-                }
-
-                // 4) tempDir altında yaranan bütün faylları blob-a yüklə.
-                //    Folder strukturu: master.m3u8, v0/playlist.m3u8 + seg_*.ts, v1/...
-                await UploadHlsFolderAsync(tempDir, videoId);
-
-                var masterUrl = $"https://walverostorage.blob.core.windows.net/{pathOrContainerName}/{videoId}/master.m3u8";
-                return (videoId, masterUrl);
-            }
-            finally
-            {
-                try { if (File.Exists(tempInput)) File.Delete(tempInput); } catch { }
-                try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true); } catch { }
-            }
+            return (name, $"https://walverostorage.blob.core.windows.net/{pathOrContainerName}/{name}");
         }
 
         /// <summary>

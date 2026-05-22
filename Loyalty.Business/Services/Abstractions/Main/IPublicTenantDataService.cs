@@ -21,8 +21,19 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult<RestaurantDataDto>> GetRestaurantBySlugAsync(string slug, CancellationToken ct = default);
 
         /// <summary>
-        /// GET /menu/{slug} — Menyu datası kateqoriyaya görə qruplaşdırılmış
+        /// GET /restaurants/{tenantSlug}/{branchSlug} — Branch konteksti ilə restoran datası;
+        /// links tenant + branch union qaytarır.
+        /// </summary>
+        Task<ServiceResult<RestaurantDataDto>> GetRestaurantBySlugAsync(string slug, string? branchSlug, CancellationToken ct = default);
+
+        /// <summary>
+        /// GET /menu/{slug} — Menyu datası kateqoriyaya görə qruplaşdırılmış (yalnız tenant-wide)
         /// </summary>
         Task<ServiceResult<List<MenuCategoryGroupDto>>> GetMenuBySlugAsync(string slug, CancellationToken ct = default);
+
+        /// <summary>
+        /// GET /menu/{tenantSlug}/{branchSlug} — Tenant-wide + branch-spesifik item union
+        /// </summary>
+        Task<ServiceResult<List<MenuCategoryGroupDto>>> GetMenuBySlugAsync(string tenantSlug, string? branchSlug, CancellationToken ct = default);
     }
 }

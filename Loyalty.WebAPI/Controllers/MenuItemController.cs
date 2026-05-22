@@ -3,13 +3,17 @@ using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.Business.Services.Implementations.Main;
+using Loyalty.DataAccess.Context;
+using Loyalty.WebAPI.Tenancy;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Processing;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 
@@ -21,11 +25,45 @@ namespace Loyalty.WebAPI.Controllers
     {
         private readonly IMenuItemService _menuItemService;
         private readonly IMenuItemImageService _menuItemImageService;
+        private readonly ITenantProvider _tenantProvider;
+        private readonly LoyaltyWalletDbContext _db;
 
-        public MenuItemController(IMenuItemService menuItemService, IMenuItemImageService menuItemImageService)
+        public MenuItemController(
+            IMenuItemService menuItemService,
+            IMenuItemImageService menuItemImageService,
+            ITenantProvider tenantProvider,
+            LoyaltyWalletDbContext db)
         {
             _menuItemService = menuItemService;
             _menuItemImageService = menuItemImageService;
+            _tenantProvider = tenantProvider;
+            _db = db;
+        }
+
+        private bool IsBranchScoped()
+            => !User.IsInRole("Tenant Admin")
+               && !User.IsInRole("Super Admin")
+               && (User.IsInRole("Branch Admin")
+                   || User.IsInRole("Branch Moderator")
+                   || User.IsInRole("Moderator"));
+
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+        [ProducesResponseType(typeof(ServiceResult<List<GetMenuItemDto>>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> List([FromQuery] int? tenantId = null, [FromQuery] int? branchId = null, [FromQuery] int? categoryId = null)
+        {
+            var resolvedTenantId = tenantId ?? _tenantProvider.CurrentTenantId;
+            if (!resolvedTenantId.HasValue)
+                return BadRequest(new ServiceResult(false, "Tenant Id təyin olunmayıb"));
+
+            var branchScoped = IsBranchScoped();
+            var effectiveBranchId = branchScoped ? _tenantProvider.CurrentBranchId : branchId;
+
+            var result = await _menuItemService.GetByTenantAndBranchAsync(resolvedTenantId.Value, effectiveBranchId, branchScoped, categoryId);
+            if (result.Success)
+                return Ok(result);
+            return BadRequest(result);
         }
 
         [HttpGet]
@@ -112,6 +150,14 @@ namespace Loyalty.WebAPI.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
+            if (IsBranchScoped())
+            {
+                var ownBranchId = _tenantProvider.CurrentBranchId;
+                if (!ownBranchId.HasValue)
+                    return StatusCode((int)HttpStatusCode.Forbidden, new ServiceResult(false, "Branch təyin olunmayıb"));
+                dto.BranchId = ownBranchId;
+            }
+
             var result = await _menuItemService.Add(dto);
             if (result.Success)
             {
@@ -144,6 +190,19 @@ namespace Loyalty.WebAPI.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
+            if (IsBranchScoped())
+            {
+                var ownBranchId = _tenantProvider.CurrentBranchId;
+                var existing = await _db.MenuItems.AsNoTracking()
+                    .Where(mi => mi.Id == id)
+                    .Select(mi => new { mi.BranchId })
+                    .FirstOrDefaultAsync();
+                if (existing == null) return NotFound(new ServiceResult(false, "Menyu elementi tapılmadı"));
+                if (existing.BranchId != ownBranchId)
+                    return StatusCode((int)HttpStatusCode.Forbidden, new ServiceResult(false, "Bu menyu elementini dəyişməyə icazəniz yoxdur"));
+                dto.BranchId = ownBranchId;
+            }
+
             // Convert AddMenuItemDto to UpdateMenuItemDto
             var updateDto = new UpdateMenuItemDto
             {
@@ -160,6 +219,7 @@ namespace Loyalty.WebAPI.Controllers
                 Price = dto.Price,
                 DiscountPrice = dto.DiscountPrice,
                 MenuCategoryId = dto.MenuCategoryId,
+                BranchId = dto.BranchId,
                 Files = dto.Files
             };
 
@@ -234,6 +294,18 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
         public async Task<IActionResult> Delete(int id)
         {
+            if (IsBranchScoped())
+            {
+                var ownBranchId = _tenantProvider.CurrentBranchId;
+                var existing = await _db.MenuItems.AsNoTracking()
+                    .Where(mi => mi.Id == id)
+                    .Select(mi => new { mi.BranchId })
+                    .FirstOrDefaultAsync();
+                if (existing == null) return NotFound(new ServiceResult(false, "Menyu elementi tapılmadı"));
+                if (existing.BranchId != ownBranchId)
+                    return StatusCode((int)HttpStatusCode.Forbidden, new ServiceResult(false, "Bu menyu elementini silməyə icazəniz yoxdur"));
+            }
+
             var result = await _menuItemService.Delete(id);
             if (result.Success)
                 return Ok(result);

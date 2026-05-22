@@ -32,7 +32,7 @@ namespace Loyalty.WebAPI.Controllers
         [HttpGet]
         [Authorize(Policy = "TenantAdminOrModerator")]
         [ProducesResponseType(typeof(ServiceResult<List<GetTransactionDto>>), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> List(DateOnly? startDate, DateOnly? endDate, int? tenantId = null)
+        public async Task<IActionResult> List(DateOnly? startDate, DateOnly? endDate, int? tenantId = null, int? branchId = null)
         {
             var today = DateOnly.FromDateTime(DateTime.Today);
             var effectiveEndDate = endDate ?? today;
@@ -42,9 +42,26 @@ namespace Loyalty.WebAPI.Controllers
             if (id <= 0)
                 return BadRequest(new ServiceResult(false, "TenantId is required"));
 
-            var result = await _transactionService.GetByTenantIdAndDate(id, effectiveStartDate, effectiveEndDate);
+            // Branch Admin, Branch Moderator və köhnə Moderator yalnız öz branch tx-lərini görür.
+            // Tenant/Super Admin filter-i seçə bilər.
+            int? effectiveBranchId = IsBranchScoped()
+                ? _tenantProvider.CurrentBranchId
+                : branchId;
+
+            var result = await _transactionService.GetByTenantIdAndDate(id, effectiveStartDate, effectiveEndDate, effectiveBranchId);
             return Ok(result);
         }
+
+        private bool IsModeratorOnly()
+            => User.IsInRole("Moderator") && !User.IsInRole("Tenant Admin") && !User.IsInRole("Super Admin");
+
+        // True if user is any branch-scoped role (Branch Admin / Branch Moderator / legacy Moderator).
+        private bool IsBranchScoped()
+            => !User.IsInRole("Tenant Admin")
+               && !User.IsInRole("Super Admin")
+               && (User.IsInRole("Branch Admin")
+                   || User.IsInRole("Branch Moderator")
+                   || User.IsInRole("Moderator"));
 
         [HttpGet]
         [Authorize(Policy = "TenantAdminOrModerator")]
@@ -87,5 +104,45 @@ namespace Loyalty.WebAPI.Controllers
 
             return Ok(result);
         }
+
+        // === Flagged transaction review (per-branch suspicious workflow) ===
+        public sealed record ApproveFlaggedRequest(int TransactionId);
+        public sealed record RejectFlaggedRequest(int TransactionId, string? Reason);
+
+        [HttpPost]
+        [Authorize(Policy = "BranchAdminOrAbove")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> ApproveFlagged([FromBody] ApproveFlaggedRequest req, CancellationToken ct)
+        {
+            if (req.TransactionId <= 0)
+                return BadRequest(new ServiceResult(false, "TransactionId is required"));
+
+            // Branch-scoped admin yalnız öz filialının tx-lərini təsdiqləyə bilər. Tenant Admin / Super Admin = null.
+            int? scopeBranchId = IsBranchAdmin() ? _tenantProvider.CurrentBranchId : null;
+
+            var result = await _transactionReverseService.ApproveFlaggedAsync(req.TransactionId, scopeBranchId, ct);
+            if (!result.Success)
+                return BadRequest(result);
+            return Ok(result);
+        }
+
+        [HttpPost]
+        [Authorize(Policy = "BranchAdminOrAbove")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> RejectFlagged([FromBody] RejectFlaggedRequest req, CancellationToken ct)
+        {
+            if (req.TransactionId <= 0)
+                return BadRequest(new ServiceResult(false, "TransactionId is required"));
+
+            int? scopeBranchId = IsBranchAdmin() ? _tenantProvider.CurrentBranchId : null;
+
+            var result = await _transactionReverseService.RejectFlaggedAsync(req.TransactionId, scopeBranchId, req.Reason, ct);
+            if (!result.Success)
+                return BadRequest(result);
+            return Ok(result);
+        }
+
+        private bool IsBranchAdmin()
+            => User.IsInRole("Branch Admin") && !User.IsInRole("Tenant Admin") && !User.IsInRole("Super Admin");
     }
 }

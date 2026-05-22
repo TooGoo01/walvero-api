@@ -360,6 +360,82 @@ namespace Loyalty.Business.Services.Implementations.Main
                     break;
             }
         }
+
+        public async Task<ServiceResult> ApproveFlaggedAsync(int transactionId, int? callerBranchId, CancellationToken ct = default)
+        {
+            try
+            {
+                var tx = await _dbContext.Set<Transaction>()
+                    .FirstOrDefaultAsync(t => t.Id == transactionId, ct);
+
+                if (tx is null)
+                    return new ServiceResult(false, "Transaction not found.");
+
+                if (tx.Status != RedeemStatus.FlaggedForReview)
+                    return new ServiceResult(false, "Yalnız FlaggedForReview statuslu əməliyyatlar təsdiqlənə bilər.");
+
+                // Branch-scoped admin yalnız öz filialının tx-ini təsdiqləyə bilər
+                if (callerBranchId.HasValue && tx.BranchId != callerBranchId.Value)
+                    return new ServiceResult(false, "Bu əməliyyat sizin filialınıza aid deyil.");
+
+                var card = await _loyaltyCardRepository.GetById(tx.LoyaltyCardId, ct);
+                if (card is null)
+                    return new ServiceResult(false, "Card not found.");
+
+                // Balansa indi tətbiq et (redeem zamanı atılmışdı)
+                var signedDelta = tx.Type == TransactionType.Redeemed ? -tx.Points : tx.Points;
+                card.CurrentPoints = Math.Max(0m, card.CurrentPoints + signedDelta);
+
+                tx.Status = RedeemStatus.Applied;
+                tx.BalanceAfter = card.CurrentPoints;
+
+                _unitOfWork.Repository<LoyaltyCard>().Update(card);
+                _unitOfWork.Repository<Transaction>().Update(tx);
+                _unitOfWork.Commit();
+
+                _logger.LogInformation("Flagged tx approved. TxId={TxId}, CardId={CardId}, Delta={Delta}",
+                    tx.Id, card.Id, signedDelta);
+
+                return new ServiceResult(true, "Təsdiqləndi və balansa tətbiq olundu.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ApproveFlaggedAsync failed. TxId={TxId}", transactionId);
+                return new ServiceResult(false, "Sistem xətası baş verdi.");
+            }
+        }
+
+        public async Task<ServiceResult> RejectFlaggedAsync(int transactionId, int? callerBranchId, string? reason, CancellationToken ct = default)
+        {
+            try
+            {
+                var tx = await _dbContext.Set<Transaction>()
+                    .FirstOrDefaultAsync(t => t.Id == transactionId, ct);
+
+                if (tx is null)
+                    return new ServiceResult(false, "Transaction not found.");
+
+                if (tx.Status != RedeemStatus.FlaggedForReview)
+                    return new ServiceResult(false, "Yalnız FlaggedForReview statuslu əməliyyatlar rədd edilə bilər.");
+
+                if (callerBranchId.HasValue && tx.BranchId != callerBranchId.Value)
+                    return new ServiceResult(false, "Bu əməliyyat sizin filialınıza aid deyil.");
+
+                tx.Status = RedeemStatus.Reversed;
+                tx.ReverseReason = string.IsNullOrWhiteSpace(reason) ? "Admin rejected suspicious tx" : reason;
+
+                _unitOfWork.Repository<Transaction>().Update(tx);
+                _unitOfWork.Commit();
+
+                _logger.LogInformation("Flagged tx rejected. TxId={TxId}, Reason={Reason}", tx.Id, tx.ReverseReason);
+                return new ServiceResult(true, "Rədd edildi.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "RejectFlaggedAsync failed. TxId={TxId}", transactionId);
+                return new ServiceResult(false, "Sistem xətası baş verdi.");
+            }
+        }
     }
 }
 

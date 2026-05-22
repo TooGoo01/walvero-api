@@ -125,6 +125,12 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(t => t.IsHasMenu)
                     .IsRequired()
                     .HasDefaultValue(false);
+
+                // Receipt OCR + suspicious-tx config (decimal precision)
+                entity.Property(t => t.OcrToleranceAzn).HasPrecision(18, 2);
+                entity.Property(t => t.SuspiciousAmountCap).HasPrecision(18, 2);
+                entity.Property(t => t.AlertWhatsappPhone).HasMaxLength(20);
+
                   entity.HasOne(t => t.TenantLocation)
                    .WithOne(tl => tl.Tenant)
                    .HasForeignKey<Tenant>(t => t.tenantLocationId)
@@ -327,13 +333,22 @@ namespace Loyalty.DataAccess.Context
                 entity.ToTable("Branches");
                 entity.HasKey(b => b.Id);
                 entity.Property(b => b.Name).IsRequired().HasMaxLength(200);
+                entity.Property(b => b.Slug).HasMaxLength(64);
                 entity.Property(b => b.Address).HasMaxLength(500);
                 entity.Property(b => b.Phone).HasMaxLength(50);
                 entity.Property(b => b.Email).HasMaxLength(200);
                 entity.Property(b => b.PhotoUrl).HasMaxLength(500);
                 entity.Property(b => b.WorkingHoursJson).HasMaxLength(2000);
 
+                // Suspicious-tx config (branch override, tenant fallback)
+                entity.Property(b => b.OcrToleranceAzn).HasPrecision(18, 2);
+                entity.Property(b => b.SuspiciousAmountCap).HasPrecision(18, 2);
+                entity.Property(b => b.AlertWhatsappPhone).HasMaxLength(20);
+
                 entity.HasIndex(b => new { b.TenantId, b.IsActive });
+                entity.HasIndex(b => new { b.TenantId, b.Slug })
+                    .IsUnique()
+                    .HasFilter("[Slug] IS NOT NULL");
 
                 entity.HasOne(b => b.Tenant)
                     .WithMany(t => t.Branches)
@@ -357,6 +372,9 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(b => b.Transactions)
                     .HasForeignKey(t => t.BranchId)
                     .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(t => t.BranchId)
+                    .HasDatabaseName("IX_Transactions_BranchId");
             });
 
             modelBuilder.Entity<LotteryDraw>(entity =>
@@ -385,6 +403,20 @@ namespace Loyalty.DataAccess.Context
             {
                 entity.Property(t => t.Points).HasPrecision(18, 2);
                 entity.Property(t => t.BalanceAfter).HasPrecision(18, 2);
+                entity.Property(t => t.OcrExtractedAmount).HasPrecision(18, 2);
+                entity.Property(t => t.ReceiptImageUrl).HasMaxLength(500);
+                entity.Property(t => t.SuspiciousReason).HasMaxLength(100);
+            });
+
+            modelBuilder.Entity<RedeemRequest>(entity =>
+            {
+                entity.Property(t => t.OcrExtractedAmount).HasPrecision(18, 2);
+                entity.Property(t => t.ReceiptImageUrl).HasMaxLength(500);
+
+                entity.HasOne(t => t.Branch)
+                    .WithMany()
+                    .HasForeignKey(t => t.BranchId)
+                    .OnDelete(DeleteBehavior.SetNull);
             });
 
             modelBuilder.Entity<WalletPass>(entity =>
@@ -805,6 +837,13 @@ namespace Loyalty.DataAccess.Context
                     .HasForeignKey(mc => mc.TenantId)
                     .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasOne(mc => mc.Branch)
+                    .WithMany()
+                    .HasForeignKey(mc => mc.BranchId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(mc => new { mc.TenantId, mc.BranchId });
+
                 entity.HasMany(mc => mc.MenuItems)
                     .WithOne(mi => mi.MenuCategory)
                     .HasForeignKey(mi => mi.MenuCategoryId)
@@ -832,6 +871,18 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(mc => mc.MenuItems)
                     .HasForeignKey(mi => mi.MenuCategoryId)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(mi => mi.Tenant)
+                    .WithMany()
+                    .HasForeignKey(mi => mi.TenantId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasOne(mi => mi.Branch)
+                    .WithMany()
+                    .HasForeignKey(mi => mi.BranchId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(mi => new { mi.TenantId, mi.BranchId, mi.MenuCategoryId });
 
                 entity.HasMany(mi => mi.MenuItemImages)
                     .WithOne(mii => mii.MenuItem)
@@ -865,6 +916,13 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(t => t.RestorantWifiInformation)
                     .HasForeignKey(rwi => rwi.TenantId)
                     .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(rwi => rwi.Branch)
+                    .WithMany()
+                    .HasForeignKey(rwi => rwi.BranchId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(rwi => new { rwi.TenantId, rwi.BranchId });
             });
 
             modelBuilder.Entity<TenantLink>(entity =>
@@ -883,6 +941,13 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(t => t.Links)
                     .HasForeignKey(tl => tl.TenantId)
                     .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(tl => tl.Branch)
+                    .WithMany()
+                    .HasForeignKey(tl => tl.BranchId)
+                    .OnDelete(DeleteBehavior.NoAction);
+
+                entity.HasIndex(tl => new { tl.TenantId, tl.BranchId, tl.SortOrder });
             });
 
             // ==== INTEGRATION TYPE (reference/seed) ====

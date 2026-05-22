@@ -14,6 +14,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> GetById(int id);
         Task<ServiceResult> GetByIdWithTenant(int id);
         Task<ServiceResult> GetByTenantId(int tenantId);
+        Task<ServiceResult> GetByTenantAndBranchAsync(int tenantId, int? branchId, bool branchScoped);
         Task<ServiceResult> GetAll();
         Task<ServiceResult> GetAllWithTenant();
     }

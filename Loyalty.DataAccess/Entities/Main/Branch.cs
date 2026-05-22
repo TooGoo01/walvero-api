@@ -11,6 +11,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public Tenant? Tenant { get; set; }
 
         public string Name { get; set; } = string.Empty;
+        public string? Slug { get; set; }
         public string? Address { get; set; }
         public decimal? Latitude { get; set; }
         public decimal? Longitude { get; set; }
@@ -44,6 +45,14 @@ namespace Loyalty.DataAccess.Entities.Main
         // Branch-a aid brand renkleri. Boshdursa LoyaltyProgram CardTemplate-den fallback olunur.
         public string? BackgroundColor { get; set; }
         public string? ForegroundColor { get; set; }
+
+        // --- Receipt OCR + suspicious-tx config (branch override, tenant fallback) ---
+        public bool RequireReceiptOcr { get; set; } = false;
+        public decimal? OcrToleranceAzn { get; set; }              // null → fallback to tenant or 1 AZN
+        public decimal? SuspiciousAmountCap { get; set; }          // null → fallback to tenant
+        public int? SuspiciousSpendCountCap { get; set; }          // null → fallback to tenant
+        public bool EnableSuspiciousAlert { get; set; } = false;
+        public string? AlertWhatsappPhone { get; set; }            // E.164; null → fallback to tenant
 
         public ICollection<Room> Rooms { get; set; } = new List<Room>();
 

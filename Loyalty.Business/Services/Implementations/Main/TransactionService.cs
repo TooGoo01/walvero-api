@@ -49,9 +49,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             var response = _mapper.Map<List<GetTransactionDto>>(respose);
             return new ServiceResult(true, response);
         }
-        public async Task<ServiceResult> GetByTenantIdAndDate(int tenantId, DateOnly startDate, DateOnly endDate)
+        public async Task<ServiceResult> GetByTenantIdAndDate(int tenantId, DateOnly startDate, DateOnly endDate, int? branchId = null)
         {
             var respose = await _transactionRepository.GetByTenantIdDateAsync(tenantId, startDate, endDate);
+
+            // Branch scope (server-side enforcement for Branch Admin / Moderator)
+            if (branchId.HasValue)
+                respose = respose.Where(t => t.BranchId == branchId.Value);
 
             var response = _mapper.Map<List<GetTransactionDto>>(respose);
             return new ServiceResult(true, response);

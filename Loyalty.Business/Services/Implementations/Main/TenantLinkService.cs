@@ -3,9 +3,11 @@ using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
+using Microsoft.EntityFrameworkCore;
 
 namespace Loyalty.Business.Services.Implementations.Main
 {
@@ -14,15 +16,18 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly ITenantLinkRepository _tenantLinkRepository;
+        private readonly LoyaltyWalletDbContext _db;
 
         public TenantLinkService(
             IUnitOfWork unitOfWork,
             IMapper mapper,
-            ITenantLinkRepository tenantLinkRepository)
+            ITenantLinkRepository tenantLinkRepository,
+            LoyaltyWalletDbContext db)
         {
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _tenantLinkRepository = tenantLinkRepository;
+            _db = db;
         }
 
         public async Task<ServiceResult> Add(AddTenantLinkDto dto)
@@ -77,6 +82,27 @@ namespace Loyalty.Business.Services.Implementations.Main
         public async Task<ServiceResult> GetByTenantId(int tenantId)
         {
             var entities = await _tenantLinkRepository.GetByTenantIdOrderedAsync(tenantId);
+            var response = _mapper.Map<List<GetTenantLinkDto>>(entities);
+            return new ServiceResult(true, response);
+        }
+
+        public async Task<ServiceResult> GetByTenantAndBranchAsync(int tenantId, int? branchId, bool branchScoped)
+        {
+            var query = _db.TenantLinks
+                .AsNoTracking()
+                .Include(tl => tl.Branch)
+                .Where(tl => tl.TenantId == tenantId && tl.IsActive);
+
+            if (branchScoped)
+            {
+                query = query.Where(tl => tl.BranchId == branchId);
+            }
+            else if (branchId.HasValue)
+            {
+                query = query.Where(tl => tl.BranchId == branchId.Value);
+            }
+
+            var entities = await query.OrderBy(tl => tl.SortOrder).ToListAsync();
             var response = _mapper.Map<List<GetTenantLinkDto>>(entities);
             return new ServiceResult(true, response);
         }

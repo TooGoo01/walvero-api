@@ -44,8 +44,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (tenant == null)
                 return ServiceResult<TenantConfigDto>.Fail("Tenant tapılmadı");
 
+            // Tenant-wide WiFi (BranchId=null). Branch-spesifik WiFi yalnız branch URL açıldıqda göstərilir.
             var wifiList = tenant.RestorantWifiInformation?
-                .Where(w => w.IsActive)
+                .Where(w => w.IsActive && w.BranchId == null)
                 .Select(w => new TenantConfigWifiDto
                 {
                     Id = w.Id,
@@ -53,6 +54,42 @@ namespace Loyalty.Business.Services.Implementations.Main
                     SSID = w.SSID
                 })
                 .ToList() ?? new List<TenantConfigWifiDto>();
+
+            // Yalnız slug-lı + aktiv branchlar — slug yoxsa public URL qura bilmərik
+            var branches = await _dbContext.Branches
+                .AsNoTracking()
+                .Where(b => b.TenantId == tenant.Id && b.IsActive && b.Slug != null)
+                .OrderByDescending(b => b.IsMainBranch)
+                .ThenBy(b => b.Name)
+                .Select(b => new TenantConfigBranchDto
+                {
+                    Id = b.Id,
+                    Slug = b.Slug!,
+                    Name = b.Name,
+                    Address = b.Address,
+                    IsMainBranch = b.IsMainBranch,
+                    Phone = b.Phone,
+                    Email = b.Email,
+                    PhotoUrl = b.PhotoUrl,
+                    LogoUrl = b.LogoUrl,
+                    LocationUrl = b.LocationUrl,
+                    WazeLocationUrl = b.WazeLocationUrl,
+                    MenuUrl = b.MenuUrl,
+                    InstagramUrl = b.InstagramUrl,
+                    FacebookUrl = b.FacebookUrl,
+                    WhatsAppUrl = b.WhatsAppUrl,
+                    TelegramUrl = b.TelegramUrl,
+                    LinkedInUrl = b.LinkedInUrl,
+                    TiktokUrl = b.TiktokUrl,
+                    TripAdvisorUrl = b.TripAdvisorUrl,
+                    WebsiteUrl = b.WebsiteUrl,
+                    YoutubeUrl = b.YoutubeUrl,
+                    TwitterUrl = b.TwitterUrl,
+                    YelpUrl = b.YelpUrl,
+                    ThreadsUrl = b.ThreadsUrl,
+                    PinterestUrl = b.PinterestUrl
+                })
+                .ToListAsync(ct);
 
             var config = new TenantConfigDto
             {
@@ -65,6 +102,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Domain = tenant.Subdomain,
                 MenuApiUrl = tenant.IsHasMenu && !string.IsNullOrWhiteSpace(tenant.MenuUrl) ? tenant.MenuUrl : null,
                 WifiInformation = wifiList,
+                Branches = branches,
                 Branding = tenant.Branding != null
                     ? new TenantConfigBrandingDto
                     {
@@ -84,8 +122,21 @@ namespace Loyalty.Business.Services.Implementations.Main
             return ServiceResult<TenantConfigDto>.Ok(config);
         }
 
-        public async Task<ServiceResult<RestaurantDataDto>> GetRestaurantBySlugAsync(string slug, CancellationToken ct = default)
+        public Task<ServiceResult<RestaurantDataDto>> GetRestaurantBySlugAsync(string slug, CancellationToken ct = default)
+            => GetRestaurantBySlugAsync(slug, null, ct);
+
+        public async Task<ServiceResult<RestaurantDataDto>> GetRestaurantBySlugAsync(string slug, string? branchSlug, CancellationToken ct = default)
         {
+            int? branchIdFilter = null;
+            DataAccess.Entities.Main.Branch? branchEntity = null;
+            if (!string.IsNullOrWhiteSpace(branchSlug))
+            {
+                branchEntity = await _dbContext.Branches.AsNoTracking()
+                    .Where(b => b.Slug == branchSlug && b.IsActive)
+                    .FirstOrDefaultAsync(ct);
+                branchIdFilter = branchEntity?.Id;
+            }
+
             var tenant = await _dbContext.Tenants
                 .AsNoTracking()
                 .Include(t => t.Branding)
@@ -95,7 +146,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     .ThenInclude(tl => tl!.City)
                 .Include(t => t.TenantLocation)
                     .ThenInclude(tl => tl!.TimeZone)
-                .Include(t => t.Links!.Where(l => l.IsActive))
+                .Include(t => t.Links!.Where(l => l.IsActive
+                    && (l.BranchId == null || (branchIdFilter != null && l.BranchId == branchIdFilter))))
                 .Where(t => t.Subdomain == slug && t.IsActive && !t.IsHidden)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(ct);
@@ -166,24 +218,92 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Links = links
             };
 
+            // Branch context: branch override + wifi union
+            if (branchEntity != null)
+            {
+                dto.Branch = new RestaurantBranchDto
+                {
+                    Id = branchEntity.Id,
+                    Slug = branchEntity.Slug ?? string.Empty,
+                    Name = branchEntity.Name,
+                    Address = branchEntity.Address,
+                    Phone = branchEntity.Phone,
+                    Email = branchEntity.Email,
+                    LogoUrl = branchEntity.LogoUrl,
+                    PhotoUrl = branchEntity.PhotoUrl,
+                    InstagramUrl = branchEntity.InstagramUrl,
+                    FacebookUrl = branchEntity.FacebookUrl,
+                    WhatsAppUrl = branchEntity.WhatsAppUrl,
+                    TelegramUrl = branchEntity.TelegramUrl,
+                    LinkedInUrl = branchEntity.LinkedInUrl,
+                    TiktokUrl = branchEntity.TiktokUrl,
+                    YoutubeUrl = branchEntity.YoutubeUrl,
+                    TwitterUrl = branchEntity.TwitterUrl,
+                    TripAdvisorUrl = branchEntity.TripAdvisorUrl,
+                    YelpUrl = branchEntity.YelpUrl,
+                    ThreadsUrl = branchEntity.ThreadsUrl,
+                    PinterestUrl = branchEntity.PinterestUrl,
+                    WebsiteUrl = branchEntity.WebsiteUrl,
+                    LocationUrl = branchEntity.LocationUrl,
+                    WazeLocationUrl = branchEntity.WazeLocationUrl,
+                    MenuUrl = branchEntity.MenuUrl,
+                    BackgroundColor = branchEntity.BackgroundColor,
+                    ForegroundColor = branchEntity.ForegroundColor
+                };
+            }
+
+            // WiFi: tenant-wide + branch-spesifik union (branch slug verildikdə),
+            // əks halda yalnız tenant-wide
+            dto.WifiInformation = await _dbContext.RestorantWifiInformations
+                .AsNoTracking()
+                .Where(w => w.TenantId == tenant.Id && w.IsActive
+                    && (w.BranchId == null || (branchIdFilter != null && w.BranchId == branchIdFilter)))
+                .Select(w => new TenantConfigWifiDto
+                {
+                    Id = w.Id,
+                    Password = w.Password,
+                    SSID = w.SSID
+                })
+                .ToListAsync(ct);
+
             return ServiceResult<RestaurantDataDto>.Ok(dto);
         }
 
-        public async Task<ServiceResult<List<MenuCategoryGroupDto>>> GetMenuBySlugAsync(string slug, CancellationToken ct = default)
+        public Task<ServiceResult<List<MenuCategoryGroupDto>>> GetMenuBySlugAsync(string slug, CancellationToken ct = default)
+            => GetMenuBySlugAsync(slug, null, ct);
+
+        public async Task<ServiceResult<List<MenuCategoryGroupDto>>> GetMenuBySlugAsync(string tenantSlug, string? branchSlug, CancellationToken ct = default)
         {
             var tenant = await _dbContext.Tenants
                 .AsNoTracking()
-                .Where(t => t.Subdomain == slug && t.IsActive && !t.IsHidden)
+                .Where(t => t.Subdomain == tenantSlug && t.IsActive && !t.IsHidden)
                 .Select(t => new { t.Id })
                 .FirstOrDefaultAsync(ct);
 
             if (tenant == null)
                 return ServiceResult<List<MenuCategoryGroupDto>>.Fail("Tenant tapılmadı");
 
-            var categories = await _dbContext.MenuCategories
+            int? branchId = null;
+            if (!string.IsNullOrWhiteSpace(branchSlug))
+            {
+                var branch = await _dbContext.Branches
+                    .AsNoTracking()
+                    .Where(b => b.TenantId == tenant.Id && b.Slug == branchSlug && b.IsActive)
+                    .Select(b => new { b.Id })
+                    .FirstOrDefaultAsync(ct);
+                if (branch == null)
+                    return ServiceResult<List<MenuCategoryGroupDto>>.Fail("Branch tapılmadı");
+                branchId = branch.Id;
+            }
+
+            var categoriesQuery = _dbContext.MenuCategories
                 .AsNoTracking()
-                .Where(mc => mc.TenantId == tenant.Id && mc.IsActive)
-                .Include(mc => mc.MenuItems.Where(mi => mi.IsActive))
+                .Where(mc => mc.TenantId == tenant.Id && mc.IsActive
+                          && (mc.BranchId == null || (branchId != null && mc.BranchId == branchId)));
+
+            var categories = await categoriesQuery
+                .Include(mc => mc.MenuItems.Where(mi => mi.IsActive
+                          && (mi.BranchId == null || (branchId != null && mi.BranchId == branchId))))
                     .ThenInclude(mi => mi.MenuItemImages)
                 .OrderBy(mc => mc.Id)
                 .ToListAsync(ct);

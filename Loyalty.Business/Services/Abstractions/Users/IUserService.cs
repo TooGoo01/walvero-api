@@ -53,7 +53,7 @@ namespace Loyalty.Business.Services.Abstractions.Users
         Task<ServiceResult> ListUsersAsync();
         Task<ServiceResult> GetRolesAsync();
         Task<ServiceResult> CreateAdminUserAsync(CreateAdminUserDto dto);
-        Task<ServiceResult> UpdateAdminUserAsync(string userId, string? role, int? tenantId, List<string>? roles = null);
+        Task<ServiceResult> UpdateAdminUserAsync(string userId, string? role, int? tenantId, List<string>? roles = null, int? branchId = null, bool clearBranchId = false);
 
         // Program switching
         Task<ServiceResult<object>> SwitchProgramAsync(int programId, CancellationToken ct = default);

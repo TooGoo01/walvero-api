@@ -26,5 +26,13 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? OperatorId { get; set; }
         public string? OrderId { get; set; }
         public string? Note { get; set; }
+
+        // Receipt OCR data carried from Start → Confirm; copied onto Transaction at apply
+        public string? ReceiptImageUrl { get; set; }
+        public decimal? OcrExtractedAmount { get; set; }
+
+        // Operator-in branch-i (JWT branch_id claim-dan); pending → confirm zəncirində qorunur
+        public int? BranchId { get; set; }
+        public Branch? Branch { get; set; }
     }
 }

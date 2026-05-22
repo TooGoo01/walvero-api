@@ -19,5 +19,7 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         [Required(ErrorMessage = "Tenant Id məcburidir")]
         public int TenantId { get; set; }
+
+        public int? BranchId { get; set; }
     }
 }

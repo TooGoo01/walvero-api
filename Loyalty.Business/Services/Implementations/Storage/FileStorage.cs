@@ -15,6 +15,15 @@ namespace Loyalty.Business.Services.Implementations.Storage
         {
             _webHostEnvironment = webHostEnvironment;
         }
+        public Task<byte[]?> DownloadAsync(string pathOrContainerName, string fileName, CancellationToken ct = default)
+        {
+            // FileStorage prod-da istifadə olunmur (yalnız local dev). Sadə impl.
+            var rootPath = Path.Combine(_webHostEnvironment.ContentRootPath, "wwwroot", pathOrContainerName);
+            var fullPath = Path.Combine(rootPath, fileName);
+            if (!File.Exists(fullPath)) return Task.FromResult<byte[]?>(null);
+            return Task.FromResult<byte[]?>(File.ReadAllBytes(fullPath));
+        }
+
         public Task DeleteAsync(string pathOrContainerName, string fileName)
         {
             if (string.IsNullOrWhiteSpace(pathOrContainerName))

@@ -31,6 +31,12 @@ namespace Loyalty.DataAccess.Entities.Main
         public int? BranchId { get; set; }
         public Branch? Branch { get; set; }
 
+        // Receipt OCR + suspicious-tx audit
+        public string? ReceiptImageUrl { get; set; }
+        public decimal? OcrExtractedAmount { get; set; }
+        public bool IsSuspicious { get; set; } = false;
+        public string? SuspiciousReason { get; set; } // "AmountExceedsCap" / "OcrMismatch"
+
         public LoyaltyCard LoyaltyCard { get; set; } = null!;
     }
 }

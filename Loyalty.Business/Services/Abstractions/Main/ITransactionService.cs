@@ -14,7 +14,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> GetAll();
         Task<ServiceResult> GetActive();
         Task<ServiceResult> GetLast();
-        Task<ServiceResult> GetByTenantIdAndDate(int tenantId, DateOnly startDate, DateOnly endDate);
+        Task<ServiceResult> GetByTenantIdAndDate(int tenantId, DateOnly startDate, DateOnly endDate, int? branchId = null);
         Task<ServiceResult> GetByCustomerId(int customerId, CancellationToken ct = default);
     }
 }
