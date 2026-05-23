@@ -35,6 +35,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool ShowOnHome { get; set; } = false;
         public bool IsHidden { get; set; } = false; // Hidden tenants (e.g., Walvero shadow tenant) never appear in listings
         public bool IsHasMenu { get; set; } = false; // Menyusu olan tenant-lar public siyahıda görünür
+        public int? DiscoverSortOrder { get; set; } // Admin manuel discover sıralama. null → sondadır
 
         // (Opsional) OTP kanal konfiqi
         public string? ConfirmationChannel { get; set; }

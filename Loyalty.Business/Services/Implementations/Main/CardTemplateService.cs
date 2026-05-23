@@ -114,6 +114,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             entity.GoldColor = dto.GoldColor;
             entity.PlatinumColor = dto.PlatinumColor;
             entity.Currency = string.IsNullOrWhiteSpace(dto.Currency) ? "AZN" : dto.Currency.Trim();
+            entity.PayMentType = dto.PayMentType;
 
             // 5) PROGRESS ikonları: AddRangeAsync köhnələri silir, yenilərini blob-a yükləyir
 

@@ -87,5 +87,7 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         // Currency (Para birimi: AZN, Xal, Point və s.)
         public string Currency { get; set; } = "AZN"; // Default: AZN
+
+        public bool PayMentType { get; set; } = false;
     }
 }

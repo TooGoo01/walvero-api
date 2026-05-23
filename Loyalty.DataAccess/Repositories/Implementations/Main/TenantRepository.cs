@@ -113,7 +113,11 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             if (cityId.HasValue)
                 query = query.Where(x => x.TenantLocation != null && x.TenantLocation.cityId == cityId);
 
-            return query.OrderBy(x => x.Id);
+            // Admin manuel sıralama: DiscoverSortOrder təyin olunmuşlar əvvəlcə (kiçik→böyük), null olanlar sonda Id ilə.
+            return query
+                .OrderBy(x => x.DiscoverSortOrder == null)
+                .ThenBy(x => x.DiscoverSortOrder)
+                .ThenBy(x => x.Id);
         }
         public async Task<IReadOnlyList<HomeTenantProjection>> ListHomeTenantsAsync(int? countryId = null, int? cityId = null, CancellationToken ct = default)
         {

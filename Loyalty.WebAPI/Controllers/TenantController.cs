@@ -2,11 +2,13 @@ using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Context;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Security.Claims;
 
@@ -21,13 +23,37 @@ namespace Loyalty.WebAPI.Controllers
         private readonly ICityService _cityService;
         private readonly ITimeZoneService _timeZoneService;
         private readonly ITenantProvider _tenantProvider;
-        public TenantController(ITenantService tenantService, ITimeZoneService timeZoneService, ICityService cityService, ICountryService countryService, ITenantProvider tenantProvider)
+        private readonly LoyaltyWalletDbContext _db;
+        public TenantController(ITenantService tenantService, ITimeZoneService timeZoneService, ICityService cityService, ICountryService countryService, ITenantProvider tenantProvider, LoyaltyWalletDbContext db)
         {
             _tenantService = tenantService;
             _timeZoneService = timeZoneService;
             _cityService = cityService;
             _countryService = countryService;
             _tenantProvider = tenantProvider;
+            _db = db;
+        }
+
+        /// <summary>
+        /// Super Admin: discover səhifəsi tenant sıralamasını yenilə.
+        /// </summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Roles = "Super Admin,SuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> ReorderDiscover([FromBody] ReorderTenantsDto dto)
+        {
+            if (dto?.Items == null || dto.Items.Count == 0)
+                return BadRequest(new ServiceResult(false, "Items boşdur"));
+
+            var ids = dto.Items.Select(i => i.Id).ToList();
+            var tenants = await _db.Tenants.Where(t => ids.Contains(t.Id)).ToListAsync();
+            foreach (var item in dto.Items)
+            {
+                var t = tenants.FirstOrDefault(x => x.Id == item.Id);
+                if (t != null) t.DiscoverSortOrder = item.SortOrder;
+            }
+            await _db.SaveChangesAsync();
+            return Ok(new ServiceResult(true, "Sıra yeniləndi"));
         }
 
         /// <summary>Returns the current authenticated tenant's info (Tenant Admin / Moderator).</summary>
