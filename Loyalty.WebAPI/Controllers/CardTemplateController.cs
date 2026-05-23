@@ -64,7 +64,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
-        public async Task<IActionResult> Update(AddCardTemplateDto updateTenantDto, int Id)
+        public async Task<IActionResult> Update([FromForm] AddCardTemplateDto updateTenantDto, int Id)
                 {
             if (!ModelState.IsValid)
             {

@@ -50,12 +50,20 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.LoyaltyProgramId <= 0) return new ServiceResult(false, "LoyaltyProgramId is required.");
             if (string.IsNullOrWhiteSpace(dto.TemplateName)) return new ServiceResult(false, "TemplateName is required.");
 
-            // Tier sahələri yalnız TierBased üçün relevantdir — başqa tipdə təmizlə
-            if (dto.TemplateType != CardTemplateType.TierBased)
+            // Tier sahələri yalnız TierBased + PointsBased üçün relevantdir — ProgressBased halında təmizlə.
+            // PointsBased single-tier üçün Bronze* field-ləri reuse edir → null etmə.
+            if (dto.TemplateType == CardTemplateType.ProgressBased)
             {
                 dto.BronzeThreshold = dto.SilverThreshold = dto.GoldThreshold = dto.PlatinumThreshold = null;
                 dto.BronzePercent = dto.SilverPercent = dto.GoldPercent = dto.PlatinumPercent = null;
                 dto.BronzePercentCash = dto.SilverPercentCash = dto.GoldPercentCash = dto.PlatinumPercentCash = null;
+            }
+            else if (dto.TemplateType == CardTemplateType.PointsBased)
+            {
+                // PointsBased yalnız Bronze* istifadə edir — Silver/Gold/Platinum təmizlə
+                dto.SilverThreshold = dto.GoldThreshold = dto.PlatinumThreshold = null;
+                dto.SilverPercent = dto.GoldPercent = dto.PlatinumPercent = null;
+                dto.SilverPercentCash = dto.GoldPercentCash = dto.PlatinumPercentCash = null;
             }
 
             // 1) Mövcud template

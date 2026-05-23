@@ -534,9 +534,23 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             // Pay rejimi-də delta artıq mənfi, abs() faktiki çek məbləğidir.
             decimal originalAmount = Math.Abs(delta);
 
+            // Diagnostic: percent calculation state — null tier percent göstərici problemini aşkar edir
+            _logger.LogInformation(
+                "Percent calc. TemplateType={Type} OneRedeem={OneRedeem} CardPoints={Pts} Delta={Delta} " +
+                "TierName={Tier} TierPercent={Pct} TierPercentCash={PctCash} PayMentType={PMT} " +
+                "PaymentMethod={PM} FinalPercent={FinalPct}",
+                tpl.TemplateType, tpl.OneRedeem, card.CurrentPoints, delta,
+                tierName, tierPercent, tierPercentCash, tpl.PayMentType, paymentMethod, percent);
+
             if (delta > 0 && percent.HasValue) {
                 // decimal arithmetic — kəsr saxlanır (məs. 25 * 5 / 100m = 1.25m)
                 delta = delta * percent.Value / 100m;
+            }
+            else if (delta > 0 && tpl.TemplateType != CardTemplateType.ProgressBased && !percent.HasValue)
+            {
+                _logger.LogWarning(
+                    "Percent NULL — tier percent saxlanmayıb. CardTemplate {TplName} üçün admin paneldən Percent doldur. Delta tam saxlanır.",
+                    tpl.TemplateName);
             }
 
 
