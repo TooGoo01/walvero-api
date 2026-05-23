@@ -130,10 +130,44 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     try
                     {
+                        // Branch + operator + customer adlarını async olaraq DB-dən çıxar
+                        string? branchName = tx.BranchId.HasValue
+                            ? await db.Branches.AsNoTracking()
+                                .Where(b => b.Id == tx.BranchId.Value)
+                                .Select(b => (string?)b.Name)
+                                .FirstOrDefaultAsync(CancellationToken.None)
+                            : null;
+
+                        string? operatorName = null;
+                        if (!string.IsNullOrWhiteSpace(operatorId))
+                        {
+                            int.TryParse(operatorId, out var intId);
+                            var u = await db.Users.AsNoTracking()
+                                .Where(x => (intId > 0 && x.Id == intId) || x.UserName == operatorId || x.PhoneNumber == operatorId)
+                                .Select(x => new { x.Name, x.Surname, x.UserName, x.PhoneNumber })
+                                .FirstOrDefaultAsync(CancellationToken.None);
+                            if (u != null)
+                            {
+                                var full = $"{u.Name} {u.Surname}".Trim();
+                                operatorName = !string.IsNullOrWhiteSpace(full) ? full : (u.UserName ?? u.PhoneNumber ?? operatorId);
+                            }
+                            else operatorName = operatorId;
+                        }
+
+                        string? betterCustomerName = customerName;
+                        if (tx.LoyaltyCard?.Customer != null)
+                        {
+                            var c = tx.LoyaltyCard.Customer;
+                            var full = $"{c.FirstName} {c.LastName}".Trim();
+                            if (!string.IsNullOrWhiteSpace(full)) betterCustomerName = full;
+                        }
+
                         await alert.SendSuspiciousTxAlertAsync(
-                            alertPhone!, tenantName, customerName,
-                            Math.Abs(enteredAmountForOcr), amountCapForAlert,
-                            operatorId, tx.OrderId ?? tx.Id.ToString(), CancellationToken.None);
+                            alertPhone!, tenantName, branchName, betterCustomerName, operatorName,
+                            Math.Abs(enteredAmountForOcr), ocr.ExtractedAmount,
+                            amountCapForAlert > 0 ? amountCapForAlert : (decimal?)null,
+                            tx.SuspiciousReason,
+                            tx.OrderId ?? tx.Id.ToString(), CancellationToken.None);
                     }
                     catch (Exception ex)
                     {

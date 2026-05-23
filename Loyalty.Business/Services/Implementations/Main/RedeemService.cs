@@ -533,12 +533,20 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                     if (cfg.AlertEnabled && !string.IsNullOrWhiteSpace(cfg.AlertPhone))
                     {
-                        var customerName = card.Customer?.applicationUser?.UserName;
+                        var customerName = BuildCustomerName(card);
+                        var branchName = operatorBranchId.HasValue
+                            ? await _dbContext.Branches.AsNoTracking()
+                                .Where(b => b.Id == operatorBranchId.Value)
+                                .Select(b => (string?)b.Name)
+                                .FirstOrDefaultAsync(ct)
+                            : null;
+                        var operatorName = await ResolveOperatorNameAsync(request.OperatorId, ct);
+                        var enteredAmount = request.OriginalAmount ?? Math.Abs(delta);
                         var txRef = stx.OrderId ?? stx.Id.ToString();
                         _ = Task.Run(() => _whatsappAlert.SendSuspiciousTxAlertAsync(
-                            cfg.AlertPhone!, cfg.TenantName, customerName,
-                            Math.Abs(delta), cfg.AmountCap ?? 0,
-                            request.OperatorId, txRef, CancellationToken.None));
+                            cfg.AlertPhone!, cfg.TenantName, branchName, customerName, operatorName,
+                            enteredAmount, ocrAmount, cfg.AmountCap, suspiciousReason,
+                            txRef, CancellationToken.None));
                     }
 
                     return new RedeemResultDto
@@ -1096,6 +1104,29 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         private static RedeemResultDto Fail(string msg) => new() { Success = false, Message = msg };
 
+        private static string? BuildCustomerName(LoyaltyCard card)
+        {
+            var c = card.Customer;
+            if (c == null) return null;
+            var full = $"{c.FirstName} {c.LastName}".Trim();
+            if (!string.IsNullOrWhiteSpace(full)) return full;
+            return c.PhoneNumber ?? c.applicationUser?.UserName;
+        }
+
+        private async Task<string?> ResolveOperatorNameAsync(string? operatorId, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(operatorId)) return null;
+            // Cəhd et int id-dirsə Users-də Id, deyilsə UserName/PhoneNumber ilə tap
+            int.TryParse(operatorId, out var intId);
+            var u = await _dbContext.Users.AsNoTracking()
+                .Where(x => (intId > 0 && x.Id == intId) || x.UserName == operatorId || x.PhoneNumber == operatorId)
+                .Select(x => new { x.Name, x.Surname, x.UserName, x.PhoneNumber })
+                .FirstOrDefaultAsync(ct);
+            if (u == null) return operatorId;
+            var full = $"{u.Name} {u.Surname}".Trim();
+            return !string.IsNullOrWhiteSpace(full) ? full : (u.UserName ?? u.PhoneNumber ?? operatorId);
+        }
+
         private static string GetFreeRewardLabel(CardTemplateSnapshot snapshot)
         {
             return string.IsNullOrWhiteSpace(snapshot.FreeRewardLabel)
@@ -1158,12 +1189,19 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                     if (cfg.AlertEnabled && !string.IsNullOrWhiteSpace(cfg.AlertPhone))
                     {
-                        var customerName = card.Customer?.applicationUser?.UserName;
+                        var customerName = BuildCustomerName(card);
+                        var branchName = branchId.HasValue
+                            ? await _dbContext.Branches.AsNoTracking()
+                                .Where(b => b.Id == branchId.Value)
+                                .Select(b => (string?)b.Name)
+                                .FirstOrDefaultAsync(ct)
+                            : null;
+                        var operatorName = await ResolveOperatorNameAsync(request.OperatorId, ct);
                         var txRef = stx.OrderId ?? stx.Id.ToString();
                         _ = Task.Run(() => _whatsappAlert.SendSuspiciousTxAlertAsync(
-                            cfg.AlertPhone!, cfg.TenantName, customerName,
-                            spendCount, cfg.SpendCountCap ?? 0,
-                            request.OperatorId, txRef, CancellationToken.None));
+                            cfg.AlertPhone!, cfg.TenantName, branchName, customerName, operatorName,
+                            spendCount, null, (decimal?)cfg.SpendCountCap, suspiciousReason,
+                            txRef, CancellationToken.None));
                     }
 
                     return new RedeemResultDto

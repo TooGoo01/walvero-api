@@ -9,10 +9,13 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task SendSuspiciousTxAlertAsync(
             string toPhone,
             string tenantName,
+            string? branchName,
             string? customerName,
-            decimal amount,
-            decimal cap,
-            string? operatorId,
+            string? operatorName,
+            decimal enteredAmount,
+            decimal? ocrAmount,
+            decimal? cap,
+            string? suspiciousReason,
             string txReference,
             CancellationToken ct = default);
     }

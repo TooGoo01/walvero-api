@@ -16,10 +16,13 @@ namespace Loyalty.Business.Services.Implementations.Main
         public async Task SendSuspiciousTxAlertAsync(
             string toPhone,
             string tenantName,
+            string? branchName,
             string? customerName,
-            decimal amount,
-            decimal cap,
-            string? operatorId,
+            string? operatorName,
+            decimal enteredAmount,
+            decimal? ocrAmount,
+            decimal? cap,
+            string? suspiciousReason,
             string txReference,
             CancellationToken ct = default)
         {
@@ -29,12 +32,31 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return;
             }
 
-            var body =
-                $"⚠️ {tenantName} — şübhəli əməliyyat\n" +
-                $"Müştəri: {customerName ?? "—"}\n" +
-                $"Məbləğ: {amount:0.##} AZN (cap: {cap:0.##})\n" +
-                $"Operator: {operatorId ?? "—"}\n" +
-                $"Tx: {txReference}";
+            var reasonLabel = suspiciousReason switch
+            {
+                "OcrMismatch" => "OCR uyğunsuzluğu",
+                "OcrUnreadable" => "OCR oxunmadı",
+                "AmountExceedsCap" => "Məbləğ limiti aşıb",
+                "SpendCountExceedsCap" => "Xərcləmə sayı limiti aşıb",
+                _ => suspiciousReason ?? "Naməlum",
+            };
+
+            var lines = new List<string>
+            {
+                $"⚠️ Şübhəli əməliyyat — {tenantName}",
+                $"Filial: {branchName ?? "—"}",
+                $"Səbəb: {reasonLabel}",
+                $"Müştəri: {customerName ?? "—"}",
+                $"Operator: {operatorName ?? "—"}",
+                $"Daxil edilən məbləğ: {enteredAmount:0.##} AZN",
+            };
+            if (ocrAmount.HasValue)
+                lines.Add($"Çekdən oxunan (OCR): {ocrAmount.Value:0.##} AZN");
+            if (cap.HasValue && cap.Value > 0)
+                lines.Add($"Limit (cap): {cap.Value:0.##} AZN");
+            lines.Add($"Tx: {txReference}");
+
+            var body = string.Join("\n", lines);
 
             try
             {
