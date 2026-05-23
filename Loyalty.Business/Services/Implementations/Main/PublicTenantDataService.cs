@@ -147,7 +147,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Include(t => t.TenantLocation)
                     .ThenInclude(tl => tl!.TimeZone)
                 .Include(t => t.Links!.Where(l => l.IsActive
-                    && (l.BranchId == null || (branchIdFilter != null && l.BranchId == branchIdFilter))))
+                    && (branchIdFilter != null
+                        ? l.BranchId == branchIdFilter
+                        : l.BranchId == null)))
                 .Where(t => t.Subdomain == slug && t.IsActive && !t.IsHidden)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(ct);
@@ -252,12 +254,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 };
             }
 
-            // WiFi: tenant-wide + branch-spesifik union (branch slug verildikdə),
-            // əks halda yalnız tenant-wide
+            // WiFi: branch context-də yalnız həmin branch wifi, tenant context-də yalnız tenant-wide
             dto.WifiInformation = await _dbContext.RestorantWifiInformations
                 .AsNoTracking()
                 .Where(w => w.TenantId == tenant.Id && w.IsActive
-                    && (w.BranchId == null || (branchIdFilter != null && w.BranchId == branchIdFilter)))
+                    && (branchIdFilter != null
+                        ? w.BranchId == branchIdFilter
+                        : w.BranchId == null))
                 .Select(w => new TenantConfigWifiDto
                 {
                     Id = w.Id,
