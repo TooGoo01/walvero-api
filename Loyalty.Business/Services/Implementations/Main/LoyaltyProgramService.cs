@@ -66,25 +66,26 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.PointsExpiryDays is < 0)
                 return new ServiceResult(false, "PointsExpiryDays cannot be negative.");
 
-            // --- HappyHours validation ---
-            if (dto.ProgramType == LoyaltyProgramType.HappyHoursBased)
+            // --- HappyHours validation (bütün program tipləri üçün — override-all) ---
+            if (dto.BasePercentCash is <= 0 || dto.BasePercentCard is <= 0)
+                return new ServiceResult(false, "Base percent values must be greater than 0.");
+            if (dto.ProgramType == LoyaltyProgramType.HappyHoursBased
+                && dto.BasePercentCash is null && dto.BasePercentCard is null
+                && (dto.HappyHoursWindows is null || dto.HappyHoursWindows.Count == 0))
             {
-                if ((dto.BasePercentCash ?? 0) < 0 || (dto.BasePercentCard ?? 0) < 0)
-                    return new ServiceResult(false, "Base percent values cannot be negative.");
-                if (dto.BasePercentCash is null && dto.BasePercentCard is null)
-                    return new ServiceResult(false, "At least one base percent (cash or card) is required for HappyHours program.");
+                return new ServiceResult(false, "HappyHours program requires at least one base percent or window.");
+            }
 
-                if (dto.HappyHoursWindows != null)
+            if (dto.HappyHoursWindows != null)
+            {
+                foreach (var w in dto.HappyHoursWindows)
                 {
-                    foreach (var w in dto.HappyHoursWindows)
-                    {
-                        if (w.EndTime <= w.StartTime)
-                            return new ServiceResult(false, "HappyHours window EndTime must be greater than StartTime.");
-                        if (w.PercentCash < 0 || w.PercentCard < 0)
-                            return new ServiceResult(false, "HappyHours window percent values cannot be negative.");
-                        if (w.DayOfWeek is not null && (w.DayOfWeek < 0 || w.DayOfWeek > 6))
-                            return new ServiceResult(false, "HappyHours window DayOfWeek must be 0..6.");
-                    }
+                    if (w.EndTime <= w.StartTime)
+                        return new ServiceResult(false, "HappyHours window EndTime must be greater than StartTime.");
+                    if (w.PercentCash <= 0 || w.PercentCard <= 0)
+                        return new ServiceResult(false, "HappyHours window percent values must be greater than 0.");
+                    if (w.DayOfWeek is not null && (w.DayOfWeek > 6))
+                        return new ServiceResult(false, "HappyHours window DayOfWeek must be 0..6.");
                 }
             }
 
@@ -322,6 +323,59 @@ namespace Loyalty.Business.Services.Implementations.Main
         public Task<ServiceResult> Update(AddLoyaltyProgramDto dto, int id)
         {
             throw new NotImplementedException();
+        }
+
+        public async Task<ServiceResult> UpdateHappyHoursAsync(int programId, UpdateHappyHoursDto dto, CancellationToken ct = default)
+        {
+            if (dto is null)
+                return new ServiceResult(false, "Model is null.");
+
+            var program = await _repo.GetByIdTrackedAsync(programId, ct);
+            if (program is null)
+                return new ServiceResult(false, "Loyalty program not found.");
+
+            // 0% cashback icazə verilmir
+            if (dto.BasePercentCash is <= 0 || dto.BasePercentCard is <= 0)
+                return new ServiceResult(false, "Base percent values must be greater than 0.");
+
+            if (dto.HappyHoursWindows is not null)
+            {
+                foreach (var w in dto.HappyHoursWindows)
+                {
+                    if (w.EndTime <= w.StartTime)
+                        return new ServiceResult(false, "HappyHours window EndTime must be greater than StartTime.");
+                    if (w.PercentCash <= 0 || w.PercentCard <= 0)
+                        return new ServiceResult(false, "HappyHours window percent values must be greater than 0.");
+                    if (w.DayOfWeek is not null && w.DayOfWeek > 6)
+                        return new ServiceResult(false, "HappyHours window DayOfWeek must be 0..6.");
+                }
+            }
+
+            program.BasePercentCash = dto.BasePercentCash;
+            program.BasePercentCard = dto.BasePercentCard;
+            _unitOfWork.Repository<LoyaltyProgram>().Update(program);
+
+            await _happyHoursWindowRepo.DeleteByProgramAsync(programId, ct);
+            if (dto.HappyHoursWindows is { Count: > 0 })
+            {
+                foreach (var w in dto.HappyHoursWindows)
+                {
+                    await _unitOfWork.Repository<HappyHoursWindow>().AddAsync(new HappyHoursWindow
+                    {
+                        LoyaltyProgramId = programId,
+                        DayOfWeek = w.DayOfWeek,
+                        SpecificDate = w.SpecificDate,
+                        StartTime = w.StartTime,
+                        EndTime = w.EndTime,
+                        PercentCash = w.PercentCash,
+                        PercentCard = w.PercentCard,
+                        Label = w.Label?.Trim()
+                    });
+                }
+            }
+
+            _unitOfWork.Commit();
+            return new ServiceResult(true, new { programId, dto.BasePercentCash, dto.BasePercentCard, count = dto.HappyHoursWindows?.Count ?? 0 });
         }
     }
 }

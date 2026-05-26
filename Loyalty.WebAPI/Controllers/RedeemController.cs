@@ -1,5 +1,6 @@
 ﻿using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Enums;
@@ -30,6 +31,7 @@ namespace Loyalty.WebAPI.Controllers
         private readonly IPasskitPushService _passkitPushService;
         private readonly ICustomerRepository _customerRepository;
         private readonly LoyaltyWalletDbContext _dbContext;
+        private readonly ITimeZoneService _timeZoneService;
         private readonly ILogger<RedeemController> _logger;
 
         public RedeemController(
@@ -41,7 +43,8 @@ namespace Loyalty.WebAPI.Controllers
             ILogger<RedeemController> logger,
             IPasskitPushService passkitPushService,
             ICustomerRepository customerRepository,
-            LoyaltyWalletDbContext dbContext)
+            LoyaltyWalletDbContext dbContext,
+            ITimeZoneService timeZoneService)
         {
             _tenantProvider = tenantProvider;
             _redeemService = redeemService;
@@ -52,6 +55,7 @@ namespace Loyalty.WebAPI.Controllers
             _passkitPushService = passkitPushService;
             _customerRepository = customerRepository;
             _dbContext = dbContext;
+            _timeZoneService = timeZoneService;
         }
 
         // === UI CONFIG ===
@@ -522,13 +526,35 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                     (tierName, tierPercent, tierPercentCash, tierIconUrl) = TierResolver(card.CurrentPoints, tpl);
             }
            
+            // HappyHours override: tenant local time-da window/BasePercent yoxlanılır.
+            // Window match olarsa hər iki tərəfi override edir (0% da explicit override sayılır).
+            // Window olmayanda yalnız BasePercent set olan tərəflər override edir; null tərəflər tier%-ə fallback.
+            int? hhCash = null;
+            int? hhCard = null;
+            var hasWindows = program.HappyHoursWindows?.Count > 0;
+            var hasBase = program.BasePercentCash.HasValue || program.BasePercentCard.HasValue;
+            if (hasWindows || hasBase)
+            {
+                var (localTime, _) = await _timeZoneService.GetTenantLocalTimeAsync(tenantId.Value, null, ct);
+                (hhCash, hhCard) = HappyHoursRateResolver.Resolve(
+                    program.HappyHoursWindows,
+                    program.BasePercentCash,
+                    program.BasePercentCard,
+                    localTime.DateTime);
+
+                _logger.LogInformation(
+                    "HappyHours resolved. ProgramId={ProgramId} LocalTime={LocalTime} HhCash={HhCash} HhCard={HhCard}",
+                    program.Id, localTime, hhCash, hhCard);
+            }
+
             // PayMentType=false (0) olduqda həmişə percent üzərindən hesabla,
-            // PayMentType=true olduqda cash üçün tierPercentCash istifadə et (null-dursa percent-ə fallback)
+            // PayMentType=true olduqda cash üçün tierPercentCash istifadə et (null-dursa percent-ə fallback).
+            // HappyHours override mövcuddursa tier%-dən üstündür.
             int? percent;
             if (tpl.PayMentType && paymentMethod == "cash")
-                percent = tierPercentCash ?? tierPercent;
+                percent = hhCash ?? tierPercentCash ?? tierPercent;
             else
-                percent = tierPercent;
+                percent = hhCard ?? tierPercent;
 
             // OCR doğrulaması üçün kassirin daxil etdiyi orijinal məbləği saxla (percent çevrilməsindən əvvəl).
             // Pay rejimi-də delta artıq mənfi, abs() faktiki çek məbləğidir.

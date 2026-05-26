@@ -18,5 +18,6 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> GetLast();
         Task<ServiceResult> Update(AddLoyaltyProgramDto dto, int id);
         Task<ServiceResult> Delete(int id);
+        Task<ServiceResult> UpdateHappyHoursAsync(int programId, UpdateHappyHoursDto dto, CancellationToken ct = default);
     }
 }

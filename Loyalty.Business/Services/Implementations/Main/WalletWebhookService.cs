@@ -22,6 +22,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ITenantRepository _tenantRepo;
         private readonly IWalletRouter _walletRouter;
         private readonly ITenantBrandingRepository _brandingRepo;
+        private readonly ITimeZoneService _timeZoneService;
         private readonly ILogger<WalletWebhookService> _logger;
         private readonly IUnitOfWork _uow;
 
@@ -37,6 +38,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             ITenantRepository tenantRepo,
             IWalletRouter walletRouter,
             ITenantBrandingRepository brandingRepo,
+            ITimeZoneService timeZoneService,
             ILogger<WalletWebhookService> logger,
             IUnitOfWork uow)
         {
@@ -51,6 +53,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _tenantRepo = tenantRepo;
             _walletRouter = walletRouter;
             _brandingRepo = brandingRepo;
+            _timeZoneService = timeZoneService;
             _logger = logger;
             _uow = uow;
         }
@@ -466,7 +469,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (totalSteps == 0 && totalPoints == 0)
             {
-                var program = await _loyaltyProgramRepo.GetByIdAsync(programId.Value, ct);
+                // HappyHoursWindows daxil olmaq üçün Include-lu çağırış
+                var program = await _loyaltyProgramRepo.GetByIdNameAsync(programId.Value, ct);
                 if (program != null)
                 {
                     // Tier faizini hesabla (əgər CardTemplate varsa)
@@ -491,23 +495,42 @@ namespace Loyalty.Business.Services.Implementations.Main
                         }
                     }
 
-                    if (hasSplitPayment && request.Payments != null)
+                    // HappyHours override: tenant local time ilə window/BasePercent
+                    int? hhCash = null;
+                    int? hhCard = null;
+                    var hasWindows = program.HappyHoursWindows?.Count > 0;
+                    var hasBase = program.BasePercentCash.HasValue || program.BasePercentCard.HasValue;
+                    if (hasWindows || hasBase)
                     {
-                        // Payments göndərilib + PayMentType=true: cash/cashless üçün ayrı faiz (kəsr saxlanır)
-                        var pctCard = tierPercent ?? 0;
-                        var pctCash = tierPercentCash ?? pctCard;
+                        var (localTime, _) = await _timeZoneService.GetTenantLocalTimeAsync(context.TenantId, null, ct);
+                        (hhCash, hhCard) = HappyHoursRateResolver.Resolve(program, localTime.DateTime);
+                        _logger.LogInformation(
+                            "Webhook HappyHours resolved. ProgramId={ProgramId} LocalTime={LocalTime} HhCash={HhCash} HhCard={HhCard}",
+                            program.Id, localTime, hhCash, hhCard);
+                    }
+
+                    // HappyHours tier%-i override edir; null tərəflər tier-ə fallback
+                    var effCash = hhCash ?? tierPercentCash ?? tierPercent;
+                    var effCard = hhCard ?? tierPercent;
+                    var hasHhSplit = hhCash.HasValue || hhCard.HasValue;
+
+                    if ((hasSplitPayment || hasHhSplit) && request.Payments != null)
+                    {
+                        // PayMentType=true ya da HappyHours override varsa cash/cashless üçün ayrı faiz
+                        var pctCard = effCard ?? 0;
+                        var pctCash = effCash ?? pctCard;
                         var cashPoints = request.Payments.Cash * pctCash / 100m;
                         var cashlessPoints = request.Payments.Cashless * pctCard / 100m;
                         totalPoints = cashPoints + cashlessPoints;
                     }
-                    else if (tierPercent.HasValue && tierPercent.Value > 0)
+                    else if (effCard.HasValue && effCard.Value > 0)
                     {
-                        // Tier faizi var: total × percent / 100 (kəsr saxlanır)
-                        totalPoints = request.Total * tierPercent.Value / 100m;
+                        // Tek faiz (HappyHours card override və ya tier%) total-a tətbiq
+                        totalPoints = request.Total * effCard.Value / 100m;
                     }
                     else if (program.PointsPerCurrency > 0)
                     {
-                        // Tier yoxdursa: total × PointsPerCurrency (kəsr saxlanır)
+                        // Faiz yoxdursa: total × PointsPerCurrency (kəsr saxlanır)
                         totalPoints = request.Total * program.PointsPerCurrency;
                     }
                 }

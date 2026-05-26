@@ -99,5 +99,26 @@ namespace Loyalty.WebAPI.Controllers
             return BadRequest(result);
         }
 
+        [HttpGet]
+        [ProducesResponseType(typeof(ServiceResult<GetLoyaltyProgramDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
+        public async Task<IActionResult> Get(int id)
+        {
+            var result = await _loyaltyProgramService.Get(id);
+            if (result.Success)
+                return Ok(result);
+            return NotFound(result);
+        }
+
+        [HttpPost]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> UpdateHappyHours(int id, [FromBody] UpdateHappyHoursDto dto, CancellationToken ct)
+        {
+            var result = await _loyaltyProgramService.UpdateHappyHoursAsync(id, dto, ct);
+            if (result.Success)
+                return Ok(result);
+            return BadRequest(result);
+        }
     }
 }
