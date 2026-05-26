@@ -20,6 +20,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _unitOfWork = unitOfWork;
             _mapper = mapper;
             _aboutRepository = aboutRepository;
+            
         }
 
         public async Task<ServiceResult> AddAbout(AddAboutDto aboutDto)
