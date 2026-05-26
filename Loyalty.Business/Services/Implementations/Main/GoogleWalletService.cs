@@ -1469,6 +1469,10 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
     private static int GetCashbackPercent(decimal currentPoints, CardTemplateSnapshot snapshot)
     {
+        // PointsBased: tier ladder yoxdur — həmişə Bronze%
+        if (snapshot.TemplateType == CardTemplateType.PointsBased)
+            return snapshot.BronzePercent ?? 0;
+
         var bronzeTh = snapshot.BronzeThreshold ?? 0;
         var silverTh = snapshot.SilverThreshold ?? int.MaxValue;
         var goldTh = snapshot.GoldThreshold ?? int.MaxValue;
@@ -1479,19 +1483,21 @@ public sealed class GoogleWalletService : IGoogleWalletService
         var goldPct = snapshot.GoldPercent ?? silverPct;
         var platPct = snapshot.PlatinumPercent ?? goldPct;
 
-        if (currentPoints < bronzeTh)
+        if (currentPoints < silverTh)
             return bronzePct;
-        else if (currentPoints >= bronzeTh && currentPoints < silverTh)
-            return bronzePct;
-        else if (currentPoints >= silverTh && currentPoints < goldTh)
+        else if (currentPoints < goldTh)
             return silverPct;
-        else if (currentPoints >= goldTh && currentPoints < platTh)
+        else if (currentPoints < platTh)
             return goldPct;
         else
             return platPct;
     }
     private static int GetCashbackPercentCash(decimal currentPoints, CardTemplateSnapshot snapshot)
     {
+        // PointsBased: tier ladder yoxdur — həmişə Bronze cash%
+        if (snapshot.TemplateType == CardTemplateType.PointsBased)
+            return snapshot.BronzePercentCash ?? 0;
+
         var bronzeTh = snapshot.BronzeThreshold ?? 0;
         var silverTh = snapshot.SilverThreshold ?? int.MaxValue;
         var goldTh = snapshot.GoldThreshold ?? int.MaxValue;
@@ -1502,13 +1508,11 @@ public sealed class GoogleWalletService : IGoogleWalletService
         var goldPct = snapshot.GoldPercentCash ?? silverPct;
         var platPct = snapshot.PlatinumPercentCash ?? goldPct;
 
-        if (currentPoints < bronzeTh)
+        if (currentPoints < silverTh)
             return bronzePct;
-        else if (currentPoints >= bronzeTh && currentPoints < silverTh)
-            return bronzePct;
-        else if (currentPoints >= silverTh && currentPoints < goldTh)
+        else if (currentPoints < goldTh)
             return silverPct;
-        else if (currentPoints >= goldTh && currentPoints < platTh)
+        else if (currentPoints < platTh)
             return goldPct;
         else
             return platPct;

@@ -111,34 +111,36 @@ public sealed class AppleWalletService : IAppleWalletService
             Directory.CreateDirectory(workDir);
             int percent = 0;
             int percentCash = 0;
-            if (card.CurrentPoints < snapshot.BronzeThreshold)
+            // PointsBased: single-tier — həmişə Bronze% (tier ladder yoxdur).
+            // TierBased: points-ə görə Bronze→Silver→Gold→Platinum.
+            if (snapshot.TemplateType == CardTemplateType.PointsBased)
             {
-                percent = snapshot.BronzePercent.Value; // Bronze tier
-                percentCash = snapshot.BronzePercentCash.Value; // Bronze tier
-            }
-
-            else if (card.CurrentPoints >= snapshot.BronzeThreshold && card.CurrentPoints < snapshot.SilverThreshold)
-            {
-                percent = snapshot.BronzePercent.Value;
-                percentCash = snapshot.BronzePercentCash.Value;
-            }
-
-            else if (card.CurrentPoints >= snapshot.SilverThreshold && card.CurrentPoints < snapshot.GoldThreshold)
-            {
-                percent = snapshot.SilverPercent.Value;
-                percentCash = snapshot.SilverPercentCash.Value;
-            }
-
-            // FIX C: Use GoldThreshold instead of GoldPercent
-            else if (card.CurrentPoints >= snapshot.GoldThreshold && card.CurrentPoints < snapshot.PlatinumThreshold)
-            {
-                percent = snapshot.GoldPercent.Value;
-                percentCash = snapshot.GoldPercentCash.Value;
+                percent = snapshot.BronzePercent ?? 0;
+                percentCash = snapshot.BronzePercentCash ?? 0;
             }
             else
             {
-                percent = snapshot.PlatinumPercent.Value;
-                percentCash = snapshot.PlatinumPercentCash.Value;
+                var pts = card.CurrentPoints;
+                if (snapshot.PlatinumThreshold.HasValue && pts >= snapshot.PlatinumThreshold.Value)
+                {
+                    percent = snapshot.PlatinumPercent ?? 0;
+                    percentCash = snapshot.PlatinumPercentCash ?? 0;
+                }
+                else if (snapshot.GoldThreshold.HasValue && pts >= snapshot.GoldThreshold.Value)
+                {
+                    percent = snapshot.GoldPercent ?? 0;
+                    percentCash = snapshot.GoldPercentCash ?? 0;
+                }
+                else if (snapshot.SilverThreshold.HasValue && pts >= snapshot.SilverThreshold.Value)
+                {
+                    percent = snapshot.SilverPercent ?? 0;
+                    percentCash = snapshot.SilverPercentCash ?? 0;
+                }
+                else
+                {
+                    percent = snapshot.BronzePercent ?? 0;
+                    percentCash = snapshot.BronzePercentCash ?? 0;
+                }
             }
 
             try
