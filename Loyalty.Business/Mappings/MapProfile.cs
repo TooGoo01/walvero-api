@@ -103,10 +103,23 @@ namespace Loyalty.Business.Mappings
             CreateMap<LoyaltyCard, GetLoyaltyCardDto>()
                 .AfterMap((src, dest) =>
                 {
-                    // Set Currency from CardTemplate
-                    if (src.LoyaltyProgram?.CardTemplate != null)
+                    var tpl = src.LoyaltyProgram?.CardTemplate;
+                    if (tpl != null)
                     {
-                        dest.Currency = src.LoyaltyProgram.CardTemplate.Currency;
+                        dest.Currency = tpl.Currency;
+                        dest.BronzeThreshold = tpl.BronzeThreshold;
+                        dest.SilverThreshold = tpl.SilverThreshold;
+                        dest.GoldThreshold = tpl.GoldThreshold;
+                        dest.PlatinumThreshold = tpl.PlatinumThreshold;
+                        dest.BronzePercent = tpl.BronzePercent;
+                        dest.SilverPercent = tpl.SilverPercent;
+                        dest.GoldPercent = tpl.GoldPercent;
+                        dest.PlatinumPercent = tpl.PlatinumPercent;
+                        dest.BronzePercentCash = tpl.BronzePercentCash;
+                        dest.SilverPercentCash = tpl.SilverPercentCash;
+                        dest.GoldPercentCash = tpl.GoldPercentCash;
+                        dest.PlatinumPercentCash = tpl.PlatinumPercentCash;
+                        dest.PayMentType = tpl.PayMentType;
                     }
                 })
                 .ReverseMap();
@@ -117,9 +130,23 @@ namespace Loyalty.Business.Mappings
                 .ForMember(d => d.LifetimePoints, opt => opt.MapFrom(s => (int)s.LifetimePoints))
                 .AfterMap((src, dest) =>
                 {
-                    if (src.LoyaltyProgram?.CardTemplate != null)
+                    var tpl = src.LoyaltyProgram?.CardTemplate;
+                    if (tpl != null)
                     {
-                        dest.Currency = src.LoyaltyProgram.CardTemplate.Currency;
+                        dest.Currency = tpl.Currency;
+                        dest.BronzeThreshold = tpl.BronzeThreshold;
+                        dest.SilverThreshold = tpl.SilverThreshold;
+                        dest.GoldThreshold = tpl.GoldThreshold;
+                        dest.PlatinumThreshold = tpl.PlatinumThreshold;
+                        dest.BronzePercent = tpl.BronzePercent;
+                        dest.SilverPercent = tpl.SilverPercent;
+                        dest.GoldPercent = tpl.GoldPercent;
+                        dest.PlatinumPercent = tpl.PlatinumPercent;
+                        dest.BronzePercentCash = tpl.BronzePercentCash;
+                        dest.SilverPercentCash = tpl.SilverPercentCash;
+                        dest.GoldPercentCash = tpl.GoldPercentCash;
+                        dest.PlatinumPercentCash = tpl.PlatinumPercentCash;
+                        dest.PayMentType = tpl.PayMentType;
                     }
                 });
 

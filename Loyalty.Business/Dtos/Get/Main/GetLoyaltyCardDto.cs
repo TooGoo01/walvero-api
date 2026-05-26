@@ -28,7 +28,19 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? FreeRewardLabel { get; set; }         // "Pulsuz içki", "Burger" və s. (default: "Pulsuz içki")
         public string? Currency { get; set; }  // Currency from CardTemplate (e.g., "AZN", "USD", "EUR")
 
-        // Status
- 
+        // Tier %-ləri CardTemplate-dən kopyalanır (frontend tier-card bunları oxuyur)
+        public int? BronzeThreshold { get; set; }
+        public int? SilverThreshold { get; set; }
+        public int? GoldThreshold { get; set; }
+        public int? PlatinumThreshold { get; set; }
+        public int? BronzePercent { get; set; }
+        public int? SilverPercent { get; set; }
+        public int? GoldPercent { get; set; }
+        public int? PlatinumPercent { get; set; }
+        public int? BronzePercentCash { get; set; }
+        public int? SilverPercentCash { get; set; }
+        public int? GoldPercentCash { get; set; }
+        public int? PlatinumPercentCash { get; set; }
+        public bool PayMentType { get; set; }
     }
 }
