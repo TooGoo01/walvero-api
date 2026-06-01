@@ -208,17 +208,20 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _logger.LogWarning("ReceiptOcrJob: Tx {Id} flagged. Reason={Reason} Extracted={Amt}",
                     transactionId, reason, ocr.ExtractedAmount);
 
-                // WhatsApp alert to admin (operator-level fraud)
-                if (alertEnabled && !string.IsNullOrWhiteSpace(alertPhone))
+                // WhatsApp alert to admin:
+                //   - mövcud suspicious-cap aşımı halı: alertEnabled flag-i ilə
+                //   - YENİ QrMissing halı: notifyOnMissingQr flag-i ilə (alertEnabled-dən asılı deyil)
+                bool sendWhatsApp = !string.IsNullOrWhiteSpace(alertPhone)
+                    && (alertEnabled || (reason == "QrMissing" && notifyOnMissingQr));
+                if (sendWhatsApp)
                 {
                     await SendWhatsAppAlertAsync(db, alert, tx, tenantName, alertPhone!, operatorId,
                         customerName, enteredAmountForOcr, ocr.ExtractedAmount, amountCapForAlert, reason);
                 }
 
-                // FCM to customer
+                // FCM to customer — QrMissing istisnadır, customer-ə getmir (admin WhatsApp ilə xəbərlənir).
                 bool shouldNotifyCustomer = reason switch
                 {
-                    "QrMissing" => notifyOnMissingQr,
                     "DuplicateReceiptId" => true,
                     "ObjectCodeMismatch" => true,
                     "ReceiptDateMismatch" => true,
