@@ -59,5 +59,14 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
         public int? SuspiciousSpendCountCap { get; set; }
         public bool? EnableSuspiciousAlert { get; set; }
         [MaxLength(20)] public string? AlertWhatsappPhone { get; set; }
+
+        // --- QR + dynamic-label config (branch override; null = no change) ---
+        [MaxLength(32)] public string? ObjectCode { get; set; }
+        [MaxLength(100)] public string? OcrLabelAmount { get; set; }
+        [MaxLength(100)] public string? OcrLabelObjectCode { get; set; }
+        [MaxLength(100)] public string? OcrLabelReceiptId { get; set; }
+        public bool? RequireQrVerification { get; set; }
+        public bool? NotifyUserOnMissingQr { get; set; }
+        [MaxLength(100)] public string? ReceiptTimeZoneId { get; set; }
     }
 }

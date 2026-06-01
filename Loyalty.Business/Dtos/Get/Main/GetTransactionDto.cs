@@ -36,5 +36,12 @@ namespace Loyalty.Business.Dtos.Get.Main
         public decimal? OcrExtractedAmount { get; set; }
         public bool IsSuspicious { get; set; }
         public string? SuspiciousReason { get; set; }
+
+        // QR + physical-receipt audit
+        public string? PhysicalReceiptId { get; set; }
+        public string? QrDocId { get; set; }
+        public DateTime? ReceiptDate { get; set; }
+        public string? ExtractedObjectCode { get; set; }
+        public bool QrVerified { get; set; }
     }
 }

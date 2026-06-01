@@ -44,6 +44,14 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int? SuspiciousSpendCountCap { get; set; }
         public bool EnableSuspiciousAlert { get; set; }
         public string? AlertWhatsappPhone { get; set; }
+
+        // QR + dynamic-label config (tenant baseline)
+        public string OcrLabelAmount { get; set; } = "Yekun Məbləğ";
+        public string OcrLabelObjectCode { get; set; } = "Obyekt Kodu";
+        public string OcrLabelReceiptId { get; set; } = "Çek nömrəsi";
+        public bool RequireQrVerification { get; set; }
+        public bool NotifyUserOnMissingQr { get; set; }
+        public string ReceiptTimeZoneId { get; set; } = "Azerbaijan Standard Time";
         public DateTime? SubscriptionExpiryDate { get; set; }
         public DateTime? CreatedAt { get; set; }
         public List<ApplicationUserDto> Admins { get; set; }

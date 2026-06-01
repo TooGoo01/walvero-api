@@ -395,6 +395,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (dto.EnableSuspiciousAlert.HasValue) category.EnableSuspiciousAlert = dto.EnableSuspiciousAlert.Value;
                 if (dto.AlertWhatsappPhone != null) category.AlertWhatsappPhone = dto.AlertWhatsappPhone;
 
+                // QR + dynamic-label config
+                if (!string.IsNullOrWhiteSpace(dto.OcrLabelAmount)) category.OcrLabelAmount = dto.OcrLabelAmount;
+                if (!string.IsNullOrWhiteSpace(dto.OcrLabelObjectCode)) category.OcrLabelObjectCode = dto.OcrLabelObjectCode;
+                if (!string.IsNullOrWhiteSpace(dto.OcrLabelReceiptId)) category.OcrLabelReceiptId = dto.OcrLabelReceiptId;
+                if (dto.RequireQrVerification.HasValue) category.RequireQrVerification = dto.RequireQrVerification.Value;
+                if (dto.NotifyUserOnMissingQr.HasValue) category.NotifyUserOnMissingQr = dto.NotifyUserOnMissingQr.Value;
+                if (!string.IsNullOrWhiteSpace(dto.ReceiptTimeZoneId)) category.ReceiptTimeZoneId = dto.ReceiptTimeZoneId;
+
                 // Handle TenantLocation
                 if (dto.countryId.HasValue || dto.cityId.HasValue || dto.timeZoneId.HasValue)
                 {

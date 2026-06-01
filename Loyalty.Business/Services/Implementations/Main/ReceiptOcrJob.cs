@@ -9,11 +9,12 @@ using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 
 namespace Loyalty.Business.Services.Implementations.Main
 {
     /// <summary>
-    /// Hangfire background job — OCR validation + balance apply / flag for review.
+    /// Hangfire background job — QR/OCR validation + dedupe + balance apply / flag for review.
     /// </summary>
     public sealed class ReceiptOcrJob
     {
@@ -38,6 +39,17 @@ namespace Loyalty.Business.Services.Implementations.Main
             string? customerName,
             string? operatorId,
             decimal amountCapForAlert,
+            int tenantId,
+            int? branchId,
+            string ocrLabelAmount,
+            string ocrLabelObjectCode,
+            string ocrLabelReceiptId,
+            string timeZoneId,
+            string? branchObjectCode,
+            bool requireQrVerification,
+            bool notifyOnMissingQr,
+            string? qrDocId,
+            string? qrVerifiedJson,
             CancellationToken ct = default)
         {
             using var scope = _scopeFactory.CreateScope();
@@ -46,6 +58,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             var storage = sp.GetRequiredService<IAzureStorage>();
             var validator = sp.GetRequiredService<IReceiptValidationService>();
             var alert = sp.GetRequiredService<IWhatsAppAlertService>();
+            var userNotify = sp.GetRequiredService<IUserNotificationService>();
             var programSvc = sp.GetRequiredService<ILoyaltyProgramRepository>();
             var brandingSvc = sp.GetRequiredService<ITenantBrandingRepository>();
 
@@ -66,14 +79,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return;
             }
 
-            // Download receipt from blob via URL → filename
             var fileName = ExtractBlobFileName(tx.ReceiptImageUrl);
             if (string.IsNullOrEmpty(fileName))
             {
                 _logger.LogError("ReceiptOcrJob: Tx {Id} has no receipt URL", transactionId);
-                tx.Status = RedeemStatus.FlaggedForReview;
-                tx.IsSuspicious = true;
-                tx.SuspiciousReason = "OcrDownloadFailed";
+                FlagTx(tx, "OcrDownloadFailed");
                 await db.SaveChangesAsync(ct);
                 return;
             }
@@ -90,19 +100,93 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (bytes == null || bytes.Length == 0)
             {
-                tx.Status = RedeemStatus.FlaggedForReview;
-                tx.IsSuspicious = true;
-                tx.SuspiciousReason = "OcrDownloadFailed";
+                FlagTx(tx, "OcrDownloadFailed");
                 await db.SaveChangesAsync(ct);
                 return;
             }
 
-            var ocr = await validator.ValidateBytesAsync(bytes, enteredAmountForOcr, toleranceAzn, tx.ReceiptImageUrl, ct);
+            QrVerifiedPayload? payload = null;
+            if (!string.IsNullOrWhiteSpace(qrVerifiedJson))
+            {
+                try { payload = JsonConvert.DeserializeObject<QrVerifiedPayload>(qrVerifiedJson); }
+                catch (Exception ex) { _logger.LogWarning(ex, "qrVerifiedJson parse failed"); }
+
+                // Audit: real e-kassa JSON shape-i DB-də saxla ki, sonradan
+                // `EkassaCaptureResult.fromJsonString` key heuristic-ləri dəqiqləşdirilə bilsin.
+                // Schema sabitləşdikdən sonra bu blok silinə bilər.
+                try
+                {
+                    db.Set<EkassaJsonAudit>().Add(new EkassaJsonAudit
+                    {
+                        TenantId = tenantId,
+                        BranchId = branchId,
+                        TransactionId = transactionId,
+                        QrDocId = qrDocId,
+                        RawJson = qrVerifiedJson.Length > 100_000
+                            ? qrVerifiedJson.Substring(0, 100_000)
+                            : qrVerifiedJson,
+                        ParsedAmount = payload?.Amount,
+                        ParsedObjectCode = payload?.CashBoxObjectCode,
+                        ParsedDocumentNumber = payload?.DocumentNumber,
+                        ParsedCreatedAtUtc = payload?.CreatedAtUtc,
+                        RegDate = DateTime.UtcNow,
+                    });
+                    await db.SaveChangesAsync(ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "EkassaJsonAudit save failed Tx={Id}", transactionId);
+                }
+            }
+
+            var ctx = new ReceiptValidationContext
+            {
+                EnteredAmount = enteredAmountForOcr,
+                ToleranceAzn = toleranceAzn,
+                TenantId = tenantId,
+                BranchId = branchId,
+                OcrLabelAmount = ocrLabelAmount,
+                OcrLabelObjectCode = ocrLabelObjectCode,
+                OcrLabelReceiptId = ocrLabelReceiptId,
+                TimeZoneId = timeZoneId,
+                BranchObjectCode = branchObjectCode,
+                RequireQrVerification = requireQrVerification,
+                QrDocIdFromScanner = qrDocId,
+                QrVerifiedPayload = payload
+            };
+
+            var ocr = await validator.ValidateBytesAsync(bytes, ctx, tx.ReceiptImageUrl, ct);
+
+            // Copy audit fields regardless of valid/invalid
             tx.OcrExtractedAmount = ocr.ExtractedAmount;
+            tx.QrDocId = ocr.QrDocId;
+            tx.PhysicalReceiptId = ocr.PhysicalReceiptId;
+            tx.ReceiptDate = ocr.ReceiptDate;
+            tx.ExtractedObjectCode = ocr.ExtractedObjectCode;
+            tx.QrVerified = ocr.QrVerified;
+
+            // Priority 1: dedupe (overrides whatever the validator reported)
+            if (!string.IsNullOrWhiteSpace(ocr.PhysicalReceiptId))
+            {
+                var existsAlready = await db.Transactions
+                    .AsNoTracking()
+                    .Where(t => t.Id != tx.Id && t.PhysicalReceiptId == ocr.PhysicalReceiptId)
+                    .Join(db.Set<LoyaltyCard>().AsNoTracking(),
+                          t => t.LoyaltyCardId,
+                          c => c.Id,
+                          (t, c) => new { t, c })
+                    .AnyAsync(x => x.c.TenantId == tenantId, ct);
+                if (existsAlready)
+                {
+                    FlagTx(tx, "DuplicateReceiptId");
+                    await db.SaveChangesAsync(ct);
+                    await NotifyCustomerAsync(userNotify, tx, tenantName, "DuplicateReceiptId", true);
+                    return;
+                }
+            }
 
             if (ocr.IsValid)
             {
-                // OCR uyğun — balansa tətbiq et
                 try
                 {
                     await ApplyToBalanceAsync(db, tx, programSvc, brandingSvc, ct);
@@ -113,70 +197,122 @@ namespace Loyalty.Business.Services.Implementations.Main
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "ReceiptOcrJob: balance apply failed Tx={Id}", transactionId);
-                    tx.Status = RedeemStatus.FlaggedForReview;
-                    tx.IsSuspicious = true;
-                    tx.SuspiciousReason = "BalanceApplyFailed";
+                    FlagTx(tx, "BalanceApplyFailed");
                 }
             }
             else
             {
-                tx.Status = RedeemStatus.FlaggedForReview;
-                tx.IsSuspicious = true;
-                tx.SuspiciousReason = ocr.ExtractedAmount.HasValue ? "OcrMismatch" : "OcrUnreadable";
-                _logger.LogWarning("ReceiptOcrJob: Tx {Id} flagged. Reason={Reason} Extracted={Amt}",
-                    transactionId, tx.SuspiciousReason, ocr.ExtractedAmount);
+                var reason = ocr.FailReasonCode ?? (ocr.ExtractedAmount.HasValue ? "OcrMismatch" : "OcrUnreadable");
+                FlagTx(tx, reason);
 
+                _logger.LogWarning("ReceiptOcrJob: Tx {Id} flagged. Reason={Reason} Extracted={Amt}",
+                    transactionId, reason, ocr.ExtractedAmount);
+
+                // WhatsApp alert to admin (operator-level fraud)
                 if (alertEnabled && !string.IsNullOrWhiteSpace(alertPhone))
                 {
-                    try
-                    {
-                        // Branch + operator + customer adlarını async olaraq DB-dən çıxar
-                        string? branchName = tx.BranchId.HasValue
-                            ? await db.Branches.AsNoTracking()
-                                .Where(b => b.Id == tx.BranchId.Value)
-                                .Select(b => (string?)b.Name)
-                                .FirstOrDefaultAsync(CancellationToken.None)
-                            : null;
+                    await SendWhatsAppAlertAsync(db, alert, tx, tenantName, alertPhone!, operatorId,
+                        customerName, enteredAmountForOcr, ocr.ExtractedAmount, amountCapForAlert, reason);
+                }
 
-                        string? operatorName = null;
-                        if (!string.IsNullOrWhiteSpace(operatorId))
-                        {
-                            int.TryParse(operatorId, out var intId);
-                            var u = await db.Users.AsNoTracking()
-                                .Where(x => (intId > 0 && x.Id == intId) || x.UserName == operatorId || x.PhoneNumber == operatorId)
-                                .Select(x => new { x.Name, x.Surname, x.UserName, x.PhoneNumber })
-                                .FirstOrDefaultAsync(CancellationToken.None);
-                            if (u != null)
-                            {
-                                var full = $"{u.Name} {u.Surname}".Trim();
-                                operatorName = !string.IsNullOrWhiteSpace(full) ? full : (u.UserName ?? u.PhoneNumber ?? operatorId);
-                            }
-                            else operatorName = operatorId;
-                        }
-
-                        string? betterCustomerName = customerName;
-                        if (tx.LoyaltyCard?.Customer != null)
-                        {
-                            var c = tx.LoyaltyCard.Customer;
-                            var full = $"{c.FirstName} {c.LastName}".Trim();
-                            if (!string.IsNullOrWhiteSpace(full)) betterCustomerName = full;
-                        }
-
-                        await alert.SendSuspiciousTxAlertAsync(
-                            alertPhone!, tenantName, branchName, betterCustomerName, operatorName,
-                            Math.Abs(enteredAmountForOcr), ocr.ExtractedAmount,
-                            amountCapForAlert > 0 ? amountCapForAlert : (decimal?)null,
-                            tx.SuspiciousReason,
-                            tx.OrderId ?? tx.Id.ToString(), CancellationToken.None);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "WhatsApp alert send failed Tx={Id}", transactionId);
-                    }
+                // FCM to customer
+                bool shouldNotifyCustomer = reason switch
+                {
+                    "QrMissing" => notifyOnMissingQr,
+                    "DuplicateReceiptId" => true,
+                    "ObjectCodeMismatch" => true,
+                    "ReceiptDateMismatch" => true,
+                    _ => false
+                };
+                if (shouldNotifyCustomer)
+                {
+                    await NotifyCustomerAsync(userNotify, tx, tenantName, reason, false);
                 }
             }
 
             await db.SaveChangesAsync(ct);
+        }
+
+        private static void FlagTx(Transaction tx, string reason)
+        {
+            tx.Status = RedeemStatus.FlaggedForReview;
+            tx.IsSuspicious = true;
+            tx.SuspiciousReason = reason;
+        }
+
+        private async Task SendWhatsAppAlertAsync(
+            LoyaltyWalletDbContext db,
+            IWhatsAppAlertService alert,
+            Transaction tx,
+            string tenantName,
+            string alertPhone,
+            string? operatorId,
+            string? customerName,
+            decimal enteredAmountForOcr,
+            decimal? ocrAmount,
+            decimal amountCapForAlert,
+            string reason)
+        {
+            try
+            {
+                string? branchName = tx.BranchId.HasValue
+                    ? await db.Branches.AsNoTracking()
+                        .Where(b => b.Id == tx.BranchId.Value)
+                        .Select(b => (string?)b.Name)
+                        .FirstOrDefaultAsync(CancellationToken.None)
+                    : null;
+
+                string? operatorName = null;
+                if (!string.IsNullOrWhiteSpace(operatorId))
+                {
+                    int.TryParse(operatorId, out var intId);
+                    var u = await db.Users.AsNoTracking()
+                        .Where(x => (intId > 0 && x.Id == intId) || x.UserName == operatorId || x.PhoneNumber == operatorId)
+                        .Select(x => new { x.Name, x.Surname, x.UserName, x.PhoneNumber })
+                        .FirstOrDefaultAsync(CancellationToken.None);
+                    if (u != null)
+                    {
+                        var full = $"{u.Name} {u.Surname}".Trim();
+                        operatorName = !string.IsNullOrWhiteSpace(full) ? full : (u.UserName ?? u.PhoneNumber ?? operatorId);
+                    }
+                    else operatorName = operatorId;
+                }
+
+                string? betterCustomerName = customerName;
+                if (tx.LoyaltyCard?.Customer != null)
+                {
+                    var c = tx.LoyaltyCard.Customer;
+                    var full = $"{c.FirstName} {c.LastName}".Trim();
+                    if (!string.IsNullOrWhiteSpace(full)) betterCustomerName = full;
+                }
+
+                await alert.SendSuspiciousTxAlertAsync(
+                    alertPhone, tenantName, branchName, betterCustomerName, operatorName,
+                    Math.Abs(enteredAmountForOcr), ocrAmount,
+                    amountCapForAlert > 0 ? amountCapForAlert : (decimal?)null,
+                    reason,
+                    tx.OrderId ?? tx.Id.ToString(), CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "WhatsApp alert send failed Tx={Id}", tx.Id);
+            }
+        }
+
+        private async Task NotifyCustomerAsync(IUserNotificationService notify, Transaction tx, string tenantName, string reason, bool isDuplicate)
+        {
+            try
+            {
+                var customerId = tx.LoyaltyCard?.Customer?.Id;
+                if (customerId.HasValue)
+                {
+                    await notify.NotifyReceiptIssueAsync(customerId.Value, tenantName, reason, CancellationToken.None);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "User FCM notify failed Tx={Id} Reason={R}", tx.Id, reason);
+            }
         }
 
         private static async Task ApplyToBalanceAsync(
@@ -197,7 +333,6 @@ namespace Loyalty.Business.Services.Implementations.Main
             string ToAbs(string? p) => p ?? string.Empty;
             var snapshot = CardTemplateSnapshotFactory.From(program, program.CardTemplate, branding, ToAbs);
 
-            // delta-nı transaction-dan bərpa et: Points = Math.Abs(delta), Type → işarə
             decimal delta = tx.Type == TransactionType.Redeemed ? -tx.Points : tx.Points;
 
             card.LifetimePoints += 1;
@@ -215,7 +350,6 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     return Uri.UnescapeDataString(uri.Segments.Last());
                 }
-                // Url DEYİL → ehtimal sırf fileName
                 return url;
             }
             catch

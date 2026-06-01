@@ -24,6 +24,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<SalesRepVisit> SalesRepVisits { get; set; }
         public DbSet<DeviceToken> DeviceTokens { get; set; }
         public DbSet<RedeemRequest> RedeemRequests { get; set; }
+        public DbSet<EkassaJsonAudit> EkassaJsonAudits { get; set; }
         public DbSet<PassDeviceRegistration> PassDeviceRegistrations { get; set; }
         public DbSet<TenantBranding> TenantBrandings { get; set; }
         public DbSet<Customer> Customers { get; set; }
@@ -492,6 +493,23 @@ namespace Loyalty.DataAccess.Context
                 entity.HasIndex(t => t.LoyaltyCardId);
                 entity.HasIndex(t => t.LocalOccurredAt);
 
+                entity.Property(t => t.PhysicalReceiptId).HasMaxLength(64);
+                entity.Property(t => t.QrDocId).HasMaxLength(128);
+                entity.Property(t => t.ExtractedObjectCode).HasMaxLength(32);
+                entity.HasIndex(t => t.PhysicalReceiptId)
+                    .HasFilter("[PhysicalReceiptId] IS NOT NULL");
+            });
+
+            modelBuilder.Entity<EkassaJsonAudit>(entity =>
+            {
+                entity.ToTable("EkassaJsonAudits");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.QrDocId).HasMaxLength(128);
+                entity.Property(e => e.ParsedObjectCode).HasMaxLength(32);
+                entity.Property(e => e.ParsedDocumentNumber).HasMaxLength(64);
+                entity.Property(e => e.ParsedAmount).HasColumnType("decimal(18,2)");
+                entity.HasIndex(e => e.TenantId);
+                entity.HasIndex(e => e.RegDate);
             });
             // ==== REWARD ====
             modelBuilder.Entity<Reward>(entity =>

@@ -43,6 +43,13 @@ namespace Loyalty.Business.Dtos.Post.Main
         // OCR doğrulaması üçün orijinal çek məbləği (kassirin daxil etdiyi, percent tətbiq edilməmiş).
         // Earn rejimində Delta tier percent ilə çevrildiyi üçün ayrıca saxlayırıq.
         public decimal? OriginalAmount { get; set; }
+
+        // QR doğrulaması — scanner Flutter app çekin QR kodu oxuyub doc-id-ni göndərir (opsional).
+        public string? QrDocId { get; set; }
+
+        // E-kassa SPA WebView-də capture olunmuş JSON cavabı (opsional, JSON string).
+        // Backend `QrVerifiedPayload`-a deserialize edir və `QrVerified=true` təyin edir.
+        public string? QrVerifiedJson { get; set; }
     }
 
     /// <summary>

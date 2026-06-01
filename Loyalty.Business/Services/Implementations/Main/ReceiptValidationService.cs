@@ -8,16 +8,16 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using Tesseract;
+using ZXing;
+using ZXing.ImageSharp;
 
 namespace Loyalty.Business.Services.Implementations.Main
 {
     public sealed class ReceiptValidationService : IReceiptValidationService
     {
         private const string ReceiptContainer = "receipts";
-        private const int MaxOcrDimension = 1600; // Tesseract yan resolutionda ən sürətli — daha böyük > yavaş, daha kiçik > zəif tanıma.
+        private const int MaxOcrDimension = 1600;
 
-        // Engine init bahalıdır (~1-3s + ~30MB RAM per dil). Singleton ilə hər request reuse edilir.
-        // Tesseract.NET-də Engine thread-safe DEYİL — hər istifadə üçün lock + cache.
         private static readonly Lazy<TesseractEngine> _engine = new(() =>
         {
             var path = Path.Combine(AppContext.BaseDirectory, "tessdata");
@@ -25,13 +25,12 @@ namespace Loyalty.Business.Services.Implementations.Main
         }, LazyThreadSafetyMode.ExecutionAndPublication);
         private static readonly object _engineLock = new();
 
-        // Çekin cəmi sətrini tutmaq üçün — "Cəmi: 123,45" / "Total 67.50" / "Sum 12.00" / "Итого 99,99"
-        private static readonly Regex AmountRegex = new(
-            @"(?ix)
-              (?:c[əə]mi|total|m[əə]bl[əə][ğq]|sum|итого|cemi)
-              \s*[:\-]?\s*
-              (?<amt>\d{1,5}[.,]\d{2})
-              | (?<amt2>\d{1,5}[.,]\d{2})",
+        private static readonly Regex EkassaUrlRegex = new(
+            @"monitoring\.e-kassa\.gov\.az/.*?[?&#]doc=(?<doc>[A-Za-z0-9_\-]+)",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        private static readonly Regex DateRegex = new(
+            @"\b(?<d>\d{1,2})[./\-](?<m>\d{1,2})[./\-](?<y>\d{2,4})\b",
             RegexOptions.Compiled);
 
         private readonly IAzureStorage _storage;
@@ -47,15 +46,14 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ReceiptValidationResult> ValidateAsync(
             IFormFile image,
-            decimal enteredAmount,
-            decimal toleranceAzn,
+            ReceiptValidationContext ctx,
             CancellationToken ct = default)
         {
             if (image == null || image.Length == 0)
-                return new(false, null, null, "Çekin şəkli yüklənməyib.");
+                return new(false, null, null, "Çekin şəkli yüklənməyib.", FailReasonCode: "MissingImage");
 
             if (image.Length > 5 * 1024 * 1024)
-                return new(false, null, null, "Çekin şəkli 5 MB-dan böyükdür.");
+                return new(false, null, null, "Çekin şəkli 5 MB-dan böyükdür.", FailReasonCode: "ImageTooLarge");
 
             byte[] rawBytes;
             using (var ms = new MemoryStream())
@@ -64,10 +62,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 rawBytes = ms.ToArray();
             }
 
-            var result = await RunOcrAndMatchAsync(rawBytes, enteredAmount, toleranceAzn, null, ct);
+            var result = await ProcessBytesAsync(rawBytes, ctx, null, ct);
 
-            // Yalnız uğurlu (və ya extract olunan) hallarda blob upload — uğursuz OCR-də spam yox.
-            if (result.ExtractedAmount.HasValue)
+            if (result.ExtractedAmount.HasValue || result.QrVerified || !string.IsNullOrEmpty(result.QrDocId))
             {
                 string? url = null;
                 try
@@ -86,14 +83,13 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ReceiptValidationResult> ValidateBytesAsync(
             byte[] imageBytes,
-            decimal enteredAmount,
-            decimal toleranceAzn,
+            ReceiptValidationContext ctx,
             string? existingReceiptUrl,
             CancellationToken ct = default)
         {
             if (imageBytes == null || imageBytes.Length == 0)
-                return new(false, null, existingReceiptUrl, "Çek bytes boşdur.");
-            return await RunOcrAndMatchAsync(imageBytes, enteredAmount, toleranceAzn, existingReceiptUrl, ct);
+                return new(false, null, existingReceiptUrl, "Çek bytes boşdur.", FailReasonCode: "MissingImage");
+            return await ProcessBytesAsync(imageBytes, ctx, existingReceiptUrl, ct);
         }
 
         public async Task<(string fileName, string url)> UploadReceiptOnlyAsync(IFormFile image, CancellationToken ct = default)
@@ -104,99 +100,190 @@ namespace Loyalty.Business.Services.Implementations.Main
             return (first.fileName, first.pathOrContainerName);
         }
 
-        private async Task<ReceiptValidationResult> RunOcrAndMatchAsync(
+        private async Task<ReceiptValidationResult> ProcessBytesAsync(
             byte[] rawBytes,
-            decimal enteredAmount,
-            decimal toleranceAzn,
+            ReceiptValidationContext ctx,
             string? carriedReceiptUrl,
             CancellationToken ct)
         {
-            // Tesseract native binary və tessdata mövcudluğunu əvvəldən yoxla — sonradan opaque crash yox.
-            var tessdataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
-            if (!Directory.Exists(tessdataPath))
+            string? qrDocId = ctx.QrDocIdFromScanner;
+            decimal? extracted = null;
+            DateTime? receiptDate = null;
+            string? objectCode = null;
+            string? physicalReceiptId = null;
+            bool qrVerified = false;
+
+            // Step 1A: scanner-side e-kassa JSON capture əla isə həmin dəyərləri istifadə et.
+            var payload = ctx.QrVerifiedPayload;
+            if (payload != null && payload.Amount.HasValue)
             {
-                _logger.LogError("tessdata directory missing at {Path}", tessdataPath);
-                return new(false, null, carriedReceiptUrl, "OCR data faylları tapılmadı (server konfiqurasiya xətası).");
-            }
-            var azeData = Path.Combine(tessdataPath, "aze.traineddata");
-            var engData = Path.Combine(tessdataPath, "eng.traineddata");
-            if (!System.IO.File.Exists(azeData) || !System.IO.File.Exists(engData))
-            {
-                _logger.LogError("tessdata lang files missing. aze={Aze} eng={Eng}",
-                    System.IO.File.Exists(azeData), System.IO.File.Exists(engData));
-                return new(false, null, carriedReceiptUrl, "OCR dil faylları tapılmadı (aze/eng).");
+                qrVerified = true;
+                qrDocId ??= payload.DocId;
+                extracted = payload.Amount;
+                receiptDate = payload.CreatedAtUtc;
+                objectCode = payload.CashBoxObjectCode;
+                physicalReceiptId = !string.IsNullOrWhiteSpace(payload.DocumentNumber)
+                    ? payload.DocumentNumber
+                    : payload.DocId;
             }
 
-            byte[] preprocessed;
-            try
+            // Step 1B: server-side ZXing QR decode (scanner uğursuz olsa belə backup).
+            if (string.IsNullOrEmpty(qrDocId))
             {
-                preprocessed = await PreprocessAsync(rawBytes, ct);
+                try
+                {
+                    qrDocId = TryDecodeQr(rawBytes);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "ZXing QR decode failed");
+                }
             }
-            catch (Exception ex)
+            // ZXing tapsa amma DocumentNumber yoxsa fallback dedupe key olaraq doc-id istifadə.
+            if (string.IsNullOrWhiteSpace(physicalReceiptId) && !string.IsNullOrWhiteSpace(qrDocId))
+                physicalReceiptId = qrDocId;
+
+            // Step 2: OCR fallback — payload yoxdursa amount + date + object-code + receipt-id parse.
+            if (!qrVerified)
             {
-                _logger.LogWarning(ex, "Receipt image preprocessing failed. RawSize={Size}", rawBytes.Length);
-                return new(false, null, carriedReceiptUrl, "Çek şəkli oxunmadı (format dəstəklənmir və ya korlanıb).");
+                var tessdataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
+                if (!Directory.Exists(tessdataPath))
+                {
+                    _logger.LogError("tessdata directory missing at {Path}", tessdataPath);
+                    return new(false, null, carriedReceiptUrl,
+                        "OCR data faylları tapılmadı (server konfiqurasiya xətası).",
+                        QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                        FailReasonCode: "OcrUnreadable");
+                }
+                var azeData = Path.Combine(tessdataPath, "aze.traineddata");
+                var engData = Path.Combine(tessdataPath, "eng.traineddata");
+                if (!System.IO.File.Exists(azeData) || !System.IO.File.Exists(engData))
+                {
+                    _logger.LogError("tessdata lang files missing.");
+                    return new(false, null, carriedReceiptUrl,
+                        "OCR dil faylları tapılmadı (aze/eng).",
+                        QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                        FailReasonCode: "OcrUnreadable");
+                }
+
+                byte[] preprocessed;
+                try
+                {
+                    preprocessed = await PreprocessAsync(rawBytes, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Receipt image preprocessing failed. RawSize={Size}", rawBytes.Length);
+                    return new(false, null, carriedReceiptUrl,
+                        "Çek şəkli oxunmadı (format dəstəklənmir və ya korlanıb).",
+                        QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                        FailReasonCode: "OcrUnreadable");
+                }
+
+                string ocrText;
+                try
+                {
+                    ocrText = RunOcr(preprocessed);
+                }
+                catch (DllNotFoundException ex)
+                {
+                    _logger.LogError(ex, "Tesseract native library missing.");
+                    return new(false, null, carriedReceiptUrl,
+                        "OCR mühərriki serverdə qurulmayıb.",
+                        QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                        FailReasonCode: "OcrUnreadable");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Tesseract OCR call failed.");
+                    return new(false, null, carriedReceiptUrl,
+                        $"OCR uğursuz oldu: {ex.Message}",
+                        QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                        FailReasonCode: "OcrUnreadable");
+                }
+
+                _logger.LogInformation("OCR completed. TextLen={Len}", ocrText.Length);
+
+                extracted = ExtractByLabel(ocrText, ctx.OcrLabelAmount, AmountValuePattern)
+                            ?? ExtractFallbackAmount(ocrText);
+                objectCode ??= ExtractByLabelString(ocrText, ctx.OcrLabelObjectCode, ObjectCodeValuePattern);
+                if (string.IsNullOrWhiteSpace(physicalReceiptId))
+                    physicalReceiptId = ExtractByLabelString(ocrText, ctx.OcrLabelReceiptId, ReceiptIdValuePattern);
+                receiptDate ??= ExtractDate(ocrText);
+
+                if (extracted is null)
+                {
+                    _logger.LogInformation("OCR found no amount in receipt text.");
+                    return new(false, null, carriedReceiptUrl,
+                        "Çekdə məbləğ tapılmadı. Yenidən aydın şəkil çəkin.",
+                        QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                        ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
+                        FailReasonCode: "OcrUnreadable");
+                }
             }
 
-            string ocrText;
-            try
+            // Step 3: compare (priority — RedeemService / ReceiptOcrJob FailReasonCode-a əsasən IsSuspicious yazır).
+
+            // 3a. Date match (yalnız date varsa yoxla)
+            if (receiptDate.HasValue && !IsTodayInTenantZone(receiptDate.Value, ctx.TimeZoneId))
             {
-                ocrText = RunOcr(preprocessed, tessdataPath);
-            }
-            catch (DllNotFoundException ex)
-            {
-                _logger.LogError(ex, "Tesseract native library missing (DllNotFound). OS={OS}",
-                    System.Runtime.InteropServices.RuntimeInformation.OSDescription);
-                return new(false, null, carriedReceiptUrl,
-                    "OCR mühərriki serverdə qurulmayıb. Docker image-də tesseract-ocr paketinin olduğundan əmin olun.");
-            }
-            catch (TypeInitializationException ex)
-            {
-                _logger.LogError(ex, "Tesseract engine type init failed (often P/Invoke arch mismatch).");
-                return new(false, null, carriedReceiptUrl,
-                    "OCR mühərriki başlana bilmədi (arch uyğunsuzluğu və ya tessdata problemi).");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Tesseract OCR call failed. ExType={Type}, Msg={Msg}",
-                    ex.GetType().Name, ex.Message);
-                return new(false, null, carriedReceiptUrl, $"OCR uğursuz oldu: {ex.Message}");
+                return new(false, extracted, carriedReceiptUrl,
+                    $"Çekin tarixi bu günkü tarixə uyğun deyil ({receiptDate:dd.MM.yyyy}).",
+                    QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                    ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
+                    QrVerified: qrVerified,
+                    FailReasonCode: "ReceiptDateMismatch");
             }
 
-            _logger.LogInformation("OCR completed. TextLen={Len}, Preview={Preview}",
-                ocrText.Length,
-                ocrText.Length > 0 ? ocrText.Substring(0, Math.Min(120, ocrText.Length)).Replace('\n', ' ') : "<empty>");
-
-            var extracted = ExtractAmount(ocrText);
-            if (extracted is null)
+            // 3b. Object code match (branch-da kod təyin edilibsə və receipt-də tapılsa)
+            if (!string.IsNullOrWhiteSpace(ctx.BranchObjectCode)
+                && !string.IsNullOrWhiteSpace(objectCode)
+                && !string.Equals(ctx.BranchObjectCode.Trim(), objectCode.Trim(), StringComparison.OrdinalIgnoreCase))
             {
-                _logger.LogInformation("OCR found no amount in receipt text.");
-                return new(false, null, carriedReceiptUrl, "Çekdə məbləğ tapılmadı. Yenidən aydın şəkil çəkin.");
+                return new(false, extracted, carriedReceiptUrl,
+                    $"Obyekt Kodu uyğun deyil (gözlənilən {ctx.BranchObjectCode}, tapıldı {objectCode}).",
+                    QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                    ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
+                    QrVerified: qrVerified,
+                    FailReasonCode: "ObjectCodeMismatch");
             }
 
-            var entered = Math.Abs(enteredAmount);
-            var tol = toleranceAzn <= 0 ? 1m : toleranceAzn;
-            var diff = Math.Abs(extracted.Value - entered);
-
-            if (diff > tol)
+            // 3c. QR missing strict mode
+            if (ctx.RequireQrVerification && !qrVerified)
             {
-                _logger.LogWarning(
-                    "OCR amount mismatch. Entered={Entered}, Ocr={Ocr}, Tolerance={Tol}, Diff={Diff}",
+                return new(false, extracted, carriedReceiptUrl,
+                    "QR doğrulaması tələb olunur — çekin QR kodu oxunmadı.",
+                    QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                    ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
+                    QrVerified: qrVerified,
+                    FailReasonCode: "QrMissing");
+            }
+
+            // 3d. Amount tolerance
+            var entered = Math.Abs(ctx.EnteredAmount);
+            var tol = ctx.ToleranceAzn <= 0 ? 1m : ctx.ToleranceAzn;
+            var diff = Math.Abs((extracted ?? 0m) - entered);
+            if (extracted.HasValue && diff > tol)
+            {
+                _logger.LogWarning("OCR amount mismatch. Entered={Entered}, Ocr={Ocr}, Tolerance={Tol}, Diff={Diff}",
                     entered, extracted, tol, diff);
                 return new(false, extracted, carriedReceiptUrl,
-                    $"Çek məbləği ({extracted:0.##}) daxil edilən məbləğlə ({entered:0.##}) uyğun deyil.");
+                    $"Çek məbləği ({extracted:0.##}) daxil edilən məbləğlə ({entered:0.##}) uyğun deyil.",
+                    QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                    ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
+                    QrVerified: qrVerified,
+                    FailReasonCode: "OcrMismatch");
             }
 
-            return new(true, extracted, carriedReceiptUrl, null);
+            return new(true, extracted, carriedReceiptUrl, null,
+                QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
+                QrVerified: qrVerified);
         }
 
         private static async Task<byte[]> PreprocessAsync(byte[] input, CancellationToken ct)
         {
-            // ImageSharp avtomatik format detect (jpeg/png/webp). L8 = 8-bit grayscale.
             using var image = Image.Load<L8>(input);
-
-            // Çek şəkilləri smartfonlardan adətən 3000-4000px gəlir — bu Tesseract üçün çox böyükdür və yavaşladır.
-            // 1600px sərhədinə qədər kiçilt; əgər orijinal daha kiçikdirsə toxunma.
             var maxDim = Math.Max(image.Width, image.Height);
             if (maxDim > MaxOcrDimension)
             {
@@ -212,40 +299,106 @@ namespace Loyalty.Business.Services.Implementations.Main
             return outMs.ToArray();
         }
 
-        private static string RunOcr(byte[] imageBytes, string tessdataPath)
+        private static string RunOcr(byte[] imageBytes)
         {
-            // Engine singleton — init bir dəfə. Engine thread-safe DEYİL → lock.
             lock (_engineLock)
             {
                 var engine = _engine.Value;
-                engine.DefaultPageSegMode = PageSegMode.SingleBlock; // PSM 6 — çek üçün tək blok mətn.
+                engine.DefaultPageSegMode = PageSegMode.SingleBlock;
                 using var pix = Pix.LoadFromMemory(imageBytes);
                 using var page = engine.Process(pix);
                 return page.GetText() ?? string.Empty;
             }
         }
 
-        internal static decimal? ExtractAmount(string ocrText)
+        private static string? TryDecodeQr(byte[] imageBytes)
+        {
+            using var rgba = Image.Load<Rgba32>(imageBytes);
+            var reader = new ZXing.ImageSharp.BarcodeReader<Rgba32>
+            {
+                AutoRotate = true,
+                Options = new ZXing.Common.DecodingOptions
+                {
+                    TryHarder = true,
+                    PossibleFormats = new[] { BarcodeFormat.QR_CODE }
+                }
+            };
+            var result = reader.Decode(rgba);
+            if (result == null || string.IsNullOrWhiteSpace(result.Text)) return null;
+            var m = EkassaUrlRegex.Match(result.Text);
+            return m.Success ? m.Groups["doc"].Value : null;
+        }
+
+        // Dynamic label-əsaslı parse: "<label> ... 12,34" formasında məbləğ.
+        private const string AmountValuePattern = @"\s*[:\-]?\s*(?<val>\d{1,5}[.,]\d{2})";
+        private const string ObjectCodeValuePattern = @"\s*[:\-]?\s*(?<val>[A-Za-z0-9]{3,20})";
+        private const string ReceiptIdValuePattern = @"\s*[:\-]?\s*(?<val>[A-Za-z0-9\-]{5,40})";
+
+        private static decimal? ExtractByLabel(string ocrText, string label, string valuePattern)
+        {
+            if (string.IsNullOrWhiteSpace(ocrText) || string.IsNullOrWhiteSpace(label)) return null;
+            var pat = Regex.Escape(label) + valuePattern;
+            var m = Regex.Match(ocrText, pat, RegexOptions.IgnoreCase);
+            if (!m.Success) return null;
+            var raw = m.Groups["val"].Value.Replace(',', '.');
+            return decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? v : null;
+        }
+
+        private static string? ExtractByLabelString(string ocrText, string label, string valuePattern)
+        {
+            if (string.IsNullOrWhiteSpace(ocrText) || string.IsNullOrWhiteSpace(label)) return null;
+            var pat = Regex.Escape(label) + valuePattern;
+            var m = Regex.Match(ocrText, pat, RegexOptions.IgnoreCase);
+            return m.Success ? m.Groups["val"].Value : null;
+        }
+
+        // Label tapılmadıqda OCR-da ən böyük decimal-ı götür (köhnə davranış).
+        private static decimal? ExtractFallbackAmount(string ocrText)
         {
             if (string.IsNullOrWhiteSpace(ocrText)) return null;
-
             decimal? best = null;
-            foreach (Match m in AmountRegex.Matches(ocrText))
+            foreach (Match m in Regex.Matches(ocrText, @"\d{1,5}[.,]\d{2}"))
             {
-                var raw = m.Groups["amt"].Success ? m.Groups["amt"].Value
-                        : m.Groups["amt2"].Success ? m.Groups["amt2"].Value
-                        : null;
-                if (raw is null) continue;
-
-                raw = raw.Replace(',', '.');
-                if (!decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var value))
-                    continue;
-
-                // Cəmi adətən çekdəki ən böyük rəqəmdir
-                if (best is null || value > best) best = value;
+                var raw = m.Value.Replace(',', '.');
+                if (!decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var v)) continue;
+                if (best is null || v > best) best = v;
             }
             return best;
         }
 
+        private static DateTime? ExtractDate(string ocrText)
+        {
+            if (string.IsNullOrWhiteSpace(ocrText)) return null;
+            foreach (Match m in DateRegex.Matches(ocrText))
+            {
+                if (!int.TryParse(m.Groups["d"].Value, out var d)) continue;
+                if (!int.TryParse(m.Groups["m"].Value, out var mo)) continue;
+                if (!int.TryParse(m.Groups["y"].Value, out var y)) continue;
+                if (y < 100) y += 2000;
+                if (d is < 1 or > 31 || mo is < 1 or > 12 || y < 2000 || y > 2100) continue;
+                try { return new DateTime(y, mo, d, 12, 0, 0, DateTimeKind.Utc); }
+                catch { /* invalid combo (məs 31.02), atla */ }
+            }
+            return null;
+        }
+
+        private static bool IsTodayInTenantZone(DateTime receiptDate, string timeZoneId)
+        {
+            try
+            {
+                var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+                var todayLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz).Date;
+                var receiptUtc = receiptDate.Kind == DateTimeKind.Utc
+                    ? receiptDate
+                    : DateTime.SpecifyKind(receiptDate, DateTimeKind.Utc);
+                var receiptLocal = TimeZoneInfo.ConvertTimeFromUtc(receiptUtc, tz).Date;
+                return todayLocal == receiptLocal;
+            }
+            catch
+            {
+                // TZ tapılmadısa UTC fallback
+                return receiptDate.Date == DateTime.UtcNow.Date;
+            }
+        }
     }
 }

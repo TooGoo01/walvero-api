@@ -31,6 +31,14 @@ namespace Loyalty.DataAccess.Entities.Main
         public int? SuspiciousSpendCountCap { get; set; } // null → no count cap (ProgressBased spendCount)
         public bool EnableSuspiciousAlert { get; set; } = false;
         public string? AlertWhatsappPhone { get; set; } // E.164, e.g. +994551234567
+
+        // --- QR verification + dynamic OCR label config (tenant baseline) ---
+        public string OcrLabelAmount { get; set; } = "Yekun Məbləğ";
+        public string OcrLabelObjectCode { get; set; } = "Obyekt Kodu";
+        public string OcrLabelReceiptId { get; set; } = "Çek nömrəsi";
+        public bool RequireQrVerification { get; set; } = false;
+        public bool NotifyUserOnMissingQr { get; set; } = false;
+        public string ReceiptTimeZoneId { get; set; } = "Azerbaijan Standard Time";
         public bool AcceptAnonymus { get; set; } = false;
         public bool ShowOnHome { get; set; } = false;
         public bool IsHidden { get; set; } = false; // Hidden tenants (e.g., Walvero shadow tenant) never appear in listings

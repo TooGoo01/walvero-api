@@ -31,6 +31,13 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? ReceiptImageUrl { get; set; }
         public decimal? OcrExtractedAmount { get; set; }
 
+        // QR + physical-receipt audit (carried from Start → Confirm)
+        public string? PhysicalReceiptId { get; set; }
+        public string? QrDocId { get; set; }
+        public DateTime? ReceiptDate { get; set; }
+        public string? ExtractedObjectCode { get; set; }
+        public bool QrVerified { get; set; } = false;
+
         // Operator-in branch-i (JWT branch_id claim-dan); pending → confirm zəncirində qorunur
         public int? BranchId { get; set; }
         public Branch? Branch { get; set; }

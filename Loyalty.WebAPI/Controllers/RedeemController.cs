@@ -381,6 +381,11 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             public string? paymentMethod { get; set; }
             public int? spendCount { get; set; }
             public IFormFile? ReceiptImage { get; set; }
+
+            // QR doğrulaması — scanner Flutter app çekin QR kodunu oxuyub doc-id-ni və/və ya
+            // e-kassa SPA WebView-də capture etdiyi JSON cavabı göndərir (opsional).
+            public string? QrDocId { get; set; }
+            public string? QrVerifiedJson { get; set; }
         }
 
         private static readonly HashSet<string> _allowedReceiptMimes = new(StringComparer.OrdinalIgnoreCase)
@@ -391,7 +396,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
         [HttpPost]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public Task<IActionResult> Start([FromBody] StartRedeemRequest model, CancellationToken ct)
-            => HandleStartAsync(model.Code, model.Delta, model.OrderId, model.mode, model.paymentMethod, model.spendCount, null, ct);
+            => HandleStartAsync(model.Code, model.Delta, model.OrderId, model.mode, model.paymentMethod, model.spendCount, null, null, null, ct);
 
         [HttpPost]
         [Consumes("multipart/form-data")]
@@ -408,7 +413,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                     return Task.FromResult<IActionResult>(BadRequest(new { success = false, message = "Çek şəkli formatı dəstəklənmir (jpeg/png/webp)." }));
             }
 
-            return HandleStartAsync(form.Code, form.Delta, form.OrderId, form.mode, form.paymentMethod, form.spendCount, form.ReceiptImage, ct);
+            return HandleStartAsync(form.Code, form.Delta, form.OrderId, form.mode, form.paymentMethod, form.spendCount, form.ReceiptImage, form.QrDocId, form.QrVerifiedJson, ct);
         }
 
         private async Task<IActionResult> HandleStartAsync(
@@ -419,6 +424,8 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             string? paymentMethod,
             int? spendCountIn,
             IFormFile? receiptImage,
+            string? qrDocId,
+            string? qrVerifiedJson,
             CancellationToken ct)
         {
             _logger.LogInformation("Start redeem called: Code={Code}, Delta={Delta}, Mode={Mode}, HasReceipt={HasReceipt}",
@@ -584,6 +591,8 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             var dto = new RedeemRequestDto
             {
                 LoyaltyProgramId = programId,
+                QrDocId = qrDocId,
+                QrVerifiedJson = qrVerifiedJson,
                 Code = code,
                 Delta = delta,
                 OrderId = orderIdIn,

@@ -100,6 +100,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             public bool AlertEnabled { get; init; }
             public string? AlertPhone { get; init; }
             public string TenantName { get; init; } = string.Empty;
+            // QR + dynamic-label config
+            public string OcrLabelAmount { get; init; } = "Yekun Məbləğ";
+            public string OcrLabelObjectCode { get; init; } = "Obyekt Kodu";
+            public string OcrLabelReceiptId { get; init; } = "Çek nömrəsi";
+            public string TimeZoneId { get; init; } = "Azerbaijan Standard Time";
+            public string? BranchObjectCode { get; init; }
+            public bool RequireQrVerification { get; init; }
+            public bool NotifyUserOnMissingQr { get; init; }
         }
 
         private async Task<EffectiveSuspiciousCfg> ResolveCfgAsync(int tenantId, int? branchId, CancellationToken ct)
@@ -115,7 +123,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                     t.SuspiciousAmountCap,
                     t.SuspiciousSpendCountCap,
                     t.EnableSuspiciousAlert,
-                    t.AlertWhatsappPhone
+                    t.AlertWhatsappPhone,
+                    t.OcrLabelAmount,
+                    t.OcrLabelObjectCode,
+                    t.OcrLabelReceiptId,
+                    t.RequireQrVerification,
+                    t.NotifyUserOnMissingQr,
+                    t.ReceiptTimeZoneId
                 })
                 .FirstOrDefaultAsync(ct);
 
@@ -133,7 +147,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                         b.SuspiciousAmountCap,
                         b.SuspiciousSpendCountCap,
                         b.EnableSuspiciousAlert,
-                        b.AlertWhatsappPhone
+                        b.AlertWhatsappPhone,
+                        b.OcrLabelAmount,
+                        b.OcrLabelObjectCode,
+                        b.OcrLabelReceiptId,
+                        b.RequireQrVerification,
+                        b.NotifyUserOnMissingQr,
+                        b.ReceiptTimeZoneId,
+                        b.ObjectCode
                     })
                     .FirstOrDefaultAsync(ct)
                 : null;
@@ -148,7 +169,22 @@ namespace Loyalty.Business.Services.Implementations.Main
                 AlertPhone = !string.IsNullOrWhiteSpace(branch?.AlertWhatsappPhone)
                     ? branch.AlertWhatsappPhone
                     : tenant.AlertWhatsappPhone,
-                TenantName = tenant.CompanyName ?? string.Empty
+                TenantName = tenant.CompanyName ?? string.Empty,
+                OcrLabelAmount = !string.IsNullOrWhiteSpace(branch?.OcrLabelAmount)
+                    ? branch.OcrLabelAmount!
+                    : (string.IsNullOrWhiteSpace(tenant.OcrLabelAmount) ? "Yekun Məbləğ" : tenant.OcrLabelAmount),
+                OcrLabelObjectCode = !string.IsNullOrWhiteSpace(branch?.OcrLabelObjectCode)
+                    ? branch.OcrLabelObjectCode!
+                    : (string.IsNullOrWhiteSpace(tenant.OcrLabelObjectCode) ? "Obyekt Kodu" : tenant.OcrLabelObjectCode),
+                OcrLabelReceiptId = !string.IsNullOrWhiteSpace(branch?.OcrLabelReceiptId)
+                    ? branch.OcrLabelReceiptId!
+                    : (string.IsNullOrWhiteSpace(tenant.OcrLabelReceiptId) ? "Çek nömrəsi" : tenant.OcrLabelReceiptId),
+                TimeZoneId = !string.IsNullOrWhiteSpace(branch?.ReceiptTimeZoneId)
+                    ? branch.ReceiptTimeZoneId!
+                    : (string.IsNullOrWhiteSpace(tenant.ReceiptTimeZoneId) ? "Azerbaijan Standard Time" : tenant.ReceiptTimeZoneId),
+                BranchObjectCode = branch?.ObjectCode,
+                RequireQrVerification = (branch?.RequireQrVerification ?? tenant.RequireQrVerification),
+                NotifyUserOnMissingQr = (branch?.NotifyUserOnMissingQr ?? tenant.NotifyUserOnMissingQr)
             };
         }
 
@@ -332,6 +368,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     uow.Repository<Transaction>().Add(pendingTx);
                     uow.Commit();
 
+                    // Carry QR audit fields to pending tx so they survive a queue restart
+                    pendingTx.QrDocId = request.QrDocId;
+
                     // Job-a göndər
                     var amountForOcr = request.OriginalAmount ?? Math.Abs(delta);
                     var customerName = card.Customer?.applicationUser?.UserName;
@@ -345,6 +384,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                         customerName,
                         request.OperatorId,
                         cfg.AmountCap ?? 0,
+                        request.TenantId,
+                        operatorBranchId,
+                        cfg.OcrLabelAmount,
+                        cfg.OcrLabelObjectCode,
+                        cfg.OcrLabelReceiptId,
+                        cfg.TimeZoneId,
+                        cfg.BranchObjectCode,
+                        cfg.RequireQrVerification,
+                        cfg.NotifyUserOnMissingQr,
+                        request.QrDocId,
+                        request.QrVerifiedJson,
                         CancellationToken.None));
 
                     _logger.LogInformation("PendingOcr tx queued. TxId={TxId} CardId={CardId}", pendingTx.Id, card.Id);

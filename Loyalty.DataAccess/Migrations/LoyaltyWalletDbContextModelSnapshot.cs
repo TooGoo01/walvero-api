@@ -151,6 +151,21 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<bool?>("NotifyUserOnMissingQr")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ObjectCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OcrLabelAmount")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OcrLabelObjectCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OcrLabelReceiptId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<decimal?>("OcrToleranceAzn")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -171,11 +186,17 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(100);
 
+                    b.Property<string>("ReceiptTimeZoneId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("RegDate")
                         .HasColumnType("datetime2");
 
                     b.Property<int>("RegUserId")
                         .HasColumnType("int");
+
+                    b.Property<bool?>("RequireQrVerification")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("RequireReceiptOcr")
                         .HasColumnType("bit");
@@ -747,6 +768,69 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("DeviceTokens");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.EkassaJsonAudit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("BranchId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("ParsedAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("ParsedCreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ParsedDocumentNumber")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ParsedObjectCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("QrDocId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("RawJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("TransactionId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RegDate");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("EkassaJsonAudits", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.HappyHoursWindow", b =>
@@ -1816,6 +1900,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<DateTime>("ExpiresUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("ExtractedObjectCode")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("IdempotencyKey")
                         .HasColumnType("nvarchar(max)");
 
@@ -1838,11 +1925,23 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("OrderId")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("PhysicalReceiptId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("Platform")
                         .HasColumnType("int");
 
                     b.Property<decimal>("PointsDelta")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("QrDocId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("QrVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("ReceiptDate")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("ReceiptImageUrl")
                         .HasMaxLength(500)
@@ -2393,11 +2492,30 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("MenuUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("NotifyUserOnMissingQr")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("OcrLabelAmount")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OcrLabelObjectCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OcrLabelReceiptId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<decimal?>("OcrToleranceAzn")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("PinterestUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ReceiptTimeZoneId")
+                        .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("RegDate")
@@ -2407,6 +2525,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("int");
 
                     b.Property<bool>("RequireConfirmation")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequireQrVerification")
                         .HasColumnType("bit");
 
                     b.Property<bool>("RequireReceiptOcr")
@@ -2813,6 +2934,10 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int?>("EditUserId")
                         .HasColumnType("int");
 
+                    b.Property<string>("ExtractedObjectCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -2832,9 +2957,23 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("OrderId")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("PhysicalReceiptId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<decimal>("Points")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("QrDocId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<bool>("QrVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("ReceiptDate")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("ReceiptImageUrl")
                         .HasMaxLength(500)
@@ -2877,6 +3016,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasIndex("LocalOccurredAt");
 
                     b.HasIndex("LoyaltyCardId");
+
+                    b.HasIndex("PhysicalReceiptId")
+                        .HasFilter("[PhysicalReceiptId] IS NOT NULL");
 
                     b.HasIndex("RegDate");
 

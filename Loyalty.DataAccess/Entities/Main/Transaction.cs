@@ -35,7 +35,14 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? ReceiptImageUrl { get; set; }
         public decimal? OcrExtractedAmount { get; set; }
         public bool IsSuspicious { get; set; } = false;
-        public string? SuspiciousReason { get; set; } // "AmountExceedsCap" / "OcrMismatch"
+        public string? SuspiciousReason { get; set; } // "AmountExceedsCap" / "OcrMismatch" / "DuplicateReceiptId" / "ObjectCodeMismatch" / "QrMissing" / "ReceiptDateMismatch" / "QrVerificationFailed"
+
+        // QR + physical-receipt audit
+        public string? PhysicalReceiptId { get; set; }   // dedupe key (unique per tenant when not null)
+        public string? QrDocId { get; set; }             // e-kassa.gov.az doc parameter
+        public DateTime? ReceiptDate { get; set; }       // parsed receipt date (UTC)
+        public string? ExtractedObjectCode { get; set; } // obyekt kodu parsed from receipt
+        public bool QrVerified { get; set; } = false;    // true → e-kassa JSON verified
 
         public LoyaltyCard LoyaltyCard { get; set; } = null!;
     }

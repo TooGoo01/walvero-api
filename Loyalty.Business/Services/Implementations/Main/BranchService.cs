@@ -137,6 +137,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.EnableSuspiciousAlert.HasValue) branch.EnableSuspiciousAlert = dto.EnableSuspiciousAlert.Value;
             if (dto.AlertWhatsappPhone != null) branch.AlertWhatsappPhone = dto.AlertWhatsappPhone;
 
+            // QR + dynamic-label override (null = inherit tenant)
+            if (dto.ObjectCode != null) branch.ObjectCode = dto.ObjectCode;
+            if (dto.OcrLabelAmount != null) branch.OcrLabelAmount = dto.OcrLabelAmount;
+            if (dto.OcrLabelObjectCode != null) branch.OcrLabelObjectCode = dto.OcrLabelObjectCode;
+            if (dto.OcrLabelReceiptId != null) branch.OcrLabelReceiptId = dto.OcrLabelReceiptId;
+            if (dto.RequireQrVerification.HasValue) branch.RequireQrVerification = dto.RequireQrVerification;
+            if (dto.NotifyUserOnMissingQr.HasValue) branch.NotifyUserOnMissingQr = dto.NotifyUserOnMissingQr;
+            if (dto.ReceiptTimeZoneId != null) branch.ReceiptTimeZoneId = dto.ReceiptTimeZoneId;
+
             if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
             {
                 await ResetMainBranchAsync(branch.TenantId);

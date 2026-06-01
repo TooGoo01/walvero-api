@@ -54,6 +54,15 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool EnableSuspiciousAlert { get; set; } = false;
         public string? AlertWhatsappPhone { get; set; }            // E.164; null → fallback to tenant
 
+        // --- QR + dynamic-label config (branch override, tenant fallback) ---
+        public string? ObjectCode { get; set; }                    // e-kassa obyekt kodu; null → match skip
+        public string? OcrLabelAmount { get; set; }                // null → tenant
+        public string? OcrLabelObjectCode { get; set; }            // null → tenant
+        public string? OcrLabelReceiptId { get; set; }             // null → tenant
+        public bool? NotifyUserOnMissingQr { get; set; }           // null → tenant
+        public bool? RequireQrVerification { get; set; }           // null → tenant
+        public string? ReceiptTimeZoneId { get; set; }             // null → tenant
+
         public ICollection<Room> Rooms { get; set; } = new List<Room>();
 
         // Inverse navigation collections — DbContext-də HasOne(...).WithMany(b => b.Staff/Transactions)
