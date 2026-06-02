@@ -33,12 +33,18 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? AlertWhatsappPhone { get; set; } // E.164, e.g. +994551234567
 
         // --- QR verification + dynamic OCR label config (tenant baseline) ---
-        public string OcrLabelAmount { get; set; } = "Yekun Məbləğ";
-        public string OcrLabelObjectCode { get; set; } = "Obyekt Kodu";
-        public string OcrLabelReceiptId { get; set; } = "Çek nömrəsi";
+        // Comma-separated multi-language labels. Backend hər label-i ardıcıl yoxlayır,
+        // birincisini tapan istifadə edir. Misal: "Yekun Məbləğ,Cəmi,Total".
+        public string OcrLabelAmount { get; set; } = "Yekun Məbləğ,Cəmi,Total,Sum";
+        public string OcrLabelObjectCode { get; set; } = "Obyektin kodu,Obyekt Kodu,Object Code";
+        public string OcrLabelReceiptId { get; set; } = "Fiskal İD,Fiskal ID,Fiscal ID,Çek nömrəsi";
+        public string OcrLabelTaxNumber { get; set; } = "VÖEN,VOEN,Vergi nömrəsi,Tax number,TIN";
+        public string? ExpectedTaxNumber { get; set; } // VÖEN — yoxlamaq üçün; null → match skip
         public bool RequireQrVerification { get; set; } = false;
         public bool NotifyUserOnMissingQr { get; set; } = false;
         public string ReceiptTimeZoneId { get; set; } = "Azerbaijan Standard Time";
+        public string EkassaReceiptUrlTemplate { get; set; }
+            = "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}";
         public bool AcceptAnonymus { get; set; } = false;
         public bool ShowOnHome { get; set; } = false;
         public bool IsHidden { get; set; } = false; // Hidden tenants (e.g., Walvero shadow tenant) never appear in listings

@@ -316,11 +316,13 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             var spendCount2 = txList.Count(t => t.Type == DataAccess.Entities.Main.TransactionType.Redeemed);
 
             // Receipt-OCR feature flag — OR(tenant, branch). Operator-un branch-i JWT branch_id claim-dən.
-            var tenantOcr = await _dbContext.Tenants
+            var tenantFlags = await _dbContext.Tenants
                 .AsNoTracking()
                 .Where(t => t.Id == tenantId)
-                .Select(t => t.RequireReceiptOcr)
+                .Select(t => new { t.RequireReceiptOcr, t.RequireQrVerification })
                 .FirstOrDefaultAsync(ct);
+            var tenantOcr = tenantFlags?.RequireReceiptOcr ?? false;
+            var tenantQr = tenantFlags?.RequireQrVerification ?? false;
 
             var operatorBranchId = _tenantProvider.CurrentBranchId;
             // JWT-də claim yoxdursa (köhnə token), DB-də ApplicationUser.BranchId-ə fallback
@@ -337,15 +339,17 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 }
             }
 
-            var branchOcr = operatorBranchId.HasValue
+            var branchFlags = operatorBranchId.HasValue
                 ? await _dbContext.Branches
                     .AsNoTracking()
                     .Where(b => b.Id == operatorBranchId.Value)
-                    .Select(b => (bool?)b.RequireReceiptOcr)
+                    .Select(b => new { b.RequireReceiptOcr, b.RequireQrVerification })
                     .FirstOrDefaultAsync(ct)
                 : null;
 
-            var requireReceiptOcr = tenantOcr || (branchOcr ?? false);
+            var requireReceiptOcr = tenantOcr || (branchFlags?.RequireReceiptOcr ?? false);
+            // Branch override (nullable) tenant default-u override edir; null olarsa tenant qiymət.
+            var requireQrVerification = branchFlags?.RequireQrVerification ?? tenantQr;
 
             return Ok(new
             {
@@ -364,7 +368,8 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 tierIconUrl,
                 earnCount,
                 spendCount = spendCount2,
-                requireReceiptOcr
+                requireReceiptOcr,
+                requireQrVerification
             });
         }
 
@@ -382,10 +387,9 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             public int? spendCount { get; set; }
             public IFormFile? ReceiptImage { get; set; }
 
-            // QR doğrulaması — scanner Flutter app çekin QR kodunu oxuyub doc-id-ni və/və ya
-            // e-kassa SPA WebView-də capture etdiyi JSON cavabı göndərir (opsional).
+            // QR doğrulaması — scanner Flutter app çekin QR kodunu oxuyub doc-id-ni göndərir.
+            // Backend həmin doc-id ilə birbaşa e-kassa endpoint-dən image fetch edir.
             public string? QrDocId { get; set; }
-            public string? QrVerifiedJson { get; set; }
         }
 
         private static readonly HashSet<string> _allowedReceiptMimes = new(StringComparer.OrdinalIgnoreCase)
@@ -396,7 +400,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
         [HttpPost]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public Task<IActionResult> Start([FromBody] StartRedeemRequest model, CancellationToken ct)
-            => HandleStartAsync(model.Code, model.Delta, model.OrderId, model.mode, model.paymentMethod, model.spendCount, null, null, null, ct);
+            => HandleStartAsync(model.Code, model.Delta, model.OrderId, model.mode, model.paymentMethod, model.spendCount, null, null, ct);
 
         [HttpPost]
         [Consumes("multipart/form-data")]
@@ -413,7 +417,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                     return Task.FromResult<IActionResult>(BadRequest(new { success = false, message = "Çek şəkli formatı dəstəklənmir (jpeg/png/webp)." }));
             }
 
-            return HandleStartAsync(form.Code, form.Delta, form.OrderId, form.mode, form.paymentMethod, form.spendCount, form.ReceiptImage, form.QrDocId, form.QrVerifiedJson, ct);
+            return HandleStartAsync(form.Code, form.Delta, form.OrderId, form.mode, form.paymentMethod, form.spendCount, form.ReceiptImage, form.QrDocId, ct);
         }
 
         private async Task<IActionResult> HandleStartAsync(
@@ -425,7 +429,6 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             int? spendCountIn,
             IFormFile? receiptImage,
             string? qrDocId,
-            string? qrVerifiedJson,
             CancellationToken ct)
         {
             _logger.LogInformation("Start redeem called: Code={Code}, Delta={Delta}, Mode={Mode}, HasReceipt={HasReceipt}",
@@ -592,7 +595,6 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             {
                 LoyaltyProgramId = programId,
                 QrDocId = qrDocId,
-                QrVerifiedJson = qrVerifiedJson,
                 Code = code,
                 Delta = delta,
                 OrderId = orderIdIn,

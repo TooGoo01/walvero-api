@@ -105,6 +105,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<bool>("EnableSuspiciousAlert")
                         .HasColumnType("bit");
 
+                    b.Property<string>("ExpectedTaxNumber")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("FacebookUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -164,6 +167,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("OcrLabelReceiptId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OcrLabelTaxNumber")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal?>("OcrToleranceAzn")
@@ -1903,6 +1909,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("ExtractedObjectCode")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ExtractedTaxNumber")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("IdempotencyKey")
                         .HasColumnType("nvarchar(max)");
 
@@ -2461,8 +2470,15 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int?>("EditUserId")
                         .HasColumnType("int");
 
+                    b.Property<string>("EkassaReceiptUrlTemplate")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("EnableSuspiciousAlert")
                         .HasColumnType("bit");
+
+                    b.Property<string>("ExpectedTaxNumber")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("FacebookUrl")
                         .HasColumnType("nvarchar(max)");
@@ -2504,6 +2520,10 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("OcrLabelReceiptId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OcrLabelTaxNumber")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -2937,6 +2957,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("ExtractedObjectCode")
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ExtractedTaxNumber")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");

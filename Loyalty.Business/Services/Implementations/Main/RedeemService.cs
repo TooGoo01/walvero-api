@@ -101,13 +101,17 @@ namespace Loyalty.Business.Services.Implementations.Main
             public string? AlertPhone { get; init; }
             public string TenantName { get; init; } = string.Empty;
             // QR + dynamic-label config
-            public string OcrLabelAmount { get; init; } = "Yekun Məbləğ";
-            public string OcrLabelObjectCode { get; init; } = "Obyekt Kodu";
-            public string OcrLabelReceiptId { get; init; } = "Çek nömrəsi";
+            public string OcrLabelAmount { get; init; } = "Yekun Məbləğ,Cəmi,Total,Sum";
+            public string OcrLabelObjectCode { get; init; } = "Obyektin kodu,Obyekt Kodu,Object Code";
+            public string OcrLabelReceiptId { get; init; } = "Fiskal İD,Fiskal ID,Fiscal ID,Çek nömrəsi";
+            public string OcrLabelTaxNumber { get; init; } = "VÖEN,VOEN,Vergi nömrəsi,Tax number,TIN";
             public string TimeZoneId { get; init; } = "Azerbaijan Standard Time";
             public string? BranchObjectCode { get; init; }
+            public string? ExpectedTaxNumber { get; init; }
             public bool RequireQrVerification { get; init; }
             public bool NotifyUserOnMissingQr { get; init; }
+            public string EkassaUrlTemplate { get; init; }
+                = "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}";
         }
 
         private async Task<EffectiveSuspiciousCfg> ResolveCfgAsync(int tenantId, int? branchId, CancellationToken ct)
@@ -129,7 +133,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     t.OcrLabelReceiptId,
                     t.RequireQrVerification,
                     t.NotifyUserOnMissingQr,
-                    t.ReceiptTimeZoneId
+                    t.ReceiptTimeZoneId,
+                    t.EkassaReceiptUrlTemplate,
+                    t.OcrLabelTaxNumber,
+                    t.ExpectedTaxNumber
                 })
                 .FirstOrDefaultAsync(ct);
 
@@ -154,7 +161,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                         b.RequireQrVerification,
                         b.NotifyUserOnMissingQr,
                         b.ReceiptTimeZoneId,
-                        b.ObjectCode
+                        b.ObjectCode,
+                        b.OcrLabelTaxNumber,
+                        b.ExpectedTaxNumber
                     })
                     .FirstOrDefaultAsync(ct)
                 : null;
@@ -184,7 +193,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                     : (string.IsNullOrWhiteSpace(tenant.ReceiptTimeZoneId) ? "Azerbaijan Standard Time" : tenant.ReceiptTimeZoneId),
                 BranchObjectCode = branch?.ObjectCode,
                 RequireQrVerification = (branch?.RequireQrVerification ?? tenant.RequireQrVerification),
-                NotifyUserOnMissingQr = (branch?.NotifyUserOnMissingQr ?? tenant.NotifyUserOnMissingQr)
+                NotifyUserOnMissingQr = (branch?.NotifyUserOnMissingQr ?? tenant.NotifyUserOnMissingQr),
+                EkassaUrlTemplate = !string.IsNullOrWhiteSpace(tenant.EkassaReceiptUrlTemplate)
+                    ? tenant.EkassaReceiptUrlTemplate
+                    : "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}",
+                OcrLabelTaxNumber = !string.IsNullOrWhiteSpace(branch?.OcrLabelTaxNumber)
+                    ? branch.OcrLabelTaxNumber!
+                    : (string.IsNullOrWhiteSpace(tenant.OcrLabelTaxNumber) ? "VÖEN,VOEN,Vergi nömrəsi,Tax number,TIN" : tenant.OcrLabelTaxNumber),
+                ExpectedTaxNumber = !string.IsNullOrWhiteSpace(branch?.ExpectedTaxNumber)
+                    ? branch.ExpectedTaxNumber
+                    : tenant.ExpectedTaxNumber
             };
         }
 
@@ -389,12 +407,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                         cfg.OcrLabelAmount,
                         cfg.OcrLabelObjectCode,
                         cfg.OcrLabelReceiptId,
+                        cfg.OcrLabelTaxNumber,
                         cfg.TimeZoneId,
                         cfg.BranchObjectCode,
+                        cfg.ExpectedTaxNumber,
                         cfg.RequireQrVerification,
                         cfg.NotifyUserOnMissingQr,
                         request.QrDocId,
-                        request.QrVerifiedJson,
+                        cfg.EkassaUrlTemplate,
                         CancellationToken.None));
 
                     _logger.LogInformation("PendingOcr tx queued. TxId={TxId} CardId={CardId}", pendingTx.Id, card.Id);

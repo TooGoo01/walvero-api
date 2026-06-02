@@ -42,6 +42,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? QrDocId { get; set; }             // e-kassa.gov.az doc parameter
         public DateTime? ReceiptDate { get; set; }       // parsed receipt date (UTC)
         public string? ExtractedObjectCode { get; set; } // obyekt kodu parsed from receipt
+        public string? ExtractedTaxNumber { get; set; }  // VÖEN parsed from receipt
         public bool QrVerified { get; set; } = false;    // true → e-kassa JSON verified
 
         public LoyaltyCard LoyaltyCard { get; set; } = null!;

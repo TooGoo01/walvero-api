@@ -36,6 +36,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? QrDocId { get; set; }
         public DateTime? ReceiptDate { get; set; }
         public string? ExtractedObjectCode { get; set; }
+        public string? ExtractedTaxNumber { get; set; }
         public bool QrVerified { get; set; } = false;
 
         // Operator-in branch-i (JWT branch_id claim-dan); pending → confirm zəncirində qorunur

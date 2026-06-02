@@ -56,6 +56,8 @@ namespace Loyalty.Business.Dtos.Get.Main.Branch
         public string? OcrLabelAmount { get; set; }
         public string? OcrLabelObjectCode { get; set; }
         public string? OcrLabelReceiptId { get; set; }
+        public string? OcrLabelTaxNumber { get; set; }
+        public string? ExpectedTaxNumber { get; set; }
         public bool? RequireQrVerification { get; set; }
         public bool? NotifyUserOnMissingQr { get; set; }
         public string? ReceiptTimeZoneId { get; set; }

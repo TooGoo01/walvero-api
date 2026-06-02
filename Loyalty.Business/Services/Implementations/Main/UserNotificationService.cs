@@ -73,6 +73,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 $"{tenantName}: təqdim etdiyiniz çek əvvəlcədən sistemdə qeydiyyatdadır. Eyni çek təkrar istifadə oluna bilməz."),
             "ObjectCodeMismatch" => ("Obyekt kodu uyğun deyil",
                 $"{tenantName}: çekdəki obyekt kodu seçilmiş filiala uyğun deyil. Çekin doğru filialdan olduğundan əmin olun."),
+            "TaxNumberMismatch" => ("VÖEN uyğun deyil",
+                $"{tenantName}: çekdəki VÖEN gözlənilən şirkətə uyğun deyil. Yalnız bu şirkətin çekləri qəbul olunur."),
             "ReceiptDateMismatch" => ("Çekin tarixi uyğun deyil",
                 $"{tenantName}: yalnız bu günkü tarixli çeklər qəbul olunur."),
             "OcrMismatch" => ("Çekin məbləği uyğun deyil",

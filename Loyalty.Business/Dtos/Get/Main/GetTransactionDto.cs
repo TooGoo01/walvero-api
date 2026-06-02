@@ -42,6 +42,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? QrDocId { get; set; }
         public DateTime? ReceiptDate { get; set; }
         public string? ExtractedObjectCode { get; set; }
+        public string? ExtractedTaxNumber { get; set; }
         public bool QrVerified { get; set; }
     }
 }

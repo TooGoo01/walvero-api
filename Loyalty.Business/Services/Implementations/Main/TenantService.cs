@@ -402,6 +402,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (dto.RequireQrVerification.HasValue) category.RequireQrVerification = dto.RequireQrVerification.Value;
                 if (dto.NotifyUserOnMissingQr.HasValue) category.NotifyUserOnMissingQr = dto.NotifyUserOnMissingQr.Value;
                 if (!string.IsNullOrWhiteSpace(dto.ReceiptTimeZoneId)) category.ReceiptTimeZoneId = dto.ReceiptTimeZoneId;
+                if (!string.IsNullOrWhiteSpace(dto.EkassaReceiptUrlTemplate)) category.EkassaReceiptUrlTemplate = dto.EkassaReceiptUrlTemplate;
+                if (!string.IsNullOrWhiteSpace(dto.OcrLabelTaxNumber)) category.OcrLabelTaxNumber = dto.OcrLabelTaxNumber;
+                if (dto.ExpectedTaxNumber != null) category.ExpectedTaxNumber = dto.ExpectedTaxNumber;
 
                 // Handle TenantLocation
                 if (dto.countryId.HasValue || dto.cityId.HasValue || dto.timeZoneId.HasValue)

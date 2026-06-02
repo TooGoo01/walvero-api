@@ -54,6 +54,13 @@ namespace Loyalty.Business.Services
             services.AddScoped<IRedeemService, RedeemService>();
             services.AddScoped<IReceiptValidationService, ReceiptValidationService>();
             services.AddScoped<IWhatsAppAlertService, TwilioWhatsAppAlertService>();
+            services.AddScoped<IEkassaImageFetcher, EkassaImageFetcher>();
+            services.AddHttpClient(EkassaImageFetcher.HttpClientName, c =>
+            {
+                c.Timeout = TimeSpan.FromSeconds(15);
+                c.DefaultRequestHeaders.UserAgent.ParseAdd(
+                    "Mozilla/5.0 (compatible; WalveroScanner/1.0; +https://walvero.com)");
+            });
             services.AddScoped<ReceiptOcrJob>();
             services.AddScoped<IOtpGenerator, OtpGenerator>();
             services.AddScoped<IWalletCredentialProvider, WalletCredentialProvider>();

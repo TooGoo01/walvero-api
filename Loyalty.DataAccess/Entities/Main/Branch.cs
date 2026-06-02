@@ -59,6 +59,8 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? OcrLabelAmount { get; set; }                // null → tenant
         public string? OcrLabelObjectCode { get; set; }            // null → tenant
         public string? OcrLabelReceiptId { get; set; }             // null → tenant
+        public string? OcrLabelTaxNumber { get; set; }             // null → tenant
+        public string? ExpectedTaxNumber { get; set; }             // null → tenant; tenant da null → match skip
         public bool? NotifyUserOnMissingQr { get; set; }           // null → tenant
         public bool? RequireQrVerification { get; set; }           // null → tenant
         public string? ReceiptTimeZoneId { get; set; }             // null → tenant

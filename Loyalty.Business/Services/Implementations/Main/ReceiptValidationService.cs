@@ -34,13 +34,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             RegexOptions.Compiled);
 
         private readonly IAzureStorage _storage;
+        private readonly IEkassaImageFetcher _ekassaFetcher;
         private readonly ILogger<ReceiptValidationService> _logger;
 
         public ReceiptValidationService(
             IAzureStorage storage,
+            IEkassaImageFetcher ekassaFetcher,
             ILogger<ReceiptValidationService> logger)
         {
             _storage = storage;
+            _ekassaFetcher = ekassaFetcher;
             _logger = logger;
         }
 
@@ -110,24 +113,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             decimal? extracted = null;
             DateTime? receiptDate = null;
             string? objectCode = null;
+            string? taxNumber = null;
             string? physicalReceiptId = null;
             bool qrVerified = false;
 
-            // Step 1A: scanner-side e-kassa JSON capture əla isə həmin dəyərləri istifadə et.
-            var payload = ctx.QrVerifiedPayload;
-            if (payload != null && payload.Amount.HasValue)
-            {
-                qrVerified = true;
-                qrDocId ??= payload.DocId;
-                extracted = payload.Amount;
-                receiptDate = payload.CreatedAtUtc;
-                objectCode = payload.CashBoxObjectCode;
-                physicalReceiptId = !string.IsNullOrWhiteSpace(payload.DocumentNumber)
-                    ? payload.DocumentNumber
-                    : payload.DocId;
-            }
-
-            // Step 1B: server-side ZXing QR decode (scanner uğursuz olsa belə backup).
+            // Step 1A: scanner Flutter-də QR oxunmamış olsa, server-side ZXing decode user-in fiziki şəklində.
             if (string.IsNullOrEmpty(qrDocId))
             {
                 try
@@ -139,12 +129,37 @@ namespace Loyalty.Business.Services.Implementations.Main
                     _logger.LogWarning(ex, "ZXing QR decode failed");
                 }
             }
-            // ZXing tapsa amma DocumentNumber yoxsa fallback dedupe key olaraq doc-id istifadə.
-            if (string.IsNullOrWhiteSpace(physicalReceiptId) && !string.IsNullOrWhiteSpace(qrDocId))
+
+            // Step 1B: qrDocId varsa e-kassa-dan birbaşa image fetch et — OCR-i e-kassa image-də işlət
+            // (user-in fiziki şəkilindən daha aydındır, OCR daha dəqiq).
+            byte[] ocrBytes = rawBytes;
+            if (!string.IsNullOrWhiteSpace(qrDocId))
+            {
+                try
+                {
+                    var fetched = await _ekassaFetcher.FetchAsync(qrDocId, ctx.EkassaUrlTemplate, ct);
+                    if (fetched != null && fetched.Bytes.Length > 0)
+                    {
+                        ocrBytes = fetched.Bytes;
+                        qrVerified = true;
+                        _logger.LogInformation("Ekassa image fetched. ct={Ct} len={Len}",
+                            fetched.ContentType, fetched.Bytes.Length);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Ekassa fetch returned null — fallback to user photo");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Ekassa fetch error — fallback to user photo");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(qrDocId))
                 physicalReceiptId = qrDocId;
 
-            // Step 2: OCR fallback — payload yoxdursa amount + date + object-code + receipt-id parse.
-            if (!qrVerified)
+            // Step 2: OCR — payload trust yoxdur, OCR həmişə işləyir (qrVerified halında e-kassa image-ə).
             {
                 var tessdataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
                 if (!Directory.Exists(tessdataPath))
@@ -169,11 +184,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 byte[] preprocessed;
                 try
                 {
-                    preprocessed = await PreprocessAsync(rawBytes, ct);
+                    preprocessed = await PreprocessAsync(ocrBytes, ct);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Receipt image preprocessing failed. RawSize={Size}", rawBytes.Length);
+                    _logger.LogWarning(ex, "Receipt image preprocessing failed. RawSize={Size}", ocrBytes.Length);
                     return new(false, null, carriedReceiptUrl,
                         "Çek şəkli oxunmadı (format dəstəklənmir və ya korlanıb).",
                         QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
@@ -207,6 +222,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 extracted = ExtractByLabel(ocrText, ctx.OcrLabelAmount, AmountValuePattern)
                             ?? ExtractFallbackAmount(ocrText);
                 objectCode ??= ExtractByLabelString(ocrText, ctx.OcrLabelObjectCode, ObjectCodeValuePattern);
+                taxNumber ??= ExtractByLabelString(ocrText, ctx.OcrLabelTaxNumber, TaxNumberValuePattern);
                 if (string.IsNullOrWhiteSpace(physicalReceiptId))
                     physicalReceiptId = ExtractByLabelString(ocrText, ctx.OcrLabelReceiptId, ReceiptIdValuePattern);
                 receiptDate ??= ExtractDate(ocrText);
@@ -218,7 +234,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                         "Çekdə məbləğ tapılmadı. Yenidən aydın şəkil çəkin.",
                         QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
                         ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
-                        FailReasonCode: "OcrUnreadable");
+                        FailReasonCode: "OcrUnreadable",
+                        ExtractedTaxNumber: taxNumber);
                 }
             }
 
@@ -232,7 +249,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
                     ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
                     QrVerified: qrVerified,
-                    FailReasonCode: "ReceiptDateMismatch");
+                    FailReasonCode: "ReceiptDateMismatch",
+                    ExtractedTaxNumber: taxNumber);
             }
 
             // 3b. Object code match (branch-da kod təyin edilibsə və receipt-də tapılsa)
@@ -245,7 +263,22 @@ namespace Loyalty.Business.Services.Implementations.Main
                     QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
                     ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
                     QrVerified: qrVerified,
-                    FailReasonCode: "ObjectCodeMismatch");
+                    FailReasonCode: "ObjectCodeMismatch",
+                    ExtractedTaxNumber: taxNumber);
+            }
+
+            // 3b'. Tax number (VÖEN) match — yeni
+            if (!string.IsNullOrWhiteSpace(ctx.ExpectedTaxNumber)
+                && !string.IsNullOrWhiteSpace(taxNumber)
+                && !string.Equals(ctx.ExpectedTaxNumber.Trim(), taxNumber.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return new(false, extracted, carriedReceiptUrl,
+                    $"VÖEN uyğun deyil (gözlənilən {ctx.ExpectedTaxNumber}, tapıldı {taxNumber}).",
+                    QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                    ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
+                    QrVerified: qrVerified,
+                    FailReasonCode: "TaxNumberMismatch",
+                    ExtractedTaxNumber: taxNumber);
             }
 
             // 3c. QR missing strict mode
@@ -256,7 +289,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
                     ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
                     QrVerified: qrVerified,
-                    FailReasonCode: "QrMissing");
+                    FailReasonCode: "QrMissing",
+                    ExtractedTaxNumber: taxNumber);
             }
 
             // 3d. Amount tolerance
@@ -272,13 +306,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                     QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
                     ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
                     QrVerified: qrVerified,
-                    FailReasonCode: "OcrMismatch");
+                    FailReasonCode: "OcrMismatch",
+                    ExtractedTaxNumber: taxNumber);
             }
 
             return new(true, extracted, carriedReceiptUrl, null,
                 QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
                 ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
-                QrVerified: qrVerified);
+                QrVerified: qrVerified,
+                ExtractedTaxNumber: taxNumber);
         }
 
         private static async Task<byte[]> PreprocessAsync(byte[] input, CancellationToken ct)
@@ -331,25 +367,47 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         // Dynamic label-əsaslı parse: "<label> ... 12,34" formasında məbləğ.
         private const string AmountValuePattern = @"\s*[:\-]?\s*(?<val>\d{1,5}[.,]\d{2})";
-        private const string ObjectCodeValuePattern = @"\s*[:\-]?\s*(?<val>[A-Za-z0-9]{3,20})";
+        private const string ObjectCodeValuePattern = @"\s*[:\-]?\s*(?<val>[A-Za-z0-9\-]{3,20})";
         private const string ReceiptIdValuePattern = @"\s*[:\-]?\s*(?<val>[A-Za-z0-9\-]{5,40})";
+        private const string TaxNumberValuePattern = @"\s*[:\-]?\s*(?<val>\d{7,15})";
 
-        private static decimal? ExtractByLabel(string ocrText, string label, string valuePattern)
+        // Comma-separated label dəstəyi — "Yekun Məbləğ,Cəmi,Total" kimi multi-language list.
+        // Hər label-i ardıcıl yoxlayır, birincisi tapan istifadə edir.
+        private static IEnumerable<string> SplitLabels(string labelOrList)
         {
-            if (string.IsNullOrWhiteSpace(ocrText) || string.IsNullOrWhiteSpace(label)) return null;
-            var pat = Regex.Escape(label) + valuePattern;
-            var m = Regex.Match(ocrText, pat, RegexOptions.IgnoreCase);
-            if (!m.Success) return null;
-            var raw = m.Groups["val"].Value.Replace(',', '.');
-            return decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? v : null;
+            if (string.IsNullOrWhiteSpace(labelOrList)) yield break;
+            foreach (var part in labelOrList.Split(','))
+            {
+                var trimmed = part.Trim();
+                if (!string.IsNullOrEmpty(trimmed)) yield return trimmed;
+            }
         }
 
-        private static string? ExtractByLabelString(string ocrText, string label, string valuePattern)
+        private static decimal? ExtractByLabel(string ocrText, string labelOrList, string valuePattern)
         {
-            if (string.IsNullOrWhiteSpace(ocrText) || string.IsNullOrWhiteSpace(label)) return null;
-            var pat = Regex.Escape(label) + valuePattern;
-            var m = Regex.Match(ocrText, pat, RegexOptions.IgnoreCase);
-            return m.Success ? m.Groups["val"].Value : null;
+            if (string.IsNullOrWhiteSpace(ocrText)) return null;
+            foreach (var label in SplitLabels(labelOrList))
+            {
+                var pat = Regex.Escape(label) + valuePattern;
+                var m = Regex.Match(ocrText, pat, RegexOptions.IgnoreCase);
+                if (!m.Success) continue;
+                var raw = m.Groups["val"].Value.Replace(',', '.');
+                if (decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var v))
+                    return v;
+            }
+            return null;
+        }
+
+        private static string? ExtractByLabelString(string ocrText, string labelOrList, string valuePattern)
+        {
+            if (string.IsNullOrWhiteSpace(ocrText)) return null;
+            foreach (var label in SplitLabels(labelOrList))
+            {
+                var pat = Regex.Escape(label) + valuePattern;
+                var m = Regex.Match(ocrText, pat, RegexOptions.IgnoreCase);
+                if (m.Success) return m.Groups["val"].Value;
+            }
+            return null;
         }
 
         // Label tapılmadıqda OCR-da ən böyük decimal-ı götür (köhnə davranış).

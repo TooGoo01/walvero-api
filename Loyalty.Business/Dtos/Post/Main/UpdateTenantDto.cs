@@ -52,11 +52,14 @@ namespace Loyalty.Business.Dtos.Post.Main
         [MaxLength(20)] public string? AlertWhatsappPhone { get; set; }
 
         // --- QR + dynamic-label config (tenant baseline; nullable means "no change") ---
-        [MaxLength(100)] public string? OcrLabelAmount { get; set; }
-        [MaxLength(100)] public string? OcrLabelObjectCode { get; set; }
-        [MaxLength(100)] public string? OcrLabelReceiptId { get; set; }
+        [MaxLength(300)] public string? OcrLabelAmount { get; set; }
+        [MaxLength(300)] public string? OcrLabelObjectCode { get; set; }
+        [MaxLength(300)] public string? OcrLabelReceiptId { get; set; }
+        [MaxLength(300)] public string? OcrLabelTaxNumber { get; set; }
+        [MaxLength(50)] public string? ExpectedTaxNumber { get; set; }
         public bool? RequireQrVerification { get; set; }
         public bool? NotifyUserOnMissingQr { get; set; }
         [MaxLength(100)] public string? ReceiptTimeZoneId { get; set; }
+        [MaxLength(500)] public string? EkassaReceiptUrlTemplate { get; set; }
     }
 }

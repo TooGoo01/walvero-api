@@ -145,6 +145,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.RequireQrVerification.HasValue) branch.RequireQrVerification = dto.RequireQrVerification;
             if (dto.NotifyUserOnMissingQr.HasValue) branch.NotifyUserOnMissingQr = dto.NotifyUserOnMissingQr;
             if (dto.ReceiptTimeZoneId != null) branch.ReceiptTimeZoneId = dto.ReceiptTimeZoneId;
+            if (dto.OcrLabelTaxNumber != null) branch.OcrLabelTaxNumber = dto.OcrLabelTaxNumber;
+            if (dto.ExpectedTaxNumber != null) branch.ExpectedTaxNumber = dto.ExpectedTaxNumber;
 
             if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
             {

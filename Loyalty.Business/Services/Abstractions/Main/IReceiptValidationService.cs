@@ -3,19 +3,6 @@ using Microsoft.AspNetCore.Http;
 namespace Loyalty.Business.Services.Abstractions.Main
 {
     /// <summary>
-    /// Scanner-dən gələn e-kassa SPA JSON capture nəticəsi. WebView reCAPTCHA təbii icra edib
-    /// `getDocumentPict` cavabını intercept edir, sonra Flutter bu struct-u multipart payload-a
-    /// `qrVerifiedJson` field-i kimi əlavə edir. Bütün dəyərlər opsionaldır — JSON shape dəyişə bilər.
-    /// </summary>
-    public sealed record QrVerifiedPayload(
-        string? DocId,
-        decimal? Amount,
-        DateTime? CreatedAtUtc,
-        string? CashBoxObjectCode,
-        string? DocumentNumber,
-        string? TaxNumber);
-
-    /// <summary>
     /// Validation üçün context: cfg-dən gələn dynamic config + scanner-side optional inputs.
     /// </summary>
     public sealed class ReceiptValidationContext
@@ -24,14 +11,18 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public decimal ToleranceAzn { get; init; }
         public int TenantId { get; init; }
         public int? BranchId { get; init; }
-        public string OcrLabelAmount { get; init; } = "Yekun Məbləğ";
-        public string OcrLabelObjectCode { get; init; } = "Obyekt Kodu";
-        public string OcrLabelReceiptId { get; init; } = "Çek nömrəsi";
+        public string OcrLabelAmount { get; init; } = "Yekun Məbləğ,Cəmi,Total,Sum";
+        public string OcrLabelObjectCode { get; init; } = "Obyektin kodu,Obyekt Kodu,Object Code";
+        public string OcrLabelReceiptId { get; init; } = "Fiskal İD,Fiskal ID,Fiscal ID,Çek nömrəsi";
+        public string OcrLabelTaxNumber { get; init; } = "VÖEN,VOEN,Vergi nömrəsi,Tax number,TIN";
         public string TimeZoneId { get; init; } = "Azerbaijan Standard Time";
         public string? BranchObjectCode { get; init; }
+        public string? ExpectedTaxNumber { get; init; }
         public bool RequireQrVerification { get; init; }
         public string? QrDocIdFromScanner { get; init; }
-        public QrVerifiedPayload? QrVerifiedPayload { get; init; }
+        // E-kassa monitoring endpoint URL template (Tenant-dən gəlir). `{docId}` placeholder.
+        public string EkassaUrlTemplate { get; init; }
+            = "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}";
     }
 
     public sealed record ReceiptValidationResult(
@@ -44,7 +35,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         DateTime? ReceiptDate = null,
         string? ExtractedObjectCode = null,
         bool QrVerified = false,
-        string? FailReasonCode = null);
+        string? FailReasonCode = null,
+        string? ExtractedTaxNumber = null);
 
     public interface IReceiptValidationService
     {

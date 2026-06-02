@@ -9,7 +9,6 @@ using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 
 namespace Loyalty.Business.Services.Implementations.Main
 {
@@ -44,12 +43,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             string ocrLabelAmount,
             string ocrLabelObjectCode,
             string ocrLabelReceiptId,
+            string ocrLabelTaxNumber,
             string timeZoneId,
             string? branchObjectCode,
+            string? expectedTaxNumber,
             bool requireQrVerification,
             bool notifyOnMissingQr,
             string? qrDocId,
-            string? qrVerifiedJson,
+            string ekassaUrlTemplate,
             CancellationToken ct = default)
         {
             using var scope = _scopeFactory.CreateScope();
@@ -105,40 +106,6 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return;
             }
 
-            QrVerifiedPayload? payload = null;
-            if (!string.IsNullOrWhiteSpace(qrVerifiedJson))
-            {
-                try { payload = JsonConvert.DeserializeObject<QrVerifiedPayload>(qrVerifiedJson); }
-                catch (Exception ex) { _logger.LogWarning(ex, "qrVerifiedJson parse failed"); }
-
-                // Audit: real e-kassa JSON shape-i DB-də saxla ki, sonradan
-                // `EkassaCaptureResult.fromJsonString` key heuristic-ləri dəqiqləşdirilə bilsin.
-                // Schema sabitləşdikdən sonra bu blok silinə bilər.
-                try
-                {
-                    db.Set<EkassaJsonAudit>().Add(new EkassaJsonAudit
-                    {
-                        TenantId = tenantId,
-                        BranchId = branchId,
-                        TransactionId = transactionId,
-                        QrDocId = qrDocId,
-                        RawJson = qrVerifiedJson.Length > 100_000
-                            ? qrVerifiedJson.Substring(0, 100_000)
-                            : qrVerifiedJson,
-                        ParsedAmount = payload?.Amount,
-                        ParsedObjectCode = payload?.CashBoxObjectCode,
-                        ParsedDocumentNumber = payload?.DocumentNumber,
-                        ParsedCreatedAtUtc = payload?.CreatedAtUtc,
-                        RegDate = DateTime.UtcNow,
-                    });
-                    await db.SaveChangesAsync(ct);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "EkassaJsonAudit save failed Tx={Id}", transactionId);
-                }
-            }
-
             var ctx = new ReceiptValidationContext
             {
                 EnteredAmount = enteredAmountForOcr,
@@ -148,11 +115,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 OcrLabelAmount = ocrLabelAmount,
                 OcrLabelObjectCode = ocrLabelObjectCode,
                 OcrLabelReceiptId = ocrLabelReceiptId,
+                OcrLabelTaxNumber = ocrLabelTaxNumber,
                 TimeZoneId = timeZoneId,
                 BranchObjectCode = branchObjectCode,
+                ExpectedTaxNumber = expectedTaxNumber,
                 RequireQrVerification = requireQrVerification,
                 QrDocIdFromScanner = qrDocId,
-                QrVerifiedPayload = payload
+                EkassaUrlTemplate = ekassaUrlTemplate,
             };
 
             var ocr = await validator.ValidateBytesAsync(bytes, ctx, tx.ReceiptImageUrl, ct);
@@ -163,7 +132,34 @@ namespace Loyalty.Business.Services.Implementations.Main
             tx.PhysicalReceiptId = ocr.PhysicalReceiptId;
             tx.ReceiptDate = ocr.ReceiptDate;
             tx.ExtractedObjectCode = ocr.ExtractedObjectCode;
+            tx.ExtractedTaxNumber = ocr.ExtractedTaxNumber;
             tx.QrVerified = ocr.QrVerified;
+
+            // E-kassa fetch audit (qrDocId varsa, fetch nəticələrini saxla)
+            if (!string.IsNullOrWhiteSpace(qrDocId))
+            {
+                try
+                {
+                    db.Set<EkassaJsonAudit>().Add(new EkassaJsonAudit
+                    {
+                        TenantId = tenantId,
+                        BranchId = branchId,
+                        TransactionId = transactionId,
+                        QrDocId = qrDocId,
+                        RawJson = $"{{\"fetched\":{(ocr.QrVerified ? "true" : "false")},\"url\":\"{ekassaUrlTemplate.Replace("{docId}", qrDocId)}\"}}",
+                        ParsedAmount = ocr.ExtractedAmount,
+                        ParsedObjectCode = ocr.ExtractedObjectCode,
+                        ParsedDocumentNumber = ocr.PhysicalReceiptId,
+                        ParsedCreatedAtUtc = ocr.ReceiptDate,
+                        RegDate = DateTime.UtcNow,
+                    });
+                    await db.SaveChangesAsync(ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "EkassaJsonAudit save failed Tx={Id}", transactionId);
+                }
+            }
 
             // Priority 1: dedupe (overrides whatever the validator reported)
             if (!string.IsNullOrWhiteSpace(ocr.PhysicalReceiptId))
@@ -225,6 +221,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     "DuplicateReceiptId" => true,
                     "ObjectCodeMismatch" => true,
                     "ReceiptDateMismatch" => true,
+                    "TaxNumberMismatch" => true,
                     _ => false
                 };
                 if (shouldNotifyCustomer)
