@@ -176,7 +176,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     FlagTx(tx, "DuplicateReceiptId");
                     await db.SaveChangesAsync(ct);
-                    await NotifyCustomerAsync(userNotify, tx, tenantName, "DuplicateReceiptId", true);
+                    // WhatsApp alert admin-ə (customer FCM göndərilmir — bu fraud cəhdidir,
+                    // admin xəbərdar olmalıdır, customer-a deyil).
+                    if (!string.IsNullOrWhiteSpace(alertPhone))
+                    {
+                        await SendWhatsAppAlertAsync(db, alert, tx, tenantName, alertPhone!, operatorId,
+                            customerName, enteredAmountForOcr, ocr.ExtractedAmount, amountCapForAlert, "DuplicateReceiptId");
+                    }
                     return;
                 }
             }
@@ -204,30 +210,21 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _logger.LogWarning("ReceiptOcrJob: Tx {Id} flagged. Reason={Reason} Extracted={Amt}",
                     transactionId, reason, ocr.ExtractedAmount);
 
-                // WhatsApp alert to admin:
-                //   - mövcud suspicious-cap aşımı halı: alertEnabled flag-i ilə
-                //   - YENİ QrMissing halı: notifyOnMissingQr flag-i ilə (alertEnabled-dən asılı deyil)
+                // WhatsApp alert admin-ə — bütün suspicious reason-larda göndərilir
+                // (alertPhone konfiqurasiya olmuşsa). EnableSuspiciousAlert flag-i
+                // artıq tələb olunmur — fraud-tipli flagged tx hər zaman admin diqqətini tələb edir.
+                // QrMissing halında notifyOnMissingQr toggle WhatsApp-i təsir edir (opt-in).
                 bool sendWhatsApp = !string.IsNullOrWhiteSpace(alertPhone)
-                    && (alertEnabled || (reason == "QrMissing" && notifyOnMissingQr));
+                    && (reason != "QrMissing" || notifyOnMissingQr);
                 if (sendWhatsApp)
                 {
                     await SendWhatsAppAlertAsync(db, alert, tx, tenantName, alertPhone!, operatorId,
                         customerName, enteredAmountForOcr, ocr.ExtractedAmount, amountCapForAlert, reason);
                 }
 
-                // FCM to customer — QrMissing istisnadır, customer-ə getmir (admin WhatsApp ilə xəbərlənir).
-                bool shouldNotifyCustomer = reason switch
-                {
-                    "DuplicateReceiptId" => true,
-                    "ObjectCodeMismatch" => true,
-                    "ReceiptDateMismatch" => true,
-                    "TaxNumberMismatch" => true,
-                    _ => false
-                };
-                if (shouldNotifyCustomer)
-                {
-                    await NotifyCustomerAsync(userNotify, tx, tenantName, reason, false);
-                }
+                // Customer FCM bütün fraud/error halları üçün söndürülüb. Customer yalnız
+                // çekin qəbul edildiyi anda "yoxlanışdan sonra balans artacaq" bildirişi alır
+                // (RedeemService.cs-də enqueue-dan sonra). Admin WhatsApp ilə xəbərlənir.
             }
 
             await db.SaveChangesAsync(ct);

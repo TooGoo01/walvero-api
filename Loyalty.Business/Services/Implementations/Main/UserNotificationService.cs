@@ -67,6 +67,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         private static (string title, string body) MessageFor(string reason, string tenantName) => reason switch
         {
+            "ReceiptPendingReview" => ("Əməliyyat qeydə alındı",
+                $"{tenantName}: çekiniz yoxlanış üçün göndərildi. Yoxlanışdan sonra balansınız avtomatik artacaq."),
             "QrMissing" => ("Çekdə QR kod yoxdur",
                 $"{tenantName}: əməliyyat üçün QR kodlu çek tələb olunur. Növbəti dəfə QR kodu olan çek təqdim edin."),
             "DuplicateReceiptId" => ("Çek artıq istifadə olunub",

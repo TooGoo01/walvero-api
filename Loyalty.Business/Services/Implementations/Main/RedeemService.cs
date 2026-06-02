@@ -15,6 +15,7 @@ using Loyalty.Infrastructure.Extensions;
 
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using System.Linq;
@@ -46,6 +47,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IWhatsAppAlertService _whatsappAlert;
         private readonly ITenantProvider _tenantProvider;
         private readonly Hangfire.IBackgroundJobClient _jobClient;
+        private readonly IServiceScopeFactory _scopeFactory;
         public RedeemService(
             ILoyaltyCardRepository cardSvc,
             ILoyaltyProgramRepository programSvc,
@@ -65,7 +67,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             IReceiptValidationService receiptValidation,
             IWhatsAppAlertService whatsappAlert,
             ITenantProvider tenantProvider,
-            Hangfire.IBackgroundJobClient jobClient)
+            Hangfire.IBackgroundJobClient jobClient,
+            IServiceScopeFactory scopeFactory)
         {
             _cardSvc = cardSvc;
             _programSvc = programSvc;
@@ -88,6 +91,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _whatsappAlert = whatsappAlert;
             _tenantProvider = tenantProvider;
             _jobClient = jobClient;
+            _scopeFactory = scopeFactory;
         }
 
         // Resolved per-redeem fraud config (branch override + tenant fallback)
@@ -418,6 +422,28 @@ namespace Loyalty.Business.Services.Implementations.Main
                         CancellationToken.None));
 
                     _logger.LogInformation("PendingOcr tx queued. TxId={TxId} CardId={CardId}", pendingTx.Id, card.Id);
+
+                    // Customer-ə "qeydə alındı" bildirişi — fire-and-forget, scope-dan
+                    // ayrı root scope-da işləyir (FCM HTTP call gözləməyə dəyməz).
+                    var notifyCustomerId = card.Customer?.Id;
+                    var notifyTenantName = cfg.TenantName;
+                    if (notifyCustomerId.HasValue)
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                using var rootScope = _scopeFactory.CreateScope();
+                                var notify = rootScope.ServiceProvider.GetRequiredService<IUserNotificationService>();
+                                await notify.NotifyReceiptIssueAsync(
+                                    notifyCustomerId.Value, notifyTenantName, "ReceiptPendingReview", CancellationToken.None);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "ReceiptPendingReview notify failed TxId={TxId}", pendingTx.Id);
+                            }
+                        });
+                    }
 
                     return new RedeemResultDto
                     {
