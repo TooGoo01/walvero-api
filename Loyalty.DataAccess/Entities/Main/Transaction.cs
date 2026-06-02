@@ -44,6 +44,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? ExtractedObjectCode { get; set; } // obyekt kodu parsed from receipt
         public string? ExtractedTaxNumber { get; set; }  // VÖEN parsed from receipt
         public bool QrVerified { get; set; } = false;    // true → e-kassa JSON verified
+        public string? EkassaImageUrl { get; set; }      // Flutter fetch etdiyi e-kassa JPEG blob URL
 
         public LoyaltyCard LoyaltyCard { get; set; } = null!;
     }

@@ -1903,6 +1903,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int?>("EditUserId")
                         .HasColumnType("int");
 
+                    b.Property<string>("EkassaImageUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("ExpiresUtc")
                         .HasColumnType("datetime2");
 
@@ -2953,6 +2956,9 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<int?>("EditUserId")
                         .HasColumnType("int");
+
+                    b.Property<string>("EkassaImageUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ExtractedObjectCode")
                         .HasMaxLength(32)

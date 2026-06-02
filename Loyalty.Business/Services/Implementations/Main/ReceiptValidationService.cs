@@ -117,42 +117,52 @@ namespace Loyalty.Business.Services.Implementations.Main
             string? physicalReceiptId = null;
             bool qrVerified = false;
 
-            // Step 1A: scanner Flutter-də QR oxunmamış olsa, server-side ZXing decode user-in fiziki şəklində.
-            if (string.IsNullOrEmpty(qrDocId))
-            {
-                try
-                {
-                    qrDocId = TryDecodeQr(rawBytes);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "ZXing QR decode failed");
-                }
-            }
-
-            // Step 1B: qrDocId varsa e-kassa-dan birbaşa image fetch et — OCR-i e-kassa image-də işlət
-            // (user-in fiziki şəkilindən daha aydındır, OCR daha dəqiq).
+            // Step 1A: Flutter-in fetch etdiyi e-kassa image priority. AZ ISP-dən gəlir, ən etibarlı.
             byte[] ocrBytes = rawBytes;
-            if (!string.IsNullOrWhiteSpace(qrDocId))
+            if (ctx.EkassaImageBytes != null && ctx.EkassaImageBytes.Length > 0)
             {
-                try
+                ocrBytes = ctx.EkassaImageBytes;
+                qrVerified = true;
+                _logger.LogInformation("Ekassa image from Flutter (preferred). len={Len}",
+                    ctx.EkassaImageBytes.Length);
+            }
+            else
+            {
+                // Flutter göndərmədi (köhnə APK ya QR yoxdur) — server-side ZXing decode cəhd.
+                if (string.IsNullOrEmpty(qrDocId))
                 {
-                    var fetched = await _ekassaFetcher.FetchAsync(qrDocId, ctx.EkassaUrlTemplate, ct);
-                    if (fetched != null && fetched.Bytes.Length > 0)
+                    try
                     {
-                        ocrBytes = fetched.Bytes;
-                        qrVerified = true;
-                        _logger.LogInformation("Ekassa image fetched. ct={Ct} len={Len}",
-                            fetched.ContentType, fetched.Bytes.Length);
+                        qrDocId = TryDecodeQr(rawBytes);
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        _logger.LogWarning("Ekassa fetch returned null — fallback to user photo");
+                        _logger.LogWarning(ex, "ZXing QR decode failed");
                     }
                 }
-                catch (Exception ex)
+
+                // Backend fallback fetch (Azure DC-də çox güman fail — datacenter IP block).
+                if (!string.IsNullOrWhiteSpace(qrDocId))
                 {
-                    _logger.LogError(ex, "Ekassa fetch error — fallback to user photo");
+                    try
+                    {
+                        var fetched = await _ekassaFetcher.FetchAsync(qrDocId, ctx.EkassaUrlTemplate, ct);
+                        if (fetched != null && fetched.Bytes.Length > 0)
+                        {
+                            ocrBytes = fetched.Bytes;
+                            qrVerified = true;
+                            _logger.LogInformation("Ekassa image backend-fetched. ct={Ct} len={Len}",
+                                fetched.ContentType, fetched.Bytes.Length);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Ekassa fetch returned null — fallback to user photo");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Ekassa fetch error — fallback to user photo");
+                    }
                 }
             }
 

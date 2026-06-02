@@ -44,5 +44,6 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? ExtractedObjectCode { get; set; }
         public string? ExtractedTaxNumber { get; set; }
         public bool QrVerified { get; set; }
+        public string? EkassaImageUrl { get; set; }
     }
 }

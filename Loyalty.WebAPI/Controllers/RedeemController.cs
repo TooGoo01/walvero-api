@@ -319,10 +319,13 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             var tenantFlags = await _dbContext.Tenants
                 .AsNoTracking()
                 .Where(t => t.Id == tenantId)
-                .Select(t => new { t.RequireReceiptOcr, t.RequireQrVerification })
+                .Select(t => new { t.RequireReceiptOcr, t.RequireQrVerification, t.EkassaReceiptUrlTemplate })
                 .FirstOrDefaultAsync(ct);
             var tenantOcr = tenantFlags?.RequireReceiptOcr ?? false;
             var tenantQr = tenantFlags?.RequireQrVerification ?? false;
+            var ekassaUrlTemplate = !string.IsNullOrWhiteSpace(tenantFlags?.EkassaReceiptUrlTemplate)
+                ? tenantFlags!.EkassaReceiptUrlTemplate
+                : "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}";
 
             var operatorBranchId = _tenantProvider.CurrentBranchId;
             // JWT-də claim yoxdursa (köhnə token), DB-də ApplicationUser.BranchId-ə fallback
@@ -369,7 +372,8 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 earnCount,
                 spendCount = spendCount2,
                 requireReceiptOcr,
-                requireQrVerification
+                requireQrVerification,
+                ekassaUrlTemplate
             });
         }
 
@@ -388,8 +392,10 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             public IFormFile? ReceiptImage { get; set; }
 
             // QR doğrulaması — scanner Flutter app çekin QR kodunu oxuyub doc-id-ni göndərir.
-            // Backend həmin doc-id ilə birbaşa e-kassa endpoint-dən image fetch edir.
             public string? QrDocId { get; set; }
+
+            // Flutter cihazından AZ ISP-də fetch edilmiş e-kassa JPEG (opsional).
+            public IFormFile? EkassaImage { get; set; }
         }
 
         private static readonly HashSet<string> _allowedReceiptMimes = new(StringComparer.OrdinalIgnoreCase)
@@ -400,7 +406,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
         [HttpPost]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public Task<IActionResult> Start([FromBody] StartRedeemRequest model, CancellationToken ct)
-            => HandleStartAsync(model.Code, model.Delta, model.OrderId, model.mode, model.paymentMethod, model.spendCount, null, null, ct);
+            => HandleStartAsync(model.Code, model.Delta, model.OrderId, model.mode, model.paymentMethod, model.spendCount, null, null, null, ct);
 
         [HttpPost]
         [Consumes("multipart/form-data")]
@@ -417,7 +423,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                     return Task.FromResult<IActionResult>(BadRequest(new { success = false, message = "Çek şəkli formatı dəstəklənmir (jpeg/png/webp)." }));
             }
 
-            return HandleStartAsync(form.Code, form.Delta, form.OrderId, form.mode, form.paymentMethod, form.spendCount, form.ReceiptImage, form.QrDocId, ct);
+            return HandleStartAsync(form.Code, form.Delta, form.OrderId, form.mode, form.paymentMethod, form.spendCount, form.ReceiptImage, form.QrDocId, form.EkassaImage, ct);
         }
 
         private async Task<IActionResult> HandleStartAsync(
@@ -429,6 +435,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             int? spendCountIn,
             IFormFile? receiptImage,
             string? qrDocId,
+            IFormFile? ekassaImage,
             CancellationToken ct)
         {
             _logger.LogInformation("Start redeem called: Code={Code}, Delta={Delta}, Mode={Mode}, HasReceipt={HasReceipt}",
@@ -595,6 +602,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             {
                 LoyaltyProgramId = programId,
                 QrDocId = qrDocId,
+                EkassaImage = ekassaImage,
                 Code = code,
                 Delta = delta,
                 OrderId = orderIdIn,

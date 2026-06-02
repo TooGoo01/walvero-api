@@ -378,6 +378,23 @@ namespace Loyalty.Business.Services.Implementations.Main
                         return Fail("Çek faylının yüklənməsi alınmadı.");
                     }
 
+                    // Flutter-in fetch etdiyi e-kassa image-i (varsa) blob-a yüklə.
+                    string? ekassaBlobUrl = null;
+                    if (request.EkassaImage != null && request.EkassaImage.Length > 0)
+                    {
+                        try
+                        {
+                            var ekassaUploaded = await _receiptValidation.UploadReceiptOnlyAsync(request.EkassaImage, ct);
+                            ekassaBlobUrl = ekassaUploaded.url;
+                            _logger.LogInformation("Ekassa image uploaded. Url={Url} Len={Len}",
+                                ekassaBlobUrl, request.EkassaImage.Length);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Ekassa image upload failed — fallback to user photo");
+                        }
+                    }
+
                     // Transaction yarat PendingOcr status ilə, balansa toxunma
                     var (localTimePending, tzPending) = await _timeZoneService.GetTenantLocalTimeAsync(request.TenantId, null, CancellationToken.None);
                     var pendingTx = BuildTransaction(card, delta, request.OrderId, request.Note,
@@ -386,6 +403,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     pendingTx.BranchId = operatorBranchId;
                     pendingTx.Amount = request.OriginalAmount;
                     pendingTx.ReceiptImageUrl = blobUrl;
+                    pendingTx.EkassaImageUrl = ekassaBlobUrl;
 
                     uow.Repository<Transaction>().Add(pendingTx);
                     uow.Commit();
@@ -419,6 +437,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         cfg.NotifyUserOnMissingQr,
                         request.QrDocId,
                         cfg.EkassaUrlTemplate,
+                        ekassaBlobUrl,
                         CancellationToken.None));
 
                     _logger.LogInformation("PendingOcr tx queued. TxId={TxId} CardId={CardId}", pendingTx.Id, card.Id);

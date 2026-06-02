@@ -57,9 +57,14 @@ namespace Loyalty.Business.Services
             services.AddScoped<IEkassaImageFetcher, EkassaImageFetcher>();
             services.AddHttpClient(EkassaImageFetcher.HttpClientName, c =>
             {
-                c.Timeout = TimeSpan.FromSeconds(15);
+                c.Timeout = TimeSpan.FromSeconds(30);
+                // Real browser UA — bəzi backend firewall-ları default .NET UA bloklayır.
                 c.DefaultRequestHeaders.UserAgent.ParseAdd(
-                    "Mozilla/5.0 (compatible; WalveroScanner/1.0; +https://walvero.com)");
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                c.DefaultRequestHeaders.Accept.ParseAdd("image/jpeg,image/png,image/*,*/*;q=0.8");
+                c.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en-US,en;q=0.9,az;q=0.8");
+                c.DefaultRequestHeaders.Referrer = new Uri("https://monitoring.e-kassa.gov.az/");
             });
             services.AddScoped<ReceiptOcrJob>();
             services.AddScoped<IOtpGenerator, OtpGenerator>();

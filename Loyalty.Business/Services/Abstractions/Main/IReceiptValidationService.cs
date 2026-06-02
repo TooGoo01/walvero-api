@@ -23,6 +23,10 @@ namespace Loyalty.Business.Services.Abstractions.Main
         // E-kassa monitoring endpoint URL template (Tenant-dən gəlir). `{docId}` placeholder.
         public string EkassaUrlTemplate { get; init; }
             = "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}";
+        // Flutter scanner-in AZ-network-dən fetch etdiyi e-kassa JPEG bytes — priority source.
+        // Set olsa OCR bu image-də işləyir, qrVerified=true. Olmasa backend EkassaImageFetcher
+        // cəhd edir (firewall block ehtimalı yüksək), uğursuz olarsa user photo-ya fallback.
+        public byte[]? EkassaImageBytes { get; init; }
     }
 
     public sealed record ReceiptValidationResult(

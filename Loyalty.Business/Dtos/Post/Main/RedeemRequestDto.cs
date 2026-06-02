@@ -46,6 +46,10 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         // QR doğrulaması — scanner Flutter app çekin QR kodu oxuyub doc-id-ni göndərir (opsional).
         public string? QrDocId { get; set; }
+
+        // Flutter cihazından AZ ISP-də fetch edilmiş e-kassa generated JPEG (opsional).
+        // Backend Azure DC-dən e-kassa endpoint-ə çatmadığı üçün Flutter tərəfdə fetch edilir.
+        public IFormFile? EkassaImage { get; set; }
     }
 
     /// <summary>

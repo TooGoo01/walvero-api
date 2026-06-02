@@ -51,6 +51,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             bool notifyOnMissingQr,
             string? qrDocId,
             string ekassaUrlTemplate,
+            string? ekassaImageUrl,
             CancellationToken ct = default)
         {
             using var scope = _scopeFactory.CreateScope();
@@ -106,6 +107,26 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return;
             }
 
+            // Flutter-in fetch etdiyi e-kassa image-i blob-dan oxu (varsa).
+            byte[]? ekassaBytes = null;
+            if (!string.IsNullOrWhiteSpace(ekassaImageUrl))
+            {
+                try
+                {
+                    var ekassaFileName = ExtractBlobFileName(ekassaImageUrl);
+                    if (!string.IsNullOrEmpty(ekassaFileName))
+                    {
+                        ekassaBytes = await storage.DownloadAsync("receipts", ekassaFileName, ct);
+                        _logger.LogInformation("Ekassa image blob downloaded. Url={Url} Len={Len}",
+                            ekassaImageUrl, ekassaBytes?.Length ?? 0);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Ekassa image blob download failed Url={Url}", ekassaImageUrl);
+                }
+            }
+
             var ctx = new ReceiptValidationContext
             {
                 EnteredAmount = enteredAmountForOcr,
@@ -122,6 +143,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 RequireQrVerification = requireQrVerification,
                 QrDocIdFromScanner = qrDocId,
                 EkassaUrlTemplate = ekassaUrlTemplate,
+                EkassaImageBytes = ekassaBytes,
             };
 
             var ocr = await validator.ValidateBytesAsync(bytes, ctx, tx.ReceiptImageUrl, ct);

@@ -38,6 +38,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? ExtractedObjectCode { get; set; }
         public string? ExtractedTaxNumber { get; set; }
         public bool QrVerified { get; set; } = false;
+        public string? EkassaImageUrl { get; set; }
 
         // Operator-in branch-i (JWT branch_id claim-dan); pending → confirm zəncirində qorunur
         public int? BranchId { get; set; }
