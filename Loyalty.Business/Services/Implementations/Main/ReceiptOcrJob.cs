@@ -200,10 +200,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                     await db.SaveChangesAsync(ct);
                     // WhatsApp alert admin-ə (customer FCM göndərilmir — bu fraud cəhdidir,
                     // admin xəbərdar olmalıdır, customer-a deyil).
+                    _logger.LogInformation("[WhatsApp DEDUPE] alertPhone='{Phone}' configured={Configured} TxId={Id}",
+                        alertPhone ?? "<null>", !string.IsNullOrWhiteSpace(alertPhone), tx.Id);
                     if (!string.IsNullOrWhiteSpace(alertPhone))
                     {
                         await SendWhatsAppAlertAsync(db, alert, tx, tenantName, alertPhone!, operatorId,
                             customerName, enteredAmountForOcr, ocr.ExtractedAmount, amountCapForAlert, "DuplicateReceiptId");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[WhatsApp DEDUPE] SKIP — alertPhone empty. Configure Tenant.AlertWhatsappPhone or Branch.AlertWhatsappPhone.");
                     }
                     return;
                 }
@@ -238,10 +244,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // QrMissing halında notifyOnMissingQr toggle WhatsApp-i təsir edir (opt-in).
                 bool sendWhatsApp = !string.IsNullOrWhiteSpace(alertPhone)
                     && (reason != "QrMissing" || notifyOnMissingQr);
+                _logger.LogInformation(
+                    "[WhatsApp DECISION] alertPhone='{Phone}' reason={Reason} notifyOnMissingQr={Notify} sendWhatsApp={Send} TxId={Id}",
+                    alertPhone ?? "<null>", reason, notifyOnMissingQr, sendWhatsApp, tx.Id);
                 if (sendWhatsApp)
                 {
                     await SendWhatsAppAlertAsync(db, alert, tx, tenantName, alertPhone!, operatorId,
                         customerName, enteredAmountForOcr, ocr.ExtractedAmount, amountCapForAlert, reason);
+                }
+                else if (string.IsNullOrWhiteSpace(alertPhone))
+                {
+                    _logger.LogWarning("[WhatsApp DECISION] SKIP — alertPhone empty. Configure Tenant.AlertWhatsappPhone or Branch.AlertWhatsappPhone.");
                 }
 
                 // Customer FCM bütün fraud/error halları üçün söndürülüb. Customer yalnız
@@ -305,12 +318,50 @@ namespace Loyalty.Business.Services.Implementations.Main
                     if (!string.IsNullOrWhiteSpace(full)) betterCustomerName = full;
                 }
 
-                await alert.SendSuspiciousTxAlertAsync(
-                    alertPhone, tenantName, branchName, betterCustomerName, operatorName,
-                    Math.Abs(enteredAmountForOcr), ocrAmount,
-                    amountCapForAlert > 0 ? amountCapForAlert : (decimal?)null,
-                    reason,
-                    tx.OrderId ?? tx.Id.ToString(), CancellationToken.None);
+                // Branch expected values fetch (mismatch hallarında göstərmək üçün)
+                string? expectedObjectCode = null;
+                string? expectedTaxNumber = null;
+                if (tx.BranchId.HasValue)
+                {
+                    var b = await db.Branches.AsNoTracking()
+                        .Where(br => br.Id == tx.BranchId.Value)
+                        .Select(br => new { br.ObjectCode, br.ExpectedTaxNumber })
+                        .FirstOrDefaultAsync(CancellationToken.None);
+                    expectedObjectCode = b?.ObjectCode;
+                    expectedTaxNumber = b?.ExpectedTaxNumber;
+                }
+                // Tenant fallback (branch-də null olarsa)
+                if (string.IsNullOrWhiteSpace(expectedTaxNumber))
+                {
+                    var tenantExp = tx.LoyaltyCard != null
+                        ? await db.Tenants.AsNoTracking()
+                            .Where(t => t.Id == tx.LoyaltyCard.TenantId)
+                            .Select(t => t.ExpectedTaxNumber)
+                            .FirstOrDefaultAsync(CancellationToken.None)
+                        : null;
+                    expectedTaxNumber = tenantExp;
+                }
+
+                await alert.SendSuspiciousTxAlertAsync(new SuspiciousAlertContext
+                {
+                    ToPhone = alertPhone,
+                    TenantName = tenantName,
+                    BranchName = branchName,
+                    CustomerName = betterCustomerName,
+                    OperatorName = operatorName,
+                    EnteredAmount = Math.Abs(enteredAmountForOcr),
+                    OcrAmount = ocrAmount,
+                    Cap = amountCapForAlert > 0 ? amountCapForAlert : (decimal?)null,
+                    SuspiciousReason = reason,
+                    TxReference = tx.OrderId ?? tx.Id.ToString(),
+                    PhysicalReceiptId = tx.PhysicalReceiptId,
+                    QrDocId = tx.QrDocId,
+                    ReceiptDate = tx.ReceiptDate,
+                    ExtractedObjectCode = tx.ExtractedObjectCode,
+                    ExpectedObjectCode = expectedObjectCode,
+                    ExtractedTaxNumber = tx.ExtractedTaxNumber,
+                    ExpectedTaxNumber = expectedTaxNumber,
+                }, CancellationToken.None);
             }
             catch (Exception ex)
             {

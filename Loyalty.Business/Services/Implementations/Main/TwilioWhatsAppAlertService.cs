@@ -13,7 +13,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _logger = logger;
         }
 
-        public async Task SendSuspiciousTxAlertAsync(
+        public Task SendSuspiciousTxAlertAsync(
             string toPhone,
             string tenantName,
             string? branchName,
@@ -26,48 +26,86 @@ namespace Loyalty.Business.Services.Implementations.Main
             string txReference,
             CancellationToken ct = default)
         {
-            if (string.IsNullOrWhiteSpace(toPhone))
+            return SendSuspiciousTxAlertAsync(new SuspiciousAlertContext
             {
-                _logger.LogWarning("Suspicious tx alert skipped — no toPhone configured. Tx={Tx}", txReference);
+                ToPhone = toPhone,
+                TenantName = tenantName,
+                BranchName = branchName,
+                CustomerName = customerName,
+                OperatorName = operatorName,
+                EnteredAmount = enteredAmount,
+                OcrAmount = ocrAmount,
+                Cap = cap,
+                SuspiciousReason = suspiciousReason,
+                TxReference = txReference,
+            }, ct);
+        }
+
+        public async Task SendSuspiciousTxAlertAsync(SuspiciousAlertContext c, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(c.ToPhone))
+            {
+                _logger.LogWarning("Suspicious tx alert skipped — no toPhone configured. Tx={Tx}", c.TxReference);
                 return;
             }
 
-            var reasonLabel = suspiciousReason switch
+            var reasonLabel = c.SuspiciousReason switch
             {
-                "OcrMismatch" => "OCR uyğunsuzluğu",
+                "OcrMismatch" => "OCR məbləği uyğunsuz",
                 "OcrUnreadable" => "OCR oxunmadı",
                 "AmountExceedsCap" => "Məbləğ limiti aşıb",
                 "SpendCountExceedsCap" => "Xərcləmə sayı limiti aşıb",
-                _ => suspiciousReason ?? "Naməlum",
+                "DuplicateReceiptId" => "Eyni çek təkrar istifadə edilib (dedupe)",
+                "ObjectCodeMismatch" => "Obyekt Kodu uyğunsuz (başqa filial çeki?)",
+                "ReceiptDateMismatch" => "Çek tarixi bu gün deyil",
+                "TaxNumberMismatch" => "VÖEN uyğunsuz (başqa şirkət çeki?)",
+                "QrMissing" => "QR kod yoxdur / oxunmadı",
+                "QrVerificationFailed" => "QR doğrulaması uğursuz",
+                "BalanceApplyFailed" => "Balans tətbiqi uğursuz",
+                "OcrDownloadFailed" => "Çek şəkli endirilə bilmədi",
+                _ => c.SuspiciousReason ?? "Naməlum",
             };
 
             var lines = new List<string>
             {
-                $"⚠️ Şübhəli əməliyyat — {tenantName}",
-                $"Filial: {branchName ?? "—"}",
+                $"⚠️ Şübhəli əməliyyat — {c.TenantName}",
+                $"Filial: {c.BranchName ?? "—"}",
                 $"Səbəb: {reasonLabel}",
-                $"Müştəri: {customerName ?? "—"}",
-                $"Operator: {operatorName ?? "—"}",
-                $"Daxil edilən məbləğ: {enteredAmount:0.##} AZN",
+                $"Müştəri: {c.CustomerName ?? "—"}",
+                $"Operator: {c.OperatorName ?? "—"}",
+                $"Daxil edilən məbləğ: {c.EnteredAmount:0.##} AZN",
             };
-            if (ocrAmount.HasValue)
-                lines.Add($"Çekdən oxunan (OCR): {ocrAmount.Value:0.##} AZN");
-            if (cap.HasValue && cap.Value > 0)
-                lines.Add($"Limit (cap): {cap.Value:0.##} AZN");
-            lines.Add($"Tx: {txReference}");
+            if (c.OcrAmount.HasValue)
+                lines.Add($"Çekdən oxunan (OCR): {c.OcrAmount.Value:0.##} AZN");
+            if (c.Cap.HasValue && c.Cap.Value > 0)
+                lines.Add($"Limit (cap): {c.Cap.Value:0.##} AZN");
+
+            // Extended context — yalnız aktual sahələri göstər (boş sahələr atılır)
+            if (c.ReceiptDate.HasValue)
+                lines.Add($"Çekin tarixi: {c.ReceiptDate.Value:dd.MM.yyyy HH:mm}");
+            if (!string.IsNullOrWhiteSpace(c.ExtractedObjectCode) || !string.IsNullOrWhiteSpace(c.ExpectedObjectCode))
+                lines.Add($"Obyekt Kodu: tapılan='{c.ExtractedObjectCode ?? "—"}' gözlənilən='{c.ExpectedObjectCode ?? "—"}'");
+            if (!string.IsNullOrWhiteSpace(c.ExtractedTaxNumber) || !string.IsNullOrWhiteSpace(c.ExpectedTaxNumber))
+                lines.Add($"VÖEN: tapılan='{c.ExtractedTaxNumber ?? "—"}' gözlənilən='{c.ExpectedTaxNumber ?? "—"}'");
+            if (!string.IsNullOrWhiteSpace(c.PhysicalReceiptId))
+                lines.Add($"Fiskal İD: {c.PhysicalReceiptId}");
+            if (!string.IsNullOrWhiteSpace(c.QrDocId))
+                lines.Add($"E-kassa link: https://monitoring.e-kassa.gov.az/#/index?doc={c.QrDocId}");
+
+            lines.Add($"Tx: {c.TxReference}");
 
             var body = string.Join("\n", lines);
 
             try
             {
-                await WhatsAppHelper.SendWhatsAppAsync(toPhone, body, ct);
-                _logger.LogInformation("Suspicious tx alert sent. To={Phone}, Tx={Tx}", MaskPhone(toPhone), txReference);
+                await WhatsAppHelper.SendWhatsAppAsync(c.ToPhone, body, ct);
+                _logger.LogInformation("Suspicious tx alert sent. To={Phone}, Tx={Tx}, Reason={Reason}",
+                    MaskPhone(c.ToPhone), c.TxReference, c.SuspiciousReason);
             }
             catch (Exception ex)
             {
-                // fire-and-forget olmasa belə caller-ı bloklamamalıyıq
                 _logger.LogError(ex, "Suspicious tx WhatsApp alert send failed. To={Phone}, Tx={Tx}",
-                    MaskPhone(toPhone), txReference);
+                    MaskPhone(c.ToPhone), c.TxReference);
             }
         }
 
