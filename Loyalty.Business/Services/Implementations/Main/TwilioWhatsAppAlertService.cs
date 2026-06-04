@@ -95,12 +95,36 @@ namespace Loyalty.Business.Services.Implementations.Main
             lines.Add($"Tx: {c.TxReference}");
 
             var body = string.Join("\n", lines);
+            var templateSid = WhatsAppHelper.GetConfiguredTemplateSid();
 
             try
             {
-                await WhatsAppHelper.SendWhatsAppAsync(c.ToPhone, body, ct);
-                _logger.LogInformation("Suspicious tx alert sent. To={Phone}, Tx={Tx}, Reason={Reason}",
-                    MaskPhone(c.ToPhone), c.TxReference, c.SuspiciousReason);
+                if (!string.IsNullOrWhiteSpace(templateSid))
+                {
+                    // Template path — 24h window-dan asılı deyil. Variables map:
+                    // {{1}}=tenant {{2}}=branch {{3}}=reason {{4}}=customer
+                    // {{5}}=operator {{6}}=amount {{7}}=tx
+                    var variables = new Dictionary<string, string>
+                    {
+                        ["1"] = c.TenantName,
+                        ["2"] = c.BranchName ?? "—",
+                        ["3"] = reasonLabel,
+                        ["4"] = c.CustomerName ?? "—",
+                        ["5"] = c.OperatorName ?? "—",
+                        ["6"] = $"{c.EnteredAmount:0.##}",
+                        ["7"] = c.TxReference,
+                    };
+                    await WhatsAppHelper.SendWhatsAppTemplateAsync(c.ToPhone, templateSid, variables, ct);
+                    _logger.LogInformation("Suspicious tx alert sent (template). To={Phone}, Tx={Tx}, Reason={Reason}, TemplateSid={Sid}",
+                        MaskPhone(c.ToPhone), c.TxReference, c.SuspiciousReason, templateSid);
+                }
+                else
+                {
+                    // Free-form path — 24h window içində işləyir, mövcud davranış.
+                    await WhatsAppHelper.SendWhatsAppAsync(c.ToPhone, body, ct);
+                    _logger.LogInformation("Suspicious tx alert sent (free-form). To={Phone}, Tx={Tx}, Reason={Reason}",
+                        MaskPhone(c.ToPhone), c.TxReference, c.SuspiciousReason);
+                }
             }
             catch (Exception ex)
             {

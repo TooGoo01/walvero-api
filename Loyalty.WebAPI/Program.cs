@@ -148,7 +148,8 @@ builder.Services.AddCors(options =>
             "https://www.qrwithmenu.com",
             "https://walvero-next-d0fydybpcxe8d2d6.westeurope-01.azurewebsites.net",
             "https://walvero.com",
-            "https://qrwithmenu.com")
+            "https://qrwithmenu.com",
+            "https://menu.hollywood.az")
         .AllowCredentials()
         .AllowAnyHeader()
         .AllowAnyMethod()));

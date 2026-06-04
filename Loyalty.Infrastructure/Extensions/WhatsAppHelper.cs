@@ -13,9 +13,33 @@ namespace Loyalty.Infrastructure.Extensions
     public static class WhatsAppHelper
     {
         /// <summary>
-        /// Twilio WhatsApp ilə mesaj göndərir. Uğursuzlarda <c>InvalidOperationException</c> atır.
+        /// Twilio WhatsApp ilə mesaj göndərir. `Twilio:ContentTemplateSid` config-də varsa
+        /// template ilə (24h window-dan kənarda işləyir), yoxsa free-form body ilə (24h içində).
         /// </summary>
         public static async Task<bool> SendWhatsAppAsync(string toPhone, string body, CancellationToken ct = default)
+        {
+            return await SendInternalAsync(toPhone, body, null, null, ct);
+        }
+
+        /// <summary>
+        /// Template-li mesaj göndərir. Approved Content Template SID + variables istifadə edir.
+        /// 24h conversation window-dan asılı deyil.
+        /// </summary>
+        /// <param name="contentVariables">Key-value dict — `{"1":"Walvero","2":"Səbail",...}` formatında JSON-laşır.</param>
+        public static async Task<bool> SendWhatsAppTemplateAsync(
+            string toPhone,
+            string contentSid,
+            IDictionary<string, string> contentVariables,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(contentSid))
+                throw new InvalidOperationException("contentSid required for template send.");
+            var json = System.Text.Json.JsonSerializer.Serialize(contentVariables);
+            return await SendInternalAsync(toPhone, null, contentSid, json, ct);
+        }
+
+        private static async Task<bool> SendInternalAsync(
+            string toPhone, string? body, string? contentSid, string? contentVariables, CancellationToken ct)
         {
             var configuration = Helper_GetConfiguration();
             var accountSid = configuration["Twilio:AccountSid"];
@@ -32,10 +56,25 @@ namespace Loyalty.Infrastructure.Extensions
             TwilioClient.Init(accountSid, authToken);
             try
             {
-                var msg = await MessageResource.CreateAsync(
-                    to: new PhoneNumber($"whatsapp:{toE164}"),
-                    from: new PhoneNumber($"whatsapp:{fromNumber}"),
-                    body: body);
+                MessageResource msg;
+                if (!string.IsNullOrWhiteSpace(contentSid))
+                {
+                    var options = new Twilio.Rest.Api.V2010.Account.CreateMessageOptions(
+                        new PhoneNumber($"whatsapp:{toE164}"))
+                    {
+                        From = new PhoneNumber($"whatsapp:{fromNumber}"),
+                        ContentSid = contentSid,
+                        ContentVariables = contentVariables,
+                    };
+                    msg = await MessageResource.CreateAsync(options);
+                }
+                else
+                {
+                    msg = await MessageResource.CreateAsync(
+                        to: new PhoneNumber($"whatsapp:{toE164}"),
+                        from: new PhoneNumber($"whatsapp:{fromNumber}"),
+                        body: body);
+                }
 
                 if (msg.ErrorCode.HasValue)
                     throw new InvalidOperationException(
@@ -48,6 +87,14 @@ namespace Loyalty.Infrastructure.Extensions
                 throw new InvalidOperationException(
                     $"Twilio WhatsApp API error (Code={ex.Code}, Message={ex.Message})", ex);
             }
+        }
+
+        /// <summary>Config-dən optional Template SID oxu (`Twilio:ContentTemplateSid`).</summary>
+        public static string? GetConfiguredTemplateSid()
+        {
+            var c = Helper_GetConfiguration();
+            var sid = c["Twilio:ContentTemplateSid"];
+            return string.IsNullOrWhiteSpace(sid) ? null : sid;
         }
 
         private static string NormalizeToE164(string phone)
