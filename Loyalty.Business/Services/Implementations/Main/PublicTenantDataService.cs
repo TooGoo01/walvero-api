@@ -302,11 +302,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             var categoriesQuery = _dbContext.MenuCategories
                 .AsNoTracking()
                 .Where(mc => mc.TenantId == tenant.Id && mc.IsActive
-                          && (mc.BranchId == null || (branchId != null && mc.BranchId == branchId)));
+                          && (branchId == null ? mc.BranchId == null : mc.BranchId == branchId));
 
             var categories = await categoriesQuery
                 .Include(mc => mc.MenuItems.Where(mi => mi.IsActive
-                          && (mi.BranchId == null || (branchId != null && mi.BranchId == branchId))))
+                          && (branchId == null ? mi.BranchId == null : mi.BranchId == branchId)))
                     .ThenInclude(mi => mi.MenuItemImages)
                 .OrderBy(mc => mc.Id)
                 .ToListAsync(ct);
