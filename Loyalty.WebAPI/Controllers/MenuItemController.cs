@@ -161,7 +161,7 @@ namespace Loyalty.WebAPI.Controllers
             var result = await _menuItemService.Add(dto);
             if (result.Success)
             {
-               
+
                     var compressedFiles = CompressImages(dto.Files);
 
                     // Update model with compressed images
@@ -171,10 +171,18 @@ namespace Loyalty.WebAPI.Controllers
                     // Add product and files
                     await _menuItemImageService.AddRangeAsync(dto, (int)result.Data);
 
+                    if (dto.IngredientVideoFile != null || dto.RemoveIngredientVideo)
+                    {
+                        await _menuItemImageService.UploadIngredientVideoAsync(
+                            (int)result.Data,
+                            dto.IngredientVideoFile,
+                            dto.RemoveIngredientVideo);
+                    }
+
                     return Ok(result);
-                
+
             }
-              
+
 
             return BadRequest(result);
         }
@@ -236,6 +244,14 @@ namespace Loyalty.WebAPI.Controllers
 
                     // Update product and files
                     await _menuItemImageService.UpdateRangeAsync(dto, id);
+                }
+
+                if (dto.IngredientVideoFile != null || dto.RemoveIngredientVideo)
+                {
+                    await _menuItemImageService.UploadIngredientVideoAsync(
+                        id,
+                        dto.IngredientVideoFile,
+                        dto.RemoveIngredientVideo);
                 }
 
                 return Ok(result);

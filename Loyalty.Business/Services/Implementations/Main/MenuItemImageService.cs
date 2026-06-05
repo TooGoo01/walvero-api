@@ -8,7 +8,9 @@ using Loyalty.Business.Services.Abstractions.Storage.Azure;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
+using Microsoft.AspNetCore.Http;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Loyalty.Business.Services.Implementations.Main
@@ -74,6 +76,46 @@ namespace Loyalty.Business.Services.Implementations.Main
                 MenuItem = about
             }));
 
+            _unitOfWork.Commit();
+            return new ServiceResult(true);
+        }
+
+        public async Task<ServiceResult> UploadIngredientVideoAsync(int menuItemId, IFormFile? videoFile, bool remove)
+        {
+            const string container = "video-menu";
+            var item = _unitOfWork.Repository<MenuItem>().Get(x => x.Id == menuItemId);
+            if (item == null)
+                return new ServiceResult(false, "Menu item tapılmadı");
+
+            var shouldClearExisting = (videoFile != null && videoFile.Length > 0) || remove;
+            if (shouldClearExisting && !string.IsNullOrWhiteSpace(item.IngredientVideoFileName) && _storage != null)
+            {
+                try
+                {
+                    await _storage.DeleteAsync(container, item.IngredientVideoFileName);
+                }
+                catch
+                {
+                    // storage-da fayl tapılmadı və ya silinə bilmədi — davam et
+                }
+
+                item.IngredientVideoUrl = null;
+                item.IngredientVideoFileName = null;
+            }
+
+            if (videoFile != null && videoFile.Length > 0)
+            {
+                var collection = new FormFileCollection { videoFile };
+                var uploaded = await _storage.UploadAsync(container, collection);
+                var first = uploaded.FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(first.fileName))
+                {
+                    item.IngredientVideoFileName = first.fileName;
+                    item.IngredientVideoUrl = first.pathOrContainerName;
+                }
+            }
+
+            _unitOfWork.Repository<MenuItem>().Update(item);
             _unitOfWork.Commit();
             return new ServiceResult(true);
         }

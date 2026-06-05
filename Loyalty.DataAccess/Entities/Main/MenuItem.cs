@@ -31,6 +31,9 @@ namespace Loyalty.DataAccess.Entities.Main
         public int? BranchId { get; set; }
         public Branch? Branch { get; set; }
 
+        public string? IngredientVideoUrl { get; set; }
+        public string? IngredientVideoFileName { get; set; }
+
         public ICollection<MenuItemImage> MenuItemImages { get; set; } = new List<MenuItemImage>();
     }
 }

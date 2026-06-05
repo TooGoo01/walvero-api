@@ -334,7 +334,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Price = mi.Price,
                     DiscountPrice = mi.DiscountPrice,
                     PrepTimeMinutes = mi.PrepTimeMinutes,
-                    ImageUrls = mi.MenuItemImages.Select(img => img.Path).ToList()
+                    ImageUrls = mi.MenuItemImages.Select(img => img.Path).ToList(),
+                    IngredientVideoUrl = mi.IngredientVideoUrl
                 }).ToList()
             }).ToList();
 

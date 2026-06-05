@@ -101,18 +101,29 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 if (!string.IsNullOrWhiteSpace(templateSid))
                 {
-                    // Template path — 24h window-dan asılı deyil. Variables map:
-                    // {{1}}=tenant {{2}}=branch {{3}}=reason {{4}}=customer
-                    // {{5}}=operator {{6}}=amount {{7}}=tx
+                    // Template path — 24h window-dan asılı deyil. Variables map (3 var, Meta approval-friendly):
+                    // {{1}}=tenant   {{2}}=details (multi-field joined)   {{3}}=tx
+                    var detailParts = new List<string>
+                    {
+                        $"Filial: {c.BranchName ?? "—"}",
+                        $"Səbəb: {reasonLabel}",
+                        $"Müştəri: {c.CustomerName ?? "—"}",
+                        $"Operator: {c.OperatorName ?? "—"}",
+                        $"Məbləğ: {c.EnteredAmount:0.##} AZN",
+                    };
+                    if (c.OcrAmount.HasValue) detailParts.Add($"OCR: {c.OcrAmount.Value:0.##} AZN");
+                    if (c.ReceiptDate.HasValue) detailParts.Add($"Tarix: {c.ReceiptDate.Value:dd.MM.yyyy}");
+                    if (!string.IsNullOrWhiteSpace(c.ExtractedObjectCode) || !string.IsNullOrWhiteSpace(c.ExpectedObjectCode))
+                        detailParts.Add($"Obyekt: tapılan={c.ExtractedObjectCode ?? "—"}/gözlənilən={c.ExpectedObjectCode ?? "—"}");
+                    if (!string.IsNullOrWhiteSpace(c.ExtractedTaxNumber) || !string.IsNullOrWhiteSpace(c.ExpectedTaxNumber))
+                        detailParts.Add($"VÖEN: tapılan={c.ExtractedTaxNumber ?? "—"}/gözlənilən={c.ExpectedTaxNumber ?? "—"}");
+                    if (!string.IsNullOrWhiteSpace(c.PhysicalReceiptId)) detailParts.Add($"Fiskal İD: {c.PhysicalReceiptId}");
+
                     var variables = new Dictionary<string, string>
                     {
                         ["1"] = c.TenantName,
-                        ["2"] = c.BranchName ?? "—",
-                        ["3"] = reasonLabel,
-                        ["4"] = c.CustomerName ?? "—",
-                        ["5"] = c.OperatorName ?? "—",
-                        ["6"] = $"{c.EnteredAmount:0.##}",
-                        ["7"] = c.TxReference,
+                        ["2"] = string.Join(" · ", detailParts),
+                        ["3"] = c.TxReference,
                     };
                     await WhatsAppHelper.SendWhatsAppTemplateAsync(c.ToPhone, templateSid, variables, ct);
                     _logger.LogInformation("Suspicious tx alert sent (template). To={Phone}, Tx={Tx}, Reason={Reason}, TemplateSid={Sid}",

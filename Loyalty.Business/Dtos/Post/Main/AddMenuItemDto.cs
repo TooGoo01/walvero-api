@@ -37,5 +37,9 @@ namespace Loyalty.Business.Dtos.Post.Main
         public int? BranchId { get; set; }
 
         public IFormFileCollection? Files { get; set; }
+
+        public IFormFile? IngredientVideoFile { get; set; }
+
+        public bool RemoveIngredientVideo { get; set; }
     }
 }

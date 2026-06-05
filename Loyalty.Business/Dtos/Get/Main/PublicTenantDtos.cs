@@ -210,5 +210,6 @@ namespace Loyalty.Business.Dtos.Get.Main
         public double DiscountPrice { get; set; }
         public string? PrepTimeMinutes { get; set; }
         public List<string> ImageUrls { get; set; } = new();
+        public string? IngredientVideoUrl { get; set; }
     }
 }

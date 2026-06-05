@@ -1454,6 +1454,12 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("IngredientVideoFileName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IngredientVideoUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
