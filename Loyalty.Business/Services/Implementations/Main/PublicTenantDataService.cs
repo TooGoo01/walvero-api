@@ -2,6 +2,7 @@ using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Context;
+using Loyalty.DataAccess.Entities.Main;
 using Microsoft.EntityFrameworkCore;
 
 namespace Loyalty.Business.Services.Implementations.Main
@@ -301,15 +302,36 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var categoriesQuery = _dbContext.MenuCategories
                 .AsNoTracking()
-                .Where(mc => mc.TenantId == tenant.Id && mc.IsActive
-                          && (branchId == null ? mc.BranchId == null : mc.BranchId == branchId));
+                .Where(mc => mc.TenantId == tenant.Id && mc.IsActive);
 
-            var categories = await categoriesQuery
-                .Include(mc => mc.MenuItems.Where(mi => mi.IsActive
-                          && (branchId == null ? mi.BranchId == null : mi.BranchId == branchId)))
-                    .ThenInclude(mi => mi.MenuItemImages)
-                .OrderBy(mc => mc.Id)
-                .ToListAsync(ct);
+            if (branchId.HasValue)
+            {
+                var bId = branchId.Value;
+                categoriesQuery = categoriesQuery.Where(mc => mc.BranchId == bId);
+            }
+            else
+            {
+                categoriesQuery = categoriesQuery.Where(mc => mc.BranchId == null);
+            }
+
+            List<MenuCategory> categories;
+            if (branchId.HasValue)
+            {
+                var bId = branchId.Value;
+                categories = await categoriesQuery
+                    .Include(mc => mc.MenuItems.Where(mi => mi.IsActive && mi.BranchId == bId))
+                        .ThenInclude(mi => mi.MenuItemImages)
+                    .OrderBy(mc => mc.Id)
+                    .ToListAsync(ct);
+            }
+            else
+            {
+                categories = await categoriesQuery
+                    .Include(mc => mc.MenuItems.Where(mi => mi.IsActive && mi.BranchId == null))
+                        .ThenInclude(mi => mi.MenuItemImages)
+                    .OrderBy(mc => mc.Id)
+                    .ToListAsync(ct);
+            }
 
             var result = categories.Select(mc => new MenuCategoryGroupDto
             {

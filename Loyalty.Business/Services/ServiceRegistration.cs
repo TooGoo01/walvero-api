@@ -67,6 +67,7 @@ namespace Loyalty.Business.Services
                 c.DefaultRequestHeaders.Referrer = new Uri("https://monitoring.e-kassa.gov.az/");
             });
             services.AddScoped<ReceiptOcrJob>();
+            services.AddScoped<PosBatchOperationJob>();
             services.AddScoped<IOtpGenerator, OtpGenerator>();
             services.AddScoped<IWalletCredentialProvider, WalletCredentialProvider>();
             services.AddScoped<IAppleWalletFactory, AppleWalletFactory>();
