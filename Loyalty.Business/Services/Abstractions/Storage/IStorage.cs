@@ -22,6 +22,20 @@ namespace Loyalty.Business.Services.Abstractions.Storage
               string pathOrContainerName,
               IFormFile file);
 
+        /// <summary>
+        /// Video-nu sürətli açılma üçün hazırlayıb yükləyir:
+        ///  1) ffmpeg `-c copy -movflags +faststart` — moov atom faylın başına köçürülür,
+        ///     player tam download gözləməyib ilk neçə yüz KB yüklənən kimi play başladır.
+        ///  2) ffmpeg ilə ~1-ci saniyədən poster JPEG generator olunur.
+        ///  3) Hər iki blob `Cache-Control: public, max-age=31536000, immutable`,
+        ///     `Content-Disposition: inline`, dəqiq `Content-Type` ilə yüklənir.
+        /// ffmpeg yoxdursa video-nu raw kimi yükləyir (yenə də cache header-ları ilə),
+        /// posterUrl null qayıdır — graceful degrade.
+        /// </summary>
+        Task<UploadedVideoResult> UploadProcessedVideoAsync(
+              string pathOrContainerName,
+              IFormFile file);
+
         Task DeleteAsync(string pathOrContainerName, string fileName);
         List<string> GetFiles(string pathOrContainerName);
         bool HasFile(string pathOrContainerName, string fileName);

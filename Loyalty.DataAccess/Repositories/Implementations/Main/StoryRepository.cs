@@ -63,6 +63,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     ImageUrl = s.ImageUrl,
                     SmallImageUrl = s.SmallImageUrl,
                     VideoUrl = s.VideoUrl,
+                    VideoPosterUrl = s.VideoPosterUrl,
                     TenantId = s.TenantId
                 })
                 .ToListAsync(ct);

@@ -20,6 +20,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int? BranchId { get; set; }
         public string? BranchName { get; set; }
         public string? IngredientVideoUrl { get; set; }
+        public string? IngredientVideoPosterUrl { get; set; }
         public List<GetMenuItemImageDto>? MenuItemImages { get; set; }
     }
 }

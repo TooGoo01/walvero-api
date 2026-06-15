@@ -3,6 +3,7 @@ using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.Business.Services.Implementations.Main;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -37,32 +38,64 @@ namespace Loyalty.WebAPI.Controllers
         [HttpPost("pos_batch_webhook")]
         public async Task<IActionResult> Receive([FromBody] PosBatchWebhookRequest request, CancellationToken ct)
         {
+            var traceId = HttpContext.TraceIdentifier;
+            var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var sw = Stopwatch.StartNew();
+
+            using var _ = _logger.BeginScope(new Dictionary<string, object>
+            {
+                ["TraceId"] = traceId,
+                ["ClientIp"] = clientIp,
+                ["Endpoint"] = "pos_batch_webhook"
+            });
+
             try
             {
                 _logger.LogInformation(
+                    "pos batch webhook RECEIVED. traceId={TraceId} clientIp={ClientIp} opCount={OpCount} orgId={OrgId} uocId={UocId}",
+                    traceId, clientIp, request?.Operations?.Count ?? 0, request?.OrganizationId, request?.UocId);
+
+                _logger.LogDebug(
                     "pos batch webhook RAW: {RawJson}",
                     JsonSerializer.Serialize(request));
 
                 if (request == null || request.Operations == null || request.Operations.Count == 0)
+                {
+                    _logger.LogWarning("pos batch webhook VALIDATION FAIL: operations array is required. traceId={TraceId}", traceId);
                     return Ok(new { success = false, message = "operations array is required" });
+                }
 
                 if (string.IsNullOrWhiteSpace(request.OrganizationId))
+                {
+                    _logger.LogWarning("pos batch webhook VALIDATION FAIL: organizationId required. traceId={TraceId}", traceId);
                     return Ok(new { success = false, message = "organizationId is required" });
+                }
 
+                var resolveSw = Stopwatch.StartNew();
                 var ctx = await _resolver.ResolveByVenueAndSourceAsync(request.OrganizationId, IikoSource, ct);
+                bool usedUocFallback = false;
                 if (ctx == null && !string.IsNullOrWhiteSpace(request.UocId))
+                {
                     ctx = await _resolver.ResolveByVenueAndSourceAsync(request.UocId, IikoSource, ct);
+                    usedUocFallback = ctx != null;
+                }
+                resolveSw.Stop();
 
                 if (ctx == null)
                 {
                     _logger.LogWarning(
-                        "pos batch webhook: tenant not found. organizationId={OrgId} uocId={UocId}",
-                        request.OrganizationId, request.UocId);
+                        "pos batch webhook TENANT_NOT_FOUND. traceId={TraceId} organizationId={OrgId} uocId={UocId} resolveMs={ResolveMs}",
+                        traceId, request.OrganizationId, request.UocId, resolveSw.ElapsedMilliseconds);
                     return Ok(new { success = false, message = "Tenant integration not found" });
                 }
 
+                _logger.LogInformation(
+                    "pos batch webhook TENANT_RESOLVED. traceId={TraceId} tenantId={TenantId} integrationId={IntegrationId} loyaltyProgramId={LoyaltyProgramId} usedUocFallback={Fallback} resolveMs={ResolveMs}",
+                    traceId, ctx.TenantId, ctx.TenantIntegrationId, ctx.LoyaltyProgramId, usedUocFallback, resolveSw.ElapsedMilliseconds);
+
                 int enqueued = 0, failedToEnqueue = 0;
                 var enqueueErrors = new List<object>();
+                var enqueueSw = Stopwatch.StartNew();
 
                 for (int i = 0; i < request.Operations.Count; i++)
                 {
@@ -90,16 +123,20 @@ namespace Loyalty.WebAPI.Controllers
                             ChangedOn = op.ChangedOn
                         };
 
-                        _jobClient.Enqueue<PosBatchOperationJob>(j =>
+                        var jobId = _jobClient.Enqueue<PosBatchOperationJob>(j =>
                             j.ProcessAsync(ctx, iikoReq, CancellationToken.None));
                         enqueued++;
+
+                        _logger.LogDebug(
+                            "pos batch ENQUEUED. traceId={TraceId} index={Idx} jobId={JobId} txId={TxId} customerId={CustomerId} sum={Sum} balance={Balance} type={Type}",
+                            traceId, i, jobId, op.TransactionId, op.CustomerId, op.Sum, op.Balance, op.TransactionType);
                     }
                     catch (Exception itemEx)
                     {
                         failedToEnqueue++;
                         _logger.LogError(itemEx,
-                            "pos batch enqueue error. index={Idx} txId={TxId} customerId={CustomerId}",
-                            i, op.TransactionId, op.CustomerId);
+                            "pos batch ENQUEUE_FAIL. traceId={TraceId} index={Idx} txId={TxId} customerId={CustomerId}",
+                            traceId, i, op.TransactionId, op.CustomerId);
                         enqueueErrors.Add(new
                         {
                             index = i,
@@ -110,9 +147,13 @@ namespace Loyalty.WebAPI.Controllers
                     }
                 }
 
+                enqueueSw.Stop();
+                sw.Stop();
+
                 _logger.LogInformation(
-                    "pos batch webhook enqueued: orgId={OrgId} total={Total} enqueued={Enqueued} failed={Failed}",
-                    request.OrganizationId, request.Operations.Count, enqueued, failedToEnqueue);
+                    "pos batch webhook COMPLETED. traceId={TraceId} orgId={OrgId} tenantId={TenantId} total={Total} enqueued={Enqueued} failedToEnqueue={Failed} resolveMs={ResolveMs} enqueueMs={EnqueueMs} totalMs={TotalMs}",
+                    traceId, request.OrganizationId, ctx.TenantId, request.Operations.Count, enqueued, failedToEnqueue,
+                    resolveSw.ElapsedMilliseconds, enqueueSw.ElapsedMilliseconds, sw.ElapsedMilliseconds);
 
                 return Ok(new
                 {
@@ -126,7 +167,10 @@ namespace Loyalty.WebAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "pos batch webhook unhandled error");
+                sw.Stop();
+                _logger.LogError(ex,
+                    "pos batch webhook UNHANDLED_ERROR. traceId={TraceId} totalMs={TotalMs}",
+                    traceId, sw.ElapsedMilliseconds);
                 return Ok(new { success = false, message = "Internal error" });
             }
         }

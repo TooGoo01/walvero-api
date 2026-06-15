@@ -1,0 +1,291 @@
+{
+  "info": {
+    "_postman_id": "c1f3e7a2-9b4d-4e8a-b5c6-1f2e3d4c5b6a",
+    "name": "Walvero — POS Batch Webhook",
+    "description": "Inbound webhook collection for POS partners (iiko-pattern batch). All requests target POST /api/wallet/pos_batch_webhook. Server always returns HTTP 200; check response body for success/errors.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://appapi.walvero.com",
+      "type": "string"
+    },
+    {
+      "key": "organizationId",
+      "value": "8a3c5b1e-9d2f-4e7a-b8c9-1f2e3d4c5b6a",
+      "type": "string"
+    },
+    {
+      "key": "customerId1",
+      "value": "ext-cust-1001",
+      "type": "string"
+    },
+    {
+      "key": "customerId2",
+      "value": "ext-cust-1002",
+      "type": "string"
+    },
+    {
+      "key": "customerId3",
+      "value": "ext-cust-1003",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Happy path — batch (3 ops)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"uocId\": null,\n  \"operations\": [\n    {\n      \"transactionId\": \"batch-tx-001\",\n      \"customerId\": \"{{customerId1}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 12.5,\n      \"balance\": 137.5,\n      \"walletId\": \"wallet-1001\",\n      \"orderId\": \"order-9001\",\n      \"orderNumber\": 9001,\n      \"terminalGroupId\": \"terminal-A\",\n      \"isDelivery\": false,\n      \"phone\": \"+994501234567\",\n      \"changedOn\": \"2026-06-11T10:15:30.000Z\",\n      \"notificationType\": 1\n    },\n    {\n      \"transactionId\": \"batch-tx-002\",\n      \"customerId\": \"{{customerId2}}\",\n      \"transactionType\": \"redeem\",\n      \"sum\": -5.0,\n      \"balance\": 20.0,\n      \"walletId\": \"wallet-1002\",\n      \"orderId\": \"order-9002\",\n      \"orderNumber\": 9002\n    },\n    {\n      \"transactionId\": \"batch-tx-003\",\n      \"customerId\": \"{{customerId3}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 8.0,\n      \"balance\": 48.0,\n      \"walletId\": \"wallet-1003\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "wallet",
+            "pos_batch_webhook"
+          ]
+        },
+        "description": "3 əməliyyatlı uğurlu batch. Gözlənilir: 200 + { success:true, total:3, enqueued:3, failedToEnqueue:0 }."
+      },
+      "response": [
+        {
+          "name": "Success — 3 enqueued",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"success\": true,\n  \"total\": 3,\n  \"enqueued\": 3,\n  \"failedToEnqueue\": 0,\n  \"message\": \"Accepted for background processing\",\n  \"errors\": []\n}"
+        }
+      ]
+    },
+    {
+      "name": "2. Single operation (earn)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"operations\": [\n    {\n      \"transactionId\": \"single-tx-100\",\n      \"customerId\": \"{{customerId1}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 25.0,\n      \"balance\": 175.0,\n      \"walletId\": \"wallet-1001\",\n      \"orderId\": \"order-100\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "wallet",
+            "pos_batch_webhook"
+          ]
+        },
+        "description": "1 əməliyyatlı sorğu — minimal payload. earn = müsbət sum."
+      },
+      "response": []
+    },
+    {
+      "name": "3. Single operation (redeem)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"operations\": [\n    {\n      \"transactionId\": \"single-tx-200\",\n      \"customerId\": \"{{customerId1}}\",\n      \"transactionType\": \"redeem\",\n      \"sum\": -10.0,\n      \"balance\": 165.0,\n      \"walletId\": \"wallet-1001\",\n      \"orderId\": \"order-200\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "wallet",
+            "pos_batch_webhook"
+          ]
+        },
+        "description": "Xal istifadə (redeem) — mənfi sum. Balance əməliyyatdan sonrakı qalıq."
+      },
+      "response": []
+    },
+    {
+      "name": "4. Idempotency test (dublikat batch)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"operations\": [\n    {\n      \"transactionId\": \"batch-tx-001\",\n      \"customerId\": \"{{customerId1}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 12.5,\n      \"balance\": 137.5,\n      \"walletId\": \"wallet-1001\",\n      \"orderId\": \"order-9001\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "wallet",
+            "pos_batch_webhook"
+          ]
+        },
+        "description": "Eyni transactionId+walletId ilə (1-ci sorğu ilə eyni). HTTP 200 qayıdır, amma background job 'Already processed (duplicate)' qaytarır — balans dəyişmir."
+      },
+      "response": []
+    },
+    {
+      "name": "5. Validation — boş operations",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"operations\": []\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "wallet",
+            "pos_batch_webhook"
+          ]
+        },
+        "description": "Gözlənilir: 200 + { success:false, message:'operations array is required' }"
+      },
+      "response": []
+    },
+    {
+      "name": "6. Validation — organizationId yoxdur",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"operations\": [\n    {\n      \"transactionId\": \"no-org-test\",\n      \"customerId\": \"{{customerId1}}\",\n      \"sum\": 1.0,\n      \"balance\": 1.0,\n      \"walletId\": \"w\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "wallet",
+            "pos_batch_webhook"
+          ]
+        },
+        "description": "Gözlənilir: 200 + { success:false, message:'organizationId is required' }"
+      },
+      "response": []
+    },
+    {
+      "name": "7. Tenant tapılmadı (yalançı orgId)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"organizationId\": \"00000000-0000-0000-0000-000000000000\",\n  \"operations\": [\n    {\n      \"transactionId\": \"unknown-tenant-test\",\n      \"customerId\": \"x\",\n      \"sum\": 1.0,\n      \"balance\": 1.0,\n      \"walletId\": \"w\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "wallet",
+            "pos_batch_webhook"
+          ]
+        },
+        "description": "Gözlənilir: 200 + { success:false, message:'Tenant integration not found' }"
+      },
+      "response": []
+    },
+    {
+      "name": "8. Yük testi — 10 op batch",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"operations\": [\n    { \"transactionId\":\"load-001\", \"customerId\":\"{{customerId1}}\", \"sum\":1.0, \"balance\":101.0, \"walletId\":\"w1\", \"transactionType\":\"earn\" },\n    { \"transactionId\":\"load-002\", \"customerId\":\"{{customerId1}}\", \"sum\":1.0, \"balance\":102.0, \"walletId\":\"w1\", \"transactionType\":\"earn\" },\n    { \"transactionId\":\"load-003\", \"customerId\":\"{{customerId1}}\", \"sum\":1.0, \"balance\":103.0, \"walletId\":\"w1\", \"transactionType\":\"earn\" },\n    { \"transactionId\":\"load-004\", \"customerId\":\"{{customerId2}}\", \"sum\":2.0, \"balance\":52.0, \"walletId\":\"w2\", \"transactionType\":\"earn\" },\n    { \"transactionId\":\"load-005\", \"customerId\":\"{{customerId2}}\", \"sum\":2.0, \"balance\":54.0, \"walletId\":\"w2\", \"transactionType\":\"earn\" },\n    { \"transactionId\":\"load-006\", \"customerId\":\"{{customerId2}}\", \"sum\":-3.0, \"balance\":51.0, \"walletId\":\"w2\", \"transactionType\":\"redeem\" },\n    { \"transactionId\":\"load-007\", \"customerId\":\"{{customerId3}}\", \"sum\":5.0, \"balance\":55.0, \"walletId\":\"w3\", \"transactionType\":\"earn\" },\n    { \"transactionId\":\"load-008\", \"customerId\":\"{{customerId3}}\", \"sum\":5.0, \"balance\":60.0, \"walletId\":\"w3\", \"transactionType\":\"earn\" },\n    { \"transactionId\":\"load-009\", \"customerId\":\"{{customerId3}}\", \"sum\":-10.0, \"balance\":50.0, \"walletId\":\"w3\", \"transactionType\":\"redeem\" },\n    { \"transactionId\":\"load-010\", \"customerId\":\"{{customerId1}}\", \"sum\":7.5, \"balance\":110.5, \"walletId\":\"w1\", \"transactionType\":\"earn\" }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "wallet",
+            "pos_batch_webhook"
+          ]
+        },
+        "description": "10 op batch — HTTP cavab <500ms olmalıdır. Background processing paralel davam edir."
+      },
+      "response": []
+    }
+  ]
+}

@@ -13,6 +13,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? ImageUrl { get; set; }
         public string? SmallImageUrl { get; set; }
         public string? VideoUrl { get; set; }
+        public string? VideoPosterUrl { get; set; }
         public string? MediaType { get; set; } // "video" və ya "image" — frontend isVideo yoxlaması üçün
         public int? TenantId { get; set; }
     }

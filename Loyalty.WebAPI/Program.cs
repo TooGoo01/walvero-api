@@ -449,6 +449,12 @@ app.UseResponseCompression();
 // Response Caching middleware - must be BEFORE UseSession
 app.UseResponseCaching();
 
+// BlobUrlRewriteMiddleware: rewrites blob.core.windows.net → CDN host in JSON responses.
+// MUST come BEFORE UseResponseCompression in the response pipeline (i.e. registered AFTER, since
+// middleware runs in reverse on response path) so we modify the body before it gets gzipped.
+// Behavior is no-op (single type check) when `Cdn:BaseUrl` is empty.
+app.UseMiddleware<Loyalty.WebAPI.Middleware.BlobUrlRewriteMiddleware>();
+
 app.UseSession();
 
 app.UseAuthentication();

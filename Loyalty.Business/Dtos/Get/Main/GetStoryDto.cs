@@ -15,6 +15,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? SmallImageUrl { get; set; }
         public string? ImageUrl { get; set; }
         public string? VideoUrl { get; set; }
+        public string? VideoPosterUrl { get; set; }
         public int? TenantId { get; set; }
         public bool IsActive { get; set; }
     }

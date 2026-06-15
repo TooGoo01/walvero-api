@@ -1,0 +1,105 @@
+{
+  "info": {
+    "_postman_id": "d2a4f8b3-1c5e-4f9b-a6d7-2e3f4a5b6c7d",
+    "name": "Walvero — POS Batch Webhook (Load Test)",
+    "description": "Tək sorğu — bir batch-də 15 əməliyyat (earn + redeem qarışıq, 3 müştəri). Server cavabı <500ms olmalıdır; processing background-da paralel davam edir.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://appapi.walvero.com",
+      "type": "string"
+    },
+    {
+      "key": "organizationId",
+      "value": "8a3c5b1e-9d2f-4e7a-b8c9-1f2e3d4c5b6a",
+      "type": "string"
+    },
+    {
+      "key": "customerId1",
+      "value": "ext-cust-1001",
+      "type": "string"
+    },
+    {
+      "key": "customerId2",
+      "value": "ext-cust-1002",
+      "type": "string"
+    },
+    {
+      "key": "customerId3",
+      "value": "ext-cust-1003",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "POST pos_batch_webhook — 15 ops",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('success=true', () => pm.expect(json.success).to.be.true);",
+              "pm.test('total=15', () => pm.expect(json.total).to.eql(15));",
+              "pm.test('enqueued=15', () => pm.expect(json.enqueued).to.eql(15));",
+              "pm.test('failedToEnqueue=0', () => pm.expect(json.failedToEnqueue).to.eql(0));",
+              "pm.test('Response time < 1500ms', () => pm.expect(pm.response.responseTime).to.be.below(1500));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"uocId\": null,\n  \"operations\": [\n    {\n      \"transactionId\": \"load-tx-001\",\n      \"customerId\": \"{{customerId1}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 10.0,\n      \"balance\": 110.0,\n      \"walletId\": \"wallet-1001\",\n      \"orderId\": \"order-1001\",\n      \"orderNumber\": 1001,\n      \"terminalGroupId\": \"terminal-A\",\n      \"isDelivery\": false,\n      \"phone\": \"+994501111111\",\n      \"changedOn\": \"2026-06-11T09:00:00.000Z\",\n      \"notificationType\": 1\n    },\n    {\n      \"transactionId\": \"load-tx-002\",\n      \"customerId\": \"{{customerId1}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 15.5,\n      \"balance\": 125.5,\n      \"walletId\": \"wallet-1001\",\n      \"orderId\": \"order-1002\",\n      \"orderNumber\": 1002,\n      \"terminalGroupId\": \"terminal-A\",\n      \"changedOn\": \"2026-06-11T09:05:00.000Z\"\n    },\n    {\n      \"transactionId\": \"load-tx-003\",\n      \"customerId\": \"{{customerId1}}\",\n      \"transactionType\": \"redeem\",\n      \"sum\": -5.0,\n      \"balance\": 120.5,\n      \"walletId\": \"wallet-1001\",\n      \"orderId\": \"order-1003\",\n      \"orderNumber\": 1003,\n      \"changedOn\": \"2026-06-11T09:10:00.000Z\"\n    },\n    {\n      \"transactionId\": \"load-tx-004\",\n      \"customerId\": \"{{customerId1}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 8.0,\n      \"balance\": 128.5,\n      \"walletId\": \"wallet-1001\",\n      \"orderId\": \"order-1004\",\n      \"orderNumber\": 1004\n    },\n    {\n      \"transactionId\": \"load-tx-005\",\n      \"customerId\": \"{{customerId1}}\",\n      \"transactionType\": \"redeem\",\n      \"sum\": -12.5,\n      \"balance\": 116.0,\n      \"walletId\": \"wallet-1001\",\n      \"orderId\": \"order-1005\",\n      \"orderNumber\": 1005\n    },\n    {\n      \"transactionId\": \"load-tx-006\",\n      \"customerId\": \"{{customerId2}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 20.0,\n      \"balance\": 70.0,\n      \"walletId\": \"wallet-1002\",\n      \"orderId\": \"order-2001\",\n      \"orderNumber\": 2001,\n      \"terminalGroupId\": \"terminal-B\",\n      \"isDelivery\": true,\n      \"phone\": \"+994502222222\"\n    },\n    {\n      \"transactionId\": \"load-tx-007\",\n      \"customerId\": \"{{customerId2}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 6.5,\n      \"balance\": 76.5,\n      \"walletId\": \"wallet-1002\",\n      \"orderId\": \"order-2002\",\n      \"orderNumber\": 2002\n    },\n    {\n      \"transactionId\": \"load-tx-008\",\n      \"customerId\": \"{{customerId2}}\",\n      \"transactionType\": \"redeem\",\n      \"sum\": -3.0,\n      \"balance\": 73.5,\n      \"walletId\": \"wallet-1002\",\n      \"orderId\": \"order-2003\",\n      \"orderNumber\": 2003\n    },\n    {\n      \"transactionId\": \"load-tx-009\",\n      \"customerId\": \"{{customerId2}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 11.0,\n      \"balance\": 84.5,\n      \"walletId\": \"wallet-1002\",\n      \"orderId\": \"order-2004\",\n      \"orderNumber\": 2004\n    },\n    {\n      \"transactionId\": \"load-tx-010\",\n      \"customerId\": \"{{customerId2}}\",\n      \"transactionType\": \"redeem\",\n      \"sum\": -7.5,\n      \"balance\": 77.0,\n      \"walletId\": \"wallet-1002\",\n      \"orderId\": \"order-2005\",\n      \"orderNumber\": 2005\n    },\n    {\n      \"transactionId\": \"load-tx-011\",\n      \"customerId\": \"{{customerId3}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 25.0,\n      \"balance\": 175.0,\n      \"walletId\": \"wallet-1003\",\n      \"orderId\": \"order-3001\",\n      \"orderNumber\": 3001,\n      \"terminalGroupId\": \"terminal-A\",\n      \"phone\": \"+994503333333\"\n    },\n    {\n      \"transactionId\": \"load-tx-012\",\n      \"customerId\": \"{{customerId3}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 30.0,\n      \"balance\": 205.0,\n      \"walletId\": \"wallet-1003\",\n      \"orderId\": \"order-3002\",\n      \"orderNumber\": 3002\n    },\n    {\n      \"transactionId\": \"load-tx-013\",\n      \"customerId\": \"{{customerId3}}\",\n      \"transactionType\": \"redeem\",\n      \"sum\": -50.0,\n      \"balance\": 155.0,\n      \"walletId\": \"wallet-1003\",\n      \"orderId\": \"order-3003\",\n      \"orderNumber\": 3003\n    },\n    {\n      \"transactionId\": \"load-tx-014\",\n      \"customerId\": \"{{customerId3}}\",\n      \"transactionType\": \"earn\",\n      \"sum\": 18.5,\n      \"balance\": 173.5,\n      \"walletId\": \"wallet-1003\",\n      \"orderId\": \"order-3004\",\n      \"orderNumber\": 3004\n    },\n    {\n      \"transactionId\": \"load-tx-015\",\n      \"customerId\": \"{{customerId3}}\",\n      \"transactionType\": \"redeem\",\n      \"sum\": -23.5,\n      \"balance\": 150.0,\n      \"walletId\": \"wallet-1003\",\n      \"orderId\": \"order-3005\",\n      \"orderNumber\": 3005\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "wallet",
+            "pos_batch_webhook"
+          ]
+        },
+        "description": "15 op batch — 3 müştəri (5 op hər biri), earn+redeem qarışıq.\n\nGözlənilir:\n- HTTP 200\n- success: true\n- total: 15, enqueued: 15, failedToEnqueue: 0\n- Response time < 1500ms\n\nBackground processing dashboard /hangfire-də görünür."
+      },
+      "response": [
+        {
+          "name": "Success — all 15 enqueued",
+          "originalRequest": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "cookie": [],
+          "body": "{\n  \"success\": true,\n  \"total\": 15,\n  \"enqueued\": 15,\n  \"failedToEnqueue\": 0,\n  \"message\": \"Accepted for background processing\",\n  \"errors\": []\n}"
+        }
+      ]
+    }
+  ]
+}

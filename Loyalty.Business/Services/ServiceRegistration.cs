@@ -35,6 +35,7 @@ namespace Loyalty.Business.Services
             services.Configure<GoogleWalletOptions>(configuration.GetSection("GoogleWallet"));
 
             // 3) Servis lifetimeləri (Scoped)
+            services.AddSingleton<Loyalty.Business.Services.Implementations.Storage.BlobUrlRewriter>();
             services.AddScoped<IAzureStorage, AzureStorage>();
             services.AddScoped<IContactService, ContactService>();
             services.AddScoped<ITenantService, TenantService>();

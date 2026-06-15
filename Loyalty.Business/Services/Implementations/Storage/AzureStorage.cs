@@ -1,19 +1,39 @@
 ﻿using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Loyalty.Business.Services.Abstractions.Storage;
 using Loyalty.Business.Services.Abstractions.Storage.Azure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
 namespace Loyalty.Business.Services.Implementations.Storage
 {
     public class AzureStorage : IAzureStorage
     {
+        // 1 il immutable cache — bütün upload-larda random suffix (unique URL) olduğu üçün
+        // overwrite riski yoxdur, edge/browser üçün uzun cache təhlükəsizdir.
+        private const string LongLivedCacheControl = "public, max-age=31536000, immutable";
+        private const string VideoCacheControl = LongLivedCacheControl;
+
         readonly BlobServiceClient _blobServiceClient;
         BlobContainerClient _blobContainerClient;
-        public AzureStorage(IConfiguration configuration)
+        private readonly string? _ffmpegBinaryFolder;
+        private readonly ILogger<AzureStorage>? _logger;
+        private readonly BlobUrlRewriter? _urlRewriter;
+
+        public AzureStorage(IConfiguration configuration, ILogger<AzureStorage>? logger = null, BlobUrlRewriter? urlRewriter = null)
         {
             _blobServiceClient = new(configuration["Storage:Azure"]);
+            _ffmpegBinaryFolder = configuration["FFMpeg:BinaryFolder"];
+            _logger = logger;
+            _urlRewriter = urlRewriter;
+        }
+
+        private string BuildPublicUrl(string containerName, string blobName)
+        {
+            var raw = $"https://walverostorage.blob.core.windows.net/{containerName}/{blobName}";
+            return _urlRewriter?.Rewrite(raw) ?? raw;
         }
         public async Task DeleteAsync(string containerName, string fileName)
         {
@@ -57,13 +77,41 @@ namespace Loyalty.Business.Services.Implementations.Storage
             foreach (IFormFile file in files)
             {
                 var name = Path.GetFileNameWithoutExtension(file.FileName) + rnd.Next(1, 1000).ToString() + Path.GetExtension(file.FileName);
-                //string fileNewName = await FileRenameAsync(pathOrContainerName, file.Name, HasFile);
 
                 BlobClient blobClient = _blobContainerClient.GetBlobClient(name);
-                await blobClient.UploadAsync(file.OpenReadStream());
-                datas.Add((name, $"https://walverostorage.blob.core.windows.net/{pathOrContainerName}/{name}"));
+                await blobClient.UploadAsync(file.OpenReadStream(), new BlobUploadOptions
+                {
+                    HttpHeaders = new BlobHttpHeaders
+                    {
+                        ContentType = ResolveContentType(file),
+                        ContentDisposition = "inline",
+                        CacheControl = LongLivedCacheControl,
+                    }
+                });
+                datas.Add((name, BuildPublicUrl(pathOrContainerName, name)));
             }
             return datas;
+        }
+
+        private static string ResolveContentType(IFormFile file)
+        {
+            if (!string.IsNullOrWhiteSpace(file.ContentType) && file.ContentType != "application/octet-stream")
+                return file.ContentType;
+
+            return Path.GetExtension(file.FileName).ToLowerInvariant() switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".webp" => "image/webp",
+                ".gif" => "image/gif",
+                ".svg" => "image/svg+xml",
+                ".bmp" => "image/bmp",
+                ".mp4" => "video/mp4",
+                ".webm" => "video/webm",
+                ".mov" => "video/quicktime",
+                ".pdf" => "application/pdf",
+                _ => "application/octet-stream"
+            };
         }
 
         public async Task<(string fileName, string pathOrContainerName)> UploadVideoHlsAsync(
@@ -94,7 +142,172 @@ namespace Loyalty.Business.Services.Implementations.Storage
                 }
             });
 
-            return (name, $"https://walverostorage.blob.core.windows.net/{pathOrContainerName}/{name}");
+            return (name, BuildPublicUrl(pathOrContainerName, name));
+        }
+
+        public async Task<UploadedVideoResult> UploadProcessedVideoAsync(
+            string pathOrContainerName,
+            IFormFile file)
+        {
+            _blobContainerClient = _blobServiceClient.GetBlobContainerClient(pathOrContainerName);
+            await _blobContainerClient.CreateIfNotExistsAsync();
+            await _blobContainerClient.SetAccessPolicyAsync(PublicAccessType.BlobContainer);
+
+            var ext = Path.GetExtension(file.FileName);
+            if (string.IsNullOrWhiteSpace(ext)) ext = ".mp4";
+
+            var stem = Path.GetFileNameWithoutExtension(file.FileName)
+                + Random.Shared.Next(1000, 9999);
+            var videoBlobName = stem + ext;
+
+            var workDir = Path.Combine(Path.GetTempPath(), $"vproc_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(workDir);
+            var srcPath = Path.Combine(workDir, "src" + ext);
+            var fastStartPath = Path.Combine(workDir, "out" + ext);
+            var posterPath = Path.Combine(workDir, "poster.jpg");
+
+            string? posterBlobName = null;
+            string? posterUrl = null;
+
+            try
+            {
+                await using (var fs = new FileStream(srcPath, FileMode.Create, FileAccess.Write))
+                    await file.CopyToAsync(fs);
+
+                var ffmpeg = ResolveBinary("ffmpeg");
+                string videoUploadPath = srcPath;
+
+                if (ffmpeg is not null)
+                {
+                    var faststartOk = await RunProcessAsync(ffmpeg,
+                        new[] { "-y", "-i", srcPath, "-c", "copy", "-movflags", "+faststart", fastStartPath });
+                    if (faststartOk && File.Exists(fastStartPath) && new FileInfo(fastStartPath).Length > 0)
+                        videoUploadPath = fastStartPath;
+
+                    var posterOk = await RunProcessAsync(ffmpeg,
+                        new[] { "-y", "-ss", "1", "-i", srcPath, "-vframes", "1",
+                                "-vf", "scale=480:-2", "-q:v", "4", posterPath });
+                    if (!posterOk || !File.Exists(posterPath) || new FileInfo(posterPath).Length == 0)
+                    {
+                        // Bəzi qısa videolar üçün 1s seek alınmaya bilər — 0-cı frame-i sınay
+                        posterOk = await RunProcessAsync(ffmpeg,
+                            new[] { "-y", "-i", srcPath, "-vframes", "1",
+                                    "-vf", "scale=480:-2", "-q:v", "4", posterPath });
+                    }
+
+                    if (posterOk && File.Exists(posterPath) && new FileInfo(posterPath).Length > 0)
+                    {
+                        posterBlobName = stem + ".poster.jpg";
+                        var posterClient = _blobContainerClient.GetBlobClient(posterBlobName);
+                        await using var posterStream = File.OpenRead(posterPath);
+                        await posterClient.UploadAsync(posterStream, new BlobUploadOptions
+                        {
+                            HttpHeaders = new BlobHttpHeaders
+                            {
+                                ContentType = "image/jpeg",
+                                ContentDisposition = "inline",
+                                CacheControl = VideoCacheControl,
+                            }
+                        });
+                        posterUrl = BuildPublicUrl(pathOrContainerName, posterBlobName);
+                    }
+                }
+                else
+                {
+                    _logger?.LogWarning("ffmpeg tapılmadı (FFMpeg:BinaryFolder='{Folder}') — video raw yüklənir, poster generator olmadı", _ffmpegBinaryFolder);
+                }
+
+                var videoClient = _blobContainerClient.GetBlobClient(videoBlobName);
+                await using (var videoStream = File.OpenRead(videoUploadPath))
+                {
+                    await videoClient.UploadAsync(videoStream, new BlobUploadOptions
+                    {
+                        HttpHeaders = new BlobHttpHeaders
+                        {
+                            ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "video/mp4" : file.ContentType,
+                            ContentDisposition = "inline",
+                            CacheControl = VideoCacheControl,
+                        }
+                    });
+                }
+
+                var videoUrl = BuildPublicUrl(pathOrContainerName, videoBlobName);
+                return new UploadedVideoResult(videoBlobName, videoUrl, posterBlobName, posterUrl);
+            }
+            finally
+            {
+                try { Directory.Delete(workDir, recursive: true); } catch { }
+            }
+        }
+
+        private string? ResolveBinary(string name)
+        {
+            var exeName = OperatingSystem.IsWindows() ? name + ".exe" : name;
+
+            if (!string.IsNullOrWhiteSpace(_ffmpegBinaryFolder))
+            {
+                var resolved = Path.IsPathRooted(_ffmpegBinaryFolder)
+                    ? _ffmpegBinaryFolder
+                    : Path.Combine(AppContext.BaseDirectory, _ffmpegBinaryFolder);
+                var candidate = Path.Combine(resolved, exeName);
+                if (File.Exists(candidate)) return candidate;
+            }
+
+            // PATH-da axtar
+            var pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (string.IsNullOrEmpty(pathEnv)) return null;
+            foreach (var dir in pathEnv.Split(Path.PathSeparator))
+            {
+                if (string.IsNullOrWhiteSpace(dir)) continue;
+                try
+                {
+                    var candidate = Path.Combine(dir, exeName);
+                    if (File.Exists(candidate)) return candidate;
+                }
+                catch { /* invalid path entry — skip */ }
+            }
+            return null;
+        }
+
+        private async Task<bool> RunProcessAsync(string fileName, IEnumerable<string> args, int timeoutMs = 60_000)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                foreach (var a in args) psi.ArgumentList.Add(a);
+
+                using var proc = Process.Start(psi);
+                if (proc is null) return false;
+
+                using var cts = new CancellationTokenSource(timeoutMs);
+                try
+                {
+                    await proc.WaitForExitAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    try { proc.Kill(entireProcessTree: true); } catch { }
+                    _logger?.LogWarning("Process {Bin} timeout-a düşdü ({Ms} ms)", fileName, timeoutMs);
+                    return false;
+                }
+
+                if (proc.ExitCode == 0) return true;
+                var stderr = await proc.StandardError.ReadToEndAsync();
+                _logger?.LogWarning("Process {Bin} exit {Code}: {Err}", fileName, proc.ExitCode, stderr);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Process {Bin} işə düşmədi", fileName);
+                return false;
+            }
         }
 
         /// <summary>
@@ -187,15 +400,16 @@ namespace Loyalty.Business.Services.Implementations.Storage
             {
                 var name = Path.GetFileNameWithoutExtension(file.FileName) + rnd.Next(1, 1000).ToString() + Path.GetExtension(file.FileName);
                 BlobClient blobClient = _blobContainerClient.GetBlobClient(name);
-                await blobClient.UploadAsync(file.OpenReadStream(), new Azure.Storage.Blobs.Models.BlobUploadOptions
+                await blobClient.UploadAsync(file.OpenReadStream(), new BlobUploadOptions
                 {
-                    HttpHeaders = new Azure.Storage.Blobs.Models.BlobHttpHeaders
+                    HttpHeaders = new BlobHttpHeaders
                     {
-                        ContentType = file.ContentType ?? "application/octet-stream",
-                        ContentDisposition = "inline"
+                        ContentType = ResolveContentType(file),
+                        ContentDisposition = "inline",
+                        CacheControl = LongLivedCacheControl,
                     }
                 });
-                datas.Add((name, $"https://walverostorage.blob.core.windows.net/{pathOrContainerName}/{name}"));
+                datas.Add((name, BuildPublicUrl(pathOrContainerName, name)));
             }
 
             return datas;

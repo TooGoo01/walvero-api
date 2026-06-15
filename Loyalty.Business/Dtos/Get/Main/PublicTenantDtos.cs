@@ -211,5 +211,6 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? PrepTimeMinutes { get; set; }
         public List<string> ImageUrls { get; set; } = new();
         public string? IngredientVideoUrl { get; set; }
+        public string? IngredientVideoPosterUrl { get; set; }
     }
 }

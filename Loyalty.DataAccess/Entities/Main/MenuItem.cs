@@ -33,6 +33,8 @@ namespace Loyalty.DataAccess.Entities.Main
 
         public string? IngredientVideoUrl { get; set; }
         public string? IngredientVideoFileName { get; set; }
+        public string? IngredientVideoPosterUrl { get; set; }
+        public string? IngredientVideoPosterFileName { get; set; }
 
         public ICollection<MenuItemImage> MenuItemImages { get; set; } = new List<MenuItemImage>();
     }

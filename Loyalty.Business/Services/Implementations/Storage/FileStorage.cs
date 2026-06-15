@@ -116,6 +116,26 @@ namespace Loyalty.Business.Services.Implementations.Storage
             return (name, $"/resource/{pathOrContainerName}/{name}");
         }
 
+        /// <summary>
+        /// Local dev fallback — ffmpeg post-processing yoxdur, sadəcə fayl yazılır.
+        /// Poster generator olunmur; poster sahələri null qayıdır.
+        /// </summary>
+        public async Task<UploadedVideoResult> UploadProcessedVideoAsync(
+            string pathOrContainerName,
+            IFormFile file)
+        {
+            var upload = Path.Combine("wwwroot", "resource", pathOrContainerName);
+            Directory.CreateDirectory(upload);
+            var ext = Path.GetExtension(file.FileName);
+            if (string.IsNullOrWhiteSpace(ext)) ext = ".mp4";
+            var name = Path.GetFileNameWithoutExtension(file.FileName)
+                + Random.Shared.Next(1000, 9999) + ext;
+            var fullPath = Path.Combine(upload, name);
+            await using var fs = new FileStream(fullPath, FileMode.Create, FileAccess.Write);
+            await file.CopyToAsync(fs);
+            return new UploadedVideoResult(name, $"/resource/{pathOrContainerName}/{name}", null, null);
+        }
+
         public async Task<List<(string fileName, string pathOrContainerName)>> UploadAsync(string pathOrContainerName, IFormFileCollection files)
         {
             List<(string fileName, string pathOrContainerName)> datas = new();

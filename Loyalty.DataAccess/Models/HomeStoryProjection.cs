@@ -12,6 +12,7 @@ namespace Loyalty.DataAccess.Models
         public string? ImageUrl { get; set; }
         public string? SmallImageUrl { get; set; }
         public string? VideoUrl { get; set; }
+        public string? VideoPosterUrl { get; set; }
         public int? TenantId { get; set; }
     }
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Hangfire;
 using Loyalty.Business.Models.TenantIntegration;
 using Loyalty.Business.Services.Abstractions.Main;
@@ -29,18 +30,46 @@ namespace Loyalty.Business.Services.Implementations.Main
             using var scope = _scopeFactory.CreateScope();
             var service = scope.ServiceProvider.GetRequiredService<IWalletWebhookService>();
 
+            using var logScope = _logger.BeginScope(new Dictionary<string, object>
+            {
+                ["Job"] = "PosBatchOperationJob",
+                ["TenantId"] = ctx.TenantId,
+                ["IntegrationId"] = ctx.TenantIntegrationId,
+                ["TxId"] = req.TransactionId,
+                ["CustomerId"] = req.CustomerId,
+                ["WalletId"] = req.WalletId ?? string.Empty
+            });
+
+            var sw = Stopwatch.StartNew();
+
+            _logger.LogInformation(
+                "pos batch job STARTED. txId={TxId} customerId={CustomerId} walletId={WalletId} sum={Sum} balance={Balance} type={Type} orderId={OrderId}",
+                req.TransactionId, req.CustomerId, req.WalletId, req.Sum, req.Balance, req.TransactionType, req.OrderId);
+
             try
             {
                 var result = await service.ProcessIikoTransactionAsync(ctx, req, ct);
-                _logger.LogInformation(
-                    "pos batch job processed: txId={TxId} customerId={CustomerId} success={Success} message={Message}",
-                    req.TransactionId, req.CustomerId, result.Success, result.Message);
+                sw.Stop();
+
+                if (result.Success)
+                {
+                    _logger.LogInformation(
+                        "pos batch job SUCCEEDED. txId={TxId} customerId={CustomerId} elapsedMs={ElapsedMs} message={Message}",
+                        req.TransactionId, req.CustomerId, sw.ElapsedMilliseconds, result.Message);
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "pos batch job FAILED_LOGIC. txId={TxId} customerId={CustomerId} elapsedMs={ElapsedMs} message={Message}",
+                        req.TransactionId, req.CustomerId, sw.ElapsedMilliseconds, result.Message);
+                }
             }
             catch (Exception ex)
             {
+                sw.Stop();
                 _logger.LogError(ex,
-                    "pos batch job error. txId={TxId} customerId={CustomerId}",
-                    req.TransactionId, req.CustomerId);
+                    "pos batch job EXCEPTION. txId={TxId} customerId={CustomerId} elapsedMs={ElapsedMs}",
+                    req.TransactionId, req.CustomerId, sw.ElapsedMilliseconds);
                 throw;
             }
         }

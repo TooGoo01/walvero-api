@@ -357,7 +357,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     DiscountPrice = mi.DiscountPrice,
                     PrepTimeMinutes = mi.PrepTimeMinutes,
                     ImageUrls = mi.MenuItemImages.Select(img => img.Path).ToList(),
-                    IngredientVideoUrl = mi.IngredientVideoUrl
+                    IngredientVideoUrl = mi.IngredientVideoUrl,
+                    IngredientVideoPosterUrl = mi.IngredientVideoPosterUrl
                 }).ToList()
             }).ToList();
 

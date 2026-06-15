@@ -18,6 +18,8 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? EnTitle { get; set; }
         public string? RuTitle { get; set; }
         public string? VideoUrl { get; set; }
+        public string? VideoPosterUrl { get; set; }
+        public string? VideoPosterFileName { get; set; }
 
 
     }

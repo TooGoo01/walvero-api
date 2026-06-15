@@ -1457,6 +1457,12 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("IngredientVideoFileName")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("IngredientVideoPosterFileName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IngredientVideoPosterUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("IngredientVideoUrl")
                         .HasColumnType("nvarchar(max)");
 
@@ -2423,6 +2429,12 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<int?>("TenantId")
                         .HasColumnType("int");
+
+                    b.Property<string>("VideoPosterFileName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("VideoPosterUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("VideoUrl")
                         .HasColumnType("nvarchar(max)");

@@ -88,31 +88,30 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new ServiceResult(false, "Menu item tapılmadı");
 
             var shouldClearExisting = (videoFile != null && videoFile.Length > 0) || remove;
-            if (shouldClearExisting && !string.IsNullOrWhiteSpace(item.IngredientVideoFileName) && _storage != null)
+            if (shouldClearExisting && _storage != null)
             {
-                try
+                if (!string.IsNullOrWhiteSpace(item.IngredientVideoFileName))
                 {
-                    await _storage.DeleteAsync(container, item.IngredientVideoFileName);
+                    try { await _storage.DeleteAsync(container, item.IngredientVideoFileName); } catch { }
                 }
-                catch
+                if (!string.IsNullOrWhiteSpace(item.IngredientVideoPosterFileName))
                 {
-                    // storage-da fayl tapılmadı və ya silinə bilmədi — davam et
+                    try { await _storage.DeleteAsync(container, item.IngredientVideoPosterFileName); } catch { }
                 }
 
                 item.IngredientVideoUrl = null;
                 item.IngredientVideoFileName = null;
+                item.IngredientVideoPosterUrl = null;
+                item.IngredientVideoPosterFileName = null;
             }
 
             if (videoFile != null && videoFile.Length > 0)
             {
-                var collection = new FormFileCollection { videoFile };
-                var uploaded = await _storage.UploadAsync(container, collection);
-                var first = uploaded.FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(first.fileName))
-                {
-                    item.IngredientVideoFileName = first.fileName;
-                    item.IngredientVideoUrl = first.pathOrContainerName;
-                }
+                var uploaded = await _storage.UploadProcessedVideoAsync(container, videoFile);
+                item.IngredientVideoFileName = uploaded.VideoFileName;
+                item.IngredientVideoUrl = uploaded.VideoUrl;
+                item.IngredientVideoPosterFileName = uploaded.PosterFileName;
+                item.IngredientVideoPosterUrl = uploaded.PosterUrl;
             }
 
             _unitOfWork.Repository<MenuItem>().Update(item);
