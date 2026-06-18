@@ -9,6 +9,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<SetVerifyResponse> SetVerifyAsync(WalletWebhookResolvedContext context, SetVerifyRequest request, CancellationToken ct = default);
         Task<CollectResponse> CollectAsync(WalletWebhookResolvedContext context, CollectRequest request, CancellationToken ct = default);
         Task<IikoTransactionResponse> ProcessIikoTransactionAsync(WalletWebhookResolvedContext context, IikoTransactionRequest request, CancellationToken ct = default);
+        Task<IikoTransactionResponse> ProcessIikoOrderEventAsync(WalletWebhookResolvedContext context, IikoOrderEventRequest request, CancellationToken ct = default);
     }
 
     public class GetWalletResponse
@@ -127,4 +128,52 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public bool Success { get; set; }
         public string? Message { get; set; }
     }
+
+    /// <summary>
+    /// iiko POS-dan gələn OrderClosed / OrderReturned event-i.
+    /// Köhnə sum/balance/transactionId model-i yox, yeni payload formatı.
+    /// </summary>
+    public class IikoOrderEventRequest
+    {
+        public string EventType { get; set; } = "OrderClosed";
+        public string OrderId { get; set; } = string.Empty;
+        public int? OrderNumber { get; set; }
+        public decimal TotalSum { get; set; }
+        public decimal FullSum { get; set; }
+        public string? DepartmentId { get; set; }
+        public string? TerminalGroupId { get; set; }
+        public string? ExternalCustomerId { get; set; }
+        public string? CustomerPhone { get; set; }
+        public string? CustomerCardNumber { get; set; }
+        public List<IikoOrderItem> Items { get; set; } = new();
+        public List<IikoOrderDiscount> Discounts { get; set; } = new();
+        public List<IikoOrderPayment> Payments { get; set; } = new();
+    }
+
+    public class IikoOrderItem
+    {
+        public string ProductId { get; set; } = string.Empty;
+        public string? ProductName { get; set; }
+        public string? ProductNumber { get; set; }
+        public decimal Price { get; set; }
+        public decimal Amount { get; set; }
+        public decimal Sum { get; set; }
+    }
+
+    public class IikoOrderDiscount
+    {
+        public string? DiscountTypeId { get; set; }
+        public string? DiscountTypeName { get; set; }
+        public decimal DiscountSum { get; set; }
+    }
+
+    public class IikoOrderPayment
+    {
+        public string? PaymentTypeId { get; set; }
+        public string? PaymentTypeName { get; set; }
+        public decimal Sum { get; set; }
+        public string? Credential { get; set; }
+        public int? SearchScope { get; set; }
+    }
+
 }

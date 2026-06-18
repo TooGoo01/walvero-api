@@ -714,6 +714,348 @@ namespace Loyalty.Business.Services.Implementations.Main
             };
         }
 
+        public async Task<IikoTransactionResponse> ProcessIikoOrderEventAsync(
+            WalletWebhookResolvedContext context, IikoOrderEventRequest request, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(request.OrderId))
+                return new IikoTransactionResponse { Success = false, Message = "OrderId is required" };
+
+            var eventType = request.EventType?.Trim();
+            if (!string.Equals(eventType, "OrderClosed", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(eventType, "OrderReturned", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogInformation("iiko order event ignored. EventType={EventType} OrderId={OrderId}", eventType, request.OrderId);
+                return new IikoTransactionResponse { Success = true, Message = $"EventType '{eventType}' ignored" };
+            }
+
+            if (context.LoyaltyProgramId == null)
+                return new IikoTransactionResponse { Success = false, Message = "LoyaltyProgramId not configured" };
+
+            int? customerId = null;
+            if (!string.IsNullOrWhiteSpace(request.ExternalCustomerId))
+            {
+                customerId = await _customerMappingRepo.GetCustomerIdByExternalIdAsync(
+                    context.TenantIntegrationId, request.ExternalCustomerId, ct);
+            }
+            if (customerId == null && !string.IsNullOrWhiteSpace(request.CustomerPhone))
+            {
+                var byPhone = await _customerRepo.GetByPhoneAsync(context.TenantId, request.CustomerPhone);
+                customerId = byPhone?.Id;
+            }
+            if (customerId == null)
+                return new IikoTransactionResponse { Success = false, Message = $"Customer not found (extId={request.ExternalCustomerId}, phone={request.CustomerPhone})" };
+
+            var card = await _loyaltyCardRepo.GetLastActiveByCustomerAsync(
+                context.TenantId, context.LoyaltyProgramId.Value, customerId.Value, ct);
+            if (card == null)
+                return new IikoTransactionResponse { Success = false, Message = "Active loyalty card not found" };
+
+            var program = await _loyaltyProgramRepo.GetByIdNameAsync(context.LoyaltyProgramId.Value);
+            var template = program?.CardTemplate;
+            var templateType = template?.TemplateType ?? CardTemplateType.PointsBased;
+            var totalStepsPerCycle = template?.TotalSteps ?? 10;
+
+            bool isReturn = string.Equals(eventType, "OrderReturned", StringComparison.OrdinalIgnoreCase);
+            string idempotencyKey = $"iiko:{request.OrderId}:{(isReturn ? "OrderReturned" : "OrderClosed")}";
+
+            var existing = await _uow.Repository<Transaction>().GetAllAsync(
+                t => t.OrderId == idempotencyKey);
+            if (existing.Any())
+                return new IikoTransactionResponse { Success = true, Message = "Already processed (duplicate)" };
+
+            if (isReturn)
+            {
+                return await ProcessIikoOrderReturnedAsync(card, request, idempotencyKey, templateType, totalStepsPerCycle, program, ct);
+            }
+
+            return await ProcessIikoOrderClosedAsync(context, card, request, idempotencyKey, templateType, totalStepsPerCycle, program, template, ct);
+        }
+
+        private async Task<IikoTransactionResponse> ProcessIikoOrderReturnedAsync(
+            LoyaltyCard card, IikoOrderEventRequest request, string idempotencyKey,
+            CardTemplateType templateType, int totalStepsPerCycle, LoyaltyProgram? program, CancellationToken ct)
+        {
+            string closedKeyPrefix = $"iiko:{request.OrderId}:OrderClosed";
+
+            var prior = (await _uow.Repository<Transaction>().GetAllAsync(
+                t => t.LoyaltyCardId == card.Id
+                     && t.OrderId != null
+                     && t.OrderId.StartsWith(closedKeyPrefix)
+                     && t.Type != TransactionType.Adjusted))
+                .OrderBy(t => t.Id).ToList();
+
+            if (prior.Count == 0)
+            {
+                _logger.LogWarning("iiko OrderReturned: no prior OrderClosed tx found. OrderId={OrderId} CardId={CardId}",
+                    request.OrderId, card.Id);
+                return new IikoTransactionResponse { Success = true, Message = "No prior OrderClosed transaction to reverse" };
+            }
+
+            var c = await _uow.Repository<LoyaltyCard>().GetByIdAsync(card.Id, ct);
+            if (c == null)
+                return new IikoTransactionResponse { Success = false, Message = "Loyalty card vanished mid-flight" };
+
+            decimal totalReverseDelta = 0m;
+
+            foreach (var tx in prior)
+            {
+                var prevList = await _uow.Repository<Transaction>().GetAllAsync(
+                    t => t.LoyaltyCardId == tx.LoyaltyCardId && t.Id < tx.Id);
+                var prev = prevList.OrderByDescending(t => t.Id).FirstOrDefault();
+
+                decimal originalDelta = prev != null
+                    ? tx.BalanceAfter - prev.BalanceAfter
+                    : tx.BalanceAfter;
+
+                totalReverseDelta += originalDelta;
+
+                if (templateType == CardTemplateType.ProgressBased)
+                {
+                    int deltaInt = (int)originalDelta;
+                    int newAbs = Math.Max(0, (int)c.CurrentPoints - deltaInt);
+                    c.CurrentPoints = newAbs;
+                    c.CurrentSteps = newAbs % Math.Max(1, totalStepsPerCycle);
+                    c.CompletedCycles = newAbs / Math.Max(1, totalStepsPerCycle);
+                }
+                else
+                {
+                    c.CurrentPoints = Math.Max(0m, c.CurrentPoints - originalDelta);
+                }
+
+                _uow.Repository<LoyaltyCard>().Update(c);
+
+                var reverseTx = new Transaction
+                {
+                    LoyaltyCardId = card.Id,
+                    Type = TransactionType.Adjusted,
+                    Status = RedeemStatus.Applied,
+                    Points = c.CurrentPoints,
+                    Amount = Math.Abs(originalDelta),
+                    OrderId = idempotencyKey,
+                    Description = $"iiko OrderReturned reverse {tx.Type} ({originalDelta:+#;-#;0})",
+                    RegUserId = 1,
+                    RegDate = DateTime.UtcNow,
+                    IsActive = true,
+                    BalanceAfter = c.CurrentPoints,
+                    LocalOccurredAt = DateTimeOffset.UtcNow,
+                    TimeZoneIdUsed = "UTC"
+                };
+                _uow.Repository<Transaction>().Add(reverseTx);
+            }
+
+            await _uow.CommitAsync(ct);
+
+            try { await PushWalletUpdateAsync(c, program, -totalReverseDelta, ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "iiko OrderReturned: wallet push failed. CardId={CardId}", c.Id); }
+
+            return new IikoTransactionResponse
+            {
+                Success = true,
+                Message = $"Reversed {prior.Count} tx, totalDelta={totalReverseDelta}, balance={c.CurrentPoints}"
+            };
+        }
+
+        private async Task<IikoTransactionResponse> ProcessIikoOrderClosedAsync(
+            WalletWebhookResolvedContext context, LoyaltyCard card, IikoOrderEventRequest request, string idempotencyKey,
+            CardTemplateType templateType, int totalStepsPerCycle, LoyaltyProgram? program, CardTemplate? template, CancellationToken ct)
+        {
+            decimal walletRedeemSum = request.Payments
+                .Where(p => !string.IsNullOrWhiteSpace(p.Credential))
+                .Sum(p => p.Sum);
+
+            decimal earnBase = Math.Max(0m, request.TotalSum - walletRedeemSum);
+
+            decimal totalEarnPoints = 0m;
+            int totalEarnSteps = 0;
+            bool anyEarnRuleMatched = false;
+
+            if (earnBase > 0)
+            {
+                var earnRules = await _earnRuleRepo.GetByTenantIntegrationIdAsync(context.TenantIntegrationId, ct);
+                var rulesByProduct = earnRules.ToDictionary(r => r.ExternalProductId.Trim(), StringComparer.OrdinalIgnoreCase);
+
+                foreach (var item in request.Items)
+                {
+                    var pid = (item.ProductId ?? "").Trim();
+                    if (string.IsNullOrEmpty(pid)) continue;
+                    if (rulesByProduct.TryGetValue(pid, out var rule))
+                    {
+                        anyEarnRuleMatched = true;
+                        totalEarnSteps += rule.StepsPerUnit * (int)item.Amount;
+                        totalEarnPoints += rule.PointsPerUnit * item.Amount;
+                    }
+                }
+
+                if (!anyEarnRuleMatched && program != null)
+                {
+                    int? tierPercent = null;
+                    if (template != null)
+                    {
+                        var (_, percent, _, _) = ResolveTier(card.CurrentPoints, template);
+                        tierPercent = percent;
+                    }
+
+                    int? hhCash = null;
+                    int? hhCard = null;
+                    var hasWindows = program.HappyHoursWindows?.Count > 0;
+                    var hasBase = program.BasePercentCash.HasValue || program.BasePercentCard.HasValue;
+                    if (hasWindows || hasBase)
+                    {
+                        var (localTime, _) = await _timeZoneService.GetTenantLocalTimeAsync(context.TenantId, null, ct);
+                        (hhCash, hhCard) = HappyHoursRateResolver.Resolve(program, localTime.DateTime);
+                    }
+
+                    var effPct = hhCard ?? tierPercent;
+
+                    if (effPct.HasValue && effPct.Value > 0)
+                        totalEarnPoints = earnBase * effPct.Value / 100m;
+                    else if (program.PointsPerCurrency > 0)
+                        totalEarnPoints = earnBase * program.PointsPerCurrency;
+                }
+            }
+
+            var c = await _uow.Repository<LoyaltyCard>().GetByIdAsync(card.Id, ct);
+            if (c == null)
+                return new IikoTransactionResponse { Success = false, Message = "Loyalty card vanished mid-flight" };
+
+            decimal earnedValue = 0m;
+            if (totalEarnPoints > 0 || totalEarnSteps > 0)
+            {
+                if (templateType == CardTemplateType.ProgressBased)
+                {
+                    int stepsToAdd = totalEarnSteps > 0 ? totalEarnSteps : (int)totalEarnPoints;
+                    int maxSteps = Math.Max(1, totalStepsPerCycle);
+                    int newSteps = c.CurrentSteps + stepsToAdd;
+                    c.CompletedCycles += newSteps / maxSteps;
+                    c.CurrentSteps = newSteps % maxSteps;
+                    c.CurrentPoints += stepsToAdd;
+                    c.LifetimePoints += stepsToAdd;
+                    earnedValue = stepsToAdd;
+                }
+                else
+                {
+                    c.CurrentSteps += totalEarnSteps;
+                    c.CurrentPoints += totalEarnPoints;
+                    c.LifetimePoints += totalEarnPoints;
+                    earnedValue = totalEarnSteps > 0 ? totalEarnSteps : totalEarnPoints;
+                }
+
+                _uow.Repository<LoyaltyCard>().Update(c);
+
+                var earnTx = new Transaction
+                {
+                    LoyaltyCardId = c.Id,
+                    Type = TransactionType.Earned,
+                    Status = RedeemStatus.Applied,
+                    Points = earnedValue,
+                    Amount = earnBase,
+                    OrderId = idempotencyKey + ":earn",
+                    ReferenceNumber = request.OrderNumber?.ToString(),
+                    Description = "iiko OrderClosed earn",
+                    RegUserId = 1,
+                    RegDate = DateTime.UtcNow,
+                    IsActive = true,
+                    BalanceAfter = c.CurrentPoints,
+                    LocalOccurredAt = DateTimeOffset.UtcNow,
+                    TimeZoneIdUsed = "UTC"
+                };
+                _uow.Repository<Transaction>().Add(earnTx);
+            }
+
+            if (walletRedeemSum > 0)
+            {
+                c.CurrentPoints = Math.Max(0m, c.CurrentPoints - walletRedeemSum);
+                if (templateType == CardTemplateType.ProgressBased)
+                {
+                    int absPoints = (int)c.CurrentPoints;
+                    int maxSteps = Math.Max(1, totalStepsPerCycle);
+                    c.CompletedCycles = absPoints / maxSteps;
+                    c.CurrentSteps = absPoints % maxSteps;
+                }
+
+                _uow.Repository<LoyaltyCard>().Update(c);
+
+                var redeemTx = new Transaction
+                {
+                    LoyaltyCardId = c.Id,
+                    Type = TransactionType.Redeemed,
+                    Status = RedeemStatus.Applied,
+                    Points = -walletRedeemSum,
+                    Amount = walletRedeemSum,
+                    OrderId = idempotencyKey + ":redeem",
+                    ReferenceNumber = request.OrderNumber?.ToString(),
+                    Description = "iiko OrderClosed wallet pay",
+                    RegUserId = 1,
+                    RegDate = DateTime.UtcNow,
+                    IsActive = true,
+                    BalanceAfter = c.CurrentPoints,
+                    LocalOccurredAt = DateTimeOffset.UtcNow,
+                    TimeZoneIdUsed = "UTC"
+                };
+                _uow.Repository<Transaction>().Add(redeemTx);
+            }
+
+            if (earnedValue > 0 || walletRedeemSum > 0)
+            {
+                // marker tx — duplicate guard üçün (idempotency key tam match)
+                var markerTx = new Transaction
+                {
+                    LoyaltyCardId = c.Id,
+                    Type = TransactionType.Adjusted,
+                    Status = RedeemStatus.Applied,
+                    Points = c.CurrentPoints,
+                    Amount = request.TotalSum,
+                    OrderId = idempotencyKey,
+                    ReferenceNumber = request.OrderNumber?.ToString(),
+                    Description = $"iiko OrderClosed marker (earn={earnedValue}, redeem={walletRedeemSum})",
+                    RegUserId = 1,
+                    RegDate = DateTime.UtcNow,
+                    IsActive = true,
+                    BalanceAfter = c.CurrentPoints,
+                    LocalOccurredAt = DateTimeOffset.UtcNow,
+                    TimeZoneIdUsed = "UTC"
+                };
+                _uow.Repository<Transaction>().Add(markerTx);
+            }
+            else
+            {
+                // earn da, redeem də yoxdursa marker hələ də idempotency üçün lazımdır
+                var markerTx = new Transaction
+                {
+                    LoyaltyCardId = c.Id,
+                    Type = TransactionType.Adjusted,
+                    Status = RedeemStatus.Applied,
+                    Points = c.CurrentPoints,
+                    Amount = request.TotalSum,
+                    OrderId = idempotencyKey,
+                    ReferenceNumber = request.OrderNumber?.ToString(),
+                    Description = "iiko OrderClosed marker (no-op)",
+                    RegUserId = 1,
+                    RegDate = DateTime.UtcNow,
+                    IsActive = true,
+                    BalanceAfter = c.CurrentPoints,
+                    LocalOccurredAt = DateTimeOffset.UtcNow,
+                    TimeZoneIdUsed = "UTC"
+                };
+                _uow.Repository<Transaction>().Add(markerTx);
+            }
+
+            await _uow.CommitAsync(ct);
+
+            decimal netDelta = earnedValue - walletRedeemSum;
+            try { await PushWalletUpdateAsync(c, program, netDelta, ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "iiko OrderClosed: wallet push failed. CardId={CardId}", c.Id); }
+
+            string msg = templateType switch
+            {
+                CardTemplateType.ProgressBased => $"Steps: {c.CurrentSteps}, FreeCoffees: {c.CompletedCycles}",
+                CardTemplateType.TierBased => $"Earned: {earnedValue}, Redeemed: {walletRedeemSum}, Balance: {c.CurrentPoints}, Tier: {(template != null ? ResolveTier(c.LifetimePoints, template).tierName : "-")}",
+                _ => $"Earned: {earnedValue}, Redeemed: {walletRedeemSum}, Balance: {c.CurrentPoints}"
+            };
+
+            return new IikoTransactionResponse { Success = true, Message = msg };
+        }
+
         private async Task PushWalletUpdateAsync(LoyaltyCard card, LoyaltyProgram? program, decimal delta, CancellationToken ct)
         {
             if (program?.CardTemplate == null)
@@ -771,5 +1113,6 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _logger.LogWarning(ex, "iiko webhook: wallet push error on SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
             }
         }
+
     }
 }

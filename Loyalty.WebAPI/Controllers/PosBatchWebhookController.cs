@@ -5,14 +5,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Loyalty.WebAPI.Controllers
 {
     /// <summary>
-    /// POS batch webhook — bir sorğuda bir neçə əməliyyat qəbul edir.
-    /// Auth header tələb etmir — tenant payload-dakı organizationId-dən resolve olunur.
-    /// Hər operation Hangfire-ə enqueue olunur — HTTP cavab dərhal qayıdır, processing background-da.
+    /// iiko POS-dan gələn OrderClosed / OrderReturned event-ləri qəbul edir.
+    /// Auth header tələb etmir — tenant payload-dakı Restaurant.DepartmentId-dən resolve olunur.
+    /// Event Hangfire-ə enqueue olunur, HTTP cavab dərhal qayıdır.
     /// </summary>
     [ApiController]
     [Route("api/wallet")]
@@ -36,7 +35,7 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         [HttpPost("pos_batch_webhook")]
-        public async Task<IActionResult> Receive([FromBody] PosBatchWebhookRequest request, CancellationToken ct)
+        public async Task<IActionResult> Receive([FromBody] IikoOrderEventWebhookPayload payload, CancellationToken ct)
         {
             var traceId = HttpContext.TraceIdentifier;
             var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -52,158 +51,228 @@ namespace Loyalty.WebAPI.Controllers
             try
             {
                 _logger.LogInformation(
-                    "pos batch webhook RECEIVED. traceId={TraceId} clientIp={ClientIp} opCount={OpCount} orgId={OrgId} uocId={UocId}",
-                    traceId, clientIp, request?.Operations?.Count ?? 0, request?.OrganizationId, request?.UocId);
+                    "iiko order event RECEIVED. traceId={TraceId} clientIp={ClientIp} eventType={EventType} orderId={OrderId} orderNumber={OrderNumber} totalSum={TotalSum} fullSum={FullSum} deptId={DeptId} customerCard={CardNumber}",
+                    traceId, clientIp,
+                    payload?.EventType, payload?.OrderId, payload?.OrderNumber,
+                    payload?.TotalSum, payload?.FullSum,
+                    payload?.Restaurant?.DepartmentId,
+                    payload?.Customer?.FirstOrDefault()?.CardNumber);
 
-                _logger.LogDebug(
-                    "pos batch webhook RAW: {RawJson}",
-                    JsonSerializer.Serialize(request));
+                _logger.LogDebug("iiko order event RAW: {RawJson}", JsonSerializer.Serialize(payload));
 
-                if (request == null || request.Operations == null || request.Operations.Count == 0)
-                {
-                    _logger.LogWarning("pos batch webhook VALIDATION FAIL: operations array is required. traceId={TraceId}", traceId);
-                    return Ok(new { success = false, message = "operations array is required" });
-                }
+                if (payload == null)
+                    return Ok(new { success = false, message = "payload required" });
 
-                if (string.IsNullOrWhiteSpace(request.OrganizationId))
-                {
-                    _logger.LogWarning("pos batch webhook VALIDATION FAIL: organizationId required. traceId={TraceId}", traceId);
-                    return Ok(new { success = false, message = "organizationId is required" });
-                }
+                if (string.IsNullOrWhiteSpace(payload.OrderId))
+                    return Ok(new { success = false, message = "OrderId is required" });
+
+                if (string.IsNullOrWhiteSpace(payload.EventType))
+                    return Ok(new { success = false, message = "EventType is required" });
+
+                var venueId = payload.Restaurant?.DepartmentId;
+                if (string.IsNullOrWhiteSpace(venueId))
+                    return Ok(new { success = false, message = "Restaurant.DepartmentId is required" });
 
                 var resolveSw = Stopwatch.StartNew();
-                var ctx = await _resolver.ResolveByVenueAndSourceAsync(request.OrganizationId, IikoSource, ct);
-                bool usedUocFallback = false;
-                if (ctx == null && !string.IsNullOrWhiteSpace(request.UocId))
-                {
-                    ctx = await _resolver.ResolveByVenueAndSourceAsync(request.UocId, IikoSource, ct);
-                    usedUocFallback = ctx != null;
-                }
+                var ctx = await _resolver.ResolveByVenueAndSourceAsync(venueId, IikoSource, ct);
                 resolveSw.Stop();
 
                 if (ctx == null)
                 {
                     _logger.LogWarning(
-                        "pos batch webhook TENANT_NOT_FOUND. traceId={TraceId} organizationId={OrgId} uocId={UocId} resolveMs={ResolveMs}",
-                        traceId, request.OrganizationId, request.UocId, resolveSw.ElapsedMilliseconds);
+                        "iiko order event TENANT_NOT_FOUND. traceId={TraceId} departmentId={DeptId} resolveMs={ResolveMs}",
+                        traceId, venueId, resolveSw.ElapsedMilliseconds);
                     return Ok(new { success = false, message = "Tenant integration not found" });
                 }
 
                 _logger.LogInformation(
-                    "pos batch webhook TENANT_RESOLVED. traceId={TraceId} tenantId={TenantId} integrationId={IntegrationId} loyaltyProgramId={LoyaltyProgramId} usedUocFallback={Fallback} resolveMs={ResolveMs}",
-                    traceId, ctx.TenantId, ctx.TenantIntegrationId, ctx.LoyaltyProgramId, usedUocFallback, resolveSw.ElapsedMilliseconds);
+                    "iiko order event TENANT_RESOLVED. traceId={TraceId} tenantId={TenantId} integrationId={IntegrationId} loyaltyProgramId={LoyaltyProgramId} resolveMs={ResolveMs}",
+                    traceId, ctx.TenantId, ctx.TenantIntegrationId, ctx.LoyaltyProgramId, resolveSw.ElapsedMilliseconds);
 
-                int enqueued = 0, failedToEnqueue = 0;
-                var enqueueErrors = new List<object>();
-                var enqueueSw = Stopwatch.StartNew();
+                var customer = payload.Customer?.FirstOrDefault();
 
-                for (int i = 0; i < request.Operations.Count; i++)
+                var mapped = new IikoOrderEventRequest
                 {
-                    var op = request.Operations[i];
-                    try
+                    EventType = payload.EventType,
+                    OrderId = payload.OrderId,
+                    OrderNumber = payload.OrderNumber,
+                    TotalSum = payload.TotalSum,
+                    FullSum = payload.FullSum,
+                    DepartmentId = payload.Restaurant?.DepartmentId,
+                    TerminalGroupId = payload.TerminalsGroup?.Id,
+                    ExternalCustomerId = customer?.Id,
+                    CustomerPhone = customer?.Phone,
+                    CustomerCardNumber = customer?.CardNumber,
+                    Items = payload.Items?.Select(i => new IikoOrderItem
                     {
-                        var iikoReq = new IikoTransactionRequest
-                        {
-                            Sum = op.Sum ?? 0,
-                            Balance = op.Balance ?? 0,
-                            OrderId = op.OrderId,
-                            OrderNumber = op.OrderNumber,
-                            IsDelivery = op.IsDelivery,
-                            TerminalGroupId = op.TerminalGroupId,
-                            WalletId = op.WalletId,
-                            Id = op.Id,
-                            OrganizationId = request.OrganizationId,
-                            UocId = request.UocId,
-                            NotificationType = op.NotificationType,
-                            CustomerId = op.CustomerId ?? "",
-                            Phone = op.Phone,
-                            TransactionType = op.TransactionType ?? "",
-                            TransactionId = op.TransactionId ?? "",
-                            SubscriptionPassword = op.SubscriptionPassword,
-                            ChangedOn = op.ChangedOn
-                        };
-
-                        var jobId = _jobClient.Enqueue<PosBatchOperationJob>(j =>
-                            j.ProcessAsync(ctx, iikoReq, CancellationToken.None));
-                        enqueued++;
-
-                        _logger.LogDebug(
-                            "pos batch ENQUEUED. traceId={TraceId} index={Idx} jobId={JobId} txId={TxId} customerId={CustomerId} sum={Sum} balance={Balance} type={Type}",
-                            traceId, i, jobId, op.TransactionId, op.CustomerId, op.Sum, op.Balance, op.TransactionType);
-                    }
-                    catch (Exception itemEx)
+                        ProductId = i.ProductId ?? string.Empty,
+                        ProductName = i.ProductName,
+                        ProductNumber = i.ProductNumber,
+                        Price = i.Price,
+                        Amount = i.Amount,
+                        Sum = i.Sum
+                    }).ToList() ?? new List<IikoOrderItem>(),
+                    Discounts = payload.Discounts?.Select(d => new IikoOrderDiscount
                     {
-                        failedToEnqueue++;
-                        _logger.LogError(itemEx,
-                            "pos batch ENQUEUE_FAIL. traceId={TraceId} index={Idx} txId={TxId} customerId={CustomerId}",
-                            traceId, i, op.TransactionId, op.CustomerId);
-                        enqueueErrors.Add(new
-                        {
-                            index = i,
-                            transactionId = op.TransactionId,
-                            customerId = op.CustomerId,
-                            message = "Failed to enqueue"
-                        });
-                    }
+                        DiscountTypeId = d.DiscountTypeId,
+                        DiscountTypeName = d.DiscountTypeName,
+                        DiscountSum = d.DiscountSum
+                    }).ToList() ?? new List<IikoOrderDiscount>(),
+                    Payments = payload.Payments?.Select(p => new IikoOrderPayment
+                    {
+                        PaymentTypeId = p.PaymentTypeId,
+                        PaymentTypeName = p.PaymentTypeName,
+                        Sum = p.Sum,
+                        Credential = p.AdditionalData?.Credential,
+                        SearchScope = p.AdditionalData?.SearchScope
+                    }).ToList() ?? new List<IikoOrderPayment>()
+                };
+
+                string jobId;
+                try
+                {
+                    jobId = _jobClient.Enqueue<PosBatchOperationJob>(j => j.ProcessAsync(ctx, mapped, CancellationToken.None));
+                }
+                catch (Exception enqueueEx)
+                {
+                    _logger.LogError(enqueueEx,
+                        "iiko order event ENQUEUE_FAIL. traceId={TraceId} orderId={OrderId}",
+                        traceId, payload.OrderId);
+                    return Ok(new { success = false, message = "Failed to enqueue" });
                 }
 
-                enqueueSw.Stop();
                 sw.Stop();
 
                 _logger.LogInformation(
-                    "pos batch webhook COMPLETED. traceId={TraceId} orgId={OrgId} tenantId={TenantId} total={Total} enqueued={Enqueued} failedToEnqueue={Failed} resolveMs={ResolveMs} enqueueMs={EnqueueMs} totalMs={TotalMs}",
-                    traceId, request.OrganizationId, ctx.TenantId, request.Operations.Count, enqueued, failedToEnqueue,
-                    resolveSw.ElapsedMilliseconds, enqueueSw.ElapsedMilliseconds, sw.ElapsedMilliseconds);
+                    "iiko order event ENQUEUED. traceId={TraceId} jobId={JobId} eventType={EventType} orderId={OrderId} customerId={ExtCustId} phone={Phone} card={Card} itemCount={ItemCount} paymentCount={PayCount} walletCredentialPresent={HasCredential} resolveMs={ResolveMs} totalMs={TotalMs}",
+                    traceId, jobId,
+                    mapped.EventType, mapped.OrderId, mapped.ExternalCustomerId, mapped.CustomerPhone, mapped.CustomerCardNumber,
+                    mapped.Items.Count, mapped.Payments.Count,
+                    mapped.Payments.Any(p => !string.IsNullOrWhiteSpace(p.Credential)),
+                    resolveSw.ElapsedMilliseconds, sw.ElapsedMilliseconds);
 
                 return Ok(new
                 {
-                    success = failedToEnqueue == 0,
-                    total = request.Operations.Count,
-                    enqueued,
-                    failedToEnqueue,
-                    message = "Accepted for background processing",
-                    errors = enqueueErrors
+                    success = true,
+                    eventType = mapped.EventType,
+                    orderId = mapped.OrderId,
+                    jobId,
+                    message = "Accepted for background processing"
                 });
             }
             catch (Exception ex)
             {
                 sw.Stop();
                 _logger.LogError(ex,
-                    "pos batch webhook UNHANDLED_ERROR. traceId={TraceId} totalMs={TotalMs}",
+                    "iiko order event UNHANDLED_ERROR. traceId={TraceId} totalMs={TotalMs}",
                     traceId, sw.ElapsedMilliseconds);
                 return Ok(new { success = false, message = "Internal error" });
             }
         }
     }
 
-    public class PosBatchWebhookRequest
+    public class IikoOrderEventWebhookPayload
     {
-        [JsonPropertyName("organizationId")]
-        public string? OrganizationId { get; set; }
-
-        [JsonPropertyName("uocId")]
-        public string? UocId { get; set; }
-
-        [JsonPropertyName("operations")]
-        public List<PosBatchOperation> Operations { get; set; } = new();
+        public string EventType { get; set; } = string.Empty;
+        public string? Timestamp { get; set; }
+        public IikoEventRestaurant? Restaurant { get; set; }
+        public IikoEventTerminalsGroup? TerminalsGroup { get; set; }
+        public IikoEventTerminal? Terminal { get; set; }
+        public string OrderId { get; set; } = string.Empty;
+        public int? OrderNumber { get; set; }
+        public decimal TotalSum { get; set; }
+        public decimal FullSum { get; set; }
+        public IikoEventTable? Table { get; set; }
+        public IikoEventCashier? Cashier { get; set; }
+        public List<IikoEventItem> Items { get; set; } = new();
+        public List<IikoEventDiscount> Discounts { get; set; } = new();
+        public List<IikoEventCustomer> Customer { get; set; } = new();
+        public List<IikoEventPayment> Payments { get; set; } = new();
     }
 
-    public class PosBatchOperation
+    public class IikoEventRestaurant
     {
-        public decimal? Sum { get; set; }
-        public decimal? Balance { get; set; }
-        public string? OrderId { get; set; }
-        public int? OrderNumber { get; set; }
-        public bool? IsDelivery { get; set; }
-        public string? TerminalGroupId { get; set; }
-        public string? WalletId { get; set; }
+        public string? Name { get; set; }
+        public string? DepartmentId { get; set; }
+    }
+
+    public class IikoEventTerminalsGroup
+    {
         public string? Id { get; set; }
-        public int? NotificationType { get; set; }
-        public string? CustomerId { get; set; }
+        public string? Name { get; set; }
+    }
+
+    public class IikoEventTerminal
+    {
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+    }
+
+    public class IikoEventTable
+    {
+        public string? Id { get; set; }
+        public int? Number { get; set; }
+    }
+
+    public class IikoEventCashier
+    {
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+    }
+
+    public class IikoEventItem
+    {
+        public string? ProductId { get; set; }
+        public string? ProductName { get; set; }
+        public string? ProductNumber { get; set; }
+        public string? CategoryId { get; set; }
+        public string? CategoryName { get; set; }
+        public string? SizeId { get; set; }
+        public string? SizeName { get; set; }
+        public decimal Price { get; set; }
+        public decimal Amount { get; set; }
+        public decimal Sum { get; set; }
+        public List<IikoEventModifier> Modifiers { get; set; } = new();
+    }
+
+    public class IikoEventModifier
+    {
+        public string? ProductId { get; set; }
+        public string? ProductName { get; set; }
+        public string? ProductNumber { get; set; }
+        public decimal Price { get; set; }
+        public decimal Amount { get; set; }
+    }
+
+    public class IikoEventDiscount
+    {
+        public string? DiscountTypeId { get; set; }
+        public string? DiscountTypeName { get; set; }
+        public decimal DiscountSum { get; set; }
+    }
+
+    public class IikoEventCustomer
+    {
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+        public string? Surname { get; set; }
+        public string? CardNumber { get; set; }
+        public string? Gender { get; set; }
         public string? Phone { get; set; }
-        public string? TransactionType { get; set; }
-        public string? TransactionId { get; set; }
-        public string? SubscriptionPassword { get; set; }
-        public string? ChangedOn { get; set; }
+        public string? Email { get; set; }
+    }
+
+    public class IikoEventPayment
+    {
+        public string? PaymentTypeId { get; set; }
+        public string? PaymentTypeName { get; set; }
+        public decimal Sum { get; set; }
+        public IikoEventPaymentAdditionalData? AdditionalData { get; set; }
+    }
+
+    public class IikoEventPaymentAdditionalData
+    {
+        public string? Credential { get; set; }
+        public int? SearchScope { get; set; }
     }
 }

@@ -348,14 +348,18 @@ namespace Loyalty.Business.Services.Implementations.Main
                     _tenantProvider.CurrentUserId, claimBranchId, operatorBranchId,
                     cfg.RequireOcr, cfg.AmountCap, cfg.SpendCountCap, request.ReceiptImage != null);
 
-                // Receipt OCR — earn (delta > 0) və pay (delta < 0) hər iki rejimdə.
-                // Earn-də də doğrulama lazımdır ki, kassir 500 yazsa çek 500 olduğu üçün bonus düzgün hesablansın.
+                // Receipt OCR — yalnız earn (delta > 0) rejimində.
+                // Earn-də doğrulama lazımdır ki, kassir 500 yazsa çek 500 olduğu üçün bonus düzgün hesablansın.
+                // Pay (bonusla ödəmə, delta < 0) rejimində kassir yalnız bonus hissəni daxil edir, çek total
+                // ilə uyğunsuzluq həmişə yarandığı üçün OCR amount check yanlış mismatch verir — bu səbəbdən
+                // pay rejimi tamamilə OCR-dən çıxarılır. Digər fraud nəzarətləri (AmountCap, SpendCountCap)
+                // həm earn həm pay üçün aşağıda işləməyə davam edir.
                 string? receiptUrl = null;
                 decimal? ocrAmount = null;
                 bool isSuspicious = false;
                 string? suspiciousReason = null;
 
-                if (cfg.RequireOcr && delta != 0)
+                if (cfg.RequireOcr && delta > 0)
                 {
                     if (request.ReceiptImage is null)
                     {

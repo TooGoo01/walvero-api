@@ -96,33 +96,52 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         [HttpPost("iiko_transaction")]
-        public async Task<IActionResult> IikoTransaction([FromBody] IikoWebhookRequest request, CancellationToken ct)
+        public async Task<IActionResult> IikoTransaction([FromBody] IikoOrderEventWebhookRequest request, CancellationToken ct)
         {
             var ctx = HttpContext.GetWalletWebhookContext();
             if (ctx == null)
                 return Unauthorized();
 
-            var result = await _webhookService.ProcessIikoTransactionAsync(ctx, new IikoTransactionRequest
-            {
-                Sum = request.Sum ?? 0,
-                Balance = request.Balance ?? 0,
-                OrderId = request.OrderId,
-                OrderNumber = request.OrderNumber,
-                IsDelivery = request.IsDelivery,
-                TerminalGroupId = request.TerminalGroupId,
-                WalletId = request.WalletId,
-                Id = request.Id,
-                OrganizationId = request.OrganizationId,
-                UocId = request.UocId,
-                NotificationType = request.NotificationType,
-                CustomerId = request.CustomerId ?? "",
-                Phone = request.Phone,
-                TransactionType = request.TransactionType ?? "",
-                TransactionId = request.TransactionId ?? "",
-                SubscriptionPassword = request.SubscriptionPassword,
-                ChangedOn = request.ChangedOn
-            }, ct);
+            var firstCustomer = request.Customer?.FirstOrDefault();
 
+            var internalReq = new IikoOrderEventRequest
+            {
+                EventType = string.IsNullOrWhiteSpace(request.EventType) ? "OrderClosed" : request.EventType!,
+                OrderId = request.OrderId ?? string.Empty,
+                OrderNumber = request.OrderNumber,
+                TotalSum = request.TotalSum ?? 0m,
+                FullSum = request.FullSum ?? 0m,
+                DepartmentId = request.Restaurant?.DepartmentId,
+                TerminalGroupId = request.TerminalsGroup?.Id,
+                ExternalCustomerId = firstCustomer?.Id,
+                CustomerPhone = firstCustomer?.Phone,
+                CustomerCardNumber = firstCustomer?.CardNumber,
+                Items = (request.Items ?? new()).Select(i => new IikoOrderItem
+                {
+                    ProductId = i.ProductId ?? string.Empty,
+                    ProductName = i.ProductName,
+                    ProductNumber = i.ProductNumber,
+                    Price = i.Price,
+                    Amount = i.Amount,
+                    Sum = i.Sum
+                }).ToList(),
+                Discounts = (request.Discounts ?? new()).Select(d => new IikoOrderDiscount
+                {
+                    DiscountTypeId = d.DiscountTypeId,
+                    DiscountTypeName = d.DiscountTypeName,
+                    DiscountSum = d.DiscountSum
+                }).ToList(),
+                Payments = (request.Payments ?? new()).Select(p => new IikoOrderPayment
+                {
+                    PaymentTypeId = p.PaymentTypeId,
+                    PaymentTypeName = p.PaymentTypeName,
+                    Sum = p.Sum,
+                    Credential = p.AdditionalData?.Credential,
+                    SearchScope = p.AdditionalData?.SearchScope
+                }).ToList()
+            };
+
+            var result = await _webhookService.ProcessIikoOrderEventAsync(ctx, internalReq, ct);
             return Ok(new { success = result.Success, message = result.Message });
         }
 
@@ -325,5 +344,98 @@ namespace Loyalty.WebAPI.Controllers
 
         [JsonPropertyName("changedOn")]
         public string? ChangedOn { get; set; }
+    }
+
+    public class IikoOrderEventWebhookRequest
+    {
+        [JsonPropertyName("EventType")] public string? EventType { get; set; }
+        [JsonPropertyName("Timestamp")] public DateTimeOffset? Timestamp { get; set; }
+        [JsonPropertyName("Restaurant")] public IikoRestaurantDto? Restaurant { get; set; }
+        [JsonPropertyName("Terminal")] public IikoNamedIdDto? Terminal { get; set; }
+        [JsonPropertyName("TerminalsGroup")] public IikoNamedIdDto? TerminalsGroup { get; set; }
+        [JsonPropertyName("OrderId")] public string? OrderId { get; set; }
+        [JsonPropertyName("OrderNumber")] public int? OrderNumber { get; set; }
+        [JsonPropertyName("TotalSum")] public decimal? TotalSum { get; set; }
+        [JsonPropertyName("FullSum")] public decimal? FullSum { get; set; }
+        [JsonPropertyName("Table")] public IikoTableDto? Table { get; set; }
+        [JsonPropertyName("Cashier")] public IikoNamedIdDto? Cashier { get; set; }
+        [JsonPropertyName("Items")] public List<IikoItemDto>? Items { get; set; }
+        [JsonPropertyName("Discounts")] public List<IikoDiscountDto>? Discounts { get; set; }
+        [JsonPropertyName("Customer")] public List<IikoCustomerDto>? Customer { get; set; }
+        [JsonPropertyName("Payments")] public List<IikoPaymentDto>? Payments { get; set; }
+    }
+
+    public class IikoRestaurantDto
+    {
+        [JsonPropertyName("Name")] public string? Name { get; set; }
+        [JsonPropertyName("DepartmentId")] public string? DepartmentId { get; set; }
+    }
+
+    public class IikoNamedIdDto
+    {
+        [JsonPropertyName("Id")] public string? Id { get; set; }
+        [JsonPropertyName("Name")] public string? Name { get; set; }
+    }
+
+    public class IikoTableDto
+    {
+        [JsonPropertyName("Id")] public string? Id { get; set; }
+        [JsonPropertyName("Number")] public int? Number { get; set; }
+    }
+
+    public class IikoItemDto
+    {
+        [JsonPropertyName("ProductId")] public string? ProductId { get; set; }
+        [JsonPropertyName("ProductName")] public string? ProductName { get; set; }
+        [JsonPropertyName("ProductNumber")] public string? ProductNumber { get; set; }
+        [JsonPropertyName("CategoryId")] public string? CategoryId { get; set; }
+        [JsonPropertyName("CategoryName")] public string? CategoryName { get; set; }
+        [JsonPropertyName("SizeId")] public string? SizeId { get; set; }
+        [JsonPropertyName("SizeName")] public string? SizeName { get; set; }
+        [JsonPropertyName("Price")] public decimal Price { get; set; }
+        [JsonPropertyName("Amount")] public decimal Amount { get; set; }
+        [JsonPropertyName("Sum")] public decimal Sum { get; set; }
+        [JsonPropertyName("Modifiers")] public List<IikoModifierDto>? Modifiers { get; set; }
+    }
+
+    public class IikoModifierDto
+    {
+        [JsonPropertyName("ProductId")] public string? ProductId { get; set; }
+        [JsonPropertyName("ProductName")] public string? ProductName { get; set; }
+        [JsonPropertyName("ProductNumber")] public string? ProductNumber { get; set; }
+        [JsonPropertyName("Price")] public decimal Price { get; set; }
+        [JsonPropertyName("Amount")] public decimal Amount { get; set; }
+    }
+
+    public class IikoDiscountDto
+    {
+        [JsonPropertyName("DiscountTypeId")] public string? DiscountTypeId { get; set; }
+        [JsonPropertyName("DiscountTypeName")] public string? DiscountTypeName { get; set; }
+        [JsonPropertyName("DiscountSum")] public decimal DiscountSum { get; set; }
+    }
+
+    public class IikoCustomerDto
+    {
+        [JsonPropertyName("Id")] public string? Id { get; set; }
+        [JsonPropertyName("Name")] public string? Name { get; set; }
+        [JsonPropertyName("Surname")] public string? Surname { get; set; }
+        [JsonPropertyName("CardNumber")] public string? CardNumber { get; set; }
+        [JsonPropertyName("Gender")] public string? Gender { get; set; }
+        [JsonPropertyName("Phone")] public string? Phone { get; set; }
+        [JsonPropertyName("Email")] public string? Email { get; set; }
+    }
+
+    public class IikoPaymentDto
+    {
+        [JsonPropertyName("PaymentTypeId")] public string? PaymentTypeId { get; set; }
+        [JsonPropertyName("PaymentTypeName")] public string? PaymentTypeName { get; set; }
+        [JsonPropertyName("Sum")] public decimal Sum { get; set; }
+        [JsonPropertyName("AdditionalData")] public IikoPaymentAdditionalDto? AdditionalData { get; set; }
+    }
+
+    public class IikoPaymentAdditionalDto
+    {
+        [JsonPropertyName("Credential")] public string? Credential { get; set; }
+        [JsonPropertyName("SearchScope")] public int? SearchScope { get; set; }
     }
 }

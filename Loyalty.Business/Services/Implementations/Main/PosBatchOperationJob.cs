@@ -7,6 +7,10 @@ using Microsoft.Extensions.Logging;
 
 namespace Loyalty.Business.Services.Implementations.Main
 {
+    /// <summary>
+    /// iiko POS OrderClosed / OrderReturned eventini background-da işləyir.
+    /// Hangfire dequeue → IWalletWebhookService.ProcessIikoOrderEventAsync.
+    /// </summary>
     public sealed class PosBatchOperationJob
     {
         private readonly IServiceScopeFactory _scopeFactory;
@@ -24,7 +28,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
         public async Task ProcessAsync(
             WalletWebhookResolvedContext ctx,
-            IikoTransactionRequest req,
+            IikoOrderEventRequest req,
             CancellationToken ct = default)
         {
             using var scope = _scopeFactory.CreateScope();
@@ -35,41 +39,43 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ["Job"] = "PosBatchOperationJob",
                 ["TenantId"] = ctx.TenantId,
                 ["IntegrationId"] = ctx.TenantIntegrationId,
-                ["TxId"] = req.TransactionId,
-                ["CustomerId"] = req.CustomerId,
-                ["WalletId"] = req.WalletId ?? string.Empty
+                ["EventType"] = req.EventType ?? string.Empty,
+                ["OrderId"] = req.OrderId ?? string.Empty,
+                ["ExtCustId"] = req.ExternalCustomerId ?? string.Empty
             });
 
             var sw = Stopwatch.StartNew();
 
             _logger.LogInformation(
-                "pos batch job STARTED. txId={TxId} customerId={CustomerId} walletId={WalletId} sum={Sum} balance={Balance} type={Type} orderId={OrderId}",
-                req.TransactionId, req.CustomerId, req.WalletId, req.Sum, req.Balance, req.TransactionType, req.OrderId);
+                "iiko order event job STARTED. eventType={EventType} orderId={OrderId} orderNumber={OrderNumber} totalSum={TotalSum} customerId={ExtCustId} card={CardNumber} itemCount={ItemCount} paymentCount={PayCount}",
+                req.EventType, req.OrderId, req.OrderNumber, req.TotalSum,
+                req.ExternalCustomerId, req.CustomerCardNumber,
+                req.Items?.Count ?? 0, req.Payments?.Count ?? 0);
 
             try
             {
-                var result = await service.ProcessIikoTransactionAsync(ctx, req, ct);
+                var result = await service.ProcessIikoOrderEventAsync(ctx, req, ct);
                 sw.Stop();
 
                 if (result.Success)
                 {
                     _logger.LogInformation(
-                        "pos batch job SUCCEEDED. txId={TxId} customerId={CustomerId} elapsedMs={ElapsedMs} message={Message}",
-                        req.TransactionId, req.CustomerId, sw.ElapsedMilliseconds, result.Message);
+                        "iiko order event job SUCCEEDED. eventType={EventType} orderId={OrderId} elapsedMs={ElapsedMs} message={Message}",
+                        req.EventType, req.OrderId, sw.ElapsedMilliseconds, result.Message);
                 }
                 else
                 {
                     _logger.LogWarning(
-                        "pos batch job FAILED_LOGIC. txId={TxId} customerId={CustomerId} elapsedMs={ElapsedMs} message={Message}",
-                        req.TransactionId, req.CustomerId, sw.ElapsedMilliseconds, result.Message);
+                        "iiko order event job FAILED_LOGIC. eventType={EventType} orderId={OrderId} elapsedMs={ElapsedMs} message={Message}",
+                        req.EventType, req.OrderId, sw.ElapsedMilliseconds, result.Message);
                 }
             }
             catch (Exception ex)
             {
                 sw.Stop();
                 _logger.LogError(ex,
-                    "pos batch job EXCEPTION. txId={TxId} customerId={CustomerId} elapsedMs={ElapsedMs}",
-                    req.TransactionId, req.CustomerId, sw.ElapsedMilliseconds);
+                    "iiko order event job EXCEPTION. eventType={EventType} orderId={OrderId} elapsedMs={ElapsedMs}",
+                    req.EventType, req.OrderId, sw.ElapsedMilliseconds);
                 throw;
             }
         }
