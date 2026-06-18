@@ -17,6 +17,9 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? EnDescription { get; set; }
         public string? RuDescription { get; set; }
 
+        // Admin-controlled display order. Default 0 → falls back to Id ordering.
+        public int SortOrder { get; set; }
+
         public int TenantId { get; set; }
         public Tenant Tenant { get; set; } = null!;
 

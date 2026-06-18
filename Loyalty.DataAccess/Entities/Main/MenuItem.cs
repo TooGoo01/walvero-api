@@ -31,6 +31,9 @@ namespace Loyalty.DataAccess.Entities.Main
         public int? BranchId { get; set; }
         public Branch? Branch { get; set; }
 
+        // Admin-controlled display order within the category. Default 0 → falls back to Id ordering.
+        public int SortOrder { get; set; }
+
         public string? IngredientVideoUrl { get; set; }
         public string? IngredientVideoFileName { get; set; }
         public string? IngredientVideoPosterUrl { get; set; }

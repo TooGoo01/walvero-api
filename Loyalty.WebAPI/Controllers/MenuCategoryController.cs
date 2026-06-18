@@ -176,6 +176,29 @@ namespace Loyalty.WebAPI.Controllers
             return BadRequest(result);
         }
 
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> Reorder([FromBody] ReorderMenuCategoryDto dto)
+        {
+            if (dto.TenantId <= 0)
+                dto.TenantId = _tenantProvider.CurrentTenantId ?? 0;
+            if (dto.TenantId <= 0)
+                return BadRequest(new ServiceResult(false, "Tenant Id təyin olunmayıb"));
+
+            if (IsBranchScoped())
+            {
+                var own = _tenantProvider.CurrentBranchId;
+                if (!own.HasValue)
+                    return StatusCode((int)HttpStatusCode.Forbidden, new ServiceResult(false, "Branch təyin olunmayıb"));
+                dto.BranchId = own;
+            }
+
+            var result = await _menuCategoryService.ReorderAsync(dto);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+
         [HttpDelete("{id}")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]

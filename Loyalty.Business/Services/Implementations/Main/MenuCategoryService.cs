@@ -129,9 +129,38 @@ namespace Loyalty.Business.Services.Implementations.Main
                 query = query.Where(mc => mc.BranchId == branchId.Value);
             }
 
-            var entities = await query.OrderBy(mc => mc.Id).ToListAsync();
+            var entities = await query.OrderBy(mc => mc.SortOrder).ThenBy(mc => mc.Id).ToListAsync();
             var response = _mapper.Map<List<GetMenuCategoryDto>>(entities);
             return new ServiceResult(true, response);
+        }
+
+        public async Task<ServiceResult> ReorderAsync(ReorderMenuCategoryDto dto)
+        {
+            if (dto.Items.Count == 0)
+                return new ServiceResult(true, "Sıralama dəyişmədi");
+
+            var ids = dto.Items.Select(i => i.Id).ToList();
+            var query = _db.MenuCategories
+                .Where(mc => mc.TenantId == dto.TenantId && ids.Contains(mc.Id));
+            if (dto.BranchId.HasValue)
+                query = query.Where(mc => mc.BranchId == dto.BranchId.Value);
+            else
+                query = query.Where(mc => mc.BranchId == null);
+
+            var entities = await query.ToListAsync();
+            var orderMap = dto.Items.ToDictionary(i => i.Id, i => i.SortOrder);
+
+            foreach (var entity in entities)
+            {
+                if (orderMap.TryGetValue(entity.Id, out var newOrder))
+                {
+                    entity.SortOrder = newOrder;
+                    _unitOfWork.Repository<MenuCategory>().Update(entity);
+                }
+            }
+
+            _unitOfWork.Commit();
+            return new ServiceResult(true, "Sıralama uğurla yeniləndi");
         }
     }
 }

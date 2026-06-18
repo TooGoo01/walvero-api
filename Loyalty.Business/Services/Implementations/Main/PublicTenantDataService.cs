@@ -321,7 +321,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 categories = await categoriesQuery
                     .Include(mc => mc.MenuItems.Where(mi => mi.IsActive && mi.BranchId == bId))
                         .ThenInclude(mi => mi.MenuItemImages)
-                    .OrderBy(mc => mc.Id)
+                    .OrderBy(mc => mc.SortOrder)
+                    .ThenBy(mc => mc.Id)
                     .ToListAsync(ct);
             }
             else
@@ -329,7 +330,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 categories = await categoriesQuery
                     .Include(mc => mc.MenuItems.Where(mi => mi.IsActive && mi.BranchId == null))
                         .ThenInclude(mi => mi.MenuItemImages)
-                    .OrderBy(mc => mc.Id)
+                    .OrderBy(mc => mc.SortOrder)
+                    .ThenBy(mc => mc.Id)
                     .ToListAsync(ct);
             }
 
@@ -342,7 +344,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                 AzDescription = mc.AzDescription,
                 EnDescription = mc.EnDescription,
                 RuDescription = mc.RuDescription,
-                Items = mc.MenuItems.Select(mi => new MenuItemSummaryDto
+                Items = mc.MenuItems
+                    .OrderBy(mi => mi.SortOrder)
+                    .ThenBy(mi => mi.Id)
+                    .Select(mi => new MenuItemSummaryDto
                 {
                     Id = mi.Id,
                     AzName = mi.AzName,

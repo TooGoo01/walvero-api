@@ -167,9 +167,44 @@ namespace Loyalty.Business.Services.Implementations.Main
                 query = query.Where(mi => mi.MenuCategoryId == categoryId.Value);
             }
 
-            var entities = await query.OrderBy(mi => mi.MenuCategoryId).ThenBy(mi => mi.Id).ToListAsync();
+            var entities = await query
+                .OrderBy(mi => mi.MenuCategoryId)
+                .ThenBy(mi => mi.SortOrder)
+                .ThenBy(mi => mi.Id)
+                .ToListAsync();
             var response = _mapper.Map<List<GetMenuItemDto>>(entities);
             return new ServiceResult(true, response);
+        }
+
+        public async Task<ServiceResult> ReorderAsync(ReorderMenuItemDto dto)
+        {
+            if (dto.Items.Count == 0)
+                return new ServiceResult(true, "Sıralama dəyişmədi");
+
+            var ids = dto.Items.Select(i => i.Id).ToList();
+            var query = _db.MenuItems
+                .Where(mi => mi.TenantId == dto.TenantId
+                          && mi.MenuCategoryId == dto.MenuCategoryId
+                          && ids.Contains(mi.Id));
+            if (dto.BranchId.HasValue)
+                query = query.Where(mi => mi.BranchId == dto.BranchId.Value);
+            else
+                query = query.Where(mi => mi.BranchId == null);
+
+            var entities = await query.ToListAsync();
+            var orderMap = dto.Items.ToDictionary(i => i.Id, i => i.SortOrder);
+
+            foreach (var entity in entities)
+            {
+                if (orderMap.TryGetValue(entity.Id, out var newOrder))
+                {
+                    entity.SortOrder = newOrder;
+                    _unitOfWork.Repository<MenuItem>().Update(entity);
+                }
+            }
+
+            _unitOfWork.Commit();
+            return new ServiceResult(true, "Sıralama uğurla yeniləndi");
         }
     }
 }
