@@ -526,8 +526,10 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 // 3) Mode qərarı — branch RequireOtpConfirm tenant RequireConfirmation-u override edir.
                 // Branch toggle false-dırsa OTP atılır, dərhal apply.
-                var mustConfirm = snapshot.TemplateType == CardTemplateType.TierBased
-                                  && cfg.RequireOtpConfirm;
+                // Bütün template type-ları (TierBased + PointsBased) üçün OTP məcburi ola bilər.
+                // ProgressBased free reward ayrı code path-də (yuxarıda RedeemFreeRewardAsync) idarə olunur,
+                // bu nöqtəyə düşmür.
+                var mustConfirm = cfg.RequireOtpConfirm;
 
                 if (request.Mode == RedeemMode.ForcePending)
                 {
