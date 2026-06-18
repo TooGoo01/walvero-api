@@ -65,6 +65,10 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool? RequireQrVerification { get; set; }           // null → tenant
         public string? ReceiptTimeZoneId { get; set; }             // null → tenant
 
+        // Pay (redeem) üçün iki-mərhələli OTP təsdiqi. null → tenant.RequireConfirmation-a inherit.
+        // false → kassir kart skan etdiyi anda balans azalır, customer-ə OTP göndərilmir.
+        public bool? RequireOtpConfirm { get; set; }
+
         public ICollection<Room> Rooms { get; set; } = new List<Room>();
 
         // Inverse navigation collections — DbContext-də HasOne(...).WithMany(b => b.Staff/Transactions)

@@ -70,5 +70,8 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
         public bool? RequireQrVerification { get; set; }
         public bool? NotifyUserOnMissingQr { get; set; }
         [MaxLength(100)] public string? ReceiptTimeZoneId { get; set; }
+
+        // null → dəyişdirilməz (PATCH semantics). Set false/true → branch override yazılır.
+        public bool? RequireOtpConfirm { get; set; }
     }
 }

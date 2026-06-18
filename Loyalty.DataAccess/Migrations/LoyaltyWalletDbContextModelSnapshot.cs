@@ -201,6 +201,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int>("RegUserId")
                         .HasColumnType("int");
 
+                    b.Property<bool?>("RequireOtpConfirm")
+                        .HasColumnType("bit");
+
                     b.Property<bool?>("RequireQrVerification")
                         .HasColumnType("bit");
 

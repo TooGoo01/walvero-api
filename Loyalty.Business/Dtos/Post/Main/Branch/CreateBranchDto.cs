@@ -71,5 +71,8 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
         public bool? RequireQrVerification { get; set; }
         public bool? NotifyUserOnMissingQr { get; set; }
         [MaxLength(100)] public string? ReceiptTimeZoneId { get; set; }
+
+        // null → tenant.RequireConfirmation-a inherit
+        public bool? RequireOtpConfirm { get; set; }
     }
 }

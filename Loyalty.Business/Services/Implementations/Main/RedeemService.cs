@@ -116,6 +116,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             public bool NotifyUserOnMissingQr { get; init; }
             public string EkassaUrlTemplate { get; init; }
                 = "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}";
+
+            // Pay rejimində OTP təsdiqi tələb olunsun? branch.RequireOtpConfirm ?? tenant.RequireConfirmation
+            public bool RequireOtpConfirm { get; init; } = true;
         }
 
         private async Task<EffectiveSuspiciousCfg> ResolveCfgAsync(int tenantId, int? branchId, CancellationToken ct)
@@ -140,7 +143,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     t.ReceiptTimeZoneId,
                     t.EkassaReceiptUrlTemplate,
                     t.OcrLabelTaxNumber,
-                    t.ExpectedTaxNumber
+                    t.ExpectedTaxNumber,
+                    t.RequireConfirmation
                 })
                 .FirstOrDefaultAsync(ct);
 
@@ -167,7 +171,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                         b.ReceiptTimeZoneId,
                         b.ObjectCode,
                         b.OcrLabelTaxNumber,
-                        b.ExpectedTaxNumber
+                        b.ExpectedTaxNumber,
+                        b.RequireOtpConfirm
                     })
                     .FirstOrDefaultAsync(ct)
                 : null;
@@ -206,7 +211,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     : (string.IsNullOrWhiteSpace(tenant.OcrLabelTaxNumber) ? "VÖEN,VOEN,Vergi nömrəsi,Tax number,TIN" : tenant.OcrLabelTaxNumber),
                 ExpectedTaxNumber = !string.IsNullOrWhiteSpace(branch?.ExpectedTaxNumber)
                     ? branch.ExpectedTaxNumber
-                    : tenant.ExpectedTaxNumber
+                    : tenant.ExpectedTaxNumber,
+                // Branch toggle tenant default-u override edir; null halda tenant fallback
+                RequireOtpConfirm = branch?.RequireOtpConfirm ?? tenant.RequireConfirmation
             };
         }
 
@@ -517,9 +524,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     };
                 }
 
-                // 3) Mode qərarı
+                // 3) Mode qərarı — branch RequireOtpConfirm tenant RequireConfirmation-u override edir.
+                // Branch toggle false-dırsa OTP atılır, dərhal apply.
                 var mustConfirm = snapshot.TemplateType == CardTemplateType.TierBased
-                                  && policy.RequireConfirmation;
+                                  && cfg.RequireOtpConfirm;
 
                 if (request.Mode == RedeemMode.ForcePending)
                 {
@@ -527,10 +535,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     _logger.LogInformation("ForcePending enabled -> mustConfirm={MustConfirm}", mustConfirm);
                 }
 
-                if (request.Mode == RedeemMode.ForceApply && policy.RequireConfirmation)
+                if (request.Mode == RedeemMode.ForceApply && cfg.RequireOtpConfirm)
                 {
-                    _logger.LogWarning("ForceApply denied due to tenant policy (confirmation required).");
-                    return Fail("Bu tenant üçün Tier redeem təsdiq tələb edir.");
+                    _logger.LogWarning("ForceApply denied — effective RequireOtpConfirm=true (branch/tenant).");
+                    return Fail("Bu branch/tenant üçün Tier redeem təsdiq tələb edir.");
                 }
 
                 if (mustConfirm && request.Delta < 0)
@@ -564,8 +572,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     _logger.LogInformation("Pending redeem created. RequestId={RequestId}, ExpiresInMin={TTL}, OtpMasked={Otp}",
                         rr.Id, policy.ConfirmationTtlMinutes, MaskOtp(otp));
 
-                    // Bildiriş (SMS/push) - yalnız RequireConfirmation=true olduqda göndər
-                    if (policy.RequireConfirmation)
+                    // Bildiriş (SMS/push) - yalnız effective RequireOtpConfirm=true olduqda göndər
+                    if (cfg.RequireOtpConfirm)
                     {
                         var destination = card.Customer.PhoneNumber;
                         if (!string.IsNullOrWhiteSpace(destination))
@@ -600,7 +608,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     }
                     else
                     {
-                        _logger.LogInformation("RequireConfirmation=false, OTP notification skipped. CardId={CardId}", card.Id);
+                        _logger.LogInformation("RequireOtpConfirm=false (effective), OTP notification skipped. CardId={CardId}", card.Id);
                     }
 
                     return new RedeemResultDto
@@ -932,6 +940,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     return Fail("Kodun vaxtı keçib.");
                 }
 
+                // OTP kod yoxlaması: ROW yaranan anda effective RequireOtpConfirm hansı dəyər olubsa
+                // ona görə kod tələbi qalır. Tenant policy istifadə olunur — branch toggle ortada
+                // dəyişsə belə artıq mövcud PENDING-i confirm üçün düzgün kod tələb etmək lazımdır.
                 var policy = await _tenantPolicySvc.GetByIdAsync(rr.TenantId, ct);
                 if (policy.RequireConfirmation && !string.Equals(rr.Code, code, StringComparison.Ordinal))
                 {
@@ -994,6 +1005,26 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 _logger.LogInformation("Confirm applied. CardId={CardId}, Points {Before}->{After}, Steps {StepsBefore}->{StepsAfter}, CompletedCycles {CyclesBefore}->{CyclesAfter}, Delta={Delta}, DisplayDelta={DisplayDelta}",
                     card.Id, beforePoints, card.CurrentPoints, beforeSteps, card.CurrentSteps, beforeCompletedCycles, card.CompletedCycles, rr.PointsDelta, displayDelta);
+
+                // OTP consumed bildirişi — walveroapp tərəfində açıq OTP popup-u və
+                // notification list entry-ni auto-dismiss etsin. FCM xətaları apply-ı geri qaytarmamalıdır.
+                var consumeAppUserId = card.Customer?.applicationUser?.Id;
+                if (consumeAppUserId.HasValue)
+                {
+                    try
+                    {
+                        var consumeData = new Dictionary<string, string>
+                        {
+                            { "type", "otp_consumed" },
+                            { "redeemRequestId", rr.Id.ToString() }
+                        };
+                        await _notificationService.SendToUserAsync(consumeAppUserId.Value, "Təsdiq", "Ödəniş təsdiqləndi.", consumeData);
+                    }
+                    catch (Exception consumeEx)
+                    {
+                        _logger.LogWarning(consumeEx, "otp_consumed push failed. RequestId={RequestId}", rr.Id);
+                    }
+                }
 
                 var primaryPlatform = card.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
                 var secondaryPlatform = card.IsIOS ? WalletPlatform.GooglePay : WalletPlatform.AppleWallet;

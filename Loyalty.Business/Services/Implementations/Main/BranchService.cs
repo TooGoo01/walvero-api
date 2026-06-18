@@ -147,6 +147,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.ReceiptTimeZoneId != null) branch.ReceiptTimeZoneId = dto.ReceiptTimeZoneId;
             if (dto.OcrLabelTaxNumber != null) branch.OcrLabelTaxNumber = dto.OcrLabelTaxNumber;
             if (dto.ExpectedTaxNumber != null) branch.ExpectedTaxNumber = dto.ExpectedTaxNumber;
+            if (dto.RequireOtpConfirm.HasValue) branch.RequireOtpConfirm = dto.RequireOtpConfirm;
 
             if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
             {
