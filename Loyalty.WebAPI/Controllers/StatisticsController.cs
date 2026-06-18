@@ -2,6 +2,7 @@ using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Enums;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -45,14 +46,19 @@ namespace Loyalty.WebAPI.Controllers
             if (!result.Success || result.Data is not List<GetTransactionDto> txList)
                 return Ok(new ServiceResult(false, result.Message ?? "No data"));
 
-            var totalTransactions = txList.Count;
             var totalPointsEarned = 0;
             var totalPointsSpent = 0;
             var cardIds = new HashSet<int>();
 
             var dailyMap = new SortedDictionary<string, (int count, int earned, int spent)>();
 
-            foreach (var tx in txList)
+            // Yalnız tam tətbiq olunmuş tx-lər KPI-ya daxil olur. PendingOcr / FlaggedForReview /
+            // Pending / Rejected / Expired / Reversed kart balansına yazılmayıb — "Points Given"
+            // statistikasında onları saymaq səhv informasiya verir.
+            var appliedTxs = txList.Where(t => t.Status == RedeemStatus.Applied).ToList();
+            var totalAppliedCount = appliedTxs.Count;
+
+            foreach (var tx in appliedTxs)
             {
                 var points = tx.Points;
                 var type = tx.Type;
@@ -87,7 +93,7 @@ namespace Loyalty.WebAPI.Controllers
 
             var dashboard = new
             {
-                totalTransactions,
+                totalTransactions = totalAppliedCount,
                 totalPointsEarned,
                 totalPointsSpent,
                 uniqueCustomers = cardIds.Count,
