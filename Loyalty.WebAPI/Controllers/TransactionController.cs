@@ -77,6 +77,7 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         [HttpPost]
+        [Authorize(Policy = "TenantAdminOrSuperAdmin")]
         [ProducesResponseType(typeof(ServiceResult<ReverseTransactionResponseDto>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> Reverse([FromBody] ReverseTransactionDto dto, CancellationToken ct)
@@ -91,6 +92,7 @@ namespace Loyalty.WebAPI.Controllers
         public sealed record ReverseLastByCardRequest(string CardNumber, string? Reason);
 
         [HttpPost]
+        [Authorize(Policy = "TenantAdminOrSuperAdmin")]
         [ProducesResponseType(typeof(ServiceResult<ReverseTransactionResponseDto>), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> ReverseLastByCard([FromBody] ReverseLastByCardRequest req, CancellationToken ct)
@@ -110,39 +112,32 @@ namespace Loyalty.WebAPI.Controllers
         public sealed record RejectFlaggedRequest(int TransactionId, string? Reason);
 
         [HttpPost]
-        [Authorize(Policy = "BranchAdminOrAbove")]
+        [Authorize(Policy = "TenantAdminOrSuperAdmin")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> ApproveFlagged([FromBody] ApproveFlaggedRequest req, CancellationToken ct)
         {
             if (req.TransactionId <= 0)
                 return BadRequest(new ServiceResult(false, "TransactionId is required"));
 
-            // Branch-scoped admin yalnız öz filialının tx-lərini təsdiqləyə bilər. Tenant Admin / Super Admin = null.
-            int? scopeBranchId = IsBranchAdmin() ? _tenantProvider.CurrentBranchId : null;
-
-            var result = await _transactionReverseService.ApproveFlaggedAsync(req.TransactionId, scopeBranchId, ct);
+            // Yalnız Tenant Admin / Super Admin çağırır — branch scope yox, null göndərilir.
+            var result = await _transactionReverseService.ApproveFlaggedAsync(req.TransactionId, null, ct);
             if (!result.Success)
                 return BadRequest(result);
             return Ok(result);
         }
 
         [HttpPost]
-        [Authorize(Policy = "BranchAdminOrAbove")]
+        [Authorize(Policy = "TenantAdminOrSuperAdmin")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> RejectFlagged([FromBody] RejectFlaggedRequest req, CancellationToken ct)
         {
             if (req.TransactionId <= 0)
                 return BadRequest(new ServiceResult(false, "TransactionId is required"));
 
-            int? scopeBranchId = IsBranchAdmin() ? _tenantProvider.CurrentBranchId : null;
-
-            var result = await _transactionReverseService.RejectFlaggedAsync(req.TransactionId, scopeBranchId, req.Reason, ct);
+            var result = await _transactionReverseService.RejectFlaggedAsync(req.TransactionId, null, req.Reason, ct);
             if (!result.Success)
                 return BadRequest(result);
             return Ok(result);
         }
-
-        private bool IsBranchAdmin()
-            => User.IsInRole("Branch Admin") && !User.IsInRole("Tenant Admin") && !User.IsInRole("Super Admin");
     }
 }

@@ -920,24 +920,52 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 _logger.LogInformation("Confirm started. RequestId={RequestId}", redeemRequestId);
 
-                var rr = await uow.Repository<RedeemRequest>().GetByIdAsync(redeemRequestId);
-                if (rr is null)
+                // 1) İlkin yoxlama (read-only) — mövcudluq, vaxt, OTP kodu.
+                //    Status dəyişməsi yox; yanlış kod halında atomic claim icra olunmamalıdır.
+                var probe = await _dbContext.RedeemRequests
+                    .AsNoTracking()
+                    .Where(r => r.Id == redeemRequestId)
+                    .Select(r => new { r.Status, r.ExpiresUtc, r.Code, r.TenantId, r.LoyaltyCardId })
+                    .FirstOrDefaultAsync(ct);
+
+                if (probe is null)
                 {
                     _logger.LogWarning("Redeem request not found. RequestId={RequestId}", redeemRequestId);
                     return Fail("Sorğu tapılmadı.");
                 }
 
-                if (rr.Status != RedeemStatus.Pending)
+                if (probe.Status == RedeemStatus.Applied)
                 {
-                    _logger.LogWarning("Redeem request status is not Pending. Status={Status}", rr.Status);
+                    // Double-tap / şəbəkə retry idempotent — success qaytar ki, scanner xəta göstərməsin.
+                    _logger.LogInformation("Confirm idempotent — request already Applied. RequestId={RequestId}", redeemRequestId);
+                    return new RedeemResultDto
+                    {
+                        Success = true,
+                        IsPending = false,
+                        LoyaltyCardId = probe.LoyaltyCardId,
+                        AppliedDelta = 0,
+                        Message = "Sorğu artıq tətbiq olunub."
+                    };
+                }
+
+                if (probe.Status == RedeemStatus.Expired)
+                {
+                    _logger.LogWarning("Redeem request already expired. RequestId={RequestId}", redeemRequestId);
+                    return Fail("Kodun vaxtı keçib.");
+                }
+
+                if (probe.Status != RedeemStatus.Pending)
+                {
+                    _logger.LogWarning("Redeem request status is not Pending. Status={Status}", probe.Status);
                     return Fail("Sorğunun statusu PENDING deyil.");
                 }
 
-                if (rr.ExpiresUtc < DateTime.UtcNow)
+                if (probe.ExpiresUtc < DateTime.UtcNow)
                 {
-                    rr.Status = RedeemStatus.Expired;
-                    uow.Repository<RedeemRequest>().Update(rr);
-                    uow.Commit();
+                    // Atomic expire: yalnız hələ Pending-dirsə Expired-ə keçir.
+                    await _dbContext.RedeemRequests
+                        .Where(r => r.Id == redeemRequestId && r.Status == RedeemStatus.Pending)
+                        .ExecuteUpdateAsync(s => s.SetProperty(r => r.Status, RedeemStatus.Expired), ct);
                     _logger.LogWarning("Redeem request expired. RequestId={RequestId}", redeemRequestId);
                     return Fail("Kodun vaxtı keçib.");
                 }
@@ -945,11 +973,39 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // OTP kod yoxlaması: ROW yaranan anda effective RequireOtpConfirm hansı dəyər olubsa
                 // ona görə kod tələbi qalır. Tenant policy istifadə olunur — branch toggle ortada
                 // dəyişsə belə artıq mövcud PENDING-i confirm üçün düzgün kod tələb etmək lazımdır.
-                var policy = await _tenantPolicySvc.GetByIdAsync(rr.TenantId, ct);
-                if (policy.RequireConfirmation && !string.Equals(rr.Code, code, StringComparison.Ordinal))
+                // Yanlış kod halında atomic claim icra olunmur, status Pending qalır → istifadəçi yenidən sınaya bilər.
+                var policy = await _tenantPolicySvc.GetByIdAsync(probe.TenantId, ct);
+                if (policy.RequireConfirmation && !string.Equals(probe.Code, code, StringComparison.Ordinal))
                 {
-                    _logger.LogWarning("OTP mismatch. Provided={Provided}, Stored={StoredMasked}", MaskOtp(code), MaskOtp(rr.Code));
+                    _logger.LogWarning("OTP mismatch. Provided={Provided}, Stored={StoredMasked}", MaskOtp(code), MaskOtp(probe.Code));
                     return Fail("Təsdiq kodu yanlışdır.");
+                }
+
+                // 2) Atomic claim — yalnız hələ Pending-dirsə Applied-a keçir. İki paralel request olduqda
+                //    yalnız biri claimed=1 alır; ikincisi claimed=0 alıb idempotent branch-a düşür.
+                var claimed = await _dbContext.RedeemRequests
+                    .Where(r => r.Id == redeemRequestId && r.Status == RedeemStatus.Pending)
+                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.Status, RedeemStatus.Applied), ct);
+
+                if (claimed == 0)
+                {
+                    _logger.LogInformation("Confirm idempotent (lost claim race). RequestId={RequestId}", redeemRequestId);
+                    return new RedeemResultDto
+                    {
+                        Success = true,
+                        IsPending = false,
+                        LoyaltyCardId = probe.LoyaltyCardId,
+                        AppliedDelta = 0,
+                        Message = "Sorğu artıq tətbiq olunub."
+                    };
+                }
+
+                // 3) Claim qazanan tək axın — tracked entity yüklə, balans tətbiq et, tx insert et.
+                var rr = await uow.Repository<RedeemRequest>().GetByIdAsync(redeemRequestId);
+                if (rr is null)
+                {
+                    _logger.LogError("Tracked entity disappeared after claim. RequestId={RequestId}", redeemRequestId);
+                    return Fail("Sorğu tapılmadı.");
                 }
 
                 var card = await _cardSvc.GetById(rr.LoyaltyCardId, ct);

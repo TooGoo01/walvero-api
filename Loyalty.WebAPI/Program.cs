@@ -224,6 +224,11 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("BranchAdminOrAbove", policy =>
         policy.RequireRole("Branch Admin", "Tenant Admin", "Super Admin"));
 
+    // Tenant Admin və ya Super Admin — transactions admin actions (approve/reject/reverse).
+    // Branch Admin xaric.
+    options.AddPolicy("TenantAdminOrSuperAdmin", policy =>
+        policy.RequireRole("Tenant Admin", "Super Admin"));
+
     options.AddPolicy("CustomerOnly", policy =>
         policy.RequireRole("Customer"));
 
