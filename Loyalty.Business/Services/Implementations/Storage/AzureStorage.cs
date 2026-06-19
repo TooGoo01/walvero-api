@@ -184,16 +184,11 @@ namespace Loyalty.Business.Services.Implementations.Storage
                     if (faststartOk && File.Exists(fastStartPath) && new FileInfo(fastStartPath).Length > 0)
                         videoUploadPath = fastStartPath;
 
+                    // Videonun ən ilk frame-i poster kimi istifadə olunur — açılanda
+                    // istifadəçi videonun başlanğıc kadrını görür, başqa saniyəni yox.
                     var posterOk = await RunProcessAsync(ffmpeg,
-                        new[] { "-y", "-ss", "1", "-i", srcPath, "-vframes", "1",
+                        new[] { "-y", "-i", srcPath, "-vframes", "1",
                                 "-vf", "scale=480:-2", "-q:v", "4", posterPath });
-                    if (!posterOk || !File.Exists(posterPath) || new FileInfo(posterPath).Length == 0)
-                    {
-                        // Bəzi qısa videolar üçün 1s seek alınmaya bilər — 0-cı frame-i sınay
-                        posterOk = await RunProcessAsync(ffmpeg,
-                            new[] { "-y", "-i", srcPath, "-vframes", "1",
-                                    "-vf", "scale=480:-2", "-q:v", "4", posterPath });
-                    }
 
                     if (posterOk && File.Exists(posterPath) && new FileInfo(posterPath).Length > 0)
                     {
