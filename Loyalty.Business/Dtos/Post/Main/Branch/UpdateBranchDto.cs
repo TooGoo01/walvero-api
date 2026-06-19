@@ -73,5 +73,14 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
 
         // null → dəyişdirilməz (PATCH semantics). Set false/true → branch override yazılır.
         public bool? RequireOtpConfirm { get; set; }
+
+        // Banner + announcement (PATCH: null = dəyişdirilməz, "" = sil)
+        public string? BannerVideoUrl { get; set; }
+        public string? BannerVideoPosterUrl { get; set; }
+        public string? BannerVideoFileName { get; set; }
+        public string? BannerImagesJson { get; set; }
+        public string? AnnouncementAz { get; set; }
+        public string? AnnouncementEn { get; set; }
+        public string? AnnouncementRu { get; set; }
     }
 }

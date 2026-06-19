@@ -74,5 +74,14 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
 
         // null → tenant.RequireConfirmation-a inherit
         public bool? RequireOtpConfirm { get; set; }
+
+        // Banner + announcement
+        public string? BannerVideoUrl { get; set; }
+        public string? BannerVideoPosterUrl { get; set; }
+        public string? BannerVideoFileName { get; set; }
+        public string? BannerImagesJson { get; set; }
+        public string? AnnouncementAz { get; set; }
+        public string? AnnouncementEn { get; set; }
+        public string? AnnouncementRu { get; set; }
     }
 }

@@ -21,6 +21,12 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> UploadImageAsync(IFormFile file);
 
         /// <summary>
+        /// Banner video upload — +faststart re-encode + poster generator + cache header-lər ilə yüklənir.
+        /// `video-branch-banner` container-ə düşür. Qaytarır { videoUrl, videoFileName, posterUrl, posterFileName }.
+        /// </summary>
+        Task<ServiceResult> UploadBannerVideoAsync(IFormFile file);
+
+        /// <summary>
         /// Operatorun (waiter/moderator) bağlı olduğu branchı tap. JWT-də branch_id yoxdursa
         /// DB-də ApplicationUser.BranchId üzərindən resolve edən fallback. Tapılmasa null.
         /// </summary>

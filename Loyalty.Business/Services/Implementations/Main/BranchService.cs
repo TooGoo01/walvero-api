@@ -149,6 +149,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.ExpectedTaxNumber != null) branch.ExpectedTaxNumber = dto.ExpectedTaxNumber;
             if (dto.RequireOtpConfirm.HasValue) branch.RequireOtpConfirm = dto.RequireOtpConfirm;
 
+            // Banner + announcement
+            if (dto.BannerVideoUrl != null) branch.BannerVideoUrl = dto.BannerVideoUrl;
+            if (dto.BannerVideoPosterUrl != null) branch.BannerVideoPosterUrl = dto.BannerVideoPosterUrl;
+            if (dto.BannerVideoFileName != null) branch.BannerVideoFileName = dto.BannerVideoFileName;
+            if (dto.BannerImagesJson != null) branch.BannerImagesJson = dto.BannerImagesJson;
+            if (dto.AnnouncementAz != null) branch.AnnouncementAz = dto.AnnouncementAz;
+            if (dto.AnnouncementEn != null) branch.AnnouncementEn = dto.AnnouncementEn;
+            if (dto.AnnouncementRu != null) branch.AnnouncementRu = dto.AnnouncementRu;
+
             if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
             {
                 await ResetMainBranchAsync(branch.TenantId);
@@ -221,6 +230,21 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var (fileName, url) = uploaded[0];
             return new ServiceResult(true, new { url, fileName });
+        }
+
+        public async Task<ServiceResult> UploadBannerVideoAsync(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return new ServiceResult(false, "No file provided");
+
+            var uploaded = await _storage.UploadProcessedVideoAsync("video-branch-banner", file);
+            return new ServiceResult(true, new
+            {
+                videoUrl = uploaded.VideoUrl,
+                videoFileName = uploaded.VideoFileName,
+                posterUrl = uploaded.PosterUrl,
+                posterFileName = uploaded.PosterFileName,
+            });
         }
 
         private async Task ResetMainBranchAsync(int tenantId)

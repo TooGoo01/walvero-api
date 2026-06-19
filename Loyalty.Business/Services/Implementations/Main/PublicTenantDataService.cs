@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
@@ -14,6 +15,20 @@ namespace Loyalty.Business.Services.Implementations.Main
         public PublicTenantDataService(LoyaltyWalletDbContext dbContext)
         {
             _dbContext = dbContext;
+        }
+
+        private static List<string> ParseBannerImages(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return new();
+            try
+            {
+                var result = JsonSerializer.Deserialize<List<string>>(json);
+                return result ?? new();
+            }
+            catch
+            {
+                return new();
+            }
         }
 
         public async Task<ServiceResult<List<TenantListItemDto>>> GetAllTenantsAsync(CancellationToken ct = default)
@@ -251,7 +266,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                     WazeLocationUrl = branchEntity.WazeLocationUrl,
                     MenuUrl = branchEntity.MenuUrl,
                     BackgroundColor = branchEntity.BackgroundColor,
-                    ForegroundColor = branchEntity.ForegroundColor
+                    ForegroundColor = branchEntity.ForegroundColor,
+                    BannerVideoUrl = branchEntity.BannerVideoUrl,
+                    BannerVideoPosterUrl = branchEntity.BannerVideoPosterUrl,
+                    BannerImages = ParseBannerImages(branchEntity.BannerImagesJson),
+                    AnnouncementAz = branchEntity.AnnouncementAz,
+                    AnnouncementEn = branchEntity.AnnouncementEn,
+                    AnnouncementRu = branchEntity.AnnouncementRu,
                 };
             }
 

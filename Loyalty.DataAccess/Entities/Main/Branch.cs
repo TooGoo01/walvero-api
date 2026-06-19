@@ -69,6 +69,19 @@ namespace Loyalty.DataAccess.Entities.Main
         // false → kassir kart skan etdiyi anda balans azalır, customer-ə OTP göndərilmir.
         public bool? RequireOtpConfirm { get; set; }
 
+        // --- Restaurant page banner + menu page announcement ---
+        // Banner — admin video VƏ ya image carousel. Video varsa frontend onu üstün tutur.
+        public string? BannerVideoUrl { get; set; }
+        public string? BannerVideoPosterUrl { get; set; }
+        public string? BannerVideoFileName { get; set; }
+        // List<string> serialize olunmuş JSON. Frontend parse edir.
+        public string? BannerImagesJson { get; set; }
+
+        // Menu page-də kateqoriya siyahısının üstündə 3 dildə elan zolağı.
+        public string? AnnouncementAz { get; set; }
+        public string? AnnouncementEn { get; set; }
+        public string? AnnouncementRu { get; set; }
+
         public ICollection<Room> Rooms { get; set; } = new List<Room>();
 
         // Inverse navigation collections — DbContext-də HasOne(...).WithMany(b => b.Staff/Transactions)

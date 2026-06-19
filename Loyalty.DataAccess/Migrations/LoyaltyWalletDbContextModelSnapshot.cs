@@ -89,7 +89,28 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("AnnouncementAz")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AnnouncementEn")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AnnouncementRu")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("BackgroundColor")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("BannerImagesJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("BannerVideoFileName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("BannerVideoPosterUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("BannerVideoUrl")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("EditDate")

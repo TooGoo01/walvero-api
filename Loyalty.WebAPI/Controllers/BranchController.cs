@@ -120,6 +120,23 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(result);
         }
 
+        [HttpPost("/api/branch/UploadBannerVideo")]
+        [RequestSizeLimit(250_000_000)]
+        [RequestFormLimits(MultipartBodyLengthLimit = 250_000_000)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> UploadBannerVideo()
+        {
+            var files = Request.Form.Files;
+            if (files == null || files.Count == 0)
+                return BadRequest(new ServiceResult(false, "No file provided"));
+
+            var result = await _branchService.UploadBannerVideoAsync(files[0]);
+            if (!result.Success)
+                return BadRequest(result);
+            return Ok(result);
+        }
+
         private int? ResolveTenantId()
         {
             if (Request.Headers.TryGetValue("X-Tenant-Id", out var headerVal) &&

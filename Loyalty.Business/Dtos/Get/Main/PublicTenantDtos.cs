@@ -159,6 +159,16 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? MenuUrl { get; set; }
         public string? BackgroundColor { get; set; }
         public string? ForegroundColor { get; set; }
+
+        // Banner — video varsa frontend onu üstün tutur, yoxsa şəkillərdən slideshow göstərir.
+        public string? BannerVideoUrl { get; set; }
+        public string? BannerVideoPosterUrl { get; set; }
+        public List<string> BannerImages { get; set; } = new();
+
+        // Menu page-də 3 dil elan zolağı.
+        public string? AnnouncementAz { get; set; }
+        public string? AnnouncementEn { get; set; }
+        public string? AnnouncementRu { get; set; }
     }
 
     public class RestaurantLocationDto
