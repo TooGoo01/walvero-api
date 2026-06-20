@@ -78,5 +78,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             var response = _mapper.Map<List<GetTransactionDto>>(transactions);
             return new ServiceResult(true, response);
         }
+
+        public async Task<ServiceResult> GetMyTransactionsAsync(int applicationUserId, CancellationToken ct = default)
+        {
+            var transactions = await _transactionRepository.GetByApplicationUserIdAsync(applicationUserId, ct);
+            var response = _mapper.Map<List<GetTransactionDto>>(transactions);
+            return new ServiceResult(true, response);
+        }
     }
 }

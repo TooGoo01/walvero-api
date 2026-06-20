@@ -16,5 +16,11 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> GetLast();
         Task<ServiceResult> GetByTenantIdAndDate(int tenantId, DateOnly startDate, DateOnly endDate, int? branchId = null);
         Task<ServiceResult> GetByCustomerId(int customerId, CancellationToken ct = default);
+
+        /// <summary>
+        /// JWT-dəki user-in (applicationUserId) bütün tenant-lar üzrə təxsəl-edilməmiş tx tarixçəsi.
+        /// Customer mobile app üçün.
+        /// </summary>
+        Task<ServiceResult> GetMyTransactionsAsync(int applicationUserId, CancellationToken ct = default);
     }
 }

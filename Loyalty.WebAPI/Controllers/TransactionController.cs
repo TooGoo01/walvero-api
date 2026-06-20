@@ -76,6 +76,23 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(result);
         }
 
+        /// <summary>
+        /// Customer mobile: JWT-dəki app user-in bütün tenant-lar üzrə tx tarixçəsi.
+        /// </summary>
+        [HttpGet]
+        [Authorize(Policy = "CustomerOnly")]
+        [ProducesResponseType(typeof(ServiceResult<List<GetTransactionDto>>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]
+        public async Task<IActionResult> MyHistory(CancellationToken ct)
+        {
+            var userIdStr = _tenantProvider.CurrentUserId;
+            if (string.IsNullOrWhiteSpace(userIdStr) || !int.TryParse(userIdStr, out var appUserId))
+                return Unauthorized(new ServiceResult(false, "User not resolved"));
+
+            var result = await _transactionService.GetMyTransactionsAsync(appUserId, ct);
+            return Ok(result);
+        }
+
         [HttpPost]
         [Authorize(Policy = "TenantAdminOrSuperAdmin")]
         [ProducesResponseType(typeof(ServiceResult<ReverseTransactionResponseDto>), (int)HttpStatusCode.OK)]

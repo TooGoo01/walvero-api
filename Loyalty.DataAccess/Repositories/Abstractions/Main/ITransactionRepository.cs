@@ -16,6 +16,7 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
             int pageSize,
             CancellationToken cancellationToken = default);
         Task<IEnumerable<Transaction>> GetByCustomerIdAsync(int customerId, CancellationToken cancellationToken = default);
+        Task<IEnumerable<Transaction>> GetByApplicationUserIdAsync(int applicationUserId, CancellationToken cancellationToken = default);
         Task<IEnumerable<Transaction>> GetByTenantIdAsync(int tenantId, int limit, CancellationToken cancellationToken = default);
         Task<IEnumerable<Transaction>> GetByTenantIdDateAsync(int tenantId, DateOnly startDate, DateOnly endDate, CancellationToken cancellationToken = default);
         Task<decimal> GetTotalPointsEarnedAsync(int cardId, CancellationToken cancellationToken = default);

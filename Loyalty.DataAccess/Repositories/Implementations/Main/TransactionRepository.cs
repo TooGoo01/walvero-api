@@ -47,6 +47,17 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .ToListAsync(cancellationToken);
         }
 
+        public async Task<IEnumerable<Transaction>> GetByApplicationUserIdAsync(int applicationUserId, CancellationToken cancellationToken = default)
+        {
+            return await GetAsQueryable()
+                .Include(t => t.LoyaltyCard)
+                    .ThenInclude(lc => lc.Customer)
+                .Where(t => t.LoyaltyCard.Customer != null
+                         && t.LoyaltyCard.Customer.applicationUserId == applicationUserId)
+                .OrderByDescending(t => t.RegDate)
+                .ToListAsync(cancellationToken);
+        }
+
         public async Task<IEnumerable<Transaction>> GetByTenantIdAsync(int tenantId, int limit, CancellationToken cancellationToken = default)
         {
             return await GetAsQueryable()
