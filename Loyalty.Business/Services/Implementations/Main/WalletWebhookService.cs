@@ -866,7 +866,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Where(p => !string.IsNullOrWhiteSpace(p.Credential))
                 .Sum(p => p.Sum);
 
-            decimal earnBase = Math.Max(0m, request.TotalSum - walletRedeemSum);
+            // ProgressBased-də iikoCard pay ignore olunur (məntiqsiz manat→step conversion).
+            // Earn isə item count əsasındadır, ödəniş növündən asılı olmasın.
+            decimal earnBase = templateType == CardTemplateType.ProgressBased
+                ? request.TotalSum
+                : Math.Max(0m, request.TotalSum - walletRedeemSum);
 
             // === Loyalty discount redemption (Discounts.DiscountByItem) ===
             var loyaltyDiscountIds = (await _loyaltyDiscountTypeRepo.GetByTenantIntegrationIdAsync(context.TenantIntegrationId, ct))
@@ -1014,16 +1018,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _uow.Repository<Transaction>().Add(earnTx);
             }
 
-            if (walletRedeemSum > 0)
+            // ProgressBased-də manat→step blind conversion mənasız. Reward konsum yalnız Discounts.DiscountByItem yolu ilə.
+            if (walletRedeemSum > 0 && templateType != CardTemplateType.ProgressBased)
             {
                 c.CurrentPoints = Math.Max(0m, c.CurrentPoints - walletRedeemSum);
-                if (templateType == CardTemplateType.ProgressBased)
-                {
-                    int absPoints = (int)c.CurrentPoints;
-                    int maxSteps = Math.Max(1, totalStepsPerCycle);
-                    c.CompletedCycles = absPoints / maxSteps;
-                    c.CurrentSteps = absPoints % maxSteps;
-                }
 
                 _uow.Repository<LoyaltyCard>().Update(c);
 
@@ -1045,6 +1043,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                     TimeZoneIdUsed = "UTC"
                 };
                 _uow.Repository<Transaction>().Add(redeemTx);
+            }
+            else if (walletRedeemSum > 0 && templateType == CardTemplateType.ProgressBased)
+            {
+                _logger.LogInformation(
+                    "iiko OrderClosed: walletRedeemSum={Sum} ignored for ProgressBased card. OrderId={OrderId} CardId={CardId}",
+                    walletRedeemSum, request.OrderId, c.Id);
             }
 
             // === Discount-based redeem (DiscountByItem → reward consumed) ===
@@ -1088,7 +1092,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _uow.Repository<Transaction>().Add(discountRedeemTx);
             }
 
-            if (earnedValue > 0 || walletRedeemSum > 0 || totalRedeemUnits > 0)
+            bool walletRedeemApplied = walletRedeemSum > 0 && templateType != CardTemplateType.ProgressBased;
+            if (earnedValue > 0 || walletRedeemApplied || totalRedeemUnits > 0)
             {
                 // marker tx — duplicate guard üçün (idempotency key tam match)
                 var markerTx = new Transaction
@@ -1135,7 +1140,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             await _uow.CommitAsync(ct);
 
-            decimal netDelta = earnedValue - walletRedeemSum - discountRedeemPoints;
+            decimal effectiveWalletRedeem = walletRedeemApplied ? walletRedeemSum : 0m;
+            decimal netDelta = earnedValue - effectiveWalletRedeem - discountRedeemPoints;
             try { await PushWalletUpdateAsync(c, program, netDelta, ct); }
             catch (Exception ex) { _logger.LogWarning(ex, "iiko OrderClosed: wallet push failed. CardId={CardId}", c.Id); }
 

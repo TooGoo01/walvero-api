@@ -1,0 +1,357 @@
+{
+  "info": {
+    "_postman_id": "e8a1c5b9-3d72-4f6e-a8b4-9c1d5e3f7a02",
+    "name": "Walvero — iiko Webhook Full Test Suite",
+    "description": "10 senari ilə iiko OrderClosed/OrderReturned webhook test. Tenant: fcffc70a-07c2-4e61-b289-1291e154d3a8, ProgressBased LoyaltyProgramId=47, TotalSteps=10.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://localhost:7285",
+      "type": "string"
+    },
+    {
+      "key": "venueId",
+      "value": "fcffc70a-07c2-4e61-b289-1291e154d3a8",
+      "type": "string"
+    },
+    {
+      "key": "customerId",
+      "value": "03bf0000-6bec-ac1f-7c5d-08deb0c0f13c",
+      "type": "string"
+    },
+    {
+      "key": "loyaltyDiscountTypeId",
+      "value": "fd66bd97-09af-0c80-019e-f236a1411056",
+      "type": "string"
+    },
+    {
+      "key": "productCorona",
+      "value": "628108f5-bcff-45a6-ba4d-f133d1f28883",
+      "type": "string"
+    },
+    {
+      "key": "productBaltika",
+      "value": "0ae1d638-a705-444e-ab9d-6bce6389bbc1",
+      "type": "string"
+    },
+    {
+      "key": "productBudweiser",
+      "value": "96f74944-aa8b-4cef-bd51-adb9e0637155",
+      "type": "string"
+    },
+    {
+      "key": "productWater",
+      "value": "626fe277-2144-4bd7-b936-88f326930fc5",
+      "type": "string"
+    },
+    {
+      "key": "iikoCardPaymentTypeId",
+      "value": "25905ae9-098c-47eb-b1de-2e3aab7406ad",
+      "type": "string"
+    },
+    {
+      "key": "cashPaymentTypeId",
+      "value": "09322f46-578a-d210-add7-eec222a08871",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. PURE EARN — 3 məhsul (Corona+Балтика+Бэдвайзер), nağd ödəniş",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('success=true', () => pm.expect(j.success).to.be.true);",
+              "pm.test('eventType OrderClosed', () => pm.expect(j.eventType).to.eql('OrderClosed'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"EventType\": \"OrderClosed\",\n  \"Timestamp\": \"2026-06-23T15:00:00.0000000+04:00\",\n  \"Restaurant\": { \"Name\": \"Wiggle\", \"DepartmentId\": \"{{venueId}}\" },\n  \"Terminal\": { \"Id\": \"d4e9c429-a3cd-cfa3-019a-e6733f941e83\", \"Name\": \"Терминал\" },\n  \"TerminalsGroup\": { \"Id\": \"bba62a8d-05a4-07e5-019a-de9452df0065\", \"Name\": \"Wiggle Group\" },\n  \"OrderId\": \"test-earn-001\",\n  \"OrderNumber\": 1001,\n  \"TotalSum\": 12.0,\n  \"FullSum\": 12.0,\n  \"Items\": [\n    { \"ProductId\": \"{{productCorona}}\", \"ProductName\": \"Corona\", \"Price\": 2.0, \"Amount\": 1.0, \"Sum\": 2.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productBaltika}}\", \"ProductName\": \"Балтика 9\", \"Price\": 4.0, \"Amount\": 1.0, \"Sum\": 4.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productBudweiser}}\", \"ProductName\": \"Бэдвайзер\", \"Price\": 6.0, \"Amount\": 1.0, \"Sum\": 6.0, \"Modifiers\": [] }\n  ],\n  \"Discounts\": [],\n  \"Customer\": [{ \"Id\": \"{{customerId}}\", \"Name\": \"Test User\", \"CardNumber\": \"18846\", \"Phone\": \"+994000000000\" }],\n  \"Payments\": [{ \"PaymentTypeId\": \"{{cashPaymentTypeId}}\", \"PaymentTypeName\": \"Наличные\", \"Sum\": 12.0, \"AdditionalData\": null }]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "wallet", "pos_batch_webhook"]
+        },
+        "description": "Pure earn. Gözlənti: CurrentSteps += 3 (Corona+Балтика+Бэдвайзер hər biri 1 step). DiscountByItem yox, walletRedeemSum=0."
+      }
+    },
+    {
+      "name": "2. EARN + 1 QTY YOX (rule yoxdur) — skip pattern",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('success=true', () => pm.expect(pm.response.json().success).to.be.true);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"EventType\": \"OrderClosed\",\n  \"Timestamp\": \"2026-06-23T15:02:00.0000000+04:00\",\n  \"Restaurant\": { \"Name\": \"Wiggle\", \"DepartmentId\": \"{{venueId}}\" },\n  \"TerminalsGroup\": { \"Id\": \"bba62a8d-05a4-07e5-019a-de9452df0065\", \"Name\": \"Wiggle Group\" },\n  \"OrderId\": \"test-earn-noreward-002\",\n  \"OrderNumber\": 1002,\n  \"TotalSum\": 8.0,\n  \"FullSum\": 8.0,\n  \"Items\": [\n    { \"ProductId\": \"{{productCorona}}\", \"ProductName\": \"Corona\", \"Price\": 2.0, \"Amount\": 1.0, \"Sum\": 2.0, \"Modifiers\": [] },\n    { \"ProductId\": \"unknown-product-no-rule-12345\", \"ProductName\": \"Unknown Product\", \"Price\": 6.0, \"Amount\": 1.0, \"Sum\": 6.0, \"Modifiers\": [] }\n  ],\n  \"Discounts\": [],\n  \"Customer\": [{ \"Id\": \"{{customerId}}\", \"Name\": \"Test User\", \"CardNumber\": \"18846\" }],\n  \"Payments\": [{ \"PaymentTypeId\": \"{{cashPaymentTypeId}}\", \"PaymentTypeName\": \"Наличные\", \"Sum\": 8.0 }]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "wallet", "pos_batch_webhook"]
+        },
+        "description": "Corona earn rule var (1 step), 'unknown-product' rule yoxdur → fallback (PointsPerCurrency formula) işləyir. ProgressBased-də (int)totalEarnPoints step kimi sayılır. NƏTC: ən azı Corona-dan 1 step. Mövcud kod fallback-ə görə əlavə step əlavə edə bilər."
+      }
+    },
+    {
+      "name": "3. DISCOUNT REDEEM (loyalty bonus) + 3 earn",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('success=true', () => pm.expect(pm.response.json().success).to.be.true);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"EventType\": \"OrderClosed\",\n  \"Timestamp\": \"2026-06-23T15:05:00.0000000+04:00\",\n  \"Restaurant\": { \"Name\": \"Wiggle\", \"DepartmentId\": \"{{venueId}}\" },\n  \"TerminalsGroup\": { \"Id\": \"bba62a8d-05a4-07e5-019a-de9452df0065\", \"Name\": \"Wiggle Group\" },\n  \"OrderId\": \"test-discount-redeem-003\",\n  \"OrderNumber\": 1003,\n  \"TotalSum\": 12.0,\n  \"FullSum\": 17.0,\n  \"Items\": [\n    { \"ProductId\": \"{{productWater}}\", \"ProductName\": \"Особая вода\", \"Price\": 5.0, \"Amount\": 1.0, \"Sum\": 5.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productCorona}}\", \"ProductName\": \"Corona\", \"Price\": 2.0, \"Amount\": 1.0, \"Sum\": 2.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productBaltika}}\", \"ProductName\": \"Балтика 9\", \"Price\": 4.0, \"Amount\": 1.0, \"Sum\": 4.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productBudweiser}}\", \"ProductName\": \"Бэдвайзер\", \"Price\": 6.0, \"Amount\": 1.0, \"Sum\": 6.0, \"Modifiers\": [] }\n  ],\n  \"Discounts\": [\n    {\n      \"DiscountTypeId\": \"{{loyaltyDiscountTypeId}}\",\n      \"DiscountTypeName\": \"Testiikocardbonus\",\n      \"DiscountSum\": 5.0,\n      \"DiscountByItem\": [\n        { \"OrderItemId\": \"item-water-1\", \"ProductId\": \"{{productWater}}\", \"ProductName\": \"Особая вода\", \"DiscountSum\": 5.0 }\n      ]\n    }\n  ],\n  \"Customer\": [{ \"Id\": \"{{customerId}}\", \"Name\": \"Test User\", \"CardNumber\": \"18846\" }],\n  \"Payments\": [{ \"PaymentTypeId\": \"{{cashPaymentTypeId}}\", \"PaymentTypeName\": \"Наличные\", \"Sum\": 12.0 }]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "wallet", "pos_batch_webhook"]
+        },
+        "description": "Loyalty bonus istifadə (Особая вода free) + 3 earn item. Gözlənti: CompletedCycles -= 1 (əgər ≥1 var idi), CurrentSteps += 3 (Особая вода skip, Corona/Балтика/Бэдвайзер earn)."
+      }
+    },
+    {
+      "name": "4. WALLET PAY FULL (iikoCard, sum = TotalSum)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('success=true', () => pm.expect(pm.response.json().success).to.be.true);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"EventType\": \"OrderClosed\",\n  \"Timestamp\": \"2026-06-23T15:10:00.0000000+04:00\",\n  \"Restaurant\": { \"Name\": \"Wiggle\", \"DepartmentId\": \"{{venueId}}\" },\n  \"TerminalsGroup\": { \"Id\": \"bba62a8d-05a4-07e5-019a-de9452df0065\", \"Name\": \"Wiggle Group\" },\n  \"OrderId\": \"test-wallet-full-004\",\n  \"OrderNumber\": 1004,\n  \"TotalSum\": 12.0,\n  \"FullSum\": 12.0,\n  \"Items\": [\n    { \"ProductId\": \"{{productCorona}}\", \"ProductName\": \"Corona\", \"Price\": 2.0, \"Amount\": 1.0, \"Sum\": 2.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productBaltika}}\", \"ProductName\": \"Балтика 9\", \"Price\": 4.0, \"Amount\": 1.0, \"Sum\": 4.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productBudweiser}}\", \"ProductName\": \"Бэдвайзер\", \"Price\": 6.0, \"Amount\": 1.0, \"Sum\": 6.0, \"Modifiers\": [] }\n  ],\n  \"Discounts\": [],\n  \"Customer\": [{ \"Id\": \"{{customerId}}\", \"Name\": \"Test User\", \"CardNumber\": \"18846\" }],\n  \"Payments\": [\n    { \"PaymentTypeId\": \"{{iikoCardPaymentTypeId}}\", \"PaymentTypeName\": \"iikoCard Test\", \"Sum\": 12.0, \"AdditionalData\": { \"Credential\": \"18846\", \"SearchScope\": 2 } }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "wallet", "pos_batch_webhook"]
+        },
+        "description": "Müştəri 12.0-ı tam balansdan ödəyib (iikoCard, Credential mövcud). walletRedeemSum=12, earnBase=0 → earn olmur. ProgressBased-də CurrentPoints -= 12, recalc Steps+Cycles."
+      }
+    },
+    {
+      "name": "5. WALLET PAY PARTIAL (5 iikoCard + 7 nağd, qismən earn)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('success=true', () => pm.expect(pm.response.json().success).to.be.true);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"EventType\": \"OrderClosed\",\n  \"Timestamp\": \"2026-06-23T15:15:00.0000000+04:00\",\n  \"Restaurant\": { \"Name\": \"Wiggle\", \"DepartmentId\": \"{{venueId}}\" },\n  \"TerminalsGroup\": { \"Id\": \"bba62a8d-05a4-07e5-019a-de9452df0065\", \"Name\": \"Wiggle Group\" },\n  \"OrderId\": \"test-wallet-partial-005\",\n  \"OrderNumber\": 1005,\n  \"TotalSum\": 12.0,\n  \"FullSum\": 12.0,\n  \"Items\": [\n    { \"ProductId\": \"{{productCorona}}\", \"ProductName\": \"Corona\", \"Price\": 2.0, \"Amount\": 1.0, \"Sum\": 2.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productBaltika}}\", \"ProductName\": \"Балтика 9\", \"Price\": 4.0, \"Amount\": 1.0, \"Sum\": 4.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productBudweiser}}\", \"ProductName\": \"Бэдвайзер\", \"Price\": 6.0, \"Amount\": 1.0, \"Sum\": 6.0, \"Modifiers\": [] }\n  ],\n  \"Discounts\": [],\n  \"Customer\": [{ \"Id\": \"{{customerId}}\", \"Name\": \"Test User\", \"CardNumber\": \"18846\" }],\n  \"Payments\": [\n    { \"PaymentTypeId\": \"{{iikoCardPaymentTypeId}}\", \"PaymentTypeName\": \"iikoCard Test\", \"Sum\": 5.0, \"AdditionalData\": { \"Credential\": \"18846\", \"SearchScope\": 2 } },\n    { \"PaymentTypeId\": \"{{cashPaymentTypeId}}\", \"PaymentTypeName\": \"Наличные\", \"Sum\": 7.0, \"AdditionalData\": null }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "wallet", "pos_batch_webhook"]
+        },
+        "description": "Qismən wallet pay (5 iikoCard) + 7 nağd. walletRedeemSum=5, earnBase=7. Items × rule yenə işləyir (3 məhsul). NƏTC: CurrentPoints -= 5 (wallet redeem), CurrentSteps += 3 (earn)."
+      }
+    },
+    {
+      "name": "6. ORDER RETURNED — Test 1-i geri qaytar",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('eventType OrderReturned', () => pm.expect(j.eventType).to.eql('OrderReturned'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"EventType\": \"OrderReturned\",\n  \"Timestamp\": \"2026-06-23T15:20:00.0000000+04:00\",\n  \"Restaurant\": { \"Name\": \"Wiggle\", \"DepartmentId\": \"{{venueId}}\" },\n  \"TerminalsGroup\": { \"Id\": \"bba62a8d-05a4-07e5-019a-de9452df0065\", \"Name\": \"Wiggle Group\" },\n  \"OrderId\": \"test-earn-001\",\n  \"OrderNumber\": 1001,\n  \"TotalSum\": 12.0,\n  \"FullSum\": 12.0,\n  \"Items\": [\n    { \"ProductId\": \"{{productCorona}}\", \"ProductName\": \"Corona\", \"Price\": 2.0, \"Amount\": 1.0, \"Sum\": 2.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productBaltika}}\", \"ProductName\": \"Балтика 9\", \"Price\": 4.0, \"Amount\": 1.0, \"Sum\": 4.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productBudweiser}}\", \"ProductName\": \"Бэдвайзер\", \"Price\": 6.0, \"Amount\": 1.0, \"Sum\": 6.0, \"Modifiers\": [] }\n  ],\n  \"Discounts\": [],\n  \"Customer\": [{ \"Id\": \"{{customerId}}\", \"Name\": \"Test User\", \"CardNumber\": \"18846\" }],\n  \"Payments\": [{ \"PaymentTypeId\": \"{{cashPaymentTypeId}}\", \"PaymentTypeName\": \"Наличные\", \"Sum\": 12.0 }]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "wallet", "pos_batch_webhook"]
+        },
+        "description": "Test 1 OrderId (test-earn-001) geri qaytar. Service iiko:test-earn-001:OrderClosed prefix-li Transaction-ları tapır → reverse. Gözlənti: əvvəlki +3 step geri qaytarılır."
+      }
+    },
+    {
+      "name": "7. IDEMPOTENCY — Test 1 təkrar göndər",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('success=true', () => pm.expect(pm.response.json().success).to.be.true);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"EventType\": \"OrderClosed\",\n  \"Timestamp\": \"2026-06-23T15:25:00.0000000+04:00\",\n  \"Restaurant\": { \"Name\": \"Wiggle\", \"DepartmentId\": \"{{venueId}}\" },\n  \"TerminalsGroup\": { \"Id\": \"bba62a8d-05a4-07e5-019a-de9452df0065\", \"Name\": \"Wiggle Group\" },\n  \"OrderId\": \"test-earn-001\",\n  \"OrderNumber\": 1001,\n  \"TotalSum\": 12.0,\n  \"FullSum\": 12.0,\n  \"Items\": [\n    { \"ProductId\": \"{{productCorona}}\", \"ProductName\": \"Corona\", \"Price\": 2.0, \"Amount\": 1.0, \"Sum\": 2.0, \"Modifiers\": [] }\n  ],\n  \"Discounts\": [],\n  \"Customer\": [{ \"Id\": \"{{customerId}}\", \"Name\": \"Test User\", \"CardNumber\": \"18846\" }],\n  \"Payments\": [{ \"PaymentTypeId\": \"{{cashPaymentTypeId}}\", \"PaymentTypeName\": \"Наличные\", \"Sum\": 2.0 }]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "wallet", "pos_batch_webhook"]
+        },
+        "description": "Eyni OrderId=test-earn-001 təkrar göndər. Service idempotency key 'iiko:test-earn-001:OrderClosed' yoxlar → Already processed. Balans dəyişmir. (Test 6 OrderReturned-dan sonra göndərsən, OrderReturned key başqadır, OrderClosed key var-yox-luğu tapacaq — əgər OrderClosed-i sildi reverse zamanı, bu yenidən işləyə bilər. Real DB davranışına bax.)"
+      }
+    },
+    {
+      "name": "8. UNKNOWN DiscountTypeId — ignore et",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('success=true', () => pm.expect(pm.response.json().success).to.be.true);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"EventType\": \"OrderClosed\",\n  \"Timestamp\": \"2026-06-23T15:30:00.0000000+04:00\",\n  \"Restaurant\": { \"Name\": \"Wiggle\", \"DepartmentId\": \"{{venueId}}\" },\n  \"TerminalsGroup\": { \"Id\": \"bba62a8d-05a4-07e5-019a-de9452df0065\", \"Name\": \"Wiggle Group\" },\n  \"OrderId\": \"test-unknown-discount-008\",\n  \"OrderNumber\": 1008,\n  \"TotalSum\": 10.8,\n  \"FullSum\": 12.0,\n  \"Items\": [\n    { \"ProductId\": \"{{productCorona}}\", \"ProductName\": \"Corona\", \"Price\": 2.0, \"Amount\": 1.0, \"Sum\": 2.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productBaltika}}\", \"ProductName\": \"Балтика 9\", \"Price\": 4.0, \"Amount\": 1.0, \"Sum\": 4.0, \"Modifiers\": [] },\n    { \"ProductId\": \"{{productBudweiser}}\", \"ProductName\": \"Бэдвайзер\", \"Price\": 6.0, \"Amount\": 1.0, \"Sum\": 6.0, \"Modifiers\": [] }\n  ],\n  \"Discounts\": [\n    {\n      \"DiscountTypeId\": \"59d78e0b-dffa-402d-9b42-97736cfd6b5b\",\n      \"DiscountTypeName\": \"Скидка 10%\",\n      \"DiscountSum\": 1.2,\n      \"DiscountByItem\": [\n        { \"OrderItemId\": \"item-x\", \"ProductId\": \"{{productBudweiser}}\", \"ProductName\": \"Бэдвайзер\", \"DiscountSum\": 1.2 }\n      ]\n    }\n  ],\n  \"Customer\": [{ \"Id\": \"{{customerId}}\", \"Name\": \"Test User\", \"CardNumber\": \"18846\" }],\n  \"Payments\": [{ \"PaymentTypeId\": \"{{cashPaymentTypeId}}\", \"PaymentTypeName\": \"Наличные\", \"Sum\": 10.8 }]\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "wallet", "pos_batch_webhook"]
+        },
+        "description": "10% endirim (ümumi POS discount, loyalty deyil). DiscountTypeId admin set-də yoxdur → ignore. Bütün 3 məhsul earn iştirak edir → +3 step. Discount-redeem yox."
+      }
+    },
+    {
+      "name": "9. TENANT NOT FOUND (yalançı DepartmentId)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const j = pm.response.json();",
+              "pm.test('success=false', () => pm.expect(j.success).to.be.false);",
+              "pm.test('Tenant not found', () => pm.expect(j.message).to.include('Tenant'));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"EventType\": \"OrderClosed\",\n  \"Restaurant\": { \"Name\": \"Unknown\", \"DepartmentId\": \"00000000-0000-0000-0000-000000000000\" },\n  \"OrderId\": \"test-no-tenant-009\",\n  \"TotalSum\": 1.0,\n  \"FullSum\": 1.0,\n  \"Items\": [],\n  \"Customer\": [{ \"Id\": \"x\", \"CardNumber\": \"x\" }],\n  \"Payments\": []\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "wallet", "pos_batch_webhook"]
+        },
+        "description": "Yalançı DepartmentId. Tenant resolve OLMUR → 200 + success=false + 'Tenant integration not found'."
+      }
+    },
+    {
+      "name": "10. VALIDATION FAIL — OrderId yoxdur",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('success=false', () => pm.expect(pm.response.json().success).to.be.false);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"EventType\": \"OrderClosed\",\n  \"Restaurant\": { \"DepartmentId\": \"{{venueId}}\" },\n  \"OrderId\": \"\",\n  \"TotalSum\": 1.0,\n  \"FullSum\": 1.0,\n  \"Items\": [],\n  \"Customer\": [],\n  \"Payments\": []\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/wallet/pos_batch_webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "wallet", "pos_batch_webhook"]
+        },
+        "description": "OrderId boş. Gözlənti: 200 + success=false + 'OrderId is required'."
+      }
+    }
+  ]
+}
