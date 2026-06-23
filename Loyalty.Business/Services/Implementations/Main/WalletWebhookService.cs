@@ -802,13 +802,9 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             foreach (var tx in prior)
             {
-                var prevList = await _uow.Repository<Transaction>().GetAllAsync(
-                    t => t.LoyaltyCardId == tx.LoyaltyCardId && t.Id < tx.Id);
-                var prev = prevList.OrderByDescending(t => t.Id).FirstOrDefault();
-
-                decimal originalDelta = prev != null
-                    ? tx.BalanceAfter - prev.BalanceAfter
-                    : tx.BalanceAfter;
+                // Original earn delta = tx.Points (what was actually awarded).
+                // BalanceAfter delta approach fragile if intermediate tx-lər (marker, başqa earn) varsa.
+                decimal originalDelta = tx.Points;
 
                 totalReverseDelta += originalDelta;
 
@@ -817,12 +813,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                     int deltaInt = (int)originalDelta;
                     int newAbs = Math.Max(0, (int)c.CurrentPoints - deltaInt);
                     c.CurrentPoints = newAbs;
-                    c.CurrentSteps = newAbs % Math.Max(1, totalStepsPerCycle);
-                    c.CompletedCycles = newAbs / Math.Max(1, totalStepsPerCycle);
+                    int maxSteps = Math.Max(1, totalStepsPerCycle);
+                    c.CurrentSteps = newAbs % maxSteps;
+                    c.CompletedCycles = newAbs / maxSteps;
+                    // LifetimePoints da geri qaytar (cumulative ləkədən təmizlə)
+                    c.LifetimePoints = Math.Max(0m, c.LifetimePoints - originalDelta);
                 }
                 else
                 {
                     c.CurrentPoints = Math.Max(0m, c.CurrentPoints - originalDelta);
+                    c.LifetimePoints = Math.Max(0m, c.LifetimePoints - originalDelta);
                 }
 
                 _uow.Repository<LoyaltyCard>().Update(c);
@@ -832,7 +832,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     LoyaltyCardId = card.Id,
                     Type = TransactionType.Adjusted,
                     Status = RedeemStatus.Applied,
-                    Points = c.CurrentPoints,
+                    Points = -originalDelta,
                     Amount = Math.Abs(originalDelta),
                     OrderId = idempotencyKey,
                     Description = $"iiko OrderReturned reverse {tx.Type} ({originalDelta:+#;-#;0})",
