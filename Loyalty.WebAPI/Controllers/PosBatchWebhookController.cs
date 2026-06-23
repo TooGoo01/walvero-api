@@ -116,7 +116,14 @@ namespace Loyalty.WebAPI.Controllers
                     {
                         DiscountTypeId = d.DiscountTypeId,
                         DiscountTypeName = d.DiscountTypeName,
-                        DiscountSum = d.DiscountSum
+                        DiscountSum = d.DiscountSum,
+                        DiscountByItem = d.DiscountByItem?.Select(dbi => new IikoOrderDiscountByItem
+                        {
+                            OrderItemId = dbi.OrderItemId,
+                            ProductId = dbi.ProductId,
+                            ProductName = dbi.ProductName,
+                            DiscountSum = dbi.DiscountSum
+                        }).ToList() ?? new List<IikoOrderDiscountByItem>()
                     }).ToList() ?? new List<IikoOrderDiscount>(),
                     Payments = payload.Payments?.Select(p => new IikoOrderPayment
                     {
@@ -248,6 +255,15 @@ namespace Loyalty.WebAPI.Controllers
     {
         public string? DiscountTypeId { get; set; }
         public string? DiscountTypeName { get; set; }
+        public decimal DiscountSum { get; set; }
+        public List<IikoEventDiscountByItem> DiscountByItem { get; set; } = new();
+    }
+
+    public class IikoEventDiscountByItem
+    {
+        public string? OrderItemId { get; set; }
+        public string? ProductId { get; set; }
+        public string? ProductName { get; set; }
         public decimal DiscountSum { get; set; }
     }
 

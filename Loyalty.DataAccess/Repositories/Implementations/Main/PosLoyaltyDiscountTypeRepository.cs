@@ -1,0 +1,21 @@
+using Loyalty.DataAccess.Context;
+using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Repositories.Abstractions.Main;
+using Microsoft.EntityFrameworkCore;
+
+namespace Loyalty.DataAccess.Repositories.Implementations.Main
+{
+    public class PosLoyaltyDiscountTypeRepository : GenericRepository<PosLoyaltyDiscountType>, IPosLoyaltyDiscountTypeRepository
+    {
+        public PosLoyaltyDiscountTypeRepository(LoyaltyWalletDbContext context) : base(context)
+        {
+        }
+
+        public async Task<IReadOnlyList<PosLoyaltyDiscountType>> GetByTenantIntegrationIdAsync(int tenantIntegrationId, CancellationToken ct = default)
+        {
+            return await GetAsQueryable()
+                .Where(r => r.TenantIntegrationId == tenantIntegrationId && r.IsActive)
+                .ToListAsync(ct);
+        }
+    }
+}

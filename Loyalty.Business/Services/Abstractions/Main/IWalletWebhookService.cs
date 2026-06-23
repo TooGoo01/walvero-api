@@ -165,6 +165,15 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? DiscountTypeId { get; set; }
         public string? DiscountTypeName { get; set; }
         public decimal DiscountSum { get; set; }
+        public List<IikoOrderDiscountByItem> DiscountByItem { get; set; } = new();
+    }
+
+    public class IikoOrderDiscountByItem
+    {
+        public string? OrderItemId { get; set; }
+        public string? ProductId { get; set; }
+        public string? ProductName { get; set; }
+        public decimal DiscountSum { get; set; }
     }
 
     public class IikoOrderPayment

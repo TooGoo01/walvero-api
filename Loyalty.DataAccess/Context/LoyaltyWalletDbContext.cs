@@ -67,6 +67,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<IntegrationType> IntegrationTypes { get; set; }
         public DbSet<TenantIntegration> TenantIntegrations { get; set; }
         public DbSet<PosProductEarnRule> PosProductEarnRules { get; set; }
+        public DbSet<PosLoyaltyDiscountType> PosLoyaltyDiscountTypes { get; set; }
         public DbSet<PosCustomerMapping> PosCustomerMappings { get; set; }
 
         // Branches & Rooms
@@ -1028,6 +1029,21 @@ namespace Loyalty.DataAccess.Context
                 entity.HasOne(pr => pr.TenantIntegration)
                     .WithMany()
                     .HasForeignKey(pr => pr.TenantIntegrationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== POS LOYALTY DISCOUNT TYPE ====
+            modelBuilder.Entity<PosLoyaltyDiscountType>(entity =>
+            {
+                entity.ToTable("PosLoyaltyDiscountTypes");
+                entity.HasKey(pd => pd.Id);
+                entity.Property(pd => pd.ExternalDiscountTypeId).IsRequired().HasMaxLength(100);
+                entity.Property(pd => pd.DiscountName).HasMaxLength(200);
+                entity.HasIndex(pd => new { pd.TenantIntegrationId, pd.ExternalDiscountTypeId }).IsUnique();
+
+                entity.HasOne(pd => pd.TenantIntegration)
+                    .WithMany()
+                    .HasForeignKey(pd => pd.TenantIntegrationId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
 

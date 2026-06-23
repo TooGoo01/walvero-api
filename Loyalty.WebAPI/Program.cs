@@ -203,7 +203,7 @@ builder.Services
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("TenantAdminOrModerator", policy =>
-        policy.RequireRole("Tenant Admin", "Branch Admin", "Moderator", "Branch Moderator"));
+        policy.RequireRole("Super Admin", "Tenant Admin", "Branch Admin", "Moderator", "Branch Moderator"));
     options.AddPolicy("SuperAdminOnly", policy =>
        policy.RequireRole("Super Admin"));
 

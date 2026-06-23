@@ -1814,6 +1814,49 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("PosCustomerMappings", (string)null);
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosLoyaltyDiscountType", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("DiscountName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ExternalDiscountTypeId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantIntegrationId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantIntegrationId", "ExternalDiscountTypeId")
+                        .IsUnique();
+
+                    b.ToTable("PosLoyaltyDiscountTypes", (string)null);
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosProductEarnRule", b =>
                 {
                     b.Property<int>("Id")
@@ -4145,6 +4188,17 @@ namespace Loyalty.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("Customer");
+
+                    b.Navigation("TenantIntegration");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosLoyaltyDiscountType", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.TenantIntegration", "TenantIntegration")
+                        .WithMany()
+                        .HasForeignKey("TenantIntegrationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("TenantIntegration");
                 });

@@ -16,6 +16,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IRewardRepository _rewardRepo;
         private readonly ICardTemplateRepository _cardTemplateRepo;
         private readonly IPosProductEarnRuleRepository _earnRuleRepo;
+        private readonly IPosLoyaltyDiscountTypeRepository _loyaltyDiscountTypeRepo;
         private readonly IPosCustomerMappingRepository _customerMappingRepo;
         private readonly ICustomerRepository _customerRepo;
         private readonly IRedeemService _redeemService;
@@ -32,6 +33,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             IRewardRepository rewardRepo,
             ICardTemplateRepository cardTemplateRepo,
             IPosProductEarnRuleRepository earnRuleRepo,
+            IPosLoyaltyDiscountTypeRepository loyaltyDiscountTypeRepo,
             IPosCustomerMappingRepository customerMappingRepo,
             ICustomerRepository customerRepo,
             IRedeemService redeemService,
@@ -47,6 +49,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _rewardRepo = rewardRepo;
             _cardTemplateRepo = cardTemplateRepo;
             _earnRuleRepo = earnRuleRepo;
+            _loyaltyDiscountTypeRepo = loyaltyDiscountTypeRepo;
             _customerMappingRepo = customerMappingRepo;
             _customerRepo = customerRepo;
             _redeemService = redeemService;
@@ -865,6 +868,50 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             decimal earnBase = Math.Max(0m, request.TotalSum - walletRedeemSum);
 
+            // === Loyalty discount redemption (Discounts.DiscountByItem) ===
+            var loyaltyDiscountIds = (await _loyaltyDiscountTypeRepo.GetByTenantIntegrationIdAsync(context.TenantIntegrationId, ct))
+                .Select(d => d.ExternalDiscountTypeId.Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var redeemedUnitsByProduct = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var d in request.Discounts ?? new List<IikoOrderDiscount>())
+            {
+                var dtid = (d.DiscountTypeId ?? "").Trim();
+                if (string.IsNullOrEmpty(dtid) || !loyaltyDiscountIds.Contains(dtid)) continue;
+                foreach (var dbi in d.DiscountByItem ?? new List<IikoOrderDiscountByItem>())
+                {
+                    var pid = (dbi.ProductId ?? "").Trim();
+                    if (string.IsNullOrEmpty(pid)) continue;
+                    redeemedUnitsByProduct[pid] = redeemedUnitsByProduct.GetValueOrDefault(pid) + 1;
+                }
+            }
+
+            int totalRedeemUnits = 0;
+            decimal totalRedeemPointsCost = 0m;
+            if (redeemedUnitsByProduct.Count > 0 && context.LoyaltyProgramId.HasValue)
+            {
+                var activeRewards = await _rewardRepo.GetActiveRewardsByProgramIdAsync(context.LoyaltyProgramId.Value, ct);
+                var rewardByProductId = activeRewards
+                    .Where(r => !string.IsNullOrWhiteSpace(r.ExternalProductId))
+                    .GroupBy(r => r.ExternalProductId!.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+                foreach (var (pid, count) in redeemedUnitsByProduct)
+                {
+                    if (rewardByProductId.TryGetValue(pid, out var reward))
+                    {
+                        totalRedeemUnits += count;
+                        totalRedeemPointsCost += reward.PointsCost * count;
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "iiko OrderClosed: loyalty discount for productId={Pid} but no active reward mapped. OrderId={OrderId} TenantId={TenantId}",
+                            pid, request.OrderId, context.TenantId);
+                    }
+                }
+            }
+
             decimal totalEarnPoints = 0m;
             int totalEarnSteps = 0;
             bool anyEarnRuleMatched = false;
@@ -878,6 +925,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     var pid = (item.ProductId ?? "").Trim();
                     if (string.IsNullOrEmpty(pid)) continue;
+                    if (redeemedUnitsByProduct.ContainsKey(pid))
+                    {
+                        // bu item loyalty discount-da iştirak edib → earn-dən düşür
+                        continue;
+                    }
                     if (rulesByProduct.TryGetValue(pid, out var rule))
                     {
                         anyEarnRuleMatched = true;
@@ -995,7 +1047,48 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _uow.Repository<Transaction>().Add(redeemTx);
             }
 
-            if (earnedValue > 0 || walletRedeemSum > 0)
+            // === Discount-based redeem (DiscountByItem → reward consumed) ===
+            decimal discountRedeemPoints = 0m;
+            if (totalRedeemUnits > 0)
+            {
+                if (templateType == CardTemplateType.ProgressBased)
+                {
+                    int cyclesToConsume = Math.Min(c.CompletedCycles, totalRedeemUnits);
+                    c.CompletedCycles -= cyclesToConsume;
+                    int pointsDec = cyclesToConsume * Math.Max(1, totalStepsPerCycle);
+                    c.CurrentPoints = Math.Max(0m, c.CurrentPoints - pointsDec);
+                    discountRedeemPoints = pointsDec;
+                }
+                else
+                {
+                    decimal cost = Math.Min(c.CurrentPoints, totalRedeemPointsCost);
+                    c.CurrentPoints = Math.Max(0m, c.CurrentPoints - cost);
+                    discountRedeemPoints = cost;
+                }
+
+                _uow.Repository<LoyaltyCard>().Update(c);
+
+                var discountRedeemTx = new Transaction
+                {
+                    LoyaltyCardId = c.Id,
+                    Type = TransactionType.Redeemed,
+                    Status = RedeemStatus.Applied,
+                    Points = -discountRedeemPoints,
+                    Amount = 0m,
+                    OrderId = idempotencyKey + ":discount_redeem",
+                    ReferenceNumber = request.OrderNumber?.ToString(),
+                    Description = $"iiko discount loyalty redeem ({totalRedeemUnits} units)",
+                    RegUserId = 1,
+                    RegDate = DateTime.UtcNow,
+                    IsActive = true,
+                    BalanceAfter = c.CurrentPoints,
+                    LocalOccurredAt = DateTimeOffset.UtcNow,
+                    TimeZoneIdUsed = "UTC"
+                };
+                _uow.Repository<Transaction>().Add(discountRedeemTx);
+            }
+
+            if (earnedValue > 0 || walletRedeemSum > 0 || totalRedeemUnits > 0)
             {
                 // marker tx — duplicate guard üçün (idempotency key tam match)
                 var markerTx = new Transaction
@@ -1007,7 +1100,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Amount = request.TotalSum,
                     OrderId = idempotencyKey,
                     ReferenceNumber = request.OrderNumber?.ToString(),
-                    Description = $"iiko OrderClosed marker (earn={earnedValue}, redeem={walletRedeemSum})",
+                    Description = $"iiko OrderClosed marker (earn={earnedValue}, redeem={walletRedeemSum}, discountRedeemUnits={totalRedeemUnits})",
                     RegUserId = 1,
                     RegDate = DateTime.UtcNow,
                     IsActive = true,
@@ -1042,7 +1135,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             await _uow.CommitAsync(ct);
 
-            decimal netDelta = earnedValue - walletRedeemSum;
+            decimal netDelta = earnedValue - walletRedeemSum - discountRedeemPoints;
             try { await PushWalletUpdateAsync(c, program, netDelta, ct); }
             catch (Exception ex) { _logger.LogWarning(ex, "iiko OrderClosed: wallet push failed. CardId={CardId}", c.Id); }
 
