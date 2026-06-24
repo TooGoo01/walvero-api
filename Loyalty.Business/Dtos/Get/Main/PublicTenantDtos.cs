@@ -188,6 +188,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? IconKey { get; set; }
         public int SortOrder { get; set; }
         public bool OpenInNewTab { get; set; }
+        public List<LinkActionDto>? Actions { get; set; }
     }
 
     /// <summary>

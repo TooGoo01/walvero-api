@@ -19,5 +19,8 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? IconKey { get; set; }
         public int SortOrder { get; set; }
         public bool OpenInNewTab { get; set; } = true;
+
+        // Çoxseçimli linklər üçün aksiya siyahısı (JSON: List<LinkActionDto>). Null = tək url.
+        public string? ActionsJson { get; set; }
     }
 }

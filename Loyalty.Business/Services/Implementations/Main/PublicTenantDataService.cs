@@ -185,7 +185,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Url = l.Url,
                     IconKey = l.IconKey,
                     SortOrder = l.SortOrder,
-                    OpenInNewTab = l.OpenInNewTab
+                    OpenInNewTab = l.OpenInNewTab,
+                    Actions = string.IsNullOrEmpty(l.ActionsJson)
+                        ? null
+                        : System.Text.Json.JsonSerializer.Deserialize<List<LinkActionDto>>(l.ActionsJson)
                 })
                 .ToList();
 

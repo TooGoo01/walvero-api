@@ -14,5 +14,6 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int SortOrder { get; set; }
         public bool OpenInNewTab { get; set; }
         public bool IsActive { get; set; }
+        public List<LinkActionDto>? Actions { get; set; }
     }
 }

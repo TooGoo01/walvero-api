@@ -2877,6 +2877,9 @@ namespace Loyalty.DataAccess.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ActionsJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("AzTitle")
                         .IsRequired()
                         .HasMaxLength(200)

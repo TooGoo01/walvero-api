@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Loyalty.Business.Dtos.Get.Main;
 
 namespace Loyalty.Business.Dtos.Post.Main
 {
@@ -19,14 +20,16 @@ namespace Loyalty.Business.Dtos.Post.Main
         [MaxLength(200)]
         public string? RuTitle { get; set; }
 
-        [Required(ErrorMessage = "URL məcburidir")]
+        // Aksiya varsa URL ixtiyari ola bilər (popup ilə açılır)
         [MaxLength(1000)]
-        public string Url { get; set; } = string.Empty;
+        public string? Url { get; set; }
 
         [MaxLength(50)]
         public string? IconKey { get; set; }
 
         public int SortOrder { get; set; }
         public bool OpenInNewTab { get; set; } = true;
+
+        public List<LinkActionDto>? Actions { get; set; }
     }
 }

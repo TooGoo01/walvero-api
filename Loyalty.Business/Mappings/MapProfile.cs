@@ -12,6 +12,7 @@ using Loyalty.DataAccess.Entities.Users;
 using Loyalty.DataAccess.Models;
 using LoyaltyWalletApp.Business.Dtos.Get.Main;
 using System.Diagnostics.Metrics;
+using System.Text.Json;
 using BranchEntity = Loyalty.DataAccess.Entities.Main.Branch;
 using RoomEntity = Loyalty.DataAccess.Entities.Main.Room;
 using TimeZone = Loyalty.DataAccess.Entities.Main.TimeZone;
@@ -225,10 +226,36 @@ namespace Loyalty.Business.Mappings
             CreateMap<RestorantWifiInformation, GetRestorantWifiInformationDto>()
                 .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null));
 
-            CreateMap<TenantLink, AddTenantLinkDto>().ReverseMap();
-            CreateMap<TenantLink, UpdateTenantLinkDto>().ReverseMap();
+            CreateMap<TenantLink, AddTenantLinkDto>()
+                .ForMember(d => d.Actions, opt => opt.MapFrom(s =>
+                    string.IsNullOrEmpty(s.ActionsJson)
+                        ? null
+                        : JsonSerializer.Deserialize<List<LinkActionDto>>(s.ActionsJson, (JsonSerializerOptions?)null)));
+            CreateMap<AddTenantLinkDto, TenantLink>()
+                .ForMember(d => d.Url, opt => opt.MapFrom(s => s.Url ?? string.Empty))
+                .ForMember(d => d.ActionsJson, opt => opt.MapFrom(s =>
+                    s.Actions == null || s.Actions.Count == 0
+                        ? null
+                        : JsonSerializer.Serialize(s.Actions, (JsonSerializerOptions?)null)));
+
+            CreateMap<TenantLink, UpdateTenantLinkDto>()
+                .ForMember(d => d.Actions, opt => opt.MapFrom(s =>
+                    string.IsNullOrEmpty(s.ActionsJson)
+                        ? null
+                        : JsonSerializer.Deserialize<List<LinkActionDto>>(s.ActionsJson, (JsonSerializerOptions?)null)));
+            CreateMap<UpdateTenantLinkDto, TenantLink>()
+                .ForMember(d => d.Url, opt => opt.MapFrom(s => s.Url ?? string.Empty))
+                .ForMember(d => d.ActionsJson, opt => opt.MapFrom(s =>
+                    s.Actions == null || s.Actions.Count == 0
+                        ? null
+                        : JsonSerializer.Serialize(s.Actions, (JsonSerializerOptions?)null)));
+
             CreateMap<TenantLink, GetTenantLinkDto>()
-                .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null));
+                .ForMember(d => d.BranchName, opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null))
+                .ForMember(d => d.Actions, opt => opt.MapFrom(s =>
+                    string.IsNullOrEmpty(s.ActionsJson)
+                        ? null
+                        : JsonSerializer.Deserialize<List<LinkActionDto>>(s.ActionsJson, (JsonSerializerOptions?)null)));
 
             CreateMap<Transaction, GetTransactionDto>()
                 .ForMember(d => d.Status, opt => opt.MapFrom(s => (int)s.Status))
