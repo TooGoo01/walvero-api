@@ -67,5 +67,14 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? GoogleLogoUrl { get; set; }
         public string? AppLogoUrl { get; set; }
         public string? AppStripUrl { get; set; }
+
+        // Discover kartında reward/bonus göstərmək üçün.
+        // TemplateType: 1=ProgressBased, 2=PointsBased, 3=TierBased.
+        public int TemplateType { get; set; }
+        public int TotalSteps { get; set; }
+        public string? StepLabel { get; set; }
+        public string? FreeRewardLabel { get; set; }
+        public string? RewardDescription { get; set; }
+        public int? BronzePercent { get; set; }
     }
 }

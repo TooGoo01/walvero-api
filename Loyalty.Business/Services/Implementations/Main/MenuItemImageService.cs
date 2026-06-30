@@ -80,6 +80,35 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true);
         }
 
+        public async Task<ServiceResult> DeleteImagesAsync(int menuItemId, List<int> imageIds)
+        {
+            if (imageIds == null || imageIds.Count == 0)
+                return new ServiceResult(true);
+
+            const string containerName = "photo-menu";
+            var images = await _unitOfWork.Repository<MenuItemImage>()
+                .GetAllAsync(x => x.MenuItemId == menuItemId && imageIds.Contains(x.Id));
+
+            if (!images.Any())
+                return new ServiceResult(true);
+
+            if (_storage != null)
+            {
+                foreach (var img in images)
+                {
+                    if (!string.IsNullOrWhiteSpace(img.FileName))
+                    {
+                        try { await _storage.DeleteAsync(containerName, img.FileName); }
+                        catch { /* şəkil tapılmadı və ya silinə bilmədi - davam et */ }
+                    }
+                }
+            }
+
+            _unitOfWork.Repository<MenuItemImage>().DeleteRange(images);
+            _unitOfWork.Commit();
+            return new ServiceResult(true);
+        }
+
         public async Task<ServiceResult> UploadIngredientVideoAsync(int menuItemId, IFormFile? videoFile, bool remove)
         {
             const string container = "video-menu";

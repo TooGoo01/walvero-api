@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace Loyalty.Business.Dtos.Post.Main
@@ -37,6 +38,9 @@ namespace Loyalty.Business.Dtos.Post.Main
         public int? BranchId { get; set; }
 
         public IFormFileCollection? Files { get; set; }
+
+        // Redaktədə silinəcək mövcud şəkillərin id-ləri (boş/null = heç nə silinmir).
+        public List<int>? RemovedImageIds { get; set; }
 
         public IFormFile? IngredientVideoFile { get; set; }
 

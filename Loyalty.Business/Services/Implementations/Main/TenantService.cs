@@ -191,7 +191,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                                         LogoUrl = lp.CardTemplate.LogoUrl,
                                         GoogleLogoUrl = lp.CardTemplate.GoogleLogoUrl,
                                         AppLogoUrl = lp.CardTemplate.AppLogoUrl,
-                                        AppStripUrl = lp.CardTemplate.AppStripUrl
+                                        AppStripUrl = lp.CardTemplate.AppStripUrl,
+                                        TemplateType = (int)lp.CardTemplate.TemplateType,
+                                        TotalSteps = lp.CardTemplate.TotalSteps,
+                                        StepLabel = lp.CardTemplate.StepLabel,
+                                        FreeRewardLabel = lp.CardTemplate.FreeRewardLabel,
+                                        RewardDescription = lp.CardTemplate.RewardDescription,
+                                        BronzePercent = lp.CardTemplate.BronzePercent
                                     }
                             })
                             .ToList(),

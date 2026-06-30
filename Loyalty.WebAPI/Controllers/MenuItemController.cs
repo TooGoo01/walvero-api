@@ -161,15 +161,13 @@ namespace Loyalty.WebAPI.Controllers
             var result = await _menuItemService.Add(dto);
             if (result.Success)
             {
-
-                    var compressedFiles = CompressImages(dto.Files);
-
-                    // Update model with compressed images
-                    var compressedFileCollection = new FormFileCollection(compressedFiles);
-                    dto.Files = compressedFileCollection;
-
-                    // Add product and files
-                    await _menuItemImageService.AddRangeAsync(dto, (int)result.Data);
+                    // Şəkil yalnız fayl gələndə əlavə olunur (Files null olduqda 500 olmasın).
+                    if (dto.Files != null && dto.Files.Count > 0)
+                    {
+                        var compressedFiles = CompressImages(dto.Files);
+                        dto.Files = new FormFileCollection(compressedFiles);
+                        await _menuItemImageService.AddRangeAsync(dto, (int)result.Data);
+                    }
 
                     if (dto.IngredientVideoFile != null || dto.RemoveIngredientVideo)
                     {
@@ -234,16 +232,18 @@ namespace Loyalty.WebAPI.Controllers
             var result = await _menuItemService.Update(updateDto);
             if (result.Success)
             {
+                // Seçilmiş mövcud şəkilləri sil
+                if (dto.RemovedImageIds != null && dto.RemovedImageIds.Count > 0)
+                {
+                    await _menuItemImageService.DeleteImagesAsync(id, dto.RemovedImageIds);
+                }
+
+                // Yeni şəkilləri ƏLAVƏ et (köhnələri silmir)
                 if (dto.Files != null && dto.Files.Count > 0)
                 {
                     var compressedFiles = CompressImages(dto.Files);
-
-                    // Update model with compressed images
-                    var compressedFileCollection = new FormFileCollection(compressedFiles);
-                    dto.Files = compressedFileCollection;
-
-                    // Update product and files
-                    await _menuItemImageService.UpdateRangeAsync(dto, id);
+                    dto.Files = new FormFileCollection(compressedFiles);
+                    await _menuItemImageService.AddRangeAsync(dto, id);
                 }
 
                 if (dto.IngredientVideoFile != null || dto.RemoveIngredientVideo)
