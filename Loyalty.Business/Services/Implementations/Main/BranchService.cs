@@ -157,6 +157,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.AnnouncementAz != null) branch.AnnouncementAz = dto.AnnouncementAz;
             if (dto.AnnouncementEn != null) branch.AnnouncementEn = dto.AnnouncementEn;
             if (dto.AnnouncementRu != null) branch.AnnouncementRu = dto.AnnouncementRu;
+            if (dto.MetaTitle != null) branch.MetaTitle = dto.MetaTitle;
+            if (dto.MetaDescription != null) branch.MetaDescription = dto.MetaDescription;
 
             if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
             {

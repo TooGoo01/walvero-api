@@ -82,6 +82,10 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? AnnouncementEn { get; set; }
         public string? AnnouncementRu { get; set; }
 
+        // Link preview (paylaşım) üçün admin tərəfindən təyin olunan title + description.
+        public string? MetaTitle { get; set; }
+        public string? MetaDescription { get; set; }
+
         public ICollection<Room> Rooms { get; set; } = new List<Room>();
 
         // Inverse navigation collections — DbContext-də HasOne(...).WithMany(b => b.Staff/Transactions)

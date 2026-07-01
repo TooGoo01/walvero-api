@@ -276,6 +276,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     AnnouncementAz = branchEntity.AnnouncementAz,
                     AnnouncementEn = branchEntity.AnnouncementEn,
                     AnnouncementRu = branchEntity.AnnouncementRu,
+                    MetaTitle = branchEntity.MetaTitle,
+                    MetaDescription = branchEntity.MetaDescription,
                 };
             }
 

@@ -169,6 +169,10 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? AnnouncementAz { get; set; }
         public string? AnnouncementEn { get; set; }
         public string? AnnouncementRu { get; set; }
+
+        // Link preview (paylaşım) title + description.
+        public string? MetaTitle { get; set; }
+        public string? MetaDescription { get; set; }
     }
 
     public class RestaurantLocationDto

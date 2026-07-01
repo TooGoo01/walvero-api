@@ -73,5 +73,7 @@ namespace Loyalty.Business.Dtos.Get.Main.Branch
         public string? AnnouncementAz { get; set; }
         public string? AnnouncementEn { get; set; }
         public string? AnnouncementRu { get; set; }
+        public string? MetaTitle { get; set; }
+        public string? MetaDescription { get; set; }
     }
 }
