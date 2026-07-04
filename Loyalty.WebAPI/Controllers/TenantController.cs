@@ -82,7 +82,7 @@ namespace Loyalty.WebAPI.Controllers
         [ResponseCache(
             Duration = 60,
             VaryByHeader = "Authorization",
-            VaryByQueryKeys = new[] { "currentPage", "pageSize", "categoryId", "countryId", "cityId", "name" })]
+            VaryByQueryKeys = new[] { "currentPage", "pageSize", "categoryId", "countryId", "cityId", "name", "platform" })]
         public async Task<ActionResult<ServiceResult>> GetTenants(
             [FromQuery] TenantSearchDto? model,
             int currentPage = 1,

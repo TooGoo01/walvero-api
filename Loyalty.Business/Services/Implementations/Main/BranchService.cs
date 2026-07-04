@@ -89,6 +89,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             await _unitOfWork.Repository<BranchEntity>().AddAsync(entity);
             _unitOfWork.Commit();
 
+            TenantService.InvalidateAllFilterCache();
+
             var response = _mapper.Map<GetBranchDto>(entity);
             return new ServiceResult(true, response);
         }
@@ -160,6 +162,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.MetaTitle != null) branch.MetaTitle = dto.MetaTitle;
             if (dto.MetaDescription != null) branch.MetaDescription = dto.MetaDescription;
 
+            if (dto.HideInApp.HasValue) branch.HideInApp = dto.HideInApp.Value;
+
             if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
             {
                 await ResetMainBranchAsync(branch.TenantId);
@@ -172,6 +176,9 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             _unitOfWork.Repository<BranchEntity>().Update(branch);
             _unitOfWork.Commit();
+
+            // Branch datası discover cache payload-undadır — dəyişiklik dərhal görünsün.
+            TenantService.InvalidateAllFilterCache();
 
             var response = _mapper.Map<GetBranchDto>(branch);
             return new ServiceResult(true, response);
@@ -186,6 +193,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             branch.IsActive = false;
             _unitOfWork.Repository<BranchEntity>().Update(branch);
             _unitOfWork.Commit();
+
+            TenantService.InvalidateAllFilterCache();
 
             return new ServiceResult(true);
         }

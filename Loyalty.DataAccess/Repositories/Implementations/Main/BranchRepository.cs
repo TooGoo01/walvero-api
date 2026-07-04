@@ -18,7 +18,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         {
             return await GetAsQueryable()
                 .Include(b => b.Staff)
-                .Where(b => b.TenantId == tenantId && b.IsActive)
+                .Where(b => b.TenantId == tenantId && b.IsActive && !b.HideInApp)
                 .OrderByDescending(b => b.IsMainBranch)
                 .ThenBy(b => b.Name)
                 .ToListAsync(ct);
@@ -42,6 +42,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Include(b => b.Staff)
                 .Where(b => b.TenantId == tenantId
                     && b.IsActive
+                    && !b.HideInApp
                     && b.Latitude.HasValue
                     && b.Longitude.HasValue)
                 .ToListAsync(ct);

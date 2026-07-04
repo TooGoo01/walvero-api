@@ -89,13 +89,17 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         }
 
         /// <inheritdoc />
-        public IQueryable<Tenant> GetActiveFiltered(string? name, int? categoryId, int? countryId, int? cityId)
+        public IQueryable<Tenant> GetActiveFiltered(string? name, int? categoryId, int? countryId, int? cityId, bool excludeHiddenInApp = true)
         {
             // Lightweight query — NO Customer/Card includes.
             // isCustomer is resolved via batch query in service layer.
             var query = GetAsQueryable()
                 .AsNoTracking()
                 .Where(x => x.IsActive && !x.IsHidden);
+
+            // HideInApp: yalnız mobil app-dan gizlədilir; web client platform=web ilə görür
+            if (excludeHiddenInApp)
+                query = query.Where(x => !x.HideInApp);
 
             // Text search filter
             if (!string.IsNullOrWhiteSpace(name))
@@ -119,12 +123,16 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .ThenBy(x => x.DiscoverSortOrder)
                 .ThenBy(x => x.Id);
         }
-        public async Task<IReadOnlyList<HomeTenantProjection>> ListHomeTenantsAsync(int? countryId = null, int? cityId = null, CancellationToken ct = default)
+        public async Task<IReadOnlyList<HomeTenantProjection>> ListHomeTenantsAsync(int? countryId = null, int? cityId = null, bool excludeHiddenInApp = true, CancellationToken ct = default)
         {
             var query = _LoyaltyDbContext.Tenants
                 .AsNoTracking()
                 .Where(t => t.IsActive && t.ShowOnHome && !t.IsHidden);
-            
+
+            // HideInApp: yalnız mobil app-dan gizlədilir; web client platform=web ilə görür
+            if (excludeHiddenInApp)
+                query = query.Where(t => !t.HideInApp);
+
             // FEATURE: Country filter for discover/home page
             if (countryId != null)
                 query = query.Where(t => t.TenantLocation != null && t.TenantLocation.countryId == countryId);

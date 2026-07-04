@@ -136,6 +136,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("ForegroundColor")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("HideInApp")
+                        .HasColumnType("bit");
+
                     b.Property<string>("InstagramUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -169,6 +172,12 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("MenuUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("MetaDescription")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("MetaTitle")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -2576,6 +2585,9 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<string>("FacebookUrl")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("HideInApp")
+                        .HasColumnType("bit");
 
                     b.Property<string>("InstagramUrl")
                         .HasColumnType("nvarchar(max)");

@@ -48,6 +48,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool AcceptAnonymus { get; set; } = false;
         public bool ShowOnHome { get; set; } = false;
         public bool IsHidden { get; set; } = false; // Hidden tenants (e.g., Walvero shadow tenant) never appear in listings
+        public bool HideInApp { get; set; } = false; // Yalnız mobil app listinqlərindən gizlədir; public web-də (t/[slug]) görünür
         public bool IsHasMenu { get; set; } = false; // Menyusu olan tenant-lar public siyahıda görünür
         public int? DiscoverSortOrder { get; set; } // Admin manuel discover sıralama. null → sondadır
 

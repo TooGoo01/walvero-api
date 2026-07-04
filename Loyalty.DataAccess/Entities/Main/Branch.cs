@@ -23,6 +23,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? WorkingHoursJson { get; set; }
 
         public bool IsMainBranch { get; set; } = false;
+        public bool HideInApp { get; set; } = false; // App listinqlərindən gizlədir; slug URL, skaner, POS, tranzaksiyalar işləyir (IsActive=false-dan fərqli)
 
         // Optional contact / social links � same shape as Tenant
         public string? LocationUrl { get; set; }

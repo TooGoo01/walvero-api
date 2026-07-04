@@ -31,6 +31,7 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
 
         public string? WorkingHoursJson { get; set; }
         public bool? IsMainBranch { get; set; }
+        public bool? HideInApp { get; set; } // null = dəyişmə
 
         [MaxLength(500)] public string? LocationUrl { get; set; }
         [MaxLength(500)] public string? WazeLocationUrl { get; set; }

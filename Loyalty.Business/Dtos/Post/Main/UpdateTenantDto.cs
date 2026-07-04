@@ -33,6 +33,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public bool ShowOnHome { get; set; } = false;
         public bool AcceptAnonymous { get; set; } = false;
         public bool IsHidden { get; set; } = false;
+        public bool HideInApp { get; set; } = false;
         public bool IsHasMenu { get; set; } = false;
         public List<int> admins { get; set; }
         public int categoryId { get; set; }

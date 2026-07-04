@@ -57,8 +57,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         private static string _filterCacheKey(
             string? name, int? categoryId, int? countryId, int? cityId,
-            int page, int pageSize)
-            => $"tenants:filter:{name}|{categoryId}|{countryId}|{cityId}|p{page}|s{pageSize}";
+            int page, int pageSize, bool excludeHiddenInApp)
+            => $"tenants:filter:{name}|{categoryId}|{countryId}|{cityId}|p{page}|s{pageSize}|app{excludeHiddenInApp}";
 
         /// <summary>
         /// Bütün filter-cache-lərini bir anda invalidate etmək üçün ortaq token.
@@ -73,7 +73,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 new Microsoft.Extensions.Primitives.CancellationChangeToken(_filterCacheCts.Token));
         }
 
-        private static void InvalidateAllFilterCache()
+        internal static void InvalidateAllFilterCache()
         {
             var oldCts = _filterCacheCts;
             _filterCacheCts = new CancellationTokenSource();
@@ -143,9 +143,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             // === STEP 1: Filter kəşrini cache-dən oxu / DB-dən yarad ===
             // Cache yalnız public data saxlayır (IsCustomer = false her zaman),
             // per-user overlay sonra applied olur — cəsl saxlanması üçün təhlükəsizdir.
+            // "web" platformu HideInApp olanları da görür; mobil app (param göndərmir) görmür.
+            var excludeHiddenInApp = !string.Equals(model?.Platform, "web", StringComparison.OrdinalIgnoreCase);
+
             var cacheKey = _filterCacheKey(
                 model?.Name, model?.categoryId, model?.countryId, model?.cityId,
-                currentPage, pageSize);
+                currentPage, pageSize, excludeHiddenInApp);
 
             (int totalCount, List<TenantDiscoverDto> tenants) cached;
 
@@ -159,7 +162,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     model?.Name,
                     model?.categoryId,
                     model?.countryId,
-                    model?.cityId);
+                    model?.cityId,
+                    excludeHiddenInApp);
 
                 var freshCount = await query.CountAsync();
 
@@ -202,7 +206,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                             })
                             .ToList(),
                         Branches = t.Branches
-                            .Where(b => b.IsActive)
+                            .Where(b => b.IsActive && (!excludeHiddenInApp || !b.HideInApp))
                             .OrderByDescending(b => b.IsMainBranch)
                             .ThenBy(b => b.Name)
                             .Select(b => new TenantDiscoverBranchDto
@@ -382,6 +386,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 category.ShowOnHome = dto.ShowOnHome;
                 category.AcceptAnonymus = dto.AcceptAnonymous;
                 category.IsHidden = dto.IsHidden;
+                category.HideInApp = dto.HideInApp;
                 category.IsHasMenu = dto.IsHasMenu;
                 category.LinkedInUrl = dto.LinkedInUrl;
                 category.WazeLocationUrl = dto.WazeLocationUrl;
@@ -485,7 +490,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
         public async Task<IReadOnlyList<HomeTenantDto>> GetHomeTenantsAsync(int? countryId = null, int? cityId = null, CancellationToken ct = default)
         {
-            var projections = await _tenantRepository.ListHomeTenantsAsync(countryId, cityId, ct);
+            var projections = await _tenantRepository.ListHomeTenantsAsync(countryId, cityId, excludeHiddenInApp: true, ct);
 
             // Map from repository projection to service DTO
             return projections.Select(p => new HomeTenantDto

@@ -29,13 +29,16 @@ namespace Loyalty.WebAPI.Controllers
         /// </summary>
         [HttpGet("home/tenants")]
         [ProducesResponseType(typeof(ServiceResult<List<HomeTenantDto>>), (int)HttpStatusCode.OK)]
-        [ResponseCache(Duration = 120, VaryByQueryKeys = new[] { "countryId", "cityId" })]
+        [ResponseCache(Duration = 120, VaryByQueryKeys = new[] { "countryId", "cityId", "platform" })]
         public async Task<ActionResult<ServiceResult<List<HomeTenantDto>>>> GetHomeTenants(
             [FromQuery] int? countryId,
             [FromQuery] int? cityId,
+            [FromQuery] string? platform,
             CancellationToken ct)
         {
-            var result = await _homeService.GetHomeTenantsAsync(countryId, cityId, ct);
+            // "web" platformu HideInApp tenant-ları da görür; mobil app (param yoxdur) görmür.
+            var excludeHiddenInApp = !string.Equals(platform, "web", StringComparison.OrdinalIgnoreCase);
+            var result = await _homeService.GetHomeTenantsAsync(countryId, cityId, excludeHiddenInApp, ct);
             
             if (result.Success)
             {
