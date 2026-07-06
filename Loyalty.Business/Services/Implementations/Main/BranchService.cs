@@ -55,11 +55,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, dtos);
         }
 
-        public async Task<ServiceResult> GetByIdAsync(int id)
+        public async Task<ServiceResult> GetByIdAsync(int id, int? tenantId = null)
         {
             var branch = await _dbContext.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == id);
             if (branch == null)
                 return new ServiceResult(false, "Branch not found");
+            if (tenantId.HasValue && branch.TenantId != tenantId.Value)
+                return new ServiceResult(false, "Bu filial sizin tenant-a aid deyil");
 
             var dto = _mapper.Map<GetBranchDto>(branch);
             dto.StaffCount = 0;
@@ -95,11 +97,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, response);
         }
 
-        public async Task<ServiceResult> UpdateAsync(int id, UpdateBranchDto dto)
+        public async Task<ServiceResult> UpdateAsync(int id, UpdateBranchDto dto, int? tenantId = null)
         {
             var branch = await _dbContext.Branches.FirstOrDefaultAsync(b => b.Id == id);
             if (branch == null)
                 return new ServiceResult(false, "Branch not found");
+            if (tenantId.HasValue && branch.TenantId != tenantId.Value)
+                return new ServiceResult(false, "Bu filial sizin tenant-a aid deyil");
 
             if (dto.Name != null) branch.Name = dto.Name;
             if (dto.Slug != null) branch.Slug = string.IsNullOrWhiteSpace(dto.Slug) ? null : dto.Slug.Trim();
@@ -184,11 +188,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, response);
         }
 
-        public async Task<ServiceResult> DeleteAsync(int id)
+        public async Task<ServiceResult> DeleteAsync(int id, int? tenantId = null)
         {
             var branch = await _dbContext.Branches.FirstOrDefaultAsync(b => b.Id == id);
             if (branch == null)
                 return new ServiceResult(false, "Branch not found");
+            if (tenantId.HasValue && branch.TenantId != tenantId.Value)
+                return new ServiceResult(false, "Bu filial sizin tenant-a aid deyil");
 
             branch.IsActive = false;
             _unitOfWork.Repository<BranchEntity>().Update(branch);
@@ -208,11 +214,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .FirstOrDefaultAsync(ct);
         }
 
-        public async Task<ServiceResult> GetStatsAsync(int branchId)
+        public async Task<ServiceResult> GetStatsAsync(int branchId, int? tenantId = null)
         {
             var branch = await _dbContext.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == branchId);
             if (branch == null)
                 return new ServiceResult(false, "Branch not found");
+            if (tenantId.HasValue && branch.TenantId != tenantId.Value)
+                return new ServiceResult(false, "Bu filial sizin tenant-a aid deyil");
 
             var stats = new GetBranchStatsDto
             {

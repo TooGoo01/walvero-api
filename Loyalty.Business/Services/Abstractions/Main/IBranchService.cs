@@ -7,11 +7,13 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public interface IBranchService
     {
         Task<ServiceResult> ListAsync(int? tenantId);
-        Task<ServiceResult> GetByIdAsync(int id);
+        // tenantId dolu gələndə ownership yoxlanılır — branch həmin tenant-a aid olmalıdır
+        // (null = superadmin, yoxlama yoxdur).
+        Task<ServiceResult> GetByIdAsync(int id, int? tenantId = null);
         Task<ServiceResult> CreateAsync(CreateBranchDto dto, int tenantId);
-        Task<ServiceResult> UpdateAsync(int id, UpdateBranchDto dto);
-        Task<ServiceResult> DeleteAsync(int id);
-        Task<ServiceResult> GetStatsAsync(int branchId);
+        Task<ServiceResult> UpdateAsync(int id, UpdateBranchDto dto, int? tenantId = null);
+        Task<ServiceResult> DeleteAsync(int id, int? tenantId = null);
+        Task<ServiceResult> GetStatsAsync(int branchId, int? tenantId = null);
 
         /// <summary>
         /// Branch foto/logo ??kli ���n generic upload � Azure Blob-a yaz?r, URL qaytar?r.

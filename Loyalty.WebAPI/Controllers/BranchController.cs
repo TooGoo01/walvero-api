@@ -40,7 +40,7 @@ namespace Loyalty.WebAPI.Controllers
             if (IsBranchScoped() && _tenantProvider.CurrentBranchId != id)
                 return StatusCode((int)HttpStatusCode.Forbidden, new ServiceResult(false, "Bu branch-a icazəniz yoxdur"));
 
-            var result = await _branchService.GetByIdAsync(id);
+            var result = await _branchService.GetByIdAsync(id, OwnershipTenantId());
             if (!result.Success)
                 return NotFound(result);
             return Ok(result);
@@ -75,7 +75,7 @@ namespace Loyalty.WebAPI.Controllers
             if (IsBranchScoped() && _tenantProvider.CurrentBranchId != id)
                 return StatusCode((int)HttpStatusCode.Forbidden, new ServiceResult(false, "Bu branch-ı dəyişməyə icazəniz yoxdur"));
 
-            var result = await _branchService.UpdateAsync(id, dto);
+            var result = await _branchService.UpdateAsync(id, dto, OwnershipTenantId());
             if (!result.Success)
                 return NotFound(result);
             return Ok(result);
@@ -86,7 +86,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> Delete([FromQuery] int id)
         {
-            var result = await _branchService.DeleteAsync(id);
+            var result = await _branchService.DeleteAsync(id, OwnershipTenantId());
             if (!result.Success)
                 return NotFound(result);
             return Ok(result);
@@ -97,7 +97,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
         public async Task<IActionResult> GetStats([FromQuery] int branchId)
         {
-            var result = await _branchService.GetStatsAsync(branchId);
+            var result = await _branchService.GetStatsAsync(branchId, OwnershipTenantId());
             if (!result.Success)
                 return NotFound(result);
             return Ok(result);
@@ -139,13 +139,22 @@ namespace Loyalty.WebAPI.Controllers
 
         private int? ResolveTenantId()
         {
-            if (Request.Headers.TryGetValue("X-Tenant-Id", out var headerVal) &&
+            // X-Tenant-Id header yalnız Super Admin üçün etibarlıdır — digər rollar
+            // header spoofing ilə başqa tenant-ın kontekstinə keçə bilməsin.
+            if (IsSuperAdmin() &&
+                Request.Headers.TryGetValue("X-Tenant-Id", out var headerVal) &&
                 int.TryParse(headerVal, out var headerId))
             {
                 return headerId;
             }
             return _tenantProvider.CurrentTenantId;
         }
+
+        private bool IsSuperAdmin() => User.IsInRole("Super Admin");
+
+        // Superadmin bütün branch-lara toxuna bilər (null = ownership yoxlaması yoxdur);
+        // digər rollar üçün öz tenant-ı ilə məhdudlaşır.
+        private int? OwnershipTenantId() => IsSuperAdmin() ? null : ResolveTenantId();
 
         private bool IsBranchScoped()
             => !User.IsInRole("Tenant Admin")
