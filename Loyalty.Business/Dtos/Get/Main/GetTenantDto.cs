@@ -33,6 +33,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public bool ShowOnHome { get; set; } = false;
         public bool IsHidden { get; set; } = false;
         public bool HideInApp { get; set; } = false;
+        public bool IsActive { get; set; } = true;
         public bool IsHasMenu { get; set; } = false;
         public bool AcceptAnonymous { get; set; } = false;
         public bool RequireConfirmation { get; set; } = true;

@@ -22,15 +22,18 @@ namespace Loyalty.WebAPI.Controllers
 
         private readonly ITenantIntegrationResolver _resolver;
         private readonly IBackgroundJobClient _jobClient;
+        private readonly ITenantStatusGuard _tenantStatusGuard;
         private readonly ILogger<PosBatchWebhookController> _logger;
 
         public PosBatchWebhookController(
             ITenantIntegrationResolver resolver,
             IBackgroundJobClient jobClient,
+            ITenantStatusGuard tenantStatusGuard,
             ILogger<PosBatchWebhookController> logger)
         {
             _resolver = resolver;
             _jobClient = jobClient;
+            _tenantStatusGuard = tenantStatusGuard;
             _logger = logger;
         }
 
@@ -88,6 +91,13 @@ namespace Loyalty.WebAPI.Controllers
                 _logger.LogInformation(
                     "iiko order event TENANT_RESOLVED. traceId={TraceId} tenantId={TenantId} integrationId={IntegrationId} loyaltyProgramId={LoyaltyProgramId} resolveMs={ResolveMs}",
                     traceId, ctx.TenantId, ctx.TenantIntegrationId, ctx.LoyaltyProgramId, resolveSw.ElapsedMilliseconds);
+
+                // Deaktiv tenant-da POS batch auto-earn qadağandır (abunə dayandırılıb)
+                if (!await _tenantStatusGuard.IsActiveAsync(ctx.TenantId, ct))
+                {
+                    _logger.LogWarning("iiko order event blocked — tenant inactive. TenantId={TenantId}", ctx.TenantId);
+                    return Ok(new { success = false, message = Business.Services.Implementations.Main.TenantStatusGuard.InactiveMessage });
+                }
 
                 var customer = payload.Customer?.FirstOrDefault();
 

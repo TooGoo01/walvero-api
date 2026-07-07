@@ -23,19 +23,22 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILoyaltyCardRepository _loyaltyCardRepository;
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly ITenantProvider _tenantProvider;
+        private readonly ITenantStatusGuard _tenantStatusGuard;
 
         public PosSessionService(
             IUnitOfWork unitOfWork,
             ICustomerRepository customerRepository,
             ILoyaltyCardRepository loyaltyCardRepository,
             LoyaltyWalletDbContext dbContext,
-            ITenantProvider tenantProvider)
+            ITenantProvider tenantProvider,
+            ITenantStatusGuard tenantStatusGuard)
         {
             _unitOfWork = unitOfWork;
             _customerRepository = customerRepository;
             _loyaltyCardRepository = loyaltyCardRepository;
             _dbContext = dbContext;
             _tenantProvider = tenantProvider;
+            _tenantStatusGuard = tenantStatusGuard;
         }
 
         public async Task<ServiceResult<ScannerSessionResponseDto>> StartSessionAsync(
@@ -49,6 +52,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (tenantId == null)
                 {
                     return ServiceResult<ScannerSessionResponseDto>.Fail("TenantId is required. Unable to get TenantId from JWT token.");
+                }
+
+                // Deaktiv tenant-da skan sessiyası açılmır (abunə dayandırılıb)
+                if (!await _tenantStatusGuard.IsActiveAsync(tenantId.Value, ct))
+                {
+                    return ServiceResult<ScannerSessionResponseDto>.Fail(TenantStatusGuard.InactiveMessage);
                 }
 
                 var barcode = dto.Barcode.Trim();
@@ -170,6 +179,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (posSession == null)
                 {
                     return ServiceResult<LinkSessionResponseDto>.Fail("Session not found or inactive.");
+                }
+
+                // Deaktiv tenant-da sessiya link olunmur (abunə dayandırılıb)
+                if (!await _tenantStatusGuard.IsActiveAsync(posSession.TenantId, ct))
+                {
+                    return ServiceResult<LinkSessionResponseDto>.Fail(TenantStatusGuard.InactiveMessage);
                 }
 
                 if (posSession.Status == SessionStatus.Linked)

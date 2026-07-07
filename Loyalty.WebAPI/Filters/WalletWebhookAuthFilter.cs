@@ -1,5 +1,7 @@
 using Loyalty.Business.Models.TenantIntegration;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.Business.Services.Implementations.Main;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
@@ -14,10 +16,12 @@ namespace Loyalty.WebAPI.Filters
     {
         public const string WalletWebhookContextKey = "WalletWebhookContext";
         private readonly ITenantIntegrationResolver _resolver;
+        private readonly ITenantStatusGuard _tenantStatusGuard;
 
-        public WalletWebhookAuthFilter(ITenantIntegrationResolver resolver)
+        public WalletWebhookAuthFilter(ITenantIntegrationResolver resolver, ITenantStatusGuard tenantStatusGuard)
         {
             _resolver = resolver;
+            _tenantStatusGuard = tenantStatusGuard;
         }
 
         public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
@@ -40,6 +44,16 @@ namespace Loyalty.WebAPI.Filters
             if (resolved == null)
             {
                 context.Result = new UnauthorizedObjectResult(new { success = false, message = "Invalid wallet token" });
+                return;
+            }
+
+            // Deaktiv tenant-da heç bir webhook əməliyyatı getməsin (abunə dayandırılıb)
+            if (!await _tenantStatusGuard.IsActiveAsync(resolved.TenantId, context.HttpContext.RequestAborted))
+            {
+                context.Result = new ObjectResult(new { success = false, message = TenantStatusGuard.InactiveMessage })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden
+                };
                 return;
             }
 

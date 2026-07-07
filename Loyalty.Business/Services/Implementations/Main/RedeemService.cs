@@ -48,6 +48,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ITenantProvider _tenantProvider;
         private readonly Hangfire.IBackgroundJobClient _jobClient;
         private readonly IServiceScopeFactory _scopeFactory;
+        private readonly ITenantStatusGuard _tenantStatusGuard;
         public RedeemService(
             ILoyaltyCardRepository cardSvc,
             ILoyaltyProgramRepository programSvc,
@@ -68,7 +69,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             IWhatsAppAlertService whatsappAlert,
             ITenantProvider tenantProvider,
             Hangfire.IBackgroundJobClient jobClient,
-            IServiceScopeFactory scopeFactory)
+            IServiceScopeFactory scopeFactory,
+            ITenantStatusGuard tenantStatusGuard)
         {
             _cardSvc = cardSvc;
             _programSvc = programSvc;
@@ -92,6 +94,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _tenantProvider = tenantProvider;
             _jobClient = jobClient;
             _scopeFactory = scopeFactory;
+            _tenantStatusGuard = tenantStatusGuard;
         }
 
         // Resolved per-redeem fraud config (branch override + tenant fallback)
@@ -239,6 +242,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                     _logger.LogWarning("Invalid tenant or code. TenantId={TenantId}, CodeEmpty={CodeEmpty}",
                         request.TenantId, string.IsNullOrWhiteSpace(request.Code));
                     return Fail("Tenant və ya kod yanlışdır.");
+                }
+
+                // Deaktiv tenant-da earn/pay əməliyyatı qadağandır (abunə dayandırılıb)
+                if (!await _tenantStatusGuard.IsActiveAsync(request.TenantId, ct))
+                {
+                    _logger.LogWarning("Redeem blocked — tenant inactive. TenantId={TenantId}", request.TenantId);
+                    return Fail(TenantStatusGuard.InactiveMessage);
                 }
 
                 // 1) Kart - Try Barcode → WalveroId (phone ilə dəqiqləşdir) → Phone
@@ -932,6 +942,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     _logger.LogWarning("Redeem request not found. RequestId={RequestId}", redeemRequestId);
                     return Fail("Sorğu tapılmadı.");
+                }
+
+                // Deaktiv tenant-da OTP təsdiqi də qadağandır
+                if (!await _tenantStatusGuard.IsActiveAsync(probe.TenantId, ct))
+                {
+                    _logger.LogWarning("Confirm blocked — tenant inactive. TenantId={TenantId}", probe.TenantId);
+                    return Fail(TenantStatusGuard.InactiveMessage);
                 }
 
                 if (probe.Status == RedeemStatus.Applied)

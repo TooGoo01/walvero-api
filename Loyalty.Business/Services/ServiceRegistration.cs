@@ -125,6 +125,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<ICustomerSyncService, CustomerSyncService>();
             services.AddScoped<ILotteryService, LotteryService>();
             services.AddScoped<IBranchService, BranchService>();
+            services.AddScoped<ITenantStatusGuard, TenantStatusGuard>();
             services.AddSingleton<IMediaProcessor, MediaProcessor>();
 
             services.AddScoped<ISalesRepVisitService, SalesRepVisitService>();

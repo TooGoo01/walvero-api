@@ -20,6 +20,7 @@ namespace Loyalty.WebAPI.Controllers
         private readonly IPosSessionService _posSessionService;
         private readonly ICustomerSyncService _customerSyncService;
         private readonly ITenantProvider _tenantProvider;
+        private readonly ITenantStatusGuard _tenantStatusGuard;
         private readonly ILogger<PosController> _logger;
 
         public PosController(
@@ -27,13 +28,26 @@ namespace Loyalty.WebAPI.Controllers
             IPosSessionService posSessionService,
             ICustomerSyncService customerSyncService,
             ITenantProvider tenantProvider,
+            ITenantStatusGuard tenantStatusGuard,
             ILogger<PosController> logger)
         {
             _transactionReverseService = transactionReverseService;
             _posSessionService = posSessionService;
             _customerSyncService = customerSyncService;
             _tenantProvider = tenantProvider;
+            _tenantStatusGuard = tenantStatusGuard;
             _logger = logger;
+        }
+
+        /// <summary>Deaktiv tenant-da POS əməliyyatları qadağandır → 403.</summary>
+        private async Task<IActionResult?> BlockIfTenantInactiveAsync(int? tenantId, CancellationToken ct)
+        {
+            if (tenantId.HasValue && !await _tenantStatusGuard.IsActiveAsync(tenantId.Value, ct))
+            {
+                return StatusCode((int)HttpStatusCode.Forbidden,
+                    new ServiceResult(false, Business.Services.Implementations.Main.TenantStatusGuard.InactiveMessage));
+            }
+            return null;
         }
 
         /// <summary>
@@ -51,6 +65,9 @@ namespace Loyalty.WebAPI.Controllers
             _logger.LogInformation(
                 "Reversing transaction. TransactionId={TransactionId}, BillId={BillId}, OriginalType={OriginalType}",
                 dto.TransactionId, dto.OrderId, dto.OriginalType);
+
+            var blocked = await BlockIfTenantInactiveAsync(_tenantProvider.CurrentTenantId, ct);
+            if (blocked != null) return blocked;
 
             var result = await _transactionReverseService.ReverseTransactionAsync(dto, ct);
 
@@ -98,6 +115,8 @@ namespace Loyalty.WebAPI.Controllers
             var tid = tenantId ?? _tenantProvider.CurrentTenantId;
             if (!tid.HasValue || tid <= 0)
                 return BadRequest("TenantId required.");
+            var blocked = await BlockIfTenantInactiveAsync(tid, ct);
+            if (blocked != null) return blocked;
             var count = await _customerSyncService.SyncAllCustomersToPosAsync(tid.Value, ct);
             return Ok(new { syncedCount = count });
         }
@@ -112,6 +131,8 @@ namespace Loyalty.WebAPI.Controllers
             var tid = tenantId ?? _tenantProvider.CurrentTenantId;
             if (!tid.HasValue || tid <= 0)
                 return BadRequest("TenantId required.");
+            var blocked = await BlockIfTenantInactiveAsync(tid, ct);
+            if (blocked != null) return blocked;
             var result = await _customerSyncService.SyncCustomerToPosAsync(tid.Value, customerId, ct);
             if (!result.Success) return BadRequest("Sync failed.");
             return Ok(new { success = true, walveroId = result.WalveroId, barcode = result.Barcode });

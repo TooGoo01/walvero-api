@@ -18,15 +18,18 @@ namespace Loyalty.WebAPI.Controllers
 
         private readonly ITenantIntegrationResolver _resolver;
         private readonly IWalletWebhookService _webhookService;
+        private readonly ITenantStatusGuard _tenantStatusGuard;
         private readonly ILogger<IikoWebhookController> _logger;
 
         public IikoWebhookController(
             ITenantIntegrationResolver resolver,
             IWalletWebhookService webhookService,
+            ITenantStatusGuard tenantStatusGuard,
             ILogger<IikoWebhookController> logger)
         {
             _resolver = resolver;
             _webhookService = webhookService;
+            _tenantStatusGuard = tenantStatusGuard;
             _logger = logger;
         }
 
@@ -58,6 +61,13 @@ namespace Loyalty.WebAPI.Controllers
                         "iiko webhook: tenant not found. organizationId={OrgId} uocId={UocId}",
                         request.OrganizationId, request.UocId);
                     return Ok(new { success = false, message = "Tenant integration not found" });
+                }
+
+                // Deaktiv tenant-da POS auto-earn qadağandır (abunə dayandırılıb)
+                if (!await _tenantStatusGuard.IsActiveAsync(ctx.TenantId, ct))
+                {
+                    _logger.LogWarning("iiko webhook blocked — tenant inactive. TenantId={TenantId}", ctx.TenantId);
+                    return Ok(new { success = false, message = Business.Services.Implementations.Main.TenantStatusGuard.InactiveMessage });
                 }
 
                 var result = await _webhookService.ProcessIikoTransactionAsync(ctx, new IikoTransactionRequest

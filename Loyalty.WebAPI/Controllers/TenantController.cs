@@ -115,6 +115,23 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(result);
         }
 
+        /// <summary>
+        /// Tenant-ı aktiv/deaktiv edir. Deaktiv tenant-da bütün əməliyyatlar
+        /// (skan, earn/redeem, POS webhook, yeni qoşulma) dayanır və tenant
+        /// discover/home siyahılarından itir. Yalnız Super Admin.
+        /// </summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
+        public async Task<IActionResult> SetActive([FromQuery] int id, [FromQuery] bool active)
+        {
+            var result = await _tenantService.SetActiveAsync(id, active);
+            if (!result.Success)
+                return NotFound(result);
+            return Ok(result);
+        }
+
         [HttpPost]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]

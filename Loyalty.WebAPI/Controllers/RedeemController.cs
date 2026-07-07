@@ -32,6 +32,7 @@ namespace Loyalty.WebAPI.Controllers
         private readonly ICustomerRepository _customerRepository;
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly ITimeZoneService _timeZoneService;
+        private readonly ITenantStatusGuard _tenantStatusGuard;
         private readonly ILogger<RedeemController> _logger;
 
         public RedeemController(
@@ -44,8 +45,10 @@ namespace Loyalty.WebAPI.Controllers
             IPasskitPushService passkitPushService,
             ICustomerRepository customerRepository,
             LoyaltyWalletDbContext dbContext,
-            ITimeZoneService timeZoneService)
+            ITimeZoneService timeZoneService,
+            ITenantStatusGuard tenantStatusGuard)
         {
+            _tenantStatusGuard = tenantStatusGuard;
             _tenantProvider = tenantProvider;
             _redeemService = redeemService;
             _programSvc = programSvc;
@@ -224,6 +227,13 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             var tenantId = _tenantProvider.CurrentTenantId ?? 0;
             var programId = _tenantProvider.CurrentProgramId ?? 0;
             var codeStr = (code ?? "").Trim();
+
+            // Deaktiv tenant-da kassir kart məlumatına da baxa bilməsin
+            if (!await _tenantStatusGuard.IsActiveAsync(tenantId, ct))
+            {
+                return StatusCode((int)HttpStatusCode.Forbidden,
+                    new { success = false, message = Business.Services.Implementations.Main.TenantStatusGuard.InactiveMessage });
+            }
             
             GetLoyaltyCardDto? card = null;
             GetCustomerDto? customer = null;

@@ -118,6 +118,22 @@ namespace Loyalty.Business.Services.Implementations.Main
             throw new NotImplementedException();
         }
 
+        public async Task<ServiceResult> SetActiveAsync(int id, bool active)
+        {
+            var tenant = await _dbContext.Tenants.FirstOrDefaultAsync(t => t.Id == id);
+            if (tenant == null)
+                return new ServiceResult(false, "Tenant tapılmadı");
+
+            tenant.IsActive = active;
+            await _dbContext.SaveChangesAsync();
+
+            // Discover/home cache-ləri + status guard cache-i dərhal təzələnsin
+            InvalidateAllFilterCache();
+            _cache.Remove(TenantStatusGuard.CacheKey(id));
+
+            return new ServiceResult(true, new { id, isActive = active });
+        }
+
         public async Task<ServiceResult> Get(int id)
         {
             var respose = await _tenantRepository.GetById(id);

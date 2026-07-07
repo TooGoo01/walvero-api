@@ -19,6 +19,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> GetActiveUser(int currentPage, int pageSize, TenantSearchDto model, int? currentUserId = null);
         Task<ServiceResult> GetLast();
         Task<ServiceResult> Update(UpdateTenantDto dto);
+        // Tenant-ı aktiv/deaktiv edir — deaktiv tenant-da bütün əməliyyatlar dayanır (TenantStatusGuard).
+        Task<ServiceResult> SetActiveAsync(int id, bool active);
         Task<ServiceResult> Delete(int id);
         Task<ServiceResult> HasAnyRoleAsync(int userId,int tenantId,string[] roles);
         Task<IReadOnlyList<HomeTenantDto>> GetHomeTenantsAsync(int? countryId = null, int? cityId = null, CancellationToken ct = default);

@@ -47,6 +47,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IPosSyncService _posSyncService;
         private readonly ILogger<CustomerEnrollmentService> _logger;
         private readonly LoyaltyWalletDbContext _dbContext;
+        private readonly ITenantStatusGuard _tenantStatusGuard;
         public CustomerEnrollmentService(
             ITenantProvider tp,
             ICustomerRepository customerRepo,
@@ -67,7 +68,8 @@ UserManager<ApplicationUser> userManager,
             ICustomerSyncService customerSyncService,
             IPosSyncService posSyncService,
             ILogger<CustomerEnrollmentService> logger,
-            LoyaltyWalletDbContext dbContext)
+            LoyaltyWalletDbContext dbContext,
+            ITenantStatusGuard tenantStatusGuard)
         {
             _tp = tp; _customerRepo = customerRepo; _programRepo = programRepo;
             _cardRepo = cardRepo; _cardSvc = cardSvc; _credSvc = credSvc;
@@ -81,6 +83,7 @@ UserManager<ApplicationUser> userManager,
             _posSyncService = posSyncService;
             _logger = logger;
             _dbContext = dbContext;
+            _tenantStatusGuard = tenantStatusGuard;
         }
 
 
@@ -313,6 +316,10 @@ UserManager<ApplicationUser> userManager,
             if (tenantId <= 0)
                 return new ServiceResult(false, "Tenant not resolved.");
 
+            // Deaktiv tenant-a yeni müştəri qoşulması qadağandır (abunə dayandırılıb)
+            if (!await _tenantStatusGuard.IsActiveAsync(tenantId, ct))
+                return new ServiceResult(false, TenantStatusGuard.InactiveMessage);
+
             if (string.IsNullOrWhiteSpace(dto.FirstName))
                 return new ServiceResult(false, "Ad tələb olunur.");
             if (string.IsNullOrWhiteSpace(dto.PhoneNumber))
@@ -481,6 +488,10 @@ UserManager<ApplicationUser> userManager,
         {
             var customer = await _uow.Repository<Customer>().GetByIdAsync(dto.CustomerId);
             if (customer is null) return new ServiceResult(false, "Customer not found.");
+
+            // Deaktiv tenant-da qoşulma təsdiqi də qadağandır
+            if (!await _tenantStatusGuard.IsActiveAsync(customer.TenantId, ct))
+                return new ServiceResult(false, TenantStatusGuard.InactiveMessage);
 
             if (string.IsNullOrWhiteSpace(customer.OtpHash) || string.IsNullOrWhiteSpace(customer.OtpSalt) || !customer.OtpExpiresAt.HasValue)
                 return new ServiceResult(false, "No active code.");
