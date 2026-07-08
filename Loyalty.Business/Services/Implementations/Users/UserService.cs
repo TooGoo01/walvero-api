@@ -215,6 +215,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                                 Email = user.Email,
                                 WalveroId = user.WalveroId,
                                 BirthDate = user.DateOfBirth != null ? user.DateOfBirth : DateTime.Now,
+                                Gender = user.Gender.HasValue ? (int)user.Gender.Value : null,
                                 Roles = rolem,
                                 TenantId = user.TenantId,
                                 ProgramId = user.Tenant?.LoyaltyPrograms?.FirstOrDefault()?.Id,
@@ -917,6 +918,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                             Email = user.Email,
                             Phone = user.PhoneNumber,
                             BirthDate = user.DateOfBirth ?? DateTime.Now,
+                            Gender = user.Gender.HasValue ? (int)user.Gender.Value : null,
                             Roles = roles.ToList(),
                             TenantId = user.TenantId,
                             BranchId = user.BranchId,
@@ -1676,6 +1678,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     IsGuest = user.IsGuest,
                     IsProfileCompleted = user.IsProfileCompleted,
                     DateOfBirth = user.DateOfBirth,
+                    Gender = user.Gender.HasValue ? (int)user.Gender.Value : null,
                     TenantId = user.TenantId,
                     Roles = roles.ToList(),
                 };

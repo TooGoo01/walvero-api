@@ -52,6 +52,9 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             return await GetAsQueryable()
                 .Include(t => t.LoyaltyCard)
                     .ThenInclude(lc => lc.Customer)
+                .Include(t => t.LoyaltyCard)
+                    .ThenInclude(lc => lc.Tenant) // mobil tarixçədə tenant adı üçün
+                .Include(t => t.Branch) // filial adı üçün
                 .Where(t => t.LoyaltyCard.Customer != null
                          && t.LoyaltyCard.Customer.applicationUserId == applicationUserId)
                 .OrderByDescending(t => t.RegDate)

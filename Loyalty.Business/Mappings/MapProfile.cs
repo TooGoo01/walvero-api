@@ -215,6 +215,14 @@ namespace Loyalty.Business.Mappings
                         : null))
                 .ForMember(d => d.CardNumber,
                     opt => opt.MapFrom(s => s.LoyaltyCard != null ? s.LoyaltyCard.CardNumber : null))
+                .ForMember(d => d.TenantId,
+                    opt => opt.MapFrom(s => s.LoyaltyCard != null ? (int?)s.LoyaltyCard.TenantId : null))
+                .ForMember(d => d.TenantName,
+                    opt => opt.MapFrom(s => s.LoyaltyCard != null && s.LoyaltyCard.Tenant != null
+                        ? s.LoyaltyCard.Tenant.CompanyName
+                        : null))
+                .ForMember(d => d.BranchName,
+                    opt => opt.MapFrom(s => s.Branch != null ? s.Branch.Name : null))
                 .ForMember(d => d.CreatedAt,
                     opt => opt.MapFrom(s => s.RegDate));
 

@@ -217,7 +217,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                                         StepLabel = lp.CardTemplate.StepLabel,
                                         FreeRewardLabel = lp.CardTemplate.FreeRewardLabel,
                                         RewardDescription = lp.CardTemplate.RewardDescription,
-                                        BronzePercent = lp.CardTemplate.BronzePercent
+                                        BronzePercent = lp.CardTemplate.BronzePercent,
+                                        BronzePercentCash = lp.CardTemplate.BronzePercentCash
                                     }
                             })
                             .ToList(),

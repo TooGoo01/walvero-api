@@ -15,6 +15,7 @@ namespace Loyalty.DataAccess.Models
         public string FirstName { get; set; } = string.Empty;
         public string LastName { get; set; } = string.Empty;
         public DateTime? BirthDate { get; set; }
+        public int? Gender { get; set; } // 0=kişi, 1=qadın — mobil profil prefill üçün
         public string Email { get; set; } = string.Empty;
         public string? Phone { get; set; }
         public string? Token { get; set; }

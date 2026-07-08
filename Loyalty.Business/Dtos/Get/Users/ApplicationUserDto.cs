@@ -14,6 +14,7 @@ namespace Loyalty.Business.Dtos.Get.Users
         public bool IsGuest { get; set; }
         public bool IsProfileCompleted { get; set; }
         public DateTime? DateOfBirth { get; set; }
+        public int? Gender { get; set; } // 0=kişi, 1=qadın — mobil profil formu üçün
         public int? TenantId { get; set; }
         public GetTenantDto? Tenant { get; set; }
         public List<string>? Roles { get; set; }

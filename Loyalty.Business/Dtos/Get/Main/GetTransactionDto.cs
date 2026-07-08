@@ -29,6 +29,10 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? CardNumber { get; set; }
         public DateTime? CreatedAt { get; set; }
 
+        // Tenant konteksti — mobil tarixçədə hansı brendə aid olduğu görünsün
+        public int? TenantId { get; set; }
+        public string? TenantName { get; set; }
+
         // Fraud-prevention / branch
         public int? BranchId { get; set; }
         public string? BranchName { get; set; }

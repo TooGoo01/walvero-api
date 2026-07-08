@@ -76,5 +76,6 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? FreeRewardLabel { get; set; }
         public string? RewardDescription { get; set; }
         public int? BronzePercent { get; set; }
+        public int? BronzePercentCash { get; set; } // nağd cashback faizi — badge "X% / Y%" üçün
     }
 }
