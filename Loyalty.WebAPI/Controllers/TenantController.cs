@@ -132,6 +132,25 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(result);
         }
 
+        /// <summary>
+        /// Ödəniş suspensiyası: müştəri kartlarında ad-soyad yerinə mesaj, balans/mükafat gizli.
+        /// Display-only mask — data dəyişmir, earn/redeem işləyir; restore = suspended=false.
+        /// Toggle zamanı tenant-ın bütün Google/Apple Wallet pass-larına batch yeniləmə push olunur.
+        /// message boş string göndərilsə custom mesaj silinir (default-a qayıdır); null → toxunulmur.
+        /// </summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.NotFound)]
+        public async Task<IActionResult> SetServiceSuspended(
+            [FromQuery] int id, [FromQuery] bool suspended, [FromQuery] string? message = null)
+        {
+            var result = await _tenantService.SetServiceSuspendedAsync(id, suspended, message);
+            if (!result.Success)
+                return NotFound(result);
+            return Ok(result);
+        }
+
         [HttpPost]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]

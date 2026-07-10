@@ -20,12 +20,14 @@ namespace Loyalty.Business.Services.Implementations.Main
     {
         private readonly IGoogleWalletServiceFactory _factory;
         private readonly IUnitOfWork _uow;
+        private readonly ITenantSuspensionGuard _suspensionGuard;
         private readonly ILogger<GoogleWalletRedeemer> _logger;
 
-        public GoogleWalletRedeemer(IGoogleWalletServiceFactory factory, IUnitOfWork uow, ILogger<GoogleWalletRedeemer> logger)
+        public GoogleWalletRedeemer(IGoogleWalletServiceFactory factory, IUnitOfWork uow, ITenantSuspensionGuard suspensionGuard, ILogger<GoogleWalletRedeemer> logger)
         {
             _factory = factory;
             _uow = uow;
+            _suspensionGuard = suspensionGuard;
             _logger = logger;
         }
 
@@ -64,8 +66,24 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var gw = await _factory.CreateForTenantAsync(card.TenantId, card.LoyaltyProgramId, ct);
                 var cardholderName = $"{card.Customer?.FirstName} {card.Customer?.LastName}".Trim();
 
+                // Ödəniş suspensiyası — display-only mask. Pass-a real ad/balans əvəzinə
+                // mesaj + 0 gedir; DB dəyişmir, restore zamanı növbəti push real dəyərləri qaytarır.
+                var susp = await _suspensionGuard.GetAsync(card.TenantId, ct);
+                int? completedCyclesOverride = null;
+                if (susp.IsSuspended)
+                {
+                    cardholderName = Helpers.TenantSuspensionMask.EffectiveMessage(susp.Message);
+                    pts = 0;
+                    steps = 0;
+                    delta = 0;
+                    completedCyclesOverride = 0;
+                    lotteryTickets = 0;
+                    lotteryWinPrize = null;
+                    lotteryDrawDate = null;
+                }
+
                 _logger.LogInformation("Routing to GoogleWalletService.RedeemByCardIdAsync... Cardholder={Cardholder}", cardholderName);
-                var res = await gw.RedeemByCardIdAsync(cardId, tpl, pts, steps, delta, cardholderName, ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate);
+                var res = await gw.RedeemByCardIdAsync(cardId, tpl, pts, steps, delta, cardholderName, ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate, completedCyclesOverride);
 
                 sw.Stop();
                 if (res.Success)

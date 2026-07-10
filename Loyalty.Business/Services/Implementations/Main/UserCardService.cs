@@ -58,11 +58,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             LoyaltyProgram program,
             CardTemplateSnapshot snapshot)
         {
+            // Ödəniş suspensiyası — display-only mask: balans 0, progress/mükafat gizli.
+            // DB dəyişmir; flag söndürüləndə real dəyərlər avtomatik qayıdır.
+            bool suspended = tenant.IsServiceSuspended;
+
             string? progressText = null;
             string? freeRewardText = null;
 
             // ProgressBased card specific logic
-            if (snapshot.TemplateType == CardTemplateType.ProgressBased)
+            if (!suspended && snapshot.TemplateType == CardTemplateType.ProgressBased)
             {
                 int totalSteps = Math.Max(1, snapshot.TotalSteps);
                 int currentSteps = Math.Clamp(card.CurrentSteps, 0, totalSteps);
@@ -99,7 +103,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ProgramName = program.ProgramName,
                 ProgramDescription = snapshot.ProgramDescription,
                 RewardDescription = snapshot.RewardDescription,
-                CurrentPoints = card.CurrentPoints,
+                CurrentPoints = suspended ? 0 : card.CurrentPoints,
                 categoryId = tenant.categoryId,
                 Design = design,
                 progressText = progressText,

@@ -27,6 +27,7 @@ public sealed class AppleWalletService : IAppleWalletService
     private readonly IBranchRepository? _branchRepo;
     private readonly ILoyaltyProgramRepository? _programRepo;
     private readonly ITenantBrandingRepository? _brandingRepo;
+    private readonly ITenantSuspensionGuard? _suspensionGuard;
     private readonly ILogger<AppleWalletService> _logger;
 
     public AppleWalletService(
@@ -40,7 +41,8 @@ public sealed class AppleWalletService : IAppleWalletService
         ILogger<AppleWalletService> logger,
         IBranchRepository? branchRepo = null,
         ILoyaltyProgramRepository? programRepo = null,
-        ITenantBrandingRepository? brandingRepo = null)
+        ITenantBrandingRepository? brandingRepo = null,
+        ITenantSuspensionGuard? suspensionGuard = null)
     {
         _builder = builder;
         _signer = signer;
@@ -53,6 +55,7 @@ public sealed class AppleWalletService : IAppleWalletService
         _branchRepo = branchRepo;
         _programRepo = programRepo;
         _brandingRepo = brandingRepo;
+        _suspensionGuard = suspensionGuard;
     }
 
     private static readonly ConcurrentDictionary<int, SemaphoreSlim> _passLocks = new();
@@ -87,6 +90,27 @@ public sealed class AppleWalletService : IAppleWalletService
 
         var tenantId = card.TenantId;
 
+        // Ödəniş suspensiyası — display-only mask. Bütün Apple pass build-ləri
+        // (redeem, enrollment, notification, batch refresh) bu metoddan keçdiyi üçün
+        // mask bir yerdə tətbiq olunur. DB dəyərləri dəyişmir — restore = flag off.
+        decimal displayPoints = card.CurrentPoints;
+        int displaySteps = card.CurrentSteps;
+        int displayCycles = card.CompletedCycles;
+        if (_suspensionGuard != null)
+        {
+            var susp = await _suspensionGuard.GetAsync(tenantId, ct);
+            if (susp.IsSuspended)
+            {
+                customerFullName = TenantSuspensionMask.EffectiveMessage(susp.Message);
+                displayPoints = 0;
+                displaySteps = 0;
+                displayCycles = 0;
+                lotteryTickets = 0;
+                lotteryWinPrize = null;
+                lotteryDrawDate = null;
+            }
+        }
+
         if (!HasValidCreds(creds, out var credsReason))
         {
             _logger.LogWarning("Apple credentials missing/invalid. TenantId={TenantId}. {Reason}", tenantId, credsReason);
@@ -120,7 +144,7 @@ public sealed class AppleWalletService : IAppleWalletService
             }
             else
             {
-                var pts = card.CurrentPoints;
+                var pts = displayPoints;
                 if (snapshot.PlatinumThreshold.HasValue && pts >= snapshot.PlatinumThreshold.Value)
                 {
                     percent = snapshot.PlatinumPercent ?? 0;
@@ -178,7 +202,7 @@ public sealed class AppleWalletService : IAppleWalletService
                     // Bottom: barcode (existing)
 
                     // Use CompletedCycles from card (available reward count)
-                    int completedCycles = card.CompletedCycles;
+                    int completedCycles = displayCycles;
                     string freeDrinkValue = completedCycles == 0 ? "0" : completedCycles.ToString();
 
                     // Get FreeRewardLabel from template (default: "bonus" instead of "Pulsuz içki")
@@ -201,7 +225,7 @@ public sealed class AppleWalletService : IAppleWalletService
 
                     // Progress icons grid: Use strip image showing the grid
                     // Try to get a composite grid image, or use the current step icon
-                    stripImageUrl = PickProgressIconBySteps(snapshot.IconUrls, card.CurrentSteps, snapshot.TotalSteps);
+                    stripImageUrl = PickProgressIconBySteps(snapshot.IconUrls, displaySteps, snapshot.TotalSteps);
                     if (string.IsNullOrWhiteSpace(stripImageUrl)) stripImageUrl = snapshot.StripImageUrl;
                     if (string.IsNullOrWhiteSpace(stripImageUrl)) stripImageUrl = snapshot.HeroImageUrl;
                     // If we have multiple icons, we might need a composite, but for now use the current icon
@@ -210,7 +234,7 @@ public sealed class AppleWalletService : IAppleWalletService
                 {
                     var currency = string.IsNullOrWhiteSpace(snapshot.Currency) ? "AZN" : snapshot.Currency;
                     // TierBased/PointsBased: Keep existing logic
-                    headerFields.Add(new PassField("balance", card.CurrentPoints.ToString() + " " + currency, "Balance"));
+                    headerFields.Add(new PassField("balance", displayPoints.ToString() + " " + currency, "Balance"));
                     auxiliaryFields.Add(new PassField("cashback", cashbackText, cashback));
                     secondaryFields.Add(new PassField("name", customerFullName, "Customer"));
                 }

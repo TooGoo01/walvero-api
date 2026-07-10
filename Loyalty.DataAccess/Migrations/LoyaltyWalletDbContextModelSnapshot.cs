@@ -2605,6 +2605,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<bool>("IsServiceSuspended")
+                        .HasColumnType("bit");
+
                     b.Property<string>("LinkedInUrl")
                         .HasColumnType("nvarchar(max)");
 
@@ -2669,6 +2672,9 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<DateTime?>("SubscriptionExpiryDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("SuspensionMessage")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal?>("SuspiciousAmountCap")
                         .HasPrecision(18, 2)

@@ -213,7 +213,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
          CancellationToken ct = default,
          int lotteryTickets = 0,
          string? lotteryWinPrize = null,
-         System.DateTime? lotteryDrawDate = null)
+         System.DateTime? lotteryDrawDate = null,
+         int? completedCyclesOverride = null)
     {
         if (!_isInitialized || _svc == null)
         {
@@ -235,7 +236,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
                 // Object exists but balance may be stale - update it via RedeemByCardIdAsync
                 _log?.LogInformation("GW object already exists, updating balance. ObjectId={ObjectId}, currentPoints={CurrentPoints}", objectId, currentPoints);
-                return await RedeemByCardIdAsync(loyaltyCardId, tpl, currentPoints, currentSteps, 0, accountName, ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate);
+                return await RedeemByCardIdAsync(loyaltyCardId, tpl, currentPoints, currentSteps, 0, accountName, ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate, completedCyclesOverride);
             }
             catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound)
             {
@@ -262,8 +263,13 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 // 5. Progress icons grid at bottom (as image module)
 
                 // Get CompletedCycles from card if available, otherwise calculate from steps
+                // completedCyclesOverride: suspension mask zamanı DB dəyəri əvəzinə 0 ötürülür
                 int completedCycles = 0;
-                if (_cardRepo != null)
+                if (completedCyclesOverride.HasValue)
+                {
+                    completedCycles = completedCyclesOverride.Value;
+                }
+                else if (_cardRepo != null)
                 {
                     try
                     {
@@ -572,7 +578,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
        CancellationToken ct = default,
        int lotteryTickets = 0,
        string? lotteryWinPrize = null,
-       System.DateTime? lotteryDrawDate = null)
+       System.DateTime? lotteryDrawDate = null,
+       int? completedCyclesOverride = null)
     {
         _log?.LogInformation("RedeemByCardIdAsync started. CardId={CardId}, IssuerId={IssuerId}, TenantId={TenantId}, ProgramId={ProgramId}, Delta={Delta}, Initialized={Initialized}",
             loyaltyCardId, _issuerId, tpl.TenantId, tpl.LoyaltyProgramId, delta, _isInitialized);
@@ -628,8 +635,13 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 // 4. Progress icons grid at bottom
 
                 // Get CompletedCycles from card if available, otherwise calculate from steps
+                // completedCyclesOverride: suspension mask zamanı DB dəyəri əvəzinə 0 ötürülür
                 int completedCycles = 0;
-                if (_cardRepo != null)
+                if (completedCyclesOverride.HasValue)
+                {
+                    completedCycles = completedCyclesOverride.Value;
+                }
+                else if (_cardRepo != null)
                 {
                     try
                     {

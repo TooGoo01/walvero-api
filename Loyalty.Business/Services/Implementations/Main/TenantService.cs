@@ -14,6 +14,8 @@ using Loyalty.DataAccess.UnitOfWorks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Org.BouncyCastle.Asn1.Ocsp;
 using System;
 using System.Collections.Generic;
@@ -38,6 +40,8 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IMemoryCache _cache;
+        private readonly IServiceScopeFactory _scopeFactory;
+        private readonly ILogger<TenantService> _logger;
 
         public TenantService(
             ITenantRepository tenantRepository,
@@ -45,7 +49,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             IUnitOfWork unitOfWork,
             LoyaltyWalletDbContext dbContext,
             UserManager<ApplicationUser> userManager,
-            IMemoryCache cache)
+            IMemoryCache cache,
+            IServiceScopeFactory scopeFactory,
+            ILogger<TenantService> logger)
         {
             _tenantRepository = tenantRepository;
             _mapper = mapper;
@@ -53,6 +59,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             _dbContext = dbContext;
             _userManager = userManager;
             _cache = cache;
+            _scopeFactory = scopeFactory;
+            _logger = logger;
         }
 
         private static string _filterCacheKey(
@@ -132,6 +140,41 @@ namespace Loyalty.Business.Services.Implementations.Main
             _cache.Remove(TenantStatusGuard.CacheKey(id));
 
             return new ServiceResult(true, new { id, isActive = active });
+        }
+
+        public async Task<ServiceResult> SetServiceSuspendedAsync(int id, bool suspended, string? message = null)
+        {
+            var tenant = await _dbContext.Tenants.FirstOrDefaultAsync(t => t.Id == id);
+            if (tenant == null)
+                return new ServiceResult(false, "Tenant tapılmadı");
+
+            tenant.IsServiceSuspended = suspended;
+            if (message != null)
+                tenant.SuspensionMessage = string.IsNullOrWhiteSpace(message) ? null : message.Trim();
+            await _dbContext.SaveChangesAsync();
+
+            // Guard cache-i dərhal təzələ — pass refresh masklı/real dəyərləri düzgün görsün
+            InvalidateAllFilterCache();
+            _cache.Remove(TenantSuspensionGuard.CacheKey(id));
+
+            // Google/Apple pass-lara batch push — fire-and-forget, çünki min kartlıq
+            // tenant-da HTTP request timeout olar. Bloklanmış tenant-da təbii pass
+            // yeniləməsi olmadığı üçün bu push kartın dəyişməsinin yeganə yoludur.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var rootScope = _scopeFactory.CreateScope();
+                    var refresher = rootScope.ServiceProvider.GetRequiredService<ITenantSuspensionPassRefresher>();
+                    await refresher.RefreshTenantPassesAsync(id, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Suspension pass refresh failed TenantId={TenantId}", id);
+                }
+            });
+
+            return new ServiceResult(true, new { id, isServiceSuspended = suspended });
         }
 
         public async Task<ServiceResult> Get(int id)

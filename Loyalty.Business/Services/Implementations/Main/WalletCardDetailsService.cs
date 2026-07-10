@@ -166,6 +166,9 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             var cardTemplate = program?.CardTemplate;
 
+            // Ödəniş suspensiyası — progress icon və cashback faizləri gizlədilir (display-only)
+            bool suspended = tenant.IsServiceSuspended;
+
             string? stripImageUrl = ToAbsoluteUrl(cardTemplate?.StripImageUrl, baseUrl);
             if (cardTemplate != null && cardTemplate.TemplateType == CardTemplateType.ProgressBased && card != null)
             {
@@ -176,7 +179,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     path => ToAbsoluteUrl(path, baseUrl));
 
                 int totalSteps = Math.Max(1, snapshot.TotalSteps);
-                int currentSteps = Math.Clamp(card.CurrentSteps, 0, totalSteps);
+                int currentSteps = suspended ? 0 : Math.Clamp(card.CurrentSteps, 0, totalSteps);
                 var progressIconUrl = PickProgressIcon(snapshot.IconUrls, currentSteps);
 
                 if (!string.IsNullOrWhiteSpace(progressIconUrl))
@@ -185,7 +188,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             decimal? cashbackPercent = null;
             decimal? cashbackPercentCash = null;
-            if (card != null)
+            if (card != null && !suspended)
             {
                 (_, cashbackPercent, cashbackPercentCash) = CalculateTier(card.CurrentPoints, cardTemplate);
             }
@@ -248,15 +251,19 @@ namespace Loyalty.Business.Services.Implementations.Main
             var program = card.LoyaltyProgram;
             var cardTemplate = program?.CardTemplate;
 
+            // Ödəniş suspensiyası — ad-soyad yerinə mesaj, balans 0, progress/mükafat gizli.
+            // Display-only: DB dəyişmir, restore zamanı real dəyərlər qayıdır.
+            bool suspended = card.Tenant?.IsServiceSuspended == true;
+
             string? progressText = null;
             string? freeRewardText = null;
 
             // ProgressBased card specific logic
-            if (cardTemplate != null && cardTemplate.TemplateType == CardTemplateType.ProgressBased)
+            if (!suspended && cardTemplate != null && cardTemplate.TemplateType == CardTemplateType.ProgressBased)
             {
                 int totalSteps = Math.Max(1, cardTemplate.TotalSteps);
                 int currentSteps = Math.Clamp(card.CurrentSteps, 0, totalSteps);
-                
+
                 // Progress text: "5/10"
                 progressText = $"{currentSteps}/{totalSteps}";
 
@@ -269,8 +276,10 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             return new WalletCardPrivateDto
             {
-                CustomerFullName = $"{customer?.FirstName} {customer?.LastName}".Trim(),
-                CurrentPoints = card.CurrentPoints,
+                CustomerFullName = suspended
+                    ? TenantSuspensionMask.EffectiveMessage(card.Tenant!.SuspensionMessage)
+                    : $"{customer?.FirstName} {customer?.LastName}".Trim(),
+                CurrentPoints = suspended ? 0 : card.CurrentPoints,
 
                 // ProgressBased card fields
                 progressText = progressText,

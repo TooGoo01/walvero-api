@@ -48,6 +48,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILogger<CustomerEnrollmentService> _logger;
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly ITenantStatusGuard _tenantStatusGuard;
+        private readonly ITenantSuspensionGuard _tenantSuspensionGuard;
         public CustomerEnrollmentService(
             ITenantProvider tp,
             ICustomerRepository customerRepo,
@@ -69,7 +70,8 @@ UserManager<ApplicationUser> userManager,
             IPosSyncService posSyncService,
             ILogger<CustomerEnrollmentService> logger,
             LoyaltyWalletDbContext dbContext,
-            ITenantStatusGuard tenantStatusGuard)
+            ITenantStatusGuard tenantStatusGuard,
+            ITenantSuspensionGuard tenantSuspensionGuard)
         {
             _tp = tp; _customerRepo = customerRepo; _programRepo = programRepo;
             _cardRepo = cardRepo; _cardSvc = cardSvc; _credSvc = credSvc;
@@ -84,6 +86,7 @@ UserManager<ApplicationUser> userManager,
             _logger = logger;
             _dbContext = dbContext;
             _tenantStatusGuard = tenantStatusGuard;
+            _tenantSuspensionGuard = tenantSuspensionGuard;
         }
 
 
@@ -563,6 +566,13 @@ UserManager<ApplicationUser> userManager,
                 .Select(t => t.CompanyName)
                 .FirstOrDefaultAsync(ct);
 
+            // Suspension mask — suspend olunmuş tenant-da enrollment zamanı da pass masklı yaranır.
+            // (Apple tərəfi AppleWalletService.GeneratePassUrlByCardIdAsync içində mərkəzi maskalanır.)
+            var suspension = await _tenantSuspensionGuard.GetAsync(tenantId, ct);
+            var walletAccountName = suspension.IsSuspended
+                ? TenantSuspensionMask.EffectiveMessage(suspension.Message)
+                : $"{customer.FirstName} {customer.LastName}".Trim();
+
             // Google save link
             string? googleUrl = null, appleUrl = null;
             if(dto.DevicePlatform == "android")
@@ -575,11 +585,12 @@ UserManager<ApplicationUser> userManager,
                     await gw.CreateOrGetObjectByCardIdAsync(
                         loyaltyCardId: card.Id,
                         tpl: snapshot,
-                        accountName: $"{customer.FirstName} {customer.LastName}".Trim(),
+                        accountName: walletAccountName,
                         barcodeValue: card.BarcodeValue,
-                        currentPoints: card.CurrentPoints,
+                        currentPoints: suspension.IsSuspended ? 0 : card.CurrentPoints,
                         ct: ct,
-                        lotteryTickets: 0
+                        lotteryTickets: 0,
+                        completedCyclesOverride: suspension.IsSuspended ? 0 : (int?)null
                     );
                     var save = await gw.GenerateSaveLinkByCardIdAsync(card.Id, tenantId, program.Id, ct);
                     if (save.Success) googleUrl = (string?)save.Data ?? save.Message as string;
