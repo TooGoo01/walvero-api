@@ -2611,11 +2611,17 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<bool>("IsServiceSuspended")
                         .HasColumnType("bit");
 
+                    b.Property<decimal?>("Latitude")
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<string>("LinkedInUrl")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("LocationUrl")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal?>("Longitude")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("MenuUrl")
                         .HasColumnType("nvarchar(max)");

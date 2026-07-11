@@ -233,6 +233,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     {
                         Id = t.Id,
                         CompanyName = t.CompanyName,
+                        Latitude = t.Latitude,
+                        Longitude = t.Longitude,
                         IsCustomer = false, // overlay step set edir
                         Category = t.Category == null
                             ? null
@@ -320,6 +322,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 Id = t.Id,
                 CompanyName = t.CompanyName,
+                Latitude = t.Latitude,
+                Longitude = t.Longitude,
                 IsCustomer = false,
                 Category = t.Category,
                 LoyaltyPrograms = t.LoyaltyPrograms,
@@ -449,6 +453,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 category.IsHidden = dto.IsHidden;
                 category.HideInApp = dto.HideInApp;
                 category.IsHasMenu = dto.IsHasMenu;
+                category.Latitude = dto.Latitude;
+                category.Longitude = dto.Longitude;
                 category.LinkedInUrl = dto.LinkedInUrl;
                 category.WazeLocationUrl = dto.WazeLocationUrl;
                 if (dto.MenuUrl != null)

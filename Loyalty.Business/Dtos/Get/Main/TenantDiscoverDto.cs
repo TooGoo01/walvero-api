@@ -8,6 +8,9 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int Id { get; set; }
         public string CompanyName { get; set; } = string.Empty;
         public bool? IsCustomer { get; set; }
+        // Tenant-ın öz koordinatı — filialsız tenant-lar xəritədə bununla göstərilir
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
         public TenantDiscoverCategoryDto? Category { get; set; }
         public List<TenantDiscoverProgramDto> LoyaltyPrograms { get; set; } = new();
         public List<TenantDiscoverBranchDto> Branches { get; set; } = new();

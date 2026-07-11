@@ -37,6 +37,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public bool IsServiceSuspended { get; set; } = false;
         public string? SuspensionMessage { get; set; }
         public bool IsHasMenu { get; set; } = false;
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
         public bool AcceptAnonymous { get; set; } = false;
         public bool RequireConfirmation { get; set; } = true;
         public int ConfirmationTtlMinutes { get; set; } = 10;

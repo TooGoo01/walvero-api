@@ -50,6 +50,10 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool IsHidden { get; set; } = false; // Hidden tenants (e.g., Walvero shadow tenant) never appear in listings
         public bool HideInApp { get; set; } = false; // Yalnız mobil app listinqlərindən gizlədir; public web-də (t/[slug]) görünür
 
+        // Tenant-ın öz koordinatı — filialı olmayan tenant-lar xəritədə bununla göstərilir
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
+
         // --- Ödəniş suspensiyası: display-only mask, data DB-də dəyişmir (restore = flag off) ---
         public bool IsServiceSuspended { get; set; } = false;
         public string? SuspensionMessage { get; set; } // null → TenantSuspensionMask.DefaultMessage
