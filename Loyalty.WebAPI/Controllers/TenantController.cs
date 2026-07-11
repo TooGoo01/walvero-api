@@ -151,6 +151,22 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(result);
         }
 
+        /// <summary>
+        /// Tenant-ı silir (soft delete) — bütün admin/discover listlərindən itir, data DB-də qalır.
+        /// Yalnız deaktiv (IsActive=false) tenant silinə bilər. Yalnız Super Admin.
+        /// </summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> Delete([FromQuery] int id)
+        {
+            var result = await _tenantService.Delete(id);
+            if (!result.Success)
+                return BadRequest(result);
+            return Ok(result);
+        }
+
         [HttpPost]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]

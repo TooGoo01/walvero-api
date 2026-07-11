@@ -58,6 +58,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         public async Task<IEnumerable<Tenant>> GetAll()
         {
             return await GetAsQueryable()
+              .Where(x => !x.IsDeleted)
               .ToListAsync();
         }
 
@@ -66,7 +67,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             return await GetAsQueryable()
                 .Include(x=>x.Customers)
                 .Include(x => x.Category)
-                .Where(x => x.IsActive && !x.IsHidden)
+                .Where(x => x.IsActive && !x.IsHidden && !x.IsDeleted)
                 .ToListAsync();
         }
 
@@ -95,7 +96,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             // isCustomer is resolved via batch query in service layer.
             var query = GetAsQueryable()
                 .AsNoTracking()
-                .Where(x => x.IsActive && !x.IsHidden);
+                .Where(x => x.IsActive && !x.IsHidden && !x.IsDeleted);
 
             // HideInApp: yalnız mobil app-dan gizlədilir; web client platform=web ilə görür
             if (excludeHiddenInApp)
@@ -127,7 +128,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         {
             var query = _LoyaltyDbContext.Tenants
                 .AsNoTracking()
-                .Where(t => t.IsActive && t.ShowOnHome && !t.IsHidden);
+                .Where(t => t.IsActive && t.ShowOnHome && !t.IsHidden && !t.IsDeleted);
 
             // HideInApp: yalnız mobil app-dan gizlədilir; web client platform=web ilə görür
             if (excludeHiddenInApp)

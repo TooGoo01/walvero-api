@@ -57,6 +57,10 @@ namespace Loyalty.DataAccess.Entities.Main
         // --- Ödəniş suspensiyası: display-only mask, data DB-də dəyişmir (restore = flag off) ---
         public bool IsServiceSuspended { get; set; } = false;
         public string? SuspensionMessage { get; set; } // null → TenantSuspensionMask.DefaultMessage
+
+        // --- Soft delete: bütün listlərdən itir, data DB-də qalır (yalnız deaktiv tenant silinə bilər) ---
+        public bool IsDeleted { get; set; } = false;
+        public DateTime? DeletedAt { get; set; }
         public bool IsHasMenu { get; set; } = false; // Menyusu olan tenant-lar public siyahıda görünür
         public int? DiscoverSortOrder { get; set; } // Admin manuel discover sıralama. null → sondadır
 

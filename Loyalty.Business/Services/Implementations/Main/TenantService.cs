@@ -121,9 +121,31 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, response.Id);
         }
 
-        public Task<ServiceResult> Delete(int id)
+        /// <summary>
+        /// Soft delete — tenant bütün admin/discover/home listlərindən itir, data DB-də qalır.
+        /// Qoruma: yalnız deaktiv (IsActive=false) tenant silinə bilər.
+        /// </summary>
+        public async Task<ServiceResult> Delete(int id)
         {
-            throw new NotImplementedException();
+            var tenant = await _dbContext.Tenants.FirstOrDefaultAsync(t => t.Id == id);
+            if (tenant == null)
+                return new ServiceResult(false, "Tenant tapılmadı");
+
+            if (tenant.IsActive)
+                return new ServiceResult(false, "Aktiv tenant silinə bilməz — əvvəlcə deaktiv edin");
+
+            if (tenant.IsDeleted)
+                return new ServiceResult(false, "Tenant artıq silinib");
+
+            tenant.IsDeleted = true;
+            tenant.DeletedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync();
+
+            InvalidateAllFilterCache();
+            _cache.Remove(TenantStatusGuard.CacheKey(id));
+            _cache.Remove(TenantSuspensionGuard.CacheKey(id));
+
+            return new ServiceResult(true, new { id, isDeleted = true });
         }
 
         public async Task<ServiceResult> SetActiveAsync(int id, bool active)
