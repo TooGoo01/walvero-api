@@ -273,6 +273,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                             {
                                 Id = b.Id,
                                 Name = b.Name,
+                                AppDisplayName = b.AppDisplayName,
                                 Address = b.Address,
                                 Latitude = b.Latitude,
                                 Longitude = b.Longitude,

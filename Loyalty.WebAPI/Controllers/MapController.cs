@@ -44,38 +44,70 @@ namespace Loyalty.WebAPI.Controllers
 
             try
             {
-                var ci = System.Globalization.CultureInfo.InvariantCulture;
-                // Yalnız icazəli rejimlər — default driving
-                var travelMode = mode?.ToLowerInvariant() == "walking" ? "walking" : "driving";
-                var url = "https://maps.googleapis.com/maps/api/directions/json" +
-                          $"?origin={fromLat.ToString(ci)},{fromLng.ToString(ci)}" +
-                          $"&destination={toLat.ToString(ci)},{toLng.ToString(ci)}" +
-                          $"&mode={travelMode}&language=az&key={apiKey}";
+                // Routes API (computeRoutes) — legacy Directions API yeni açarlarla
+                // OVER_QUERY_LIMIT qaytarır; Google yeni inteqrasiyaları buna yönləndirir.
+                var travelMode = mode?.ToLowerInvariant() == "walking" ? "WALK" : "DRIVE";
+                var requestBody = new
+                {
+                    origin = new { location = new { latLng = new { latitude = fromLat, longitude = fromLng } } },
+                    destination = new { location = new { latLng = new { latitude = toLat, longitude = toLng } } },
+                    travelMode,
+                    languageCode = "az"
+                };
 
                 var client = _httpClientFactory.CreateClient();
                 client.Timeout = TimeSpan.FromSeconds(10);
-                using var resp = await client.GetAsync(url, ct);
+
+                using var req = new HttpRequestMessage(
+                    HttpMethod.Post,
+                    "https://routes.googleapis.com/directions/v2:computeRoutes");
+                req.Headers.Add("X-Goog-Api-Key", apiKey);
+                req.Headers.Add("X-Goog-FieldMask",
+                    "routes.polyline.encodedPolyline,routes.distanceMeters,routes.duration");
+                req.Content = new StringContent(
+                    JsonSerializer.Serialize(requestBody),
+                    System.Text.Encoding.UTF8,
+                    "application/json");
+
+                using var resp = await client.SendAsync(req, ct);
                 var body = await resp.Content.ReadAsStringAsync(ct);
 
-                using var doc = JsonDocument.Parse(body);
-                var root = doc.RootElement;
-                var status = root.GetProperty("status").GetString();
-                if (status != "OK")
+                if (!resp.IsSuccessStatusCode)
                 {
-                    _logger.LogWarning("Directions API status={Status}", status);
-                    return Ok(new { success = false, message = status });
+                    _logger.LogWarning("Routes API HTTP {Status}: {Body}", (int)resp.StatusCode,
+                        body.Length > 400 ? body[..400] : body);
+                    return Ok(new { success = false, message = $"Routes API xətası ({(int)resp.StatusCode})" });
                 }
 
-                var route = root.GetProperty("routes")[0];
-                var leg = route.GetProperty("legs")[0];
+                using var doc = JsonDocument.Parse(body);
+                if (!doc.RootElement.TryGetProperty("routes", out var routes) ||
+                    routes.GetArrayLength() == 0)
+                {
+                    return Ok(new { success = false, message = "Marşrut tapılmadı" });
+                }
+
+                var route = routes[0];
+                var points = route.GetProperty("polyline").GetProperty("encodedPolyline").GetString();
+                var distanceMeters = route.TryGetProperty("distanceMeters", out var dm) ? dm.GetInt32() : 0;
+                // duration "123s" formatındadır
+                var durationStr = route.TryGetProperty("duration", out var du) ? du.GetString() ?? "0s" : "0s";
+                var durationSeconds = int.TryParse(durationStr.TrimEnd('s'), out var ds) ? ds : 0;
+
+                var distanceText = distanceMeters >= 1000
+                    ? $"{distanceMeters / 1000.0:0.#} km"
+                    : $"{distanceMeters} m";
+                var durationText = durationSeconds >= 3600
+                    ? $"{durationSeconds / 3600} saat {(durationSeconds % 3600) / 60} dəq"
+                    : $"{Math.Max(1, durationSeconds / 60)} dəq";
+
                 return Ok(new
                 {
                     success = true,
-                    points = route.GetProperty("overview_polyline").GetProperty("points").GetString(),
-                    distanceText = leg.GetProperty("distance").GetProperty("text").GetString(),
-                    distanceMeters = leg.GetProperty("distance").GetProperty("value").GetInt32(),
-                    durationText = leg.GetProperty("duration").GetProperty("text").GetString(),
-                    durationSeconds = leg.GetProperty("duration").GetProperty("value").GetInt32()
+                    points,
+                    distanceText,
+                    distanceMeters,
+                    durationText,
+                    durationSeconds
                 });
             }
             catch (Exception ex)

@@ -17,6 +17,7 @@ namespace Loyalty.Business.Dtos.Get.Main
     {
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
+        public string? AppDisplayName { get; set; } // doludursa app yalnız bunu göstərir
         public string? Address { get; set; }
         public decimal? Latitude { get; set; }
         public decimal? Longitude { get; set; }

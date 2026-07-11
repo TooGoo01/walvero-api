@@ -19,6 +19,7 @@ namespace Loyalty.Business.Dtos.Get.Main.Branch
         public string? WorkingHoursJson { get; set; }
         public bool IsMainBranch { get; set; }
         public bool HideInApp { get; set; }
+        public string? AppDisplayName { get; set; }
         public bool IsActive { get; set; }
         public DateTime RegDate { get; set; }
         public int StaffCount { get; set; }

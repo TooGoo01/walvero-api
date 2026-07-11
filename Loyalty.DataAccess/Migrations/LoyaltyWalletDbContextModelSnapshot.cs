@@ -98,6 +98,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("AnnouncementRu")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("AppDisplayName")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("BackgroundColor")
                         .HasColumnType("nvarchar(max)");
 

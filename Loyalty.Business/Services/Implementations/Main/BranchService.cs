@@ -167,6 +167,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.MetaDescription != null) branch.MetaDescription = dto.MetaDescription;
 
             if (dto.HideInApp.HasValue) branch.HideInApp = dto.HideInApp.Value;
+            // Boş string göndərilsə sahə silinir (app "Branch — Tenant" formatına qayıdır)
+            if (dto.AppDisplayName != null)
+                branch.AppDisplayName = string.IsNullOrWhiteSpace(dto.AppDisplayName)
+                    ? null
+                    : dto.AppDisplayName.Trim();
 
             if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
             {

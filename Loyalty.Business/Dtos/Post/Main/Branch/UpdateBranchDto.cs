@@ -33,6 +33,9 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
         public bool? IsMainBranch { get; set; }
         public bool? HideInApp { get; set; } // null = dəyişmə
 
+        [MaxLength(100)]
+        public string? AppDisplayName { get; set; } // null = dəyişmə; boş string = sil (format-a qayıt)
+
         [MaxLength(500)] public string? LocationUrl { get; set; }
         [MaxLength(500)] public string? WazeLocationUrl { get; set; }
         [MaxLength(500)] public string? MenuUrl { get; set; }
