@@ -38,6 +38,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<Reward> Rewards { get; set; }
         public DbSet<Category> Categories { get; set; }
         public DbSet<AppVersionConfig> AppVersionConfigs { get; set; }
+        public DbSet<AppSetting> AppSettings { get; set; }
         public DbSet<StoreFeedback> StoreFeedbacks { get; set; }
         public DbSet<StoreFeedbackReply> StoreFeedbackReplies { get; set; }
         public DbSet<Notification> Notifications { get; set; }
@@ -82,6 +83,14 @@ namespace Loyalty.DataAccess.Context
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<AppSetting>(entity =>
+            {
+                entity.ToTable("AppSettings");
+                entity.HasKey(s => s.Id);
+                entity.Property(s => s.Key).IsRequired().HasMaxLength(100);
+                entity.Property(s => s.Value).IsRequired().HasMaxLength(500);
+                entity.HasIndex(s => s.Key).IsUnique();
+            });
             modelBuilder.Entity<Tenant>(entity =>
             {
                 entity.ToTable("Tenants");

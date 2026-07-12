@@ -13,15 +13,29 @@ namespace Loyalty.WebAPI.Controllers
         private readonly IHomeService _homeService;
         private readonly ICountrySequenceService _countrySequenceService;
         private readonly IPublicTenantDataService _publicTenantDataService;
+        private readonly IAppSettingService _appSettingService;
 
         public PublicController(
             IHomeService homeService,
             ICountrySequenceService countrySequenceService,
-            IPublicTenantDataService publicTenantDataService)
+            IPublicTenantDataService publicTenantDataService,
+            IAppSettingService appSettingService)
         {
             _homeService = homeService;
             _countrySequenceService = countrySequenceService;
             _publicTenantDataService = publicTenantDataService;
+            _appSettingService = appSettingService;
+        }
+
+        /// <summary>
+        /// Mobil app-ın startup-da oxuduğu qlobal konfiqurasiya
+        /// </summary>
+        [HttpGet("app-config")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> GetAppConfig(CancellationToken ct)
+        {
+            var showMapInApp = await _appSettingService.GetBoolAsync("ShowMapInApp", defaultValue: true, ct);
+            return Ok(new ServiceResult(true, new { showMapInApp }));
         }
 
         /// <summary>
