@@ -13,6 +13,9 @@ namespace Loyalty.DataAccess.Models
         public string? AppLogoUrl { get; set; }
         public string? AppStripUrl { get; set; }
         public string? RewardDescription { get; set; }
+        // Cashback faizi (points/tier baza bonus) — home brend kartında "X% Cashback"
+        public int? BronzePercent { get; set; }
+        public int? BronzePercentCash { get; set; }
     }
 }
 

@@ -177,6 +177,17 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                         .Where(lp => lp.IsActive && lp.CardTemplate != null)
                         .OrderBy(lp => lp.Id)
                         .Select(lp => lp.CardTemplate!.RewardDescription)
+                        .FirstOrDefault(),
+                    // Cashback faizləri — home brend kartında qısa "X% Cashback"
+                    BronzePercent = t.LoyaltyPrograms
+                        .Where(lp => lp.IsActive && lp.CardTemplate != null)
+                        .OrderBy(lp => lp.Id)
+                        .Select(lp => lp.CardTemplate!.BronzePercent)
+                        .FirstOrDefault(),
+                    BronzePercentCash = t.LoyaltyPrograms
+                        .Where(lp => lp.IsActive && lp.CardTemplate != null)
+                        .OrderBy(lp => lp.Id)
+                        .Select(lp => lp.CardTemplate!.BronzePercentCash)
                         .FirstOrDefault()
                 })
                 .ToListAsync(ct);

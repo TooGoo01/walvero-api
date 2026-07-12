@@ -588,7 +588,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 TenantName = p.TenantName,
                 TenantProgramName = p.TenantProgramName,
                 GoogleLogoUrl = p.GoogleLogoUrl,
-                RewardDescription = p.RewardDescription
+                RewardDescription = p.RewardDescription,
+                BronzePercent = p.BronzePercent,
+                BronzePercentCash = p.BronzePercentCash
             }).ToList();
         }
     }

@@ -14,6 +14,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? AppLogoUrl { get; set; }
         public string? AppStripUrl { get; set; }
         public string? RewardDescription { get; set; }
+        public int? BronzePercent { get; set; }
+        public int? BronzePercentCash { get; set; }
     }
 }
 
