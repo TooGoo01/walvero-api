@@ -9,6 +9,7 @@ using Loyalty.Infrastructure.Utilities.Security.Jwt;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 
 namespace Loyalty.Business.Services.Implementations.Users
@@ -19,17 +20,20 @@ namespace Loyalty.Business.Services.Implementations.Users
         private readonly ITokenHelper _tokenHelper;
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly ILogger<GuestAuthService> _logger;
 
         public GuestAuthService(
             UserManager<ApplicationUser> userManager,
             ITokenHelper tokenHelper,
             LoyaltyWalletDbContext dbContext,
-            IHttpContextAccessor httpContextAccessor)
+            IHttpContextAccessor httpContextAccessor,
+            ILogger<GuestAuthService> logger)
         {
             _userManager = userManager;
             _tokenHelper = tokenHelper;
             _dbContext = dbContext;
             _httpContextAccessor = httpContextAccessor;
+            _logger = logger;
         }
 
         public async Task<ServiceResult> GuestLoginAsync(GuestLoginDto dto)
@@ -526,6 +530,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Unexpected error while refreshing token");
                 return new ServiceResult(false, $"Error refreshing token: {ex.Message}");
             }
         }

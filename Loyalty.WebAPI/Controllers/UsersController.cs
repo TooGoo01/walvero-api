@@ -15,10 +15,31 @@ namespace Loyalty.WebAPI.Controllers
     public class UsersController : ControllerBase
     {
         private readonly IUserService _userService;
+        private readonly IGuestAuthService _guestAuthService;
 
-        public UsersController(IUserService userService)
+        public UsersController(IUserService userService, IGuestAuthService guestAuthService)
         {
             _userService = userService;
+            _guestAuthService = guestAuthService;
+        }
+
+        /// <summary>
+        /// Back-compat refresh token endpoint for old app builds that still call
+        /// /api/Users/RefreshToken. Same behavior as POST /api/auth/refresh-token.
+        /// </summary>
+        [HttpPost]
+        [AllowAnonymous]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var result = await _guestAuthService.RefreshTokenAsync(dto);
+
+            return result.Success ? Ok(result) : BadRequest(result.Message);
         }
 
         [HttpGet]

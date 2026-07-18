@@ -402,7 +402,10 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var card = _uow.Repository<LoyaltyCard>().Get(c => c.AppleSerial == serial);
             if (card is null)
+            {
+                _log.LogWarning("[AUTH] No LoyaltyCard found for AppleSerial={Serial} — orphan pass registration rejected", serial);
                 return Task.FromResult(false);
+            }
 
             // WebServiceURL istifadə etmirsinizsə, token boş ola bilər — bu halda icazə verə bilərsiniz.
             if (string.IsNullOrWhiteSpace(card.AppleAuthToken))
