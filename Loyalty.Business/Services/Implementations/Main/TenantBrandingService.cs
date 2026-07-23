@@ -101,6 +101,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             branding.Description = dto.Description;
             branding.Website = dto.Website;
 
+            branding.BranchNameFontSize = dto.BranchNameFontSize is int fs
+                ? Math.Clamp(fs, 10, 40) : (int?)null;
+            branding.DefaultMenuView = dto.DefaultMenuView?.Trim().ToLowerInvariant() switch
+            {
+                "grid" => "grid",
+                "list" => "list",
+                _ => null
+            };
+
             // 6) Yadda saxla
             if (branding.Id == 0) await _unitOfWork.Repository<TenantBranding>().AddAsync(branding);
             else _repo.Update(branding);
@@ -116,7 +125,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 PrimaryColor = branding.PrimaryColor,
                 SecondaryColor = branding.SecondaryColor,
                 Description = branding.Description,
-                Website = branding.Website
+                Website = branding.Website,
+                BranchNameFontSize = branding.BranchNameFontSize,
+                DefaultMenuView = branding.DefaultMenuView
             };
             return new ServiceResult(true,br);
         }

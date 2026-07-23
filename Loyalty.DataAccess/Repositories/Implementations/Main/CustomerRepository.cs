@@ -89,21 +89,24 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             return query.OrderBy(x => x.FirstName).Skip(skip).Take(take).ToListAsync(ct);
         }
 
-        // Telegram bot: CardNumber və ya WalveroId-nin istənilən hissəsi ilə axtarış
-        // (son 5 rəqəm, əvvəli və ya ortası). WalveroId.ToString() → CONVERT + LIKE,
-        // non-SARGable — tenant-scoped olduğu üçün məqbul.
+        // Telegram bot: CardNumber və ya WalveroId-nin sonluğu VƏ YA əvvəli ilə axtarış —
+        // orta uyğunluq qəsdən yoxdur (yalançı nəticə verir). WalveroId.ToString() →
+        // CONVERT + LIKE, non-SARGable — tenant-scoped olduğu üçün məqbul.
         public Task<List<Customer>> SearchByLastDigitsAsync(int tenantId, string digits, int take, CancellationToken ct = default)
         {
-            var pattern = "%" + digits + "%";
+            var suffix = "%" + digits;
+            var prefix = digits + "%";
             return GetAsQueryable()
                 .AsNoTracking()
                 .Include(x => x.LoyaltyCards.Where(c => c.IsActive))
                 .Include(x => x.applicationUser)
                 .AsSplitQuery()
                 .Where(x => x.TenantId == tenantId && x.IsActive &&
-                    ((x.CardNumber != null && EF.Functions.Like(x.CardNumber, pattern)) ||
+                    ((x.CardNumber != null &&
+                      (EF.Functions.Like(x.CardNumber, suffix) || EF.Functions.Like(x.CardNumber, prefix))) ||
                      (x.applicationUser != null && x.applicationUser.WalveroId != null &&
-                      EF.Functions.Like(x.applicationUser.WalveroId.ToString()!, pattern))))
+                      (EF.Functions.Like(x.applicationUser.WalveroId.ToString()!, suffix) ||
+                       EF.Functions.Like(x.applicationUser.WalveroId.ToString()!, prefix)))))
                 .OrderBy(x => x.Id)
                 .Take(take)
                 .ToListAsync(ct);

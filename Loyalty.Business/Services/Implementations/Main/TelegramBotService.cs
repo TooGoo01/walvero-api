@@ -113,7 +113,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             await _sender.SendMessageAsync(chatId.Value,
                 "Müştəri axtarışı üçün kartın və ya Walvero ID-nin <b>son 5 rəqəmini</b> " +
-                "(və ya nömrənin istənilən hissəsini) göndərin.\n" +
+                "(və ya nömrənin əvvəlini) göndərin.\n" +
                 "Hesabı ayırmaq üçün: /stop", ct: ct);
         }
 
@@ -159,7 +159,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             await _sender.SendMessageAsync(chatId,
                 "Hesabınız uğurla bağlandı ✅\n" +
                 "Müştəri axtarışı üçün kartın və ya Walvero ID-nin <b>son 5 rəqəmini</b> " +
-                "(və ya nömrənin istənilən hissəsini) göndərin.", ct: ct);
+                "(və ya nömrənin əvvəlini) göndərin.", ct: ct);
         }
 
         // ------------------- Axtarış -------------------

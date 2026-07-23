@@ -18,5 +18,7 @@ namespace Loyalty.Business.Dtos.Post.Main
             public string SecondaryColor { get; set; } = "#FFFFFF";
             public string? Description { get; set; }
             public string? Website { get; set; }
+            public int? BranchNameFontSize { get; set; }
+            public string? DefaultMenuView { get; set; }
         }
 }
