@@ -53,7 +53,7 @@ namespace Loyalty.WebAPI.Controllers
             if (role == null)
                 return NotFound(new { message = "Role not found" });
 
-            var protectedRoles = new[] { "Super Admin", "Tenant Admin", "Moderator", "Customer" };
+            var protectedRoles = new[] { "Super Admin", "Tenant Admin", "Moderator", "Customer", "Menu Admin" };
             if (protectedRoles.Contains(role.Name))
                 return BadRequest(new { message = "Cannot delete system role" });
 

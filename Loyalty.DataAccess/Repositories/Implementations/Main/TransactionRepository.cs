@@ -103,5 +103,17 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Where(t => t.LoyaltyCardId == cardId && t.Type == TransactionType.Redeemed)
                 .SumAsync(t => t.Points, cancellationToken);
         }
+
+        public async Task<List<Transaction>> GetRecentRedeemedByCustomerAsync(int customerId, int take, CancellationToken cancellationToken = default)
+        {
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Where(t => t.LoyaltyCard.CustomerId == customerId
+                         && t.Type == TransactionType.Redeemed
+                         && t.Status == Enums.RedeemStatus.Applied)
+                .OrderByDescending(t => t.LocalOccurredAt)
+                .Take(take)
+                .ToListAsync(cancellationToken);
+        }
     }
 }

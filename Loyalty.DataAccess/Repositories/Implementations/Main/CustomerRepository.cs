@@ -88,5 +88,24 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
 
             return query.OrderBy(x => x.FirstName).Skip(skip).Take(take).ToListAsync(ct);
         }
+
+        // Telegram bot: CardNumber və ya WalveroId-nin son rəqəmləri ilə axtarış.
+        // WalveroId.ToString() → CONVERT + LIKE, non-SARGable — tenant-scoped olduğu üçün məqbul.
+        public Task<List<Customer>> SearchByLastDigitsAsync(int tenantId, string digits, int take, CancellationToken ct = default)
+        {
+            var pattern = "%" + digits;
+            return GetAsQueryable()
+                .AsNoTracking()
+                .Include(x => x.LoyaltyCards.Where(c => c.IsActive))
+                .Include(x => x.applicationUser)
+                .AsSplitQuery()
+                .Where(x => x.TenantId == tenantId && x.IsActive &&
+                    ((x.CardNumber != null && EF.Functions.Like(x.CardNumber, pattern)) ||
+                     (x.applicationUser != null && x.applicationUser.WalveroId != null &&
+                      EF.Functions.Like(x.applicationUser.WalveroId.ToString()!, pattern))))
+                .OrderBy(x => x.Id)
+                .Take(take)
+                .ToListAsync(ct);
+        }
     }
 }

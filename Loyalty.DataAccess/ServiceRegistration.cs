@@ -55,6 +55,7 @@ namespace Loyalty.DataAccess
             services.AddScoped<IRewardRepository, RewardRepository>();
             services.AddScoped<ILotteryRepository, LotteryRepository>();
             services.AddScoped<IBranchRepository, BranchRepository>();
+            services.AddScoped<ITelegramAdminLinkRepository, TelegramAdminLinkRepository>();
             services.AddScoped<ISalesRepVisitRepository, SalesRepVisitRepository>();
 
         }

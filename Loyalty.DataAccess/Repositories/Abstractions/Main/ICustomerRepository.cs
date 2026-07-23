@@ -13,6 +13,7 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         Task<Customer?> GetByPhoneAsync(int tenantId, string phone, CancellationToken ct = default);
         Task<Customer?> GetByWalveroIdAsync(int tenantId, long walveroId, CancellationToken ct = default);
         Task<List<Customer>> SearchAsync(int tenantId, string? q, int skip, int take, CancellationToken ct = default);
+        Task<List<Customer>> SearchByLastDigitsAsync(int tenantId, string digits, int take, CancellationToken ct = default);
         Task<List<Customer>> GetByTenant(int tenantId, int? userId);
         Task<List<Customer>> GetByUserId(int userId);
     }

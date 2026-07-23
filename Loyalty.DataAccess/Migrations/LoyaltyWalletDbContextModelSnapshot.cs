@@ -2575,6 +2575,60 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("Stories");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TelegramAdminLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ApplicationUserId")
+                        .HasColumnType("int");
+
+                    b.Property<long>("ChatId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LinkedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TelegramUsername")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationUserId");
+
+                    b.HasIndex("ChatId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_TelegramAdminLinks_ChatId_Active")
+                        .HasFilter("[IsActive] = 1");
+
+                    b.HasIndex("TenantId", "ApplicationUserId")
+                        .HasDatabaseName("IX_TelegramAdminLinks_Tenant_User");
+
+                    b.ToTable("TelegramAdminLinks", (string)null);
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Tenant", b =>
                 {
                     b.Property<int>("Id")
@@ -4411,6 +4465,17 @@ namespace Loyalty.DataAccess.Migrations
                         .HasForeignKey("TenantId");
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TelegramAdminLink", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Users.ApplicationUser", "ApplicationUser")
+                        .WithMany()
+                        .HasForeignKey("ApplicationUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ApplicationUser");
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Tenant", b =>

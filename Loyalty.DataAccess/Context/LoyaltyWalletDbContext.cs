@@ -79,10 +79,31 @@ namespace Loyalty.DataAccess.Context
         public DbSet<LotteryTicket> LotteryTickets { get; set; }
         public DbSet<LotteryPrize> LotteryPrizes { get; set; }
         public DbSet<HappyHoursWindow> HappyHoursWindows { get; set; }
+        public DbSet<TelegramAdminLink> TelegramAdminLinks { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<TelegramAdminLink>(entity =>
+            {
+                entity.ToTable("TelegramAdminLinks");
+                entity.HasKey(l => l.Id);
+                entity.Property(l => l.TelegramUsername).HasMaxLength(100);
+
+                // Bir chat eyni anda yalnız bir aktiv linkə sahib ola bilər
+                entity.HasIndex(l => l.ChatId)
+                    .IsUnique()
+                    .HasFilter("[IsActive] = 1")
+                    .HasDatabaseName("IX_TelegramAdminLinks_ChatId_Active");
+
+                entity.HasIndex(l => new { l.TenantId, l.ApplicationUserId })
+                    .HasDatabaseName("IX_TelegramAdminLinks_Tenant_User");
+
+                entity.HasOne(l => l.ApplicationUser)
+                    .WithMany()
+                    .HasForeignKey(l => l.ApplicationUserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
             modelBuilder.Entity<AppSetting>(entity =>
             {
                 entity.ToTable("AppSettings");

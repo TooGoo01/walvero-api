@@ -37,7 +37,7 @@ namespace Loyalty.WebAPI.Controllers
 
         /// <summary>Updates branding for the currently authenticated tenant.</summary>
         [HttpPost]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOnly")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrMenuAdmin")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.Unauthorized)]

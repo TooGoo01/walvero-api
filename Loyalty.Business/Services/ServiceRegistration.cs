@@ -67,6 +67,14 @@ namespace Loyalty.Business.Services
                 c.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en-US,en;q=0.9,az;q=0.8");
                 c.DefaultRequestHeaders.Referrer = new Uri("https://monitoring.e-kassa.gov.az/");
             });
+            services.AddScoped<ITelegramSettingsProvider, TelegramSettingsProvider>();
+            services.AddScoped<ITelegramSender, TelegramSender>();
+            services.AddScoped<ITelegramBotService, TelegramBotService>();
+            services.AddHttpClient(TelegramSender.HttpClientName, c =>
+            {
+                c.BaseAddress = new Uri("https://api.telegram.org/");
+                c.Timeout = TimeSpan.FromSeconds(30);
+            });
             services.AddScoped<ReceiptOcrJob>();
             services.AddScoped<PosBatchOperationJob>();
             services.AddScoped<IOtpGenerator, OtpGenerator>();

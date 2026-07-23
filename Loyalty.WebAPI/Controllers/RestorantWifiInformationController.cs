@@ -38,7 +38,9 @@ namespace Loyalty.WebAPI.Controllers
                && !User.IsInRole("Super Admin")
                && (User.IsInRole("Branch Admin")
                    || User.IsInRole("Branch Moderator")
-                   || User.IsInRole("Moderator"));
+                   || User.IsInRole("Moderator")
+                   // Menu Admin: branch_id claim-i varsa filiala kilidli, yoxdursa tenant-wide
+                   || (User.IsInRole("Menu Admin") && _tenantProvider.CurrentBranchId.HasValue));
 
         [HttpGet]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]

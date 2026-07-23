@@ -230,6 +230,10 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("TenantAdminOrSuperAdmin", policy =>
         policy.RequireRole("Tenant Admin", "Super Admin"));
 
+    // Menu Admin — yalnız menyu idarəsi (menu-app); loyalty əməliyyatlarına çıxışı yoxdur.
+    options.AddPolicy("TenantAdminOrMenuAdmin", policy =>
+        policy.RequireRole("Tenant Admin", "Menu Admin"));
+
     options.AddPolicy("CustomerOnly", policy =>
         policy.RequireRole("Customer"));
 
@@ -388,7 +392,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
-    foreach (var roleName in new[] { "Super Admin", "Tenant Admin", "Branch Admin", "Moderator", "Branch Moderator", "Customer", "Sales Manager" })
+    foreach (var roleName in new[] { "Super Admin", "Tenant Admin", "Branch Admin", "Moderator", "Branch Moderator", "Customer", "Sales Manager", "Menu Admin" })
     {
         if (!await roleManager.RoleExistsAsync(roleName))
         {
