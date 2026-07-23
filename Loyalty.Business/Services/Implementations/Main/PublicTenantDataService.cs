@@ -131,7 +131,6 @@ namespace Loyalty.Business.Services.Implementations.Main
                         TextColor = tenant.Branding.TextColor,
                         Description = tenant.Branding.Description,
                         Website = tenant.Branding.Website,
-                        BranchNameFontSize = tenant.Branding.BranchNameFontSize,
                         DefaultMenuView = tenant.Branding.DefaultMenuView
                     }
                     : null
@@ -228,7 +227,6 @@ namespace Loyalty.Business.Services.Implementations.Main
                         TextColor = tenant.Branding.TextColor,
                         Description = tenant.Branding.Description,
                         Website = tenant.Branding.Website,
-                        BranchNameFontSize = tenant.Branding.BranchNameFontSize,
                         DefaultMenuView = tenant.Branding.DefaultMenuView
                     }
                     : null,
@@ -282,6 +280,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     AnnouncementRu = branchEntity.AnnouncementRu,
                     MetaTitle = branchEntity.MetaTitle,
                     MetaDescription = branchEntity.MetaDescription,
+                    AnnouncementFontSize = branchEntity.AnnouncementFontSize,
+                    DefaultMenuView = branchEntity.DefaultMenuView,
                 };
             }
 

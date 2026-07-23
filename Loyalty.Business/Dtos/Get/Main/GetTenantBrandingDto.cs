@@ -17,7 +17,6 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string TextColor { get; set; } = "#000000";
         public string? Description { get; set; }
         public string? Website { get; set; }
-        public int? BranchNameFontSize { get; set; }
         public string? DefaultMenuView { get; set; }
         public int TenantId { get; set; }
 

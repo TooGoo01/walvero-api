@@ -103,8 +103,6 @@ namespace Loyalty.Business.Services.Implementations.Main
             branding.Description = dto.Description;
             branding.Website = dto.Website;
 
-            branding.BranchNameFontSize = dto.BranchNameFontSize is int fs
-                ? Math.Clamp(fs, 10, 40) : (int?)null;
             branding.DefaultMenuView = dto.DefaultMenuView?.Trim().ToLowerInvariant() switch
             {
                 "grid" => "grid",
@@ -130,7 +128,6 @@ namespace Loyalty.Business.Services.Implementations.Main
                 TextColor = branding.TextColor,
                 Description = branding.Description,
                 Website = branding.Website,
-                BranchNameFontSize = branding.BranchNameFontSize,
                 DefaultMenuView = branding.DefaultMenuView
             };
             return new ServiceResult(true,br);

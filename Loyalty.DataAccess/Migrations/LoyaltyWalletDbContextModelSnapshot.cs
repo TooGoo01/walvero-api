@@ -142,6 +142,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("AnnouncementEn")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("AnnouncementFontSize")
+                        .HasColumnType("int");
+
                     b.Property<string>("AnnouncementRu")
                         .HasColumnType("nvarchar(max)");
 
@@ -161,6 +164,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("BannerVideoUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DefaultMenuView")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("EditDate")
@@ -2873,9 +2879,6 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("BackgroundImageUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
-
-                    b.Property<int?>("BranchNameFontSize")
-                        .HasColumnType("int");
 
                     b.Property<string>("DefaultMenuView")
                         .HasColumnType("nvarchar(max)");

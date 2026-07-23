@@ -168,6 +168,20 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.MetaTitle != null) branch.MetaTitle = dto.MetaTitle;
             if (dto.MetaDescription != null) branch.MetaDescription = dto.MetaDescription;
 
+            // Görünüş: 0 → sil, əks halda 10–40 clamp
+            if (dto.AnnouncementFontSize.HasValue)
+                branch.AnnouncementFontSize = dto.AnnouncementFontSize.Value == 0
+                    ? null
+                    : Math.Clamp(dto.AnnouncementFontSize.Value, 10, 40);
+            // "" → sil, yalnız grid/list qəbul olunur
+            if (dto.DefaultMenuView != null)
+                branch.DefaultMenuView = dto.DefaultMenuView.Trim().ToLowerInvariant() switch
+                {
+                    "grid" => "grid",
+                    "list" => "list",
+                    _ => null
+                };
+
             if (dto.HideInApp.HasValue) branch.HideInApp = dto.HideInApp.Value;
             // Boş string göndərilsə sahə silinir (app "Branch — Tenant" formatına qayıdır)
             if (dto.AppDisplayName != null)

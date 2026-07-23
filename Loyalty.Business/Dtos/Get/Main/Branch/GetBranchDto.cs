@@ -79,5 +79,9 @@ namespace Loyalty.Business.Dtos.Get.Main.Branch
         public string? AnnouncementRu { get; set; }
         public string? MetaTitle { get; set; }
         public string? MetaDescription { get; set; }
+
+        // Görünüş
+        public int? AnnouncementFontSize { get; set; }
+        public string? DefaultMenuView { get; set; }
     }
 }

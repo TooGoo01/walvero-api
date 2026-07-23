@@ -90,6 +90,10 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? MetaTitle { get; set; }
         public string? MetaDescription { get; set; }
 
+        // --- Görünüş ---
+        public int? AnnouncementFontSize { get; set; } // px; menyu səhifəsindəki elan zolağının şrifti, null → default
+        public string? DefaultMenuView { get; set; }   // "grid" | "list"; null → TenantBranding.DefaultMenuView
+
         public ICollection<Room> Rooms { get; set; } = new List<Room>();
 
         // Inverse navigation collections — DbContext-də HasOne(...).WithMany(b => b.Staff/Transactions)

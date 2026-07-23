@@ -29,8 +29,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? Website { get; set; }
 
         // Display Settings
-        public int? BranchNameFontSize { get; set; }   // px, null = default
-        public string? DefaultMenuView { get; set; }   // "grid" | "list", null = grid
+        public string? DefaultMenuView { get; set; }   // "grid" | "list", null = grid (tenant default, branch override edə bilər)
 
         // Navigation Property
         public Tenant Tenant { get; set; } = null!;

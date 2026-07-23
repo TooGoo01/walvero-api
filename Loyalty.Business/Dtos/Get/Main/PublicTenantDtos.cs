@@ -80,7 +80,6 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string TextColor { get; set; } = "#000000";
         public string? Description { get; set; }
         public string? Website { get; set; }
-        public int? BranchNameFontSize { get; set; }
         public string? DefaultMenuView { get; set; }
     }
 
@@ -175,6 +174,10 @@ namespace Loyalty.Business.Dtos.Get.Main
         // Link preview (paylaşım) title + description.
         public string? MetaTitle { get; set; }
         public string? MetaDescription { get; set; }
+
+        // Görünüş: elan zolağının şrift ölçüsü (px) + menyu default görünüşü (branch override)
+        public int? AnnouncementFontSize { get; set; }
+        public string? DefaultMenuView { get; set; }
     }
 
     public class RestaurantLocationDto
