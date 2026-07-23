@@ -2862,6 +2862,12 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<int?>("BranchNameFontSize")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DefaultMenuView")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Description")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");

@@ -97,6 +97,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             // 5) Digər sahələr
             branding.PrimaryColor = string.IsNullOrWhiteSpace(dto.PrimaryColor) ? "#000000" : dto.PrimaryColor!;
             branding.SecondaryColor = string.IsNullOrWhiteSpace(dto.SecondaryColor) ? "#FFFFFF" : dto.SecondaryColor!;
+            branding.BackgroundColor = string.IsNullOrWhiteSpace(dto.BackgroundColor) ? "#FFFFFF" : dto.BackgroundColor!;
+            branding.TextColor = string.IsNullOrWhiteSpace(dto.TextColor) ? "#000000" : dto.TextColor!;
 
             branding.Description = dto.Description;
             branding.Website = dto.Website;
@@ -124,6 +126,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 BackgroundImageUrl = branding.BackgroundImageUrl,
                 PrimaryColor = branding.PrimaryColor,
                 SecondaryColor = branding.SecondaryColor,
+                BackgroundColor = branding.BackgroundColor,
+                TextColor = branding.TextColor,
                 Description = branding.Description,
                 Website = branding.Website,
                 BranchNameFontSize = branding.BranchNameFontSize,
