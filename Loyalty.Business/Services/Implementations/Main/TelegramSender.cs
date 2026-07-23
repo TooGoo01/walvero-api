@@ -102,15 +102,19 @@ namespace Loyalty.Business.Services.Implementations.Main
             var client = _httpClientFactory.CreateClient(HttpClientName);
             HttpResponseMessage response;
 
+            // Diqqət: token-də ":" var — "bot{token}/..." prefiksiz yazılsa .NET onu
+            // absolut URI scheme kimi parse edir (NotSupportedException). "/" məcburidir.
+            var requestUri = $"/bot{settings.BotToken}/{method}";
+
             if (payload == null)
             {
-                response = await client.GetAsync($"bot{settings.BotToken}/{method}", ct);
+                response = await client.GetAsync(requestUri, ct);
             }
             else
             {
                 var json = JsonSerializer.Serialize(payload);
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
-                response = await client.PostAsync($"bot{settings.BotToken}/{method}", content, ct);
+                response = await client.PostAsync(requestUri, content, ct);
             }
 
             if (!response.IsSuccessStatusCode)
