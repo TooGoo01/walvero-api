@@ -33,6 +33,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             @"\b(?<d>\d{1,2})[./\-](?<m>\d{1,2})[./\-](?<y>\d{2,4})\b",
             RegexOptions.Compiled);
 
+        // Fiskal çek əlamətləri — bunlardan biri OCR mətnində varsa çek fiskal sayılır.
+        private static readonly Regex FiscalMarkerRegex = new(
+            @"e-?kassa|fiskal|NMQ|NKA|VÖEN|VOEN",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // Qeyri-fiskal slip-də dedupe üçün "Sifariş № 264" / "Sifariş #265" formaları.
+        private static readonly Regex OrderNoRegex = new(
+            @"Sifari[şs]\s*(?:№|#|N[oº]?)?\s*(?<val>\d{1,10})",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         private readonly IAzureStorage _storage;
         private readonly IEkassaImageFetcher _ekassaFetcher;
         private readonly ILogger<ReceiptValidationService> _logger;
@@ -170,6 +180,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 physicalReceiptId = qrDocId;
 
             // Step 2: OCR — payload trust yoxdur, OCR həmişə işləyir (qrVerified halında e-kassa image-ə).
+            string ocrText = string.Empty;
             {
                 var tessdataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
                 if (!Directory.Exists(tessdataPath))
@@ -205,7 +216,6 @@ namespace Loyalty.Business.Services.Implementations.Main
                         FailReasonCode: "OcrUnreadable");
                 }
 
-                string ocrText;
                 try
                 {
                     ocrText = RunOcr(preprocessed);
@@ -249,6 +259,33 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
             }
 
+            // Fiskal-lıq detektoru: qeyri-fiskal "Ödəniş çeki"ndə bu əlamətlərin heç biri olmur.
+            // AllowNonFiscalReceipts aktivdirsə belə çeklər QR tələbindən keçir, əvəzində
+            // filial adı yoxlanır (3c'). Fiskal görünüşlü, amma QR oxunmayan çek yenə reject olunur.
+            bool looksFiscal = qrVerified
+                || !string.IsNullOrWhiteSpace(qrDocId)
+                || !string.IsNullOrWhiteSpace(taxNumber)
+                || !string.IsNullOrWhiteSpace(physicalReceiptId)
+                || FiscalMarkerRegex.IsMatch(ocrText);
+            bool nonFiscalMode = ctx.AllowNonFiscalReceipts && !looksFiscal;
+
+            if (nonFiscalMode)
+            {
+                _logger.LogInformation("Non-fiscal receipt mode. Tenant={TenantId} Branch={BranchId}",
+                    ctx.TenantId, ctx.BranchId);
+
+                // Dedupe fallback: Fiskal ID yoxdur — Sifariş № + tarix + filial kombinasiyası açar olur.
+                if (string.IsNullOrWhiteSpace(physicalReceiptId))
+                {
+                    var orderMatch = OrderNoRegex.Match(ocrText);
+                    if (orderMatch.Success)
+                    {
+                        var dedupeDate = receiptDate ?? TodayInTenantZone(ctx.TimeZoneId);
+                        physicalReceiptId = $"NF:{ctx.BranchId ?? 0}:{dedupeDate:yyyyMMdd}:{orderMatch.Groups["val"].Value}";
+                    }
+                }
+            }
+
             // Step 3: compare (priority — RedeemService / ReceiptOcrJob FailReasonCode-a əsasən IsSuspicious yazır).
 
             // 3a. Date match (yalnız date varsa yoxla)
@@ -260,7 +297,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
                     QrVerified: qrVerified,
                     FailReasonCode: "ReceiptDateMismatch",
-                    ExtractedTaxNumber: taxNumber);
+                    ExtractedTaxNumber: taxNumber,
+                    IsNonFiscal: nonFiscalMode);
             }
 
             // 3b. Object code match (branch-da kod təyin edilibsə və receipt-də tapılsa)
@@ -291,8 +329,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ExtractedTaxNumber: taxNumber);
             }
 
-            // 3c. QR missing strict mode
-            if (ctx.RequireQrVerification && !qrVerified)
+            // 3c. QR missing strict mode (qeyri-fiskal rejim QR tələbindən azaddır)
+            if (ctx.RequireQrVerification && !qrVerified && !nonFiscalMode)
             {
                 return new(false, extracted, carriedReceiptUrl,
                     "QR doğrulaması tələb olunur — çekin QR kodu oxunmadı.",
@@ -301,6 +339,25 @@ namespace Loyalty.Business.Services.Implementations.Main
                     QrVerified: qrVerified,
                     FailReasonCode: "QrMissing",
                     ExtractedTaxNumber: taxNumber);
+            }
+
+            // 3c'. Qeyri-fiskal rejimdə filial adı çekdə olmalıdır (konfiqurasiya edilibsə).
+            if (nonFiscalMode && !string.IsNullOrWhiteSpace(ctx.ReceiptBranchNames))
+            {
+                var normText = NormalizeAz(ocrText);
+                var nameFound = SplitLabels(ctx.ReceiptBranchNames)
+                    .Any(n => normText.Contains(NormalizeAz(n), StringComparison.Ordinal));
+                if (!nameFound)
+                {
+                    return new(false, extracted, carriedReceiptUrl,
+                        "Çekdə filial adı tapılmadı. Yenidən aydın şəkil çəkin.",
+                        QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                        ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
+                        QrVerified: qrVerified,
+                        FailReasonCode: "BranchNameMismatch",
+                        ExtractedTaxNumber: taxNumber,
+                        IsNonFiscal: true);
+                }
             }
 
             // 3d. Amount tolerance
@@ -317,14 +374,20 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
                     QrVerified: qrVerified,
                     FailReasonCode: "OcrMismatch",
-                    ExtractedTaxNumber: taxNumber);
+                    ExtractedTaxNumber: taxNumber,
+                    IsNonFiscal: nonFiscalMode);
             }
+
+            if (nonFiscalMode)
+                _logger.LogInformation("Non-fiscal receipt accepted. Amount={Amt} ReceiptId={Rid}",
+                    extracted, physicalReceiptId);
 
             return new(true, extracted, carriedReceiptUrl, null,
                 QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
                 ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
                 QrVerified: qrVerified,
-                ExtractedTaxNumber: taxNumber);
+                ExtractedTaxNumber: taxNumber,
+                IsNonFiscal: nonFiscalMode);
         }
 
         private static async Task<byte[]> PreprocessAsync(byte[] input, CancellationToken ct)
@@ -448,6 +511,36 @@ namespace Loyalty.Business.Services.Implementations.Main
                 catch { /* invalid combo (məs 31.02), atla */ }
             }
             return null;
+        }
+
+        // OCR diakritika xətalarına davamlı müqayisə: upper-invariant + AZ hərfləri ASCII-yə + whitespace collapse.
+        private static string NormalizeAz(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            var sb = new System.Text.StringBuilder(s.Length);
+            foreach (var ch in s.ToUpperInvariant())
+            {
+                sb.Append(ch switch
+                {
+                    'Ə' => 'E', 'Ö' => 'O', 'Ü' => 'U', 'İ' => 'I',
+                    'Ş' => 'S', 'Ç' => 'C', 'Ğ' => 'G',
+                    _ => ch
+                });
+            }
+            return Regex.Replace(sb.ToString(), @"\s+", " ");
+        }
+
+        private static DateTime TodayInTenantZone(string timeZoneId)
+        {
+            try
+            {
+                var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz).Date;
+            }
+            catch
+            {
+                return DateTime.UtcNow.Date;
+            }
         }
 
         private static bool IsTodayInTenantZone(DateTime receiptDate, string timeZoneId)

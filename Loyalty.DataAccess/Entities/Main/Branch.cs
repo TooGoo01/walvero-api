@@ -66,6 +66,8 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool? NotifyUserOnMissingQr { get; set; }           // null → tenant
         public bool? RequireQrVerification { get; set; }           // null → tenant
         public string? ReceiptTimeZoneId { get; set; }             // null → tenant
+        public bool? AllowNonFiscalReceipts { get; set; }          // null → tenant
+        public string? ReceiptBranchNames { get; set; }            // null → tenant; vergüllə ad variantları
 
         // Pay (redeem) üçün iki-mərhələli OTP təsdiqi. null → tenant.RequireConfirmation-a inherit.
         // false → kassir kart skan etdiyi anda balans azalır, customer-ə OTP göndərilmir.

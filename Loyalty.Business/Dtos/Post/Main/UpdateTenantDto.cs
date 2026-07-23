@@ -62,6 +62,8 @@ namespace Loyalty.Business.Dtos.Post.Main
         [MaxLength(50)] public string? ExpectedTaxNumber { get; set; }
         public bool? RequireQrVerification { get; set; }
         public bool? NotifyUserOnMissingQr { get; set; }
+        public bool? AllowNonFiscalReceipts { get; set; }
+        [MaxLength(300)] public string? ReceiptBranchNames { get; set; }
         [MaxLength(100)] public string? ReceiptTimeZoneId { get; set; }
         [MaxLength(500)] public string? EkassaReceiptUrlTemplate { get; set; }
     }

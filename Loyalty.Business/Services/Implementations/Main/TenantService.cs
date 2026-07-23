@@ -505,6 +505,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (!string.IsNullOrWhiteSpace(dto.EkassaReceiptUrlTemplate)) category.EkassaReceiptUrlTemplate = dto.EkassaReceiptUrlTemplate;
                 if (!string.IsNullOrWhiteSpace(dto.OcrLabelTaxNumber)) category.OcrLabelTaxNumber = dto.OcrLabelTaxNumber;
                 if (dto.ExpectedTaxNumber != null) category.ExpectedTaxNumber = dto.ExpectedTaxNumber;
+                if (dto.AllowNonFiscalReceipts.HasValue) category.AllowNonFiscalReceipts = dto.AllowNonFiscalReceipts.Value;
+                if (dto.ReceiptBranchNames != null) category.ReceiptBranchNames = dto.ReceiptBranchNames;
 
                 // Handle TenantLocation
                 if (dto.countryId.HasValue || dto.cityId.HasValue || dto.timeZoneId.HasValue)

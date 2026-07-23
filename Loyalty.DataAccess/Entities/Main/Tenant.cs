@@ -42,6 +42,11 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? ExpectedTaxNumber { get; set; } // VÖEN — yoxlamaq üçün; null → match skip
         public bool RequireQrVerification { get; set; } = false;
         public bool NotifyUserOnMissingQr { get; set; } = false;
+        // Qeyri-fiskal "Ödəniş çeki" qəbulu (QR/VÖEN-siz slip). Fiskal əlaməti olmayan çeklər
+        // QR tələbindən keçir, əvəzində ReceiptBranchNames adı OCR mətnində axtarılır.
+        public bool AllowNonFiscalReceipts { get; set; } = false;
+        // Çekin başlığında çap olunan ad variantları, vergüllə ("Papa Cinema,PapaCinema").
+        public string? ReceiptBranchNames { get; set; }
         public string ReceiptTimeZoneId { get; set; } = "Azerbaijan Standard Time";
         public string EkassaReceiptUrlTemplate { get; set; }
             = "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}";

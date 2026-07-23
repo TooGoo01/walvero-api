@@ -20,6 +20,10 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ExpectedTaxNumber { get; init; }
         public bool RequireQrVerification { get; init; }
         public string? QrDocIdFromScanner { get; init; }
+        // Qeyri-fiskal slip qəbulu: fiskal əlaməti olmayan çek QR tələbindən keçir,
+        // əvəzində ReceiptBranchNames OCR mətnində axtarılır (BranchNameMismatch reject).
+        public bool AllowNonFiscalReceipts { get; init; }
+        public string? ReceiptBranchNames { get; init; }
         // E-kassa monitoring endpoint URL template (Tenant-dən gəlir). `{docId}` placeholder.
         public string EkassaUrlTemplate { get; init; }
             = "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}";
@@ -40,7 +44,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         string? ExtractedObjectCode = null,
         bool QrVerified = false,
         string? FailReasonCode = null,
-        string? ExtractedTaxNumber = null);
+        string? ExtractedTaxNumber = null,
+        bool IsNonFiscal = false);
 
     public interface IReceiptValidationService
     {

@@ -133,6 +133,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<bool?>("AllowNonFiscalReceipts")
+                        .HasColumnType("bit");
+
                     b.Property<string>("AnnouncementAz")
                         .HasColumnType("nvarchar(max)");
 
@@ -268,6 +271,9 @@ namespace Loyalty.DataAccess.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
                         .HasDefaultValue(100);
+
+                    b.Property<string>("ReceiptBranchNames")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ReceiptTimeZoneId")
                         .HasColumnType("nvarchar(max)");
@@ -2644,6 +2650,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<bool>("AllowNonFiscalReceipts")
+                        .HasColumnType("bit");
+
                     b.Property<string>("CompanyName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -2754,6 +2763,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("PinterestUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ReceiptBranchNames")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ReceiptTimeZoneId")

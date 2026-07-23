@@ -52,6 +52,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             string? qrDocId,
             string ekassaUrlTemplate,
             string? ekassaImageUrl,
+            bool allowNonFiscalReceipts,
+            string? receiptBranchNames,
             CancellationToken ct = default)
         {
             using var scope = _scopeFactory.CreateScope();
@@ -144,6 +146,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 QrDocIdFromScanner = qrDocId,
                 EkassaUrlTemplate = ekassaUrlTemplate,
                 EkassaImageBytes = ekassaBytes,
+                AllowNonFiscalReceipts = allowNonFiscalReceipts,
+                ReceiptBranchNames = receiptBranchNames,
             };
 
             var ocr = await validator.ValidateBytesAsync(bytes, ctx, tx.ReceiptImageUrl, ct);

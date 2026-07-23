@@ -59,6 +59,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? ExpectedTaxNumber { get; set; }
         public bool RequireQrVerification { get; set; }
         public bool NotifyUserOnMissingQr { get; set; }
+        public bool AllowNonFiscalReceipts { get; set; }
+        public string? ReceiptBranchNames { get; set; }
         public string ReceiptTimeZoneId { get; set; } = "Azerbaijan Standard Time";
         public string EkassaReceiptUrlTemplate { get; set; }
             = "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}";

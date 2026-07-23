@@ -117,6 +117,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             public string? ExpectedTaxNumber { get; init; }
             public bool RequireQrVerification { get; init; }
             public bool NotifyUserOnMissingQr { get; init; }
+            // Qeyri-fiskal slip qəbulu: branch.AllowNonFiscalReceipts ?? tenant
+            public bool AllowNonFiscalReceipts { get; init; }
+            public string? ReceiptBranchNames { get; init; }
             public string EkassaUrlTemplate { get; init; }
                 = "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}";
 
@@ -147,6 +150,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     t.EkassaReceiptUrlTemplate,
                     t.OcrLabelTaxNumber,
                     t.ExpectedTaxNumber,
+                    t.AllowNonFiscalReceipts,
+                    t.ReceiptBranchNames,
                     t.RequireConfirmation
                 })
                 .FirstOrDefaultAsync(ct);
@@ -175,6 +180,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                         b.ObjectCode,
                         b.OcrLabelTaxNumber,
                         b.ExpectedTaxNumber,
+                        b.AllowNonFiscalReceipts,
+                        b.ReceiptBranchNames,
                         b.RequireOtpConfirm
                     })
                     .FirstOrDefaultAsync(ct)
@@ -215,6 +222,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ExpectedTaxNumber = !string.IsNullOrWhiteSpace(branch?.ExpectedTaxNumber)
                     ? branch.ExpectedTaxNumber
                     : tenant.ExpectedTaxNumber,
+                AllowNonFiscalReceipts = branch?.AllowNonFiscalReceipts ?? tenant.AllowNonFiscalReceipts,
+                ReceiptBranchNames = !string.IsNullOrWhiteSpace(branch?.ReceiptBranchNames)
+                    ? branch.ReceiptBranchNames
+                    : tenant.ReceiptBranchNames,
                 // Branch toggle tenant default-u override edir; null halda tenant fallback
                 RequireOtpConfirm = branch?.RequireOtpConfirm ?? tenant.RequireConfirmation
             };
@@ -459,6 +470,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                         request.QrDocId,
                         cfg.EkassaUrlTemplate,
                         ekassaBlobUrl,
+                        cfg.AllowNonFiscalReceipts,
+                        cfg.ReceiptBranchNames,
                         CancellationToken.None));
 
                     _logger.LogInformation("PendingOcr tx queued. TxId={TxId} CardId={CardId}", pendingTx.Id, card.Id);
