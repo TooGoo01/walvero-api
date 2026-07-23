@@ -15,6 +15,8 @@ using Loyalty.Business.Services.Implementations.Users;
 using Loyalty.DataAccess.Entities.Main;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using System.Net;
+using System.Net.Sockets;
 
 namespace Loyalty.Business.Services
 {
@@ -74,6 +76,30 @@ namespace Loyalty.Business.Services
             {
                 c.BaseAddress = new Uri("https://api.telegram.org/");
                 c.Timeout = TimeSpan.FromSeconds(30);
+            })
+            // Azure App Service outbound IPv6 dəstəkləmir, api.telegram.org isə AAAA qaytarır —
+            // .NET default olaraq IPv6-ya ilişib 30s timeout alır. Yalnız IPv4 ilə qoşuluruq.
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                ConnectCallback = async (ctx, ct) =>
+                {
+                    var addresses = await Dns.GetHostAddressesAsync(
+                        ctx.DnsEndPoint.Host, AddressFamily.InterNetwork, ct);
+                    var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
+                    {
+                        NoDelay = true
+                    };
+                    try
+                    {
+                        await socket.ConnectAsync(addresses, ctx.DnsEndPoint.Port, ct);
+                        return new NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch
+                    {
+                        socket.Dispose();
+                        throw;
+                    }
+                }
             });
             services.AddScoped<ReceiptOcrJob>();
             services.AddScoped<PosBatchOperationJob>();
