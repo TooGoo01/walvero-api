@@ -124,7 +124,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 await _sender.SendMessageAsync(chatId,
                     "Salam! Bu bot tenant adminlər üçündür.\n" +
-                    "Bağlanmaq üçün admin paneldən \"Telegram-ə bağla\" bölməsindən kod alın və " +
+                    "Bağlanmaq üçün admin paneldən \"Telegrama bağla\" bölməsindən kod alın və " +
                     "<code>/start KOD</code> göndərin.", ct: ct);
                 return;
             }
@@ -168,7 +168,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (link == null)
             {
                 await _sender.SendMessageAsync(chatId,
-                    "Əvvəlcə admin paneldən Telegram hesabınızı bağlayın (\"Telegram-ə bağla\" → kod → /start KOD).", ct: ct);
+                    "Əvvəlcə admin paneldən Telegram hesabınızı bağlayın (\"Telegrama bağla\" → kod → /start KOD).", ct: ct);
                 return;
             }
 
