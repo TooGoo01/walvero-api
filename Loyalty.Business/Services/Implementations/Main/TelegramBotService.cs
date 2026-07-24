@@ -13,9 +13,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 {
     public class TelegramBotService : ITelegramBotService
     {
-        private const string LinkCodeCachePrefix = "tg-link:";
         private const string RateCachePrefix = "tg-rate:";
-        private const int LinkCodeTtlMinutes = 10;
         private const int MaxLookupsPerMinute = 20;
         private const int MaxMatches = 5; // 6-cı nəticə "çox nəticə" deməkdir
         private const int RecentRedeemCount = 10;
@@ -24,6 +22,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         private readonly IMemoryCache _cache;
         private readonly ITelegramAdminLinkRepository _linkRepository;
+        private readonly ITelegramLinkCodeRepository _codeRepository;
         private readonly ICustomerRepository _customerRepository;
         private readonly ITransactionRepository _transactionRepository;
         private readonly ITelegramSender _sender;
@@ -34,6 +33,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         public TelegramBotService(
             IMemoryCache cache,
             ITelegramAdminLinkRepository linkRepository,
+            ITelegramLinkCodeRepository codeRepository,
             ICustomerRepository customerRepository,
             ITransactionRepository transactionRepository,
             ITelegramSender sender,
@@ -43,6 +43,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             _cache = cache;
             _linkRepository = linkRepository;
+            _codeRepository = codeRepository;
             _customerRepository = customerRepository;
             _transactionRepository = transactionRepository;
             _sender = sender;
@@ -56,15 +57,27 @@ namespace Loyalty.Business.Services.Implementations.Main
         public async Task<TelegramLinkCodeResult> GenerateLinkCodeAsync(int applicationUserId, int tenantId, CancellationToken ct = default)
         {
             var code = GenerateCode(8);
-            _cache.Set(LinkCodeCachePrefix + code, (applicationUserId, tenantId),
-                TimeSpan.FromMinutes(LinkCodeTtlMinutes));
+
+            // DB-backed, vaxt limitsiz: yeni kod köhnəni əvəz edir (bir user = bir pending kod),
+            // restart/deploy-dan sonra da qüvvədə qalır.
+            await _codeRepository.DeleteByUserAsync(applicationUserId, ct);
+            await _codeRepository.AddAsync(new TelegramLinkCode
+            {
+                Code = code,
+                ApplicationUserId = applicationUserId,
+                TenantId = tenantId,
+                RegDate = DateTime.UtcNow,
+                RegUserId = applicationUserId,
+                IsActive = true
+            });
+            await _unitOfWork.CommitAsync(ct);
 
             var settings = await _settingsProvider.GetAsync(ct);
             return new TelegramLinkCodeResult
             {
                 Code = code,
                 DeepLink = $"https://t.me/{settings.BotUsername}?start={code}",
-                ExpiresInSeconds = LinkCodeTtlMinutes * 60
+                ExpiresInSeconds = null
             };
         }
 
@@ -130,28 +143,35 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return;
             }
 
-            var cacheKey = LinkCodeCachePrefix + code.ToUpperInvariant();
-            if (!_cache.TryGetValue<(int userId, int tenantId)>(cacheKey, out var linkInfo))
+            // Kod sonsuz yaşayır — brute-force cəhdlərini lookup rate-limiti ilə məhdudlaşdır
+            if (IsRateLimited(chatId))
             {
-                await _sender.SendMessageAsync(chatId, "Kod yanlış və ya vaxtı bitib. Admin paneldən yeni kod alın.", ct: ct);
+                await _sender.SendMessageAsync(chatId, "Çox cəhd edildi, bir dəqiqə gözləyin.", ct: ct);
                 return;
             }
 
-            _cache.Remove(cacheKey); // single-use
+            var linkCode = await _codeRepository.GetByCodeAsync(code.ToUpperInvariant(), ct);
+            if (linkCode == null)
+            {
+                await _sender.SendMessageAsync(chatId, "Kod yanlışdır. Admin paneldən yeni kod alın.", ct: ct);
+                return;
+            }
+
+            await _codeRepository.DeleteByCodeAsync(linkCode.Code, ct); // single-use
 
             // Köhnə linkləri əvəz et: həm bu chat-ın, həm bu user-in
             await _linkRepository.DeactivateByChatIdAsync(chatId, ct);
-            await _linkRepository.DeactivateByUserAsync(linkInfo.userId, ct);
+            await _linkRepository.DeactivateByUserAsync(linkCode.ApplicationUserId, ct);
 
             await _linkRepository.AddAsync(new TelegramAdminLink
             {
-                ApplicationUserId = linkInfo.userId,
-                TenantId = linkInfo.tenantId,
+                ApplicationUserId = linkCode.ApplicationUserId,
+                TenantId = linkCode.TenantId,
                 ChatId = chatId,
                 TelegramUsername = telegramUsername,
                 LinkedAt = DateTime.UtcNow,
                 RegDate = DateTime.UtcNow,
-                RegUserId = linkInfo.userId,
+                RegUserId = linkCode.ApplicationUserId,
                 IsActive = true
             });
             await _unitOfWork.CommitAsync(ct);

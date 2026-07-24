@@ -64,7 +64,8 @@ namespace Loyalty.Business.Dtos.Telegram
     {
         public string Code { get; set; } = string.Empty;
         public string DeepLink { get; set; } = string.Empty;
-        public int ExpiresInSeconds { get; set; }
+        // null = kod vaxt limitsizdir (istifadəyə və ya yeni kod yaradılana qədər qüvvədə)
+        public int? ExpiresInSeconds { get; set; }
     }
 
     // Telegram Bot API standart cavab zərfi: { ok, result, description }

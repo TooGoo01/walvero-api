@@ -80,6 +80,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<LotteryPrize> LotteryPrizes { get; set; }
         public DbSet<HappyHoursWindow> HappyHoursWindows { get; set; }
         public DbSet<TelegramAdminLink> TelegramAdminLinks { get; set; }
+        public DbSet<TelegramLinkCode> TelegramLinkCodes { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -103,6 +104,17 @@ namespace Loyalty.DataAccess.Context
                     .WithMany()
                     .HasForeignKey(l => l.ApplicationUserId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+            modelBuilder.Entity<TelegramLinkCode>(entity =>
+            {
+                entity.ToTable("TelegramLinkCodes");
+                entity.HasKey(c => c.Id);
+                entity.Property(c => c.Code).IsRequired().HasMaxLength(16);
+                entity.HasIndex(c => c.Code)
+                    .IsUnique()
+                    .HasDatabaseName("IX_TelegramLinkCodes_Code");
+                entity.HasIndex(c => c.ApplicationUserId)
+                    .HasDatabaseName("IX_TelegramLinkCodes_User");
             });
             modelBuilder.Entity<AppSetting>(entity =>
             {
