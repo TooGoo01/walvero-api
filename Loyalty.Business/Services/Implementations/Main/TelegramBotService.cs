@@ -312,6 +312,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                       .Append("  -").Append(tx.Points.ToString("0.##")).Append(" xal");
                     if (tx.Amount != null)
                         sb.Append("  (").Append(tx.Amount.Value.ToString("0.##")).Append(" ₼)");
+                    if (!string.IsNullOrEmpty(tx.Branch?.Name))
+                        sb.Append("  📍").Append(Escape(Truncate(tx.Branch.Name, 30)));
                     if (!string.IsNullOrEmpty(tx.Description))
                         sb.Append("  ").Append(Escape(Truncate(tx.Description, 40)));
                     sb.Append('\n');

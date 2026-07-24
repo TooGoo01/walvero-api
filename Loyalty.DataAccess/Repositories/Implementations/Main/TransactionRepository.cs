@@ -108,6 +108,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         {
             return await GetAsQueryable()
                 .AsNoTracking()
+                .Include(t => t.Branch)
                 .Where(t => t.LoyaltyCard.CustomerId == customerId
                          && t.Type == TransactionType.Redeemed
                          && t.Status == Enums.RedeemStatus.Applied)
