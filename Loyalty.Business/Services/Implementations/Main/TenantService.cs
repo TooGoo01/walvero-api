@@ -226,6 +226,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             // per-user overlay sonra applied olur — cəsl saxlanması üçün təhlükəsizdir.
             // "web" platformu HideInApp olanları da görür; mobil app (param göndərmir) görmür.
             var excludeHiddenInApp = !string.Equals(model?.Platform, "web", StringComparison.OrdinalIgnoreCase);
+            var searchName = model?.Name;
 
             var cacheKey = _filterCacheKey(
                 model?.Name, model?.categoryId, model?.countryId, model?.cityId,
@@ -290,7 +291,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                             })
                             .ToList(),
                         Branches = t.Branches
-                            .Where(b => b.IsActive && (!excludeHiddenInApp || !b.HideInApp))
+                            .Where(b => b.IsActive && (!excludeHiddenInApp || !b.HideInApp)
+                                && (string.IsNullOrWhiteSpace(searchName)
+                                    || EF.Functions.Like(t.CompanyName, $"%{searchName}%")
+                                    || EF.Functions.Like(b.Name, $"%{searchName}%")
+                                    || (b.AppDisplayName != null && EF.Functions.Like(b.AppDisplayName, $"%{searchName}%"))))
                             .OrderByDescending(b => b.IsMainBranch)
                             .ThenBy(b => b.Name)
                             .Select(b => new TenantDiscoverBranchDto

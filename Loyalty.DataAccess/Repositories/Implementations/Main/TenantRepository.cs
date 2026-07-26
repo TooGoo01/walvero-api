@@ -102,9 +102,13 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             if (excludeHiddenInApp)
                 query = query.Where(x => !x.HideInApp);
 
-            // Text search filter
+            // Text search filter — tenant CompanyName VƏ YA aktiv branch Name/AppDisplayName uyğun gəlir
             if (!string.IsNullOrWhiteSpace(name))
-                query = query.Where(x => EF.Functions.Like(x.CompanyName, $"%{name}%"));
+                query = query.Where(x =>
+                    EF.Functions.Like(x.CompanyName, $"%{name}%")
+                    || x.Branches.Any(b => b.IsActive
+                        && (EF.Functions.Like(b.Name, $"%{name}%")
+                            || (b.AppDisplayName != null && EF.Functions.Like(b.AppDisplayName, $"%{name}%")))));
 
             // Category filter
             if (categoryId.HasValue)
