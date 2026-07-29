@@ -21,6 +21,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
@@ -427,6 +428,21 @@ contentTypes.Mappings[".pkpass"] = "application/vnd.apple.pkpass";
 app.UseStaticFiles(new StaticFileOptions
 {
     ContentTypeProvider = contentTypes
+});
+
+// .well-known (App Links / Universal Links): apple-app-site-association has no
+// file extension, so the default static file middleware returns 404 for it.
+// Scoped to /.well-known to avoid enabling unknown file types globally.
+// NOTE: Google/Apple fetch these from the LINK domain root (https://walvero.com),
+// not from appapi — if walvero.com is served elsewhere, the same files must be
+// published there too.
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(
+        Path.Combine(app.Environment.WebRootPath, ".well-known")),
+    RequestPath = "/.well-known",
+    ServeUnknownFileTypes = true,
+    DefaultContentType = "application/json"
 });
 
 // === Middleware pipeline ===

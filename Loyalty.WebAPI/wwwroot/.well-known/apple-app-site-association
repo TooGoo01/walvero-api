@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": ["7P79S8Y7SL.com.walvero.app"],
+        "components": [
+          {
+            "/": "/join/*",
+            "comment": "QR enrollment links"
+          }
+        ]
+      }
+    ]
+  }
+}
