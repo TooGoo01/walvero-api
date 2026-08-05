@@ -84,6 +84,7 @@ namespace Loyalty.Business.Mappings
 
             CreateMap<Customer, AddCustomerDto>().ReverseMap();
             CreateMap<Customer, GetCustomerDto>()
+                .ForMember(d => d.CreatedAt, o => o.MapFrom(s => s.RegDate))
                 .AfterMap((src, dest) =>
                 {
                     // Set Currency from first active card's CardTemplate
@@ -152,6 +153,7 @@ namespace Loyalty.Business.Mappings
                 });
 
             CreateMap<Customer, GetCustomerListItemDto>()
+                .ForMember(d => d.CreatedAt, o => o.MapFrom(s => s.RegDate))
                 .AfterMap((src, dest) =>
                 {
                     var firstCard = src.LoyaltyCards?.FirstOrDefault(c => c.IsActive);

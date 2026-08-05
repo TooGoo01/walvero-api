@@ -34,6 +34,9 @@ jobs:
         with:
           name: .net-app
           path: ${{env.DOTNET_ROOT}}/myapp
+          # wwwroot/.well-known (App Links / Universal Links files) is a hidden
+          # dot-folder — v4 drops it silently without this flag
+          include-hidden-files: true
 
   deploy:
     runs-on: ubuntu-latest

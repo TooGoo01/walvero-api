@@ -24,6 +24,10 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? OtpDestinationMasked { get; set; }
         public Gender? Gender { get; set; }
         public DateTime? DateOfBirth { get; set; }
+        public bool IsActive { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? LastActivityDate { get; set; }
+        public string? CardNumber { get; set; }
         public int? applicationUserId { get; set; }
         public ApplicationUser? applicationUser { get; set; }
         public ICollection<GetLoyaltyCardListItemDto> LoyaltyCards { get; set; } = new List<GetLoyaltyCardListItemDto>();

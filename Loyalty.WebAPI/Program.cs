@@ -436,10 +436,14 @@ app.UseStaticFiles(new StaticFileOptions
 // NOTE: Google/Apple fetch these from the LINK domain root (https://walvero.com),
 // not from appapi — if walvero.com is served elsewhere, the same files must be
 // published there too.
+// CreateDirectory: PhysicalFileProvider throws at startup if the folder is
+// missing (e.g. a deploy pipeline dropped the hidden dot-folder) — the app
+// must not die over verification files.
+var wellKnownPath = Path.Combine(app.Environment.WebRootPath ?? "wwwroot", ".well-known");
+Directory.CreateDirectory(wellKnownPath);
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(
-        Path.Combine(app.Environment.WebRootPath, ".well-known")),
+    FileProvider = new PhysicalFileProvider(wellKnownPath),
     RequestPath = "/.well-known",
     ServeUnknownFileTypes = true,
     DefaultContentType = "application/json"
