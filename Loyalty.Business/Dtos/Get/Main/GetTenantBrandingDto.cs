@@ -18,6 +18,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? Description { get; set; }
         public string? Website { get; set; }
         public string? DefaultMenuView { get; set; }
+        public string? CategoryDescriptionColor { get; set; }
+        public int? CategoryDescriptionFontSize { get; set; }
         public int TenantId { get; set; }
 
     }

@@ -131,7 +131,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                         TextColor = tenant.Branding.TextColor,
                         Description = tenant.Branding.Description,
                         Website = tenant.Branding.Website,
-                        DefaultMenuView = tenant.Branding.DefaultMenuView
+                        DefaultMenuView = tenant.Branding.DefaultMenuView,
+                        CategoryDescriptionColor = tenant.Branding.CategoryDescriptionColor,
+                        CategoryDescriptionFontSize = tenant.Branding.CategoryDescriptionFontSize
                     }
                     : null
             };
@@ -227,7 +229,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                         TextColor = tenant.Branding.TextColor,
                         Description = tenant.Branding.Description,
                         Website = tenant.Branding.Website,
-                        DefaultMenuView = tenant.Branding.DefaultMenuView
+                        DefaultMenuView = tenant.Branding.DefaultMenuView,
+                        CategoryDescriptionColor = tenant.Branding.CategoryDescriptionColor,
+                        CategoryDescriptionFontSize = tenant.Branding.CategoryDescriptionFontSize
                     }
                     : null,
                 Location = tenant.TenantLocation != null
@@ -374,6 +378,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 AzDescription = mc.AzDescription,
                 EnDescription = mc.EnDescription,
                 RuDescription = mc.RuDescription,
+                DescriptionColor = mc.DescriptionColor,
+                DescriptionFontSize = mc.DescriptionFontSize,
                 Items = mc.MenuItems
                     .OrderBy(mi => mi.SortOrder)
                     .ThenBy(mi => mi.Id)

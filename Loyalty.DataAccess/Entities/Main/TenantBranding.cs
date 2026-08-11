@@ -30,6 +30,8 @@ namespace Loyalty.DataAccess.Entities.Main
 
         // Display Settings
         public string? DefaultMenuView { get; set; }   // "grid" | "list", null = grid (tenant default, branch override edə bilər)
+        public string? CategoryDescriptionColor { get; set; }    // hex #RRGGBB, null = default; kateqoriya override edə bilər
+        public int? CategoryDescriptionFontSize { get; set; }    // px 10-40, null = default
 
         // Navigation Property
         public Tenant Tenant { get; set; } = null!;

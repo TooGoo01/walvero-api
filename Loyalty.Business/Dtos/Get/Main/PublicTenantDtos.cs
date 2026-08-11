@@ -81,6 +81,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? Description { get; set; }
         public string? Website { get; set; }
         public string? DefaultMenuView { get; set; }
+        public string? CategoryDescriptionColor { get; set; }
+        public int? CategoryDescriptionFontSize { get; set; }
     }
 
     /// <summary>
@@ -212,6 +214,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? AzDescription { get; set; }
         public string? EnDescription { get; set; }
         public string? RuDescription { get; set; }
+        public string? DescriptionColor { get; set; }
+        public int? DescriptionFontSize { get; set; }
         public List<MenuItemSummaryDto> Items { get; set; } = new();
     }
 

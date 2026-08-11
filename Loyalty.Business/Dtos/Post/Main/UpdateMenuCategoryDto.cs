@@ -20,6 +20,9 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? EnDescription { get; set; }
         public string? RuDescription { get; set; }
 
+        public string? DescriptionColor { get; set; }
+        public int? DescriptionFontSize { get; set; }
+
         public int? BranchId { get; set; }
     }
 }

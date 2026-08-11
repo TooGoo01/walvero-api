@@ -110,6 +110,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _ => null
             };
 
+            // Kateqoriya təsviri üçün qlobal default stil (kateqoriya səviyyəsində override olunur)
+            var descColor = dto.CategoryDescriptionColor?.Trim();
+            branding.CategoryDescriptionColor =
+                !string.IsNullOrWhiteSpace(descColor) && System.Text.RegularExpressions.Regex.IsMatch(descColor, "^#[0-9a-fA-F]{6}$")
+                    ? descColor
+                    : null;
+            branding.CategoryDescriptionFontSize = dto.CategoryDescriptionFontSize.HasValue
+                ? Math.Clamp(dto.CategoryDescriptionFontSize.Value, 10, 40)
+                : null;
+
             // 6) Yadda saxla
             if (branding.Id == 0) await _unitOfWork.Repository<TenantBranding>().AddAsync(branding);
             else _repo.Update(branding);
@@ -128,7 +138,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 TextColor = branding.TextColor,
                 Description = branding.Description,
                 Website = branding.Website,
-                DefaultMenuView = branding.DefaultMenuView
+                DefaultMenuView = branding.DefaultMenuView,
+                CategoryDescriptionColor = branding.CategoryDescriptionColor,
+                CategoryDescriptionFontSize = branding.CategoryDescriptionFontSize
             };
             return new ServiceResult(true,br);
         }

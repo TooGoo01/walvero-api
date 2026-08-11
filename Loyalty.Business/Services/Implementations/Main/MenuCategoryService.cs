@@ -33,11 +33,26 @@ namespace Loyalty.Business.Services.Implementations.Main
             _db = db;
         }
 
+        // Description style: rəng #RRGGBB formatında olmalıdır, ölçü 10-40 px aralığına sıxılır
+        private static void NormalizeDescriptionStyle(MenuCategory entity)
+        {
+            var color = entity.DescriptionColor?.Trim();
+            entity.DescriptionColor =
+                !string.IsNullOrWhiteSpace(color) && System.Text.RegularExpressions.Regex.IsMatch(color, "^#[0-9a-fA-F]{6}$")
+                    ? color
+                    : null;
+
+            entity.DescriptionFontSize = entity.DescriptionFontSize.HasValue
+                ? System.Math.Clamp(entity.DescriptionFontSize.Value, 10, 40)
+                : null;
+        }
+
         public async Task<ServiceResult> Add(AddMenuCategoryDto dto)
         {
             var entity = _mapper.Map<MenuCategory>(dto);
             entity.IsActive = true;
-            
+            NormalizeDescriptionStyle(entity);
+
             await _unitOfWork.Repository<MenuCategory>().AddAsync(entity);
             _unitOfWork.Commit();
 
@@ -52,6 +67,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new ServiceResult(false, "Menyu kateqoriyası tapılmadı");
 
             _mapper.Map(dto, entity);
+            NormalizeDescriptionStyle(entity);
             _unitOfWork.Repository<MenuCategory>().Update(entity);
             _unitOfWork.Commit();
 

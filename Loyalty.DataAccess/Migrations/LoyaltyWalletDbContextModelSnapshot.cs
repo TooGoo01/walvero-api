@@ -1453,6 +1453,12 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int?>("BranchId")
                         .HasColumnType("int");
 
+                    b.Property<string>("DescriptionColor")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("DescriptionFontSize")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("EditDate")
                         .HasColumnType("datetime2");
 
@@ -2925,6 +2931,12 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("BackgroundImageUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("CategoryDescriptionColor")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("CategoryDescriptionFontSize")
+                        .HasColumnType("int");
 
                     b.Property<string>("DefaultMenuView")
                         .HasColumnType("nvarchar(max)");

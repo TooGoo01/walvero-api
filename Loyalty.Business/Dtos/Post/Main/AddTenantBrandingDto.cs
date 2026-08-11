@@ -21,5 +21,7 @@ namespace Loyalty.Business.Dtos.Post.Main
             public string? Description { get; set; }
             public string? Website { get; set; }
             public string? DefaultMenuView { get; set; }
+            public string? CategoryDescriptionColor { get; set; }
+            public int? CategoryDescriptionFontSize { get; set; }
         }
 }
