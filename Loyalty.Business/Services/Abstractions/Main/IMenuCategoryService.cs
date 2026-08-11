@@ -18,5 +18,6 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> GetActive();
         Task<ServiceResult> GetByTenantAndBranchAsync(int tenantId, int? branchId, bool branchScoped);
         Task<ServiceResult> ReorderAsync(ReorderMenuCategoryDto dto);
+        Task<ServiceResult> BulkUpdateAsync(BulkUpdateMenuCategoryDto dto, int? lockedBranchId);
     }
 }

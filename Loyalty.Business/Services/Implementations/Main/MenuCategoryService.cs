@@ -150,6 +150,43 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, response);
         }
 
+        // Toplu redaktə: null sahə toxunulmur; lockedBranchId branch-scoped istifadəçini öz filialına məhdudlaşdırır
+        public async Task<ServiceResult> BulkUpdateAsync(BulkUpdateMenuCategoryDto dto, int? lockedBranchId)
+        {
+            if (dto.Ids.Count == 0)
+                return new ServiceResult(true, "Dəyişiklik yoxdur");
+
+            var query = _db.MenuCategories
+                .Where(mc => mc.TenantId == dto.TenantId && dto.Ids.Contains(mc.Id) && mc.IsActive);
+            if (lockedBranchId.HasValue)
+                query = query.Where(mc => mc.BranchId == lockedBranchId.Value);
+
+            var entities = await query.ToListAsync();
+
+            foreach (var entity in entities)
+            {
+                if (!string.IsNullOrWhiteSpace(dto.AzName)) entity.AzName = dto.AzName.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.EnName)) entity.EnName = dto.EnName.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.RuName)) entity.RuName = dto.RuName.Trim();
+
+                if (!string.IsNullOrWhiteSpace(dto.AzDescription)) entity.AzDescription = dto.AzDescription.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.EnDescription)) entity.EnDescription = dto.EnDescription.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.RuDescription)) entity.RuDescription = dto.RuDescription.Trim();
+
+                if (!string.IsNullOrWhiteSpace(dto.DescriptionColor))
+                    entity.DescriptionColor = dto.DescriptionColor;
+                if (dto.DescriptionFontSize.HasValue)
+                    entity.DescriptionFontSize = dto.DescriptionFontSize;
+                if (!string.IsNullOrWhiteSpace(dto.DescriptionColor) || dto.DescriptionFontSize.HasValue)
+                    NormalizeDescriptionStyle(entity);
+
+                _unitOfWork.Repository<MenuCategory>().Update(entity);
+            }
+
+            _unitOfWork.Commit();
+            return new ServiceResult(true, $"{entities.Count} kateqoriya yeniləndi");
+        }
+
         public async Task<ServiceResult> ReorderAsync(ReorderMenuCategoryDto dto)
         {
             if (dto.Items.Count == 0)

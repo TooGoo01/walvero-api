@@ -201,6 +201,32 @@ namespace Loyalty.WebAPI.Controllers
             return result.Success ? Ok(result) : BadRequest(result);
         }
 
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> BulkUpdate([FromBody] BulkUpdateMenuCategoryDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            if (dto.TenantId <= 0)
+                dto.TenantId = _tenantProvider.CurrentTenantId ?? 0;
+            if (dto.TenantId <= 0)
+                return BadRequest(new ServiceResult(false, "Tenant Id təyin olunmayıb"));
+
+            int? lockedBranchId = null;
+            if (IsBranchScoped())
+            {
+                lockedBranchId = _tenantProvider.CurrentBranchId;
+                if (!lockedBranchId.HasValue)
+                    return StatusCode((int)HttpStatusCode.Forbidden, new ServiceResult(false, "Branch təyin olunmayıb"));
+            }
+
+            var result = await _menuCategoryService.BulkUpdateAsync(dto, lockedBranchId);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+
         [HttpDelete("{id}")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
