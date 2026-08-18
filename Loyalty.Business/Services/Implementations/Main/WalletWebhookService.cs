@@ -935,13 +935,21 @@ namespace Loyalty.Business.Services.Implementations.Main
                 foreach (var item in request.Items)
                 {
                     var pid = (item.ProductId ?? "").Trim();
-                    if (string.IsNullOrEmpty(pid)) continue;
-                    if (redeemedUnitsByProduct.ContainsKey(pid))
+                    var pnum = (item.ProductNumber ?? "").Trim();
+                    if (string.IsNullOrEmpty(pid) && string.IsNullOrEmpty(pnum)) continue;
+                    if (pid.Length > 0 && redeemedUnitsByProduct.ContainsKey(pid))
                     {
                         // bu item loyalty discount-da iştirak edib → earn-dən düşür
                         continue;
                     }
-                    if (rulesByProduct.TryGetValue(pid, out var rule))
+                    // Earn rule ProductId (GUID) və ya ProductNumber (iiko nomenklatura kodu) ilə uyğunlaşa bilər.
+                    // iiko loyalty proqramları məhsulları kod (ProductNumber) ilə saxlayır.
+                    PosProductEarnRule? rule = null;
+                    if (pid.Length > 0)
+                        rulesByProduct.TryGetValue(pid, out rule);
+                    if (rule == null && pnum.Length > 0)
+                        rulesByProduct.TryGetValue(pnum, out rule);
+                    if (rule != null)
                     {
                         anyEarnRuleMatched = true;
                         totalEarnSteps += rule.StepsPerUnit * (int)item.Amount;
