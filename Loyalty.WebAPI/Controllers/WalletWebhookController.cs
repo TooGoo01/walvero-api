@@ -362,6 +362,15 @@ namespace Loyalty.WebAPI.Controllers
         [JsonPropertyName("DiscountTypeId")] public string? DiscountTypeId { get; set; }
         [JsonPropertyName("DiscountTypeName")] public string? DiscountTypeName { get; set; }
         [JsonPropertyName("DiscountSum")] public decimal DiscountSum { get; set; }
+        [JsonPropertyName("DiscountByItem")] public List<IikoDiscountByItemDto>? DiscountByItem { get; set; }
+    }
+
+    public class IikoDiscountByItemDto
+    {
+        [JsonPropertyName("OrderItemId")] public string? OrderItemId { get; set; }
+        [JsonPropertyName("ProductId")] public string? ProductId { get; set; }
+        [JsonPropertyName("ProductName")] public string? ProductName { get; set; }
+        [JsonPropertyName("DiscountSum")] public decimal DiscountSum { get; set; }
     }
 
     public class IikoCustomerDto

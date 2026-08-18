@@ -884,6 +884,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Select(d => d.ExternalDiscountTypeId.Trim())
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+            // DiscountByItem yalnız ProductId (GUID) göndərir; reward-lar ProductNumber ilə açarlanıb.
+            // Items[]-dən GUID→ProductNumber map qur, redeem açarını ProductNumber-ə (varsa) çevir.
+            var numberByProductId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var it in request.Items)
+            {
+                var gid = (it.ProductId ?? "").Trim();
+                var num = (it.ProductNumber ?? "").Trim();
+                if (gid.Length > 0 && num.Length > 0)
+                    numberByProductId[gid] = num;
+            }
+
             var redeemedUnitsByProduct = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (var d in request.Discounts ?? new List<IikoOrderDiscount>())
             {
@@ -893,7 +904,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     var pid = (dbi.ProductId ?? "").Trim();
                     if (string.IsNullOrEmpty(pid)) continue;
-                    redeemedUnitsByProduct[pid] = redeemedUnitsByProduct.GetValueOrDefault(pid) + 1;
+                    // Reward match üçün ProductNumber-ə çevir (tapılmasa GUID qalsın).
+                    var key = numberByProductId.TryGetValue(pid, out var num) ? num : pid;
+                    redeemedUnitsByProduct[key] = redeemedUnitsByProduct.GetValueOrDefault(key) + 1;
                 }
             }
 
@@ -937,7 +950,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var pid = (item.ProductId ?? "").Trim();
                     var pnum = (item.ProductNumber ?? "").Trim();
                     if (string.IsNullOrEmpty(pid) && string.IsNullOrEmpty(pnum)) continue;
-                    if (pid.Length > 0 && redeemedUnitsByProduct.ContainsKey(pid))
+                    // Redeem açarı ProductNumber (varsa) və ya GUID ola bilər — hər ikisini yoxla.
+                    if ((pid.Length > 0 && redeemedUnitsByProduct.ContainsKey(pid)) ||
+                        (pnum.Length > 0 && redeemedUnitsByProduct.ContainsKey(pnum)))
                     {
                         // bu item loyalty discount-da iştirak edib → earn-dən düşür
                         continue;

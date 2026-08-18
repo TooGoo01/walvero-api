@@ -165,7 +165,14 @@ namespace Loyalty.WebAPI.Controllers
                     {
                         DiscountTypeId = d.DiscountTypeId,
                         DiscountTypeName = d.DiscountTypeName,
-                        DiscountSum = d.DiscountSum
+                        DiscountSum = d.DiscountSum,
+                        DiscountByItem = (d.DiscountByItem ?? new()).Select(bi => new IikoOrderDiscountByItem
+                        {
+                            OrderItemId = bi.OrderItemId,
+                            ProductId = bi.ProductId,
+                            ProductName = bi.ProductName,
+                            DiscountSum = bi.DiscountSum
+                        }).ToList()
                     }).ToList(),
                     Payments = (request.Payments ?? new()).Select(p => new IikoOrderPayment
                     {
