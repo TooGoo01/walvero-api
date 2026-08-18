@@ -745,8 +745,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var byPhone = await _customerRepo.GetByPhoneAsync(context.TenantId, request.CustomerPhone);
                 customerId = byPhone?.Id;
             }
+            // Fallback: iiko müştəri GUID-i / telefonu tapılmadıqda loyallıq kart nömrəsi ilə tap.
+            // iiko payload-dakı Customer.CardNumber = bizim LoyaltyCard.CardNumber.
+            if (customerId == null && !string.IsNullOrWhiteSpace(request.CustomerCardNumber))
+            {
+                var byCard = await _loyaltyCardRepo.GetByCardNumberAsync(context.TenantId, request.CustomerCardNumber, ct);
+                customerId = byCard?.CustomerId;
+            }
             if (customerId == null)
-                return new IikoTransactionResponse { Success = false, Message = $"Customer not found (extId={request.ExternalCustomerId}, phone={request.CustomerPhone})" };
+                return new IikoTransactionResponse { Success = false, Message = $"Customer not found (extId={request.ExternalCustomerId}, phone={request.CustomerPhone}, card={request.CustomerCardNumber})" };
 
             var card = await _loyaltyCardRepo.GetLastActiveByCustomerAsync(
                 context.TenantId, context.LoyaltyProgramId.Value, customerId.Value, ct);
