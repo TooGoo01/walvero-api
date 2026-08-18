@@ -15,6 +15,7 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? DisplayName { get; set; }
         public string? ExternalVenueId { get; set; }
         public string? ExternalProgramId { get; set; }
+        public string? ExternalTerminalGroupId { get; set; }
         public int? LoyaltyProgramId { get; set; }
 
         public string? ApiBaseUrl { get; set; }

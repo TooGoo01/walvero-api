@@ -3032,6 +3032,10 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("ExternalTerminalGroupId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("ExternalVenueId")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -3066,6 +3070,8 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("nvarchar(128)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ExternalTerminalGroupId");
 
                     b.HasIndex("IntegrationTypeId");
 

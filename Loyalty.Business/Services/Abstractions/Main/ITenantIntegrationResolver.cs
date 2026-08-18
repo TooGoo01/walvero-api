@@ -15,6 +15,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// <summary>Resolves by venue_id and source from Monyo request body.</summary>
         Task<WalletWebhookResolvedContext?> ResolveByVenueAndSourceAsync(string venueId, string source, CancellationToken ct = default);
 
+        /// <summary>Resolves by iiko TerminalsGroup.Id and source from OrderClosed webhook body.</summary>
+        Task<WalletWebhookResolvedContext?> ResolveByTerminalGroupIdAsync(string terminalGroupId, string source, CancellationToken ct = default);
+
         /// <summary>Gets full TenantIntegration (including for decrypting ApiToken) by id.</summary>
         Task<TenantIntegration?> GetByIdAsync(int tenantIntegrationId, CancellationToken ct = default);
     }

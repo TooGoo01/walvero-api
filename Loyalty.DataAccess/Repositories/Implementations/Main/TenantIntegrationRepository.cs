@@ -33,6 +33,19 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     ti.IntegrationType.IsActive, ct);
         }
 
+        public Task<TenantIntegration?> GetByTerminalGroupIdAndSourceAsync(string terminalGroupId, string source, CancellationToken ct = default)
+        {
+            return GetAsQueryable()
+                .Include(ti => ti.IntegrationType)
+                .Include(ti => ti.Tenant)
+                .Include(ti => ti.LoyaltyProgram)
+                .FirstOrDefaultAsync(ti =>
+                    ti.ExternalTerminalGroupId == terminalGroupId &&
+                    ti.IntegrationType.Source == source &&
+                    ti.IsActive &&
+                    ti.IntegrationType.IsActive, ct);
+        }
+
         public Task<TenantIntegration?> GetActiveByTenantAndTypeAsync(int tenantId, int integrationTypeId, CancellationToken ct = default)
         {
             return GetAsQueryable()

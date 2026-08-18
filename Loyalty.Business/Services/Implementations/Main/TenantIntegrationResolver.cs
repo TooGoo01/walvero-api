@@ -38,6 +38,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             return MapToContext(ti);
         }
 
+        public async Task<WalletWebhookResolvedContext?> ResolveByTerminalGroupIdAsync(string terminalGroupId, string source, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(terminalGroupId) || string.IsNullOrWhiteSpace(source))
+                return null;
+
+            var ti = await _tenantIntegrationRepository.GetByTerminalGroupIdAndSourceAsync(terminalGroupId, source, ct);
+            return MapToContext(ti);
+        }
+
         public Task<TenantIntegration?> GetByIdAsync(int tenantIntegrationId, CancellationToken ct = default)
         {
             return _tenantIntegrationRepository.GetByIdAsync(tenantIntegrationId, ct);

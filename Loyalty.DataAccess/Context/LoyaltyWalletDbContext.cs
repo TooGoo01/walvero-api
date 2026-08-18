@@ -1036,6 +1036,7 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(ti => ti.DisplayName).HasMaxLength(200);
                 entity.Property(ti => ti.ExternalVenueId).HasMaxLength(100);
                 entity.Property(ti => ti.ExternalProgramId).HasMaxLength(100);
+                entity.Property(ti => ti.ExternalTerminalGroupId).HasMaxLength(100);
                 entity.Property(ti => ti.ApiBaseUrl).HasMaxLength(500);
                 entity.Property(ti => ti.ApiTokenEncrypted).HasMaxLength(2000);
                 entity.Property(ti => ti.WalletTokenHash).HasMaxLength(128);
@@ -1043,6 +1044,7 @@ namespace Loyalty.DataAccess.Context
 
                 entity.HasIndex(ti => new { ti.TenantId, ti.IntegrationTypeId }).IsUnique();
                 entity.HasIndex(ti => ti.WalletTokenHash);
+                entity.HasIndex(ti => ti.ExternalTerminalGroupId);
 
                 entity.HasOne(ti => ti.Tenant)
                     .WithMany(t => t.TenantIntegrations)

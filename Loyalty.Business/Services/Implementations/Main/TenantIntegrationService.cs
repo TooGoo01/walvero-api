@@ -43,6 +43,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 DisplayName = dto.DisplayName,
                 ExternalVenueId = dto.ExternalVenueId,
                 ExternalProgramId = dto.ExternalProgramId,
+                ExternalTerminalGroupId = dto.ExternalTerminalGroupId,
                 LoyaltyProgramId = dto.LoyaltyProgramId,
                 ApiBaseUrl = dto.ApiBaseUrl?.Trim(),
                 ApiUsername = dto.ApiUsername?.Trim(),
@@ -105,6 +106,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 DisplayName = ti.DisplayName,
                 ExternalVenueId = ti.ExternalVenueId,
                 ExternalProgramId = ti.ExternalProgramId,
+                ExternalTerminalGroupId = ti.ExternalTerminalGroupId,
                 LoyaltyProgramId = ti.LoyaltyProgramId,
                 ApiBaseUrl = ti.ApiBaseUrl,
                 ApiUsername = ti.ApiUsername,
@@ -122,6 +124,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.DisplayName != null) ti.DisplayName = dto.DisplayName;
             if (dto.ExternalVenueId != null) ti.ExternalVenueId = dto.ExternalVenueId;
             if (dto.ExternalProgramId != null) ti.ExternalProgramId = dto.ExternalProgramId;
+            if (dto.ExternalTerminalGroupId != null) ti.ExternalTerminalGroupId = dto.ExternalTerminalGroupId;
             if (dto.LoyaltyProgramId.HasValue) ti.LoyaltyProgramId = dto.LoyaltyProgramId;
             if (dto.ApiBaseUrl != null) ti.ApiBaseUrl = dto.ApiBaseUrl.Trim();
             if (dto.ApiUsername != null) ti.ApiUsername = dto.ApiUsername.Trim();

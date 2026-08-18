@@ -95,56 +95,6 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(new { status = "success", type = "loyalty", product_id = result.ProductId, product_name = result.ProductName });
         }
 
-        [HttpPost("iiko_transaction")]
-        public async Task<IActionResult> IikoTransaction([FromBody] IikoOrderEventWebhookRequest request, CancellationToken ct)
-        {
-            var ctx = HttpContext.GetWalletWebhookContext();
-            if (ctx == null)
-                return Unauthorized();
-
-            var firstCustomer = request.Customer?.FirstOrDefault();
-
-            var internalReq = new IikoOrderEventRequest
-            {
-                EventType = string.IsNullOrWhiteSpace(request.EventType) ? "OrderClosed" : request.EventType!,
-                OrderId = request.OrderId ?? string.Empty,
-                OrderNumber = request.OrderNumber,
-                TotalSum = request.TotalSum ?? 0m,
-                FullSum = request.FullSum ?? 0m,
-                DepartmentId = request.Restaurant?.DepartmentId,
-                TerminalGroupId = request.TerminalsGroup?.Id,
-                ExternalCustomerId = firstCustomer?.Id,
-                CustomerPhone = firstCustomer?.Phone,
-                CustomerCardNumber = firstCustomer?.CardNumber,
-                Items = (request.Items ?? new()).Select(i => new IikoOrderItem
-                {
-                    ProductId = i.ProductId ?? string.Empty,
-                    ProductName = i.ProductName,
-                    ProductNumber = i.ProductNumber,
-                    Price = i.Price,
-                    Amount = i.Amount,
-                    Sum = i.Sum
-                }).ToList(),
-                Discounts = (request.Discounts ?? new()).Select(d => new IikoOrderDiscount
-                {
-                    DiscountTypeId = d.DiscountTypeId,
-                    DiscountTypeName = d.DiscountTypeName,
-                    DiscountSum = d.DiscountSum
-                }).ToList(),
-                Payments = (request.Payments ?? new()).Select(p => new IikoOrderPayment
-                {
-                    PaymentTypeId = p.PaymentTypeId,
-                    PaymentTypeName = p.PaymentTypeName,
-                    Sum = p.Sum,
-                    Credential = p.AdditionalData?.Credential,
-                    SearchScope = p.AdditionalData?.SearchScope
-                }).ToList()
-            };
-
-            var result = await _webhookService.ProcessIikoOrderEventAsync(ctx, internalReq, ct);
-            return Ok(new { success = result.Success, message = result.Message });
-        }
-
         [HttpPost("collect")]
         public async Task<IActionResult> Collect([FromBody] CollectWebhookRequest request, CancellationToken ct)
         {
