@@ -198,6 +198,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 TenantId = tenant.Id,
                 TenantName = tenant.CompanyName,
 
+                // In-app menyu (mobil app slug ilə /api/public/menu çağırır)
+                Slug = tenant.Subdomain,
+                IsHasMenu = tenant.IsHasMenu,
+                DefaultMenuView = tenant.Branding?.DefaultMenuView,
+
                 // Program info
                 ProgramName = program?.ProgramName,
                 ProgramId = program?.Id,

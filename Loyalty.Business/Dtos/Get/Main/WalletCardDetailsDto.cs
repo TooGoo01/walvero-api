@@ -26,6 +26,10 @@ namespace Loyalty.Business.Dtos.Get.Main
     {
         public int TenantId { get; set; }
         public string TenantName { get; set; } = string.Empty;
+        // In-app menyu üçün: slug (public menu endpoint-inin açarı) + flag + görünüş
+        public string? Slug { get; set; }
+        public bool IsHasMenu { get; set; }
+        public string? DefaultMenuView { get; set; }
         public int? ProgramId { get; set; }
         public string? ProgramName { get; set; }
         public string? ProgramDescription { get; set; }

@@ -256,6 +256,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     {
                         Id = t.Id,
                         CompanyName = t.CompanyName,
+                        Slug = t.Subdomain,
+                        IsHasMenu = t.IsHasMenu,
                         Latitude = t.Latitude,
                         Longitude = t.Longitude,
                         IsCustomer = false, // overlay step set edir
@@ -302,6 +304,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                             {
                                 Id = b.Id,
                                 Name = b.Name,
+                                Slug = b.Slug,
+                                DefaultMenuView = b.DefaultMenuView,
                                 AppDisplayName = b.AppDisplayName,
                                 Address = b.Address,
                                 Latitude = b.Latitude,
@@ -349,6 +353,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 Id = t.Id,
                 CompanyName = t.CompanyName,
+                // DİQQƏT: bu clone sahə-sahə kopyalayır — DTO-ya yeni sahə
+                // əlavə edəndə bura da əlavə et, yoxsa cavabda səssiz null gedir.
+                Slug = t.Slug,
+                IsHasMenu = t.IsHasMenu,
                 Latitude = t.Latitude,
                 Longitude = t.Longitude,
                 IsCustomer = false,

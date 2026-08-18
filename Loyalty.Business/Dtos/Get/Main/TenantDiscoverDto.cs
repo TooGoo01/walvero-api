@@ -7,6 +7,9 @@ namespace Loyalty.Business.Dtos.Get.Main
     {
         public int Id { get; set; }
         public string CompanyName { get; set; } = string.Empty;
+        // In-app menyu üçün: slug = Tenant.Subdomain (public menu endpoint açarı)
+        public string? Slug { get; set; }
+        public bool IsHasMenu { get; set; }
         public bool? IsCustomer { get; set; }
         // Tenant-ın öz koordinatı — filialsız tenant-lar xəritədə bununla göstərilir
         public decimal? Latitude { get; set; }
@@ -20,6 +23,9 @@ namespace Loyalty.Business.Dtos.Get.Main
     {
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
+        // In-app menyu: per-branch menyu endpoint açarı + görünüş override-ı
+        public string? Slug { get; set; }
+        public string? DefaultMenuView { get; set; }
         public string? AppDisplayName { get; set; } // doludursa app yalnız bunu göstərir
         public string? Address { get; set; }
         public decimal? Latitude { get; set; }
