@@ -895,11 +895,25 @@ namespace Loyalty.Business.Services.Implementations.Main
                     numberByProductId[gid] = num;
             }
 
+            // Aktiv reward-lar (ProductNumber → reward). Həm precise (DiscountByItem),
+            // həm də fallback (DiscountByItem-siz) yol üçün əvvəldən yüklə.
+            var rewardByProductId = new Dictionary<string, Reward>(StringComparer.OrdinalIgnoreCase);
+            if (context.LoyaltyProgramId.HasValue)
+            {
+                var activeRewards = await _rewardRepo.GetActiveRewardsByProgramIdAsync(context.LoyaltyProgramId.Value, ct);
+                rewardByProductId = activeRewards
+                    .Where(r => !string.IsNullOrWhiteSpace(r.ExternalProductId))
+                    .GroupBy(r => r.ExternalProductId!.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            }
+
             var redeemedUnitsByProduct = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            bool hasLoyaltyDiscount = false;
             foreach (var d in request.Discounts ?? new List<IikoOrderDiscount>())
             {
                 var dtid = (d.DiscountTypeId ?? "").Trim();
                 if (string.IsNullOrEmpty(dtid) || !loyaltyDiscountIds.Contains(dtid)) continue;
+                hasLoyaltyDiscount = true;
                 foreach (var dbi in d.DiscountByItem ?? new List<IikoOrderDiscountByItem>())
                 {
                     var pid = (dbi.ProductId ?? "").Trim();
@@ -910,16 +924,27 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
             }
 
+            // Fallback: bəzi iiko konfiqləri loyalty endirimini DiscountByItem-siz göndərir
+            // (yalnız order-level DiscountSum, məs. "Донер в подарок"). Bu halda sifarişdəki
+            // reward-məhsulları pulsuz verilmiş kimi say.
+            if (hasLoyaltyDiscount && redeemedUnitsByProduct.Count == 0 && rewardByProductId.Count > 0)
+            {
+                foreach (var item in request.Items)
+                {
+                    var pnum = (item.ProductNumber ?? "").Trim();
+                    var pid = (item.ProductId ?? "").Trim();
+                    string? key = pnum.Length > 0 && rewardByProductId.ContainsKey(pnum) ? pnum
+                        : (pid.Length > 0 && rewardByProductId.ContainsKey(pid) ? pid : null);
+                    if (key == null) continue;
+                    int units = Math.Max(1, (int)item.Amount);
+                    redeemedUnitsByProduct[key] = redeemedUnitsByProduct.GetValueOrDefault(key) + units;
+                }
+            }
+
             int totalRedeemUnits = 0;
             decimal totalRedeemPointsCost = 0m;
-            if (redeemedUnitsByProduct.Count > 0 && context.LoyaltyProgramId.HasValue)
+            if (redeemedUnitsByProduct.Count > 0)
             {
-                var activeRewards = await _rewardRepo.GetActiveRewardsByProgramIdAsync(context.LoyaltyProgramId.Value, ct);
-                var rewardByProductId = activeRewards
-                    .Where(r => !string.IsNullOrWhiteSpace(r.ExternalProductId))
-                    .GroupBy(r => r.ExternalProductId!.Trim(), StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-
                 foreach (var (pid, count) in redeemedUnitsByProduct)
                 {
                     if (rewardByProductId.TryGetValue(pid, out var reward))
