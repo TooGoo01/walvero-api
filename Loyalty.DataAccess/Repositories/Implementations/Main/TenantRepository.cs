@@ -46,6 +46,29 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Where(t => ids.Contains(t.Id))
                 .ToListAsync(ct);
         }
+
+        public async Task<List<Tenant>> GetWithBranchesByIdsAsync(IEnumerable<int> tenantIds, CancellationToken ct = default)
+        {
+            var ids = tenantIds?.Distinct().ToList() ?? new List<int>();
+            if (!ids.Any())
+                return new List<Tenant>();
+
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Include(t => t.Branches)
+                .Where(t => ids.Contains(t.Id))
+                .ToListAsync(ct);
+        }
+
+        public async Task<List<Tenant>> GetNearbyBroadcastWithBranchesAsync(CancellationToken ct = default)
+        {
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Include(t => t.Branches)
+                .Where(t => t.NearbyBroadcast && t.IsActive && !t.IsHidden && !t.IsDeleted)
+                .ToListAsync(ct);
+        }
+
         public async Task<Tenant?> GetWithAllDetailsAsync(int tenantId, CancellationToken cancellationToken = default)
         {
             return await GetAsQueryable()

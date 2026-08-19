@@ -18,6 +18,8 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         Task<IEnumerable<Tenant>> GetAll();
         Task<IEnumerable<Tenant>> GetByUserId(int tenantId);
         Task<List<Tenant>> GetByIdsAsync(IEnumerable<int> tenantIds, CancellationToken ct = default);
+        Task<List<Tenant>> GetWithBranchesByIdsAsync(IEnumerable<int> tenantIds, CancellationToken ct = default);
+        Task<List<Tenant>> GetNearbyBroadcastWithBranchesAsync(CancellationToken ct = default);
         Task<IEnumerable<Tenant>> GetActive();
         /// <summary>
         /// Lightweight IQueryable for tenant discovery. Returns only active, non-hidden tenants

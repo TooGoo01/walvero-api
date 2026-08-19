@@ -61,6 +61,19 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .ToListAsync(cancellationToken);
         }
 
+        public async Task<Dictionary<int, DateTime>> GetLastActivityByCardIdsAsync(IEnumerable<int> cardIds, CancellationToken cancellationToken = default)
+        {
+            var ids = cardIds?.Distinct().ToList() ?? new List<int>();
+            if (ids.Count == 0)
+                return new Dictionary<int, DateTime>();
+
+            return await GetAsQueryable()
+                .Where(t => ids.Contains(t.LoyaltyCardId))
+                .GroupBy(t => t.LoyaltyCardId)
+                .Select(g => new { CardId = g.Key, Last = g.Max(x => x.RegDate) })
+                .ToDictionaryAsync(x => x.CardId, x => x.Last, cancellationToken);
+        }
+
         public async Task<IEnumerable<Transaction>> GetByTenantIdAsync(int tenantId, int limit, CancellationToken cancellationToken = default)
         {
             return await GetAsQueryable()

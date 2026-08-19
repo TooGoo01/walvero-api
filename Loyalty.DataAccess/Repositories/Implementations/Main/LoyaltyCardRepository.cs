@@ -321,11 +321,29 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Where(c => cardIds.Contains(c.Id))
                 .Include(c => c.LoyaltyProgram).ThenInclude(p => p.CardTemplate)
                 .Include(c => c.Tenant).ThenInclude(t => t.Category)
+                .Include(c => c.Tenant).ThenInclude(t => t.Branches)
                 .OrderByDescending(c => c.Id)
                 .AsSplitQuery()
                 .ToListAsync(ct);
 
             return (totalCount, cards);
+        }
+
+        /// <inheritdoc />
+        public async Task<List<int>> GetActiveCardTenantIdsAsync(int applicationUserId, CancellationToken ct = default)
+        {
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Where(c =>
+                    c.IsActive &&
+                    c.Customer != null &&
+                    c.Customer.applicationUserId == applicationUserId &&
+                    c.Customer.IsActive &&
+                    c.Status == CardStatus.Active &&
+                    !c.Tenant.IsHidden)
+                .Select(c => c.TenantId)
+                .Distinct()
+                .ToListAsync(ct);
         }
 
         /// <inheritdoc />

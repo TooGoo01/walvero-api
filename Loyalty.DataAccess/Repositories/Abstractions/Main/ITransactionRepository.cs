@@ -22,5 +22,6 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         Task<decimal> GetTotalPointsEarnedAsync(int cardId, CancellationToken cancellationToken = default);
         Task<decimal> GetTotalPointsRedeemedAsync(int cardId, CancellationToken cancellationToken = default);
         Task<List<Transaction>> GetRecentRedeemedByCustomerAsync(int customerId, int take, CancellationToken cancellationToken = default);
+        Task<Dictionary<int, DateTime>> GetLastActivityByCardIdsAsync(IEnumerable<int> cardIds, CancellationToken cancellationToken = default);
     }
 }

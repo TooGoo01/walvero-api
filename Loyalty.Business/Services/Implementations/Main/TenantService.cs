@@ -484,6 +484,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (dto.ThreadsUrl != null) category.ThreadsUrl = dto.ThreadsUrl;
                 if (dto.PinterestUrl != null) category.PinterestUrl = dto.PinterestUrl;
                 category.ShowOnHome = dto.ShowOnHome;
+                category.NearbyBroadcast = dto.NearbyBroadcast;
                 category.AcceptAnonymus = dto.AcceptAnonymous;
                 category.IsHidden = dto.IsHidden;
                 category.HideInApp = dto.HideInApp;

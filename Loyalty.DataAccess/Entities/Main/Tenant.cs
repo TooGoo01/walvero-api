@@ -59,6 +59,9 @@ namespace Loyalty.DataAccess.Entities.Main
         public decimal? Latitude { get; set; }
         public decimal? Longitude { get; set; }
 
+        // Premium: user kartı əlavə etməsə belə yaxınlaşanda geofence bildirişi göndərilsin
+        public bool NearbyBroadcast { get; set; } = false;
+
         // --- Ödəniş suspensiyası: display-only mask, data DB-də dəyişmir (restore = flag off) ---
         public bool IsServiceSuspended { get; set; } = false;
         public string? SuspensionMessage { get; set; } // null → TenantSuspensionMask.DefaultMessage

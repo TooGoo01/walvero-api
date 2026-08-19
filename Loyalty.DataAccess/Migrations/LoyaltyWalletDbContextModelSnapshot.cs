@@ -2797,6 +2797,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("MenuUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("NearbyBroadcast")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("NotifyUserOnMissingQr")
                         .HasColumnType("bit");
 

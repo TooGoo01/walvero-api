@@ -52,6 +52,9 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
             int pageSize,
             CancellationToken ct = default);
 
+        /// <summary>User-in aktiv kartlarının distinct tenant Id-ləri (geofence üçün).</summary>
+        Task<List<int>> GetActiveCardTenantIdsAsync(int applicationUserId, CancellationToken ct = default);
+
         /// <summary>
         /// Get a card by ID with full details for wallet card details view.
         /// Includes: Customer, LoyaltyProgram, CardTemplate, Tenant (with Branding and Category).

@@ -31,6 +31,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? ThreadsUrl { get; set; }
         public string? PinterestUrl { get; set; }
         public bool ShowOnHome { get; set; } = false;
+        public bool NearbyBroadcast { get; set; } = false;
         public bool IsHidden { get; set; } = false;
         public bool HideInApp { get; set; } = false;
         public bool IsActive { get; set; } = true;

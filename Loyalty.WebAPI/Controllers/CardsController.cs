@@ -36,6 +36,16 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(res.Data); // Data içində List<UserCardDto> olacaq
         }
 
+        [HttpGet]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> GetGeofencePoints(CancellationToken ct, double? lat = null, double? lng = null, double radiusKm = 25)
+        {
+            var res = await _userCardService.GetGeofencePointsAsync(lat, lng, radiusKm, ct);
+            if (!res.Success)
+                return BadRequest(new { message = res.Message });
+            return Ok(res.Data); // List<GeofencePointDto>
+        }
+
         [HttpPost]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<ActionResult<ServiceResult>> Deactive(int id)

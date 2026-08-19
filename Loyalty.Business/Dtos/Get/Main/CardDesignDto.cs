@@ -23,6 +23,12 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string TenantName { get; set; } = string.Empty;
         public string? LocationUrl { get; set; } = string.Empty;
 
+        // Yaxınlıq sıralaması üçün (əsas/ilk filial, yoxdursa tenant koordinatı)
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        // Son ziyarət (bu karta aid ən son transaction), UTC
+        public DateTime? LastVisitedAtUtc { get; set; }
+
         public int CardId { get; set; }
         public int? categoryId { get; set; }
         public int ProgramId { get; set; }

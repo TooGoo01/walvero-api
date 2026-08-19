@@ -29,6 +29,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ITenantBrandingRepository _tenantBrandingRepository;
         private readonly IConfiguration _config;
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ITransactionRepository _transactionRepo;
         public UserCardService(
             ITenantProvider tp,
             UserManager<ApplicationUser> userManager,
@@ -37,7 +38,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             ITenantRepository tenantRepo,
             ITenantBrandingRepository tenantBrandingRepository,
             IConfiguration config,
-            IUnitOfWork unitOfWork)
+            IUnitOfWork unitOfWork,
+            ITransactionRepository transactionRepo)
         {
             _tp = tp;
             _userManager = userManager;
@@ -47,6 +49,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _tenantBrandingRepository = tenantBrandingRepository;
             _config = config;
             _unitOfWork = unitOfWork;
+            _transactionRepo = transactionRepo;
         }
         /// <summary>
         /// Maps LoyaltyCard entity with navigation properties to UserCardDto.
@@ -56,8 +59,26 @@ namespace Loyalty.Business.Services.Implementations.Main
             LoyaltyCard card,
             Tenant tenant,
             LoyaltyProgram program,
-            CardTemplateSnapshot snapshot)
+            CardTemplateSnapshot snapshot,
+            DateTime? lastVisitedAtUtc)
         {
+            // Koordinat: əsas filial (coord-lu), yoxdursa ilk coord-lu aktiv filial, yoxdursa tenant.
+            double? lat = null, lng = null;
+            var branches = tenant.Branches?
+                .Where(b => b.IsActive && b.Latitude.HasValue && b.Longitude.HasValue)
+                .ToList();
+            if (branches != null && branches.Count > 0)
+            {
+                var main = branches.FirstOrDefault(b => b.IsMainBranch) ?? branches[0];
+                lat = (double)main.Latitude!.Value;
+                lng = (double)main.Longitude!.Value;
+            }
+            else if (tenant.Latitude.HasValue && tenant.Longitude.HasValue)
+            {
+                lat = (double)tenant.Latitude.Value;
+                lng = (double)tenant.Longitude.Value;
+            }
+
             // Ödəniş suspensiyası — display-only mask: balans 0, progress/mükafat gizli.
             // DB dəyişmir; flag söndürüləndə real dəyərlər avtomatik qayıdır.
             bool suspended = tenant.IsServiceSuspended;
@@ -98,6 +119,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 TenantId = card.TenantId,
                 TenantName = tenant.CompanyName,
                 LocationUrl = tenant.LocationUrl,
+                Latitude = lat,
+                Longitude = lng,
+                LastVisitedAtUtc = lastVisitedAtUtc,
                 CardId = card.Id,
                 ProgramId = card.LoyaltyProgramId,
                 ProgramName = program.ProgramName,
@@ -191,6 +215,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             // 3) Snapshot cache - use data already loaded via Include
             var snapshotCache = new Dictionary<(int tenantId, int programId), CardTemplateSnapshot>();
 
+            // Son ziyarət: bu səhifədəki kartlar üçün ən son transaction tarixi (tək sorğu)
+            var pageCardIds = pagedCards.Select(c => c.Id).ToList();
+            var lastVisitByCard = await _transactionRepo.GetLastActivityByCardIdsAsync(pageCardIds, ct);
+
             var resultList = new List<UserCardDto>();
 
             foreach (var card in pagedCards)
@@ -215,7 +243,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
 
                 // OPTIMIZATION: Use helper method - snapshot already has all needed data
-                var dto = MapToUserCardDto(card, tenant, program, snapshot);
+                DateTime? lastVisited = lastVisitByCard.TryGetValue(card.Id, out var lv)
+                    ? DateTime.SpecifyKind(lv, DateTimeKind.Utc)
+                    : (DateTime?)null;
+                var dto = MapToUserCardDto(card, tenant, program, snapshot, lastVisited);
 
                 resultList.Add(dto);
             }
@@ -230,6 +261,100 @@ namespace Loyalty.Business.Services.Implementations.Main
             };
 
             return new ServiceResult(true, response);
+        }
+
+        public async Task<ServiceResult> GetGeofencePointsAsync(double? lat, double? lng, double radiusKm, CancellationToken ct = default)
+        {
+            var userName = _tp.CurrentUserId;
+            if (string.IsNullOrWhiteSpace(userName))
+                return new ServiceResult(false, "User not resolved.");
+            var appUser = await _userManager.FindByIdAsync(userName);
+            if (appUser == null)
+                return new ServiceResult(false, "User not found.");
+
+            if (radiusKm <= 0) radiusKm = 25;
+
+            // 1) Added: user-in aktiv kart tenant-ları (filiallarla)
+            var addedTenantIds = await _cardRepo.GetActiveCardTenantIdsAsync(appUser.Id, ct);
+            var addedTenants = await _tenantRepo.GetWithBranchesByIdsAsync(addedTenantIds, ct);
+
+            // 2) Premium: NearbyBroadcast tenant-lar, artıq kartı olanları çıxar
+            var addedSet = addedTenantIds.ToHashSet();
+            var premiumTenants = (await _tenantRepo.GetNearbyBroadcastWithBranchesAsync(ct))
+                .Where(t => !addedSet.Contains(t.Id))
+                .ToList();
+
+            var points = new List<GeofencePointDto>();
+            foreach (var t in addedTenants)
+                AddTenantPoints(points, t, "added", $"{t.CompanyName} yaxınlıqdadır — kartınızı göstərin");
+            foreach (var t in premiumTenants)
+                AddTenantPoints(points, t, "premium", $"{t.CompanyName} yaxınlıqdadır — loyallıq kartı əldə edin");
+
+            // 3) lat/lng verilibsə məsafəyə görə filter + sort
+            if (lat.HasValue && lng.HasValue)
+            {
+                points = points
+                    .Select(p => new { p, d = HaversineKm(lat.Value, lng.Value, p.Lat, p.Lng) })
+                    .Where(x => x.d <= radiusKm)
+                    .OrderBy(x => x.d)
+                    .Select(x => x.p)
+                    .ToList();
+            }
+
+            if (points.Count > 200)
+                points = points.Take(200).ToList();
+
+            return new ServiceResult(true, points);
+        }
+
+        private static void AddTenantPoints(List<GeofencePointDto> points, Tenant t, string type, string relevantText)
+        {
+            var branches = t.Branches?
+                .Where(b => b.IsActive && b.Latitude.HasValue && b.Longitude.HasValue)
+                .ToList();
+
+            if (branches != null && branches.Count > 0)
+            {
+                foreach (var b in branches)
+                {
+                    points.Add(new GeofencePointDto
+                    {
+                        Lat = (double)b.Latitude!.Value,
+                        Lng = (double)b.Longitude!.Value,
+                        RadiusMeters = b.RadiusMeters > 0 ? b.RadiusMeters : 150,
+                        TenantId = t.Id,
+                        BranchId = b.Id,
+                        Name = string.IsNullOrWhiteSpace(b.Name) ? t.CompanyName : $"{t.CompanyName} — {b.Name}",
+                        Type = type,
+                        RelevantText = relevantText
+                    });
+                }
+            }
+            else if (t.Latitude.HasValue && t.Longitude.HasValue)
+            {
+                points.Add(new GeofencePointDto
+                {
+                    Lat = (double)t.Latitude.Value,
+                    Lng = (double)t.Longitude.Value,
+                    RadiusMeters = 150,
+                    TenantId = t.Id,
+                    BranchId = null,
+                    Name = t.CompanyName,
+                    Type = type,
+                    RelevantText = relevantText
+                });
+            }
+        }
+
+        private static double HaversineKm(double lat1, double lon1, double lat2, double lon2)
+        {
+            const double R = 6371.0;
+            double dLat = (lat2 - lat1) * Math.PI / 180.0;
+            double dLon = (lon2 - lon1) * Math.PI / 180.0;
+            double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+                       Math.Cos(lat1 * Math.PI / 180.0) * Math.Cos(lat2 * Math.PI / 180.0) *
+                       Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+            return R * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
         }
 
         public async Task<ServiceResult> Delete(int id)

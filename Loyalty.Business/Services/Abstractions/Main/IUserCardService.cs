@@ -12,6 +12,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public interface IUserCardService
     {
         Task<ServiceResult> GetMyCardsAsync(int currentPage, int pageSize, TenantSearchDto model,CancellationToken ct = default);
+        Task<ServiceResult> GetGeofencePointsAsync(double? lat, double? lng, double radiusKm, CancellationToken ct = default);
         Task<ServiceResult> Delete(int id);
     }
 }
