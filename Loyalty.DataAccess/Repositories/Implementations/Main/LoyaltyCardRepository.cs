@@ -422,6 +422,8 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     .ThenInclude(t => t.Branding)
                 .Include(c => c.Tenant)
                     .ThenInclude(t => t.Category)
+                .Include(c => c.Tenant)
+                    .ThenInclude(t => t.Branches)
                 .Where(c => c.Id == cardId &&
                             c.Customer != null &&
                             c.Customer.applicationUserId == applicationUserId)
@@ -454,6 +456,8 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     .ThenInclude(t => t.Branding)
                 .Include(c => c.Tenant)
                     .ThenInclude(t => t.Category)
+                .Include(c => c.Tenant)
+                    .ThenInclude(t => t.Branches)
                 .Where(c => c.TenantId == tenantId &&
                             c.IsActive &&
                             c.Customer != null &&

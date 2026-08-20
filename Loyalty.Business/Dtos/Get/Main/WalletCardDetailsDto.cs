@@ -60,6 +60,23 @@ namespace Loyalty.Business.Dtos.Get.Main
         // App-specific images (.webp)
         public string? AppLogoUrl { get; set; }
         public string? AppStripUrl { get; set; }
+
+        // Filiallar — çox-filiallı tenant üçün (Filiallar düyməsi + branch menyu seçici).
+        public List<TenantWalletBranchDto> Branches { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Tenant filialı — kart detalında filiallar düyməsi + per-branch menyu üçün.
+    /// </summary>
+    public class TenantWalletBranchDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? Slug { get; set; }
+        public string? DefaultMenuView { get; set; }
+        public string? AppDisplayName { get; set; }
+        public bool IsMainBranch { get; set; }
+        public bool HideInApp { get; set; }
     }
 
     /// <summary>

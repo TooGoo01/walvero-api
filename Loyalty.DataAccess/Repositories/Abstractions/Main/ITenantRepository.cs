@@ -25,7 +25,7 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         /// Lightweight IQueryable for tenant discovery. Returns only active, non-hidden tenants
         /// with optional filters. No Customer/Card includes — isCustomer is resolved via batch query in service layer.
         /// </summary>
-        IQueryable<Tenant> GetActiveFiltered(string? name, int? categoryId, int? countryId, int? cityId, bool excludeHiddenInApp = true);
+        IQueryable<Tenant> GetActiveFiltered(string? name, int? categoryId, int? countryId, int? cityId, bool excludeHiddenInApp = true, int? tenantId = null);
         Task<IReadOnlyList<HomeTenantProjection>> ListHomeTenantsAsync(int? countryId = null, int? cityId = null, bool excludeHiddenInApp = true, CancellationToken ct = default);
 
         /// <summary>

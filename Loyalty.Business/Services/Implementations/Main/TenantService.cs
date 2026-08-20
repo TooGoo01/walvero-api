@@ -65,8 +65,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         private static string _filterCacheKey(
             string? name, int? categoryId, int? countryId, int? cityId,
-            int page, int pageSize, bool excludeHiddenInApp)
-            => $"tenants:filter:{name}|{categoryId}|{countryId}|{cityId}|p{page}|s{pageSize}|app{excludeHiddenInApp}";
+            int page, int pageSize, bool excludeHiddenInApp, int? tenantId)
+            => $"tenants:filter:{name}|{categoryId}|{countryId}|{cityId}|t{tenantId}|p{page}|s{pageSize}|app{excludeHiddenInApp}";
 
         /// <summary>
         /// Bütün filter-cache-lərini bir anda invalidate etmək üçün ortaq token.
@@ -230,7 +230,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var cacheKey = _filterCacheKey(
                 model?.Name, model?.categoryId, model?.countryId, model?.cityId,
-                currentPage, pageSize, excludeHiddenInApp);
+                currentPage, pageSize, excludeHiddenInApp, model?.tenantId);
 
             (int totalCount, List<TenantDiscoverDto> tenants) cached;
 
@@ -245,7 +245,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     model?.categoryId,
                     model?.countryId,
                     model?.cityId,
-                    excludeHiddenInApp);
+                    excludeHiddenInApp,
+                    model?.tenantId);
 
                 var freshCount = await query.CountAsync();
 

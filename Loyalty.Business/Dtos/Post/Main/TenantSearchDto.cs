@@ -12,6 +12,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? Name { get; set; }
         public int? countryId { get; set; }
         public int? cityId { get; set; }
+        public int? tenantId { get; set; } // Verilibsə yalnız həmin tenant (filiallar düyməsi — bir tenant-ın branch-ları)
         public string? Platform { get; set; } // "web" → HideInApp tenant/branch-lar da görünür; digər hallarda (mobil app) gizlənir
     }
 }

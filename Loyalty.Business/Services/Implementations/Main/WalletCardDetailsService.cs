@@ -241,6 +241,23 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ? stripImageUrl  // ProgressBased: həmişə PNG strip (icon progress)
                     : (ToAbsoluteUrl(cardTemplate?.AppStripUrl, baseUrl)
                         ?? ToAbsoluteUrl(cardTemplate?.StripImageUrl, baseUrl)),
+
+                // Filiallar — çox-filiallı tenant üçün (Filiallar düyməsi + branch menyu seçici)
+                Branches = (tenant.Branches ?? new List<Branch>())
+                    .Where(b => b.IsActive)
+                    .OrderByDescending(b => b.IsMainBranch)
+                    .ThenBy(b => b.Name)
+                    .Select(b => new TenantWalletBranchDto
+                    {
+                        Id = b.Id,
+                        Name = b.Name,
+                        Slug = b.Slug,
+                        DefaultMenuView = b.DefaultMenuView,
+                        AppDisplayName = b.AppDisplayName,
+                        IsMainBranch = b.IsMainBranch,
+                        HideInApp = b.HideInApp,
+                    })
+                    .ToList(),
             };
 
             return dto;

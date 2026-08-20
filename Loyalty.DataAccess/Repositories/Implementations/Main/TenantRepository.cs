@@ -113,13 +113,17 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         }
 
         /// <inheritdoc />
-        public IQueryable<Tenant> GetActiveFiltered(string? name, int? categoryId, int? countryId, int? cityId, bool excludeHiddenInApp = true)
+        public IQueryable<Tenant> GetActiveFiltered(string? name, int? categoryId, int? countryId, int? cityId, bool excludeHiddenInApp = true, int? tenantId = null)
         {
             // Lightweight query — NO Customer/Card includes.
             // isCustomer is resolved via batch query in service layer.
             var query = GetAsQueryable()
                 .AsNoTracking()
                 .Where(x => x.IsActive && !x.IsHidden && !x.IsDeleted);
+
+            // Yalnız bir tenant (filiallar düyməsi — həmin tenant-ın branch kartları)
+            if (tenantId.HasValue)
+                query = query.Where(x => x.Id == tenantId.Value);
 
             // HideInApp: yalnız mobil app-dan gizlədilir; web client platform=web ilə görür
             if (excludeHiddenInApp)
@@ -237,6 +241,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Include(t => t.LoyaltyPrograms.Where(lp => lp.IsActive))
                     .ThenInclude(lp => lp.CardTemplate)
                         .ThenInclude(ct => ct!.Icons)
+                .Include(t => t.Branches)
                 .Where(t => t.Id == tenantId && t.IsActive && !t.IsHidden)
                 .AsSplitQuery()
                 .FirstOrDefaultAsync(ct);
