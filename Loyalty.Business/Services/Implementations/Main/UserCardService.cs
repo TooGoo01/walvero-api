@@ -60,18 +60,32 @@ namespace Loyalty.Business.Services.Implementations.Main
             Tenant tenant,
             LoyaltyProgram program,
             CardTemplateSnapshot snapshot,
-            DateTime? lastVisitedAtUtc)
+            DateTime? lastVisitedAtUtc,
+            double? userLat = null,
+            double? userLng = null)
         {
-            // Koordinat: əsas filial (coord-lu), yoxdursa ilk coord-lu aktiv filial, yoxdursa tenant.
+            // Koordinat: user mövqeyi verilibsə ƏN YAXIN coord-lu filial; yoxsa əsas/ilk;
+            // filial coord-u yoxdursa tenant koordinatı.
             double? lat = null, lng = null;
             var branches = tenant.Branches?
                 .Where(b => b.IsActive && b.Latitude.HasValue && b.Longitude.HasValue)
                 .ToList();
             if (branches != null && branches.Count > 0)
             {
-                var main = branches.FirstOrDefault(b => b.IsMainBranch) ?? branches[0];
-                lat = (double)main.Latitude!.Value;
-                lng = (double)main.Longitude!.Value;
+                Branch chosen;
+                if (userLat.HasValue && userLng.HasValue)
+                {
+                    chosen = branches
+                        .OrderBy(b => HaversineKm(userLat.Value, userLng.Value,
+                            (double)b.Latitude!.Value, (double)b.Longitude!.Value))
+                        .First();
+                }
+                else
+                {
+                    chosen = branches.FirstOrDefault(b => b.IsMainBranch) ?? branches[0];
+                }
+                lat = (double)chosen.Latitude!.Value;
+                lng = (double)chosen.Longitude!.Value;
             }
             else if (tenant.Latitude.HasValue && tenant.Longitude.HasValue)
             {
@@ -156,6 +170,8 @@ namespace Loyalty.Business.Services.Implementations.Main
      int currentPage,
      int pageSize,
      TenantSearchDto model,
+     double? userLat = null,
+     double? userLng = null,
      CancellationToken ct = default)
         {
             // 0) Page size limiti
@@ -246,7 +262,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 DateTime? lastVisited = lastVisitByCard.TryGetValue(card.Id, out var lv)
                     ? DateTime.SpecifyKind(lv, DateTimeKind.Utc)
                     : (DateTime?)null;
-                var dto = MapToUserCardDto(card, tenant, program, snapshot, lastVisited);
+                var dto = MapToUserCardDto(card, tenant, program, snapshot, lastVisited, userLat, userLng);
 
                 resultList.Add(dto);
             }
