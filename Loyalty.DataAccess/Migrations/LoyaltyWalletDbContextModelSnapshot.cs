@@ -2783,7 +2783,8 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("bit");
 
                     b.Property<decimal?>("Latitude")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
 
                     b.Property<string>("LinkedInUrl")
                         .HasColumnType("nvarchar(max)");
@@ -2792,7 +2793,8 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal?>("Longitude")
-                        .HasColumnType("decimal(18,2)");
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
 
                     b.Property<string>("MenuUrl")
                         .HasColumnType("nvarchar(max)");

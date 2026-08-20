@@ -134,6 +134,10 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(t => t.ContactEmail).IsRequired().HasMaxLength(200);
                 entity.Property(t => t.ContactPhone).IsRequired().HasMaxLength(50);
 
+                // Koordinat dəqiqliyi — default decimal(18,2) yalnız ~1km; geofence üçün 6 onluq lazım.
+                entity.Property(t => t.Latitude).HasPrecision(9, 6);
+                entity.Property(t => t.Longitude).HasPrecision(9, 6);
+
                 // Performans index-ləri:
                 //  - GetActiveFiltered (Discover) (IsActive, IsHidden, categoryId) üzrə filterlə
                 entity.HasIndex(t => new { t.IsActive, t.IsHidden })
