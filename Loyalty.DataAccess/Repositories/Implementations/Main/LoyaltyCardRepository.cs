@@ -330,6 +330,51 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         }
 
         /// <inheritdoc />
+        public async Task<List<LoyaltyCard>> GetAllMyCardsWithBranchesAsync(
+            int applicationUserId, string? name, int? categoryId, int? countryId, int? cityId,
+            CancellationToken ct = default)
+        {
+            var baseQuery = GetAsQueryable()
+                .AsNoTracking()
+                .Where(c =>
+                    c.IsActive &&
+                    c.Customer != null &&
+                    c.Customer.applicationUserId == applicationUserId &&
+                    c.Customer.IsActive &&
+                    c.Status == CardStatus.Active &&
+                    !c.Tenant.IsHidden);
+
+            if (!string.IsNullOrWhiteSpace(name))
+                baseQuery = baseQuery.Where(c => EF.Functions.Like(c.Tenant.CompanyName, $"%{name}%"));
+            if (categoryId.HasValue)
+                baseQuery = baseQuery.Where(c => c.Tenant.categoryId == categoryId.Value);
+            if (countryId.HasValue)
+                baseQuery = baseQuery.Where(c => c.Tenant.TenantLocation != null && c.Tenant.TenantLocation.countryId == countryId.Value);
+            if (cityId.HasValue)
+                baseQuery = baseQuery.Where(c => c.Tenant.TenantLocation != null && c.Tenant.TenantLocation.cityId == cityId.Value);
+
+            // Hər (TenantId, LoyaltyProgramId) üçün son kartın Id-si (səhifələmə yox)
+            var lastIds = await (
+                from c in baseQuery
+                group c by new { c.TenantId, c.LoyaltyProgramId } into g
+                select g.Max(x => x.Id)
+            ).ToListAsync(ct);
+
+            if (lastIds.Count == 0)
+                return new List<LoyaltyCard>();
+
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Where(c => lastIds.Contains(c.Id))
+                .Include(c => c.LoyaltyProgram).ThenInclude(p => p.CardTemplate)
+                .Include(c => c.Tenant).ThenInclude(t => t.Category)
+                .Include(c => c.Tenant).ThenInclude(t => t.Branches)
+                .OrderByDescending(c => c.Id)
+                .AsSplitQuery()
+                .ToListAsync(ct);
+        }
+
+        /// <inheritdoc />
         public async Task<List<int>> GetActiveCardTenantIdsAsync(int applicationUserId, CancellationToken ct = default)
         {
             return await GetAsQueryable()

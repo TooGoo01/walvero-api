@@ -189,16 +189,25 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var applicationUserId = appUser.Id;
 
-            // 2) OPTIMIZATION: Count + paginated data tək DB roundtrip ilə
-            var (totalCount, pagedCards) = await _cardRepo.GetMyCardsPaginatedAsync(
-                applicationUserId,
-                model?.Name,
-                model?.categoryId,
-                model?.countryId,
-                model?.cityId,
-                currentPage,
-                pageSize,
-                ct);
+            // 2) Kart mənbəyi: yaxınlıq sortu (lat/lng) varsa BÜTÜN kartlar (server-side
+            //    məsafə sortu + in-memory səhifələmə); yoxsa mövcud səhifələnmiş sorğu.
+            bool proximity = userLat.HasValue && userLng.HasValue;
+            int totalCount;
+            List<LoyaltyCard> cardsToMap;
+            if (proximity)
+            {
+                cardsToMap = await _cardRepo.GetAllMyCardsWithBranchesAsync(
+                    applicationUserId, model?.Name, model?.categoryId, model?.countryId, model?.cityId, ct);
+                totalCount = cardsToMap.Count;
+            }
+            else
+            {
+                var (tc, pagedCards) = await _cardRepo.GetMyCardsPaginatedAsync(
+                    applicationUserId, model?.Name, model?.categoryId, model?.countryId, model?.cityId,
+                    currentPage, pageSize, ct);
+                totalCount = tc;
+                cardsToMap = pagedCards;
+            }
 
             if (totalCount == 0)
             {
@@ -231,13 +240,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             // 3) Snapshot cache - use data already loaded via Include
             var snapshotCache = new Dictionary<(int tenantId, int programId), CardTemplateSnapshot>();
 
-            // Son ziyarət: bu səhifədəki kartlar üçün ən son transaction tarixi (tək sorğu)
-            var pageCardIds = pagedCards.Select(c => c.Id).ToList();
-            var lastVisitByCard = await _transactionRepo.GetLastActivityByCardIdsAsync(pageCardIds, ct);
+            // Son ziyarət: map olunan kartlar üçün ən son transaction tarixi (tək sorğu)
+            var mapCardIds = cardsToMap.Select(c => c.Id).ToList();
+            var lastVisitByCard = await _transactionRepo.GetLastActivityByCardIdsAsync(mapCardIds, ct);
 
             var resultList = new List<UserCardDto>();
 
-            foreach (var card in pagedCards)
+            foreach (var card in cardsToMap)
             {
                 // Use navigation properties directly - data is already loaded via Include
                 var tenant = card.Tenant;
@@ -267,10 +276,36 @@ namespace Loyalty.Business.Services.Implementations.Main
                 resultList.Add(dto);
             }
 
+            // 4) Yaxınlıq sortu: koordinatlı kartlar məsafəyə görə (yaxın əvvəl), sonra
+            //    koordinatsızlar son ziyarətə görə. Sort BÜTÜN kartlar üzərində → yaxın kart
+            //    2-ci səhifədə "gizli" qalmır. Sonra in-memory səhifələ.
+            List<UserCardDto> pageItems;
+            if (proximity)
+            {
+                double DistOf(UserCardDto d) => (d.Latitude.HasValue && d.Longitude.HasValue)
+                    ? HaversineKm(userLat!.Value, userLng!.Value, d.Latitude.Value, d.Longitude.Value)
+                    : double.MaxValue;
+
+                resultList = resultList
+                    .OrderBy(DistOf)
+                    .ThenByDescending(d => d.LastVisitedAtUtc ?? DateTime.MinValue)
+                    .ThenByDescending(d => d.CardId)
+                    .ToList();
+
+                pageItems = resultList
+                    .Skip((currentPage - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToList();
+            }
+            else
+            {
+                pageItems = resultList;
+            }
+
             // 5) SearchResult kimi cavab qaytar
             var response = new SearchResult<IEnumerable<UserCardDto>>
             {
-                Value = resultList,
+                Value = pageItems,
                 DataCount = totalCount,
                 CurrentPage = currentPage,
                 PageSize = pageSize

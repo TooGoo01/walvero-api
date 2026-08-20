@@ -55,6 +55,9 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         /// <summary>User-in aktiv kartlarının distinct tenant Id-ləri (geofence üçün).</summary>
         Task<List<int>> GetActiveCardTenantIdsAsync(int applicationUserId, CancellationToken ct = default);
 
+        /// <summary>Bütün aktiv kartlar (səhifələmə YOX) — yaxınlıq server-side sortu üçün. Branches daxil.</summary>
+        Task<List<LoyaltyCard>> GetAllMyCardsWithBranchesAsync(int applicationUserId, string? name, int? categoryId, int? countryId, int? cityId, CancellationToken ct = default);
+
         /// <summary>
         /// Get a card by ID with full details for wallet card details view.
         /// Includes: Customer, LoyaltyProgram, CardTemplate, Tenant (with Branding and Category).
