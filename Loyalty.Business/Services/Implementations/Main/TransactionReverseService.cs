@@ -373,10 +373,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (tx == null)
                     return ServiceResult<EditAmountResponseDto>.Fail("Transaction not found.");
 
-                // Yalnız tətbiq olunmuş Earn tranzaksiyaları redaktə edilə bilər
-                if (tx.Type != TransactionType.Earned || tx.Status != RedeemStatus.Applied)
+                // Earn tranzaksiyaları: Applied (balans düzəlişi ilə) və ya
+                // FlaggedForReview (təsdiqdən əvvəl düzəliş — balans hələ tətbiq olunmayıb)
+                var isFlagged = tx.Status == RedeemStatus.FlaggedForReview;
+                if (tx.Type != TransactionType.Earned
+                    || (tx.Status != RedeemStatus.Applied && !isFlagged))
                     return ServiceResult<EditAmountResponseDto>.Fail(
-                        "Yalnız Applied statuslu Earn tranzaksiyalarının məbləği düzəldilə bilər.");
+                        "Yalnız Applied və ya FlaggedForReview statuslu Earn tranzaksiyalarının məbləği düzəldilə bilər.");
 
                 var cardRepo = _unitOfWork.Repository<LoyaltyCard>();
                 var card = await cardRepo.GetByIdAsync(tx.LoyaltyCardId, ct);
@@ -419,14 +422,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
 
                 var beforePoints = card.CurrentPoints;
-                if (delta != 0m)
+                // Flagged tx-in balansı hələ tətbiq olunmayıb — yalnız Amount/Points dəyişir,
+                // balans ApproveFlagged zamanı yeni Points ilə tətbiq olunacaq.
+                if (delta != 0m && !isFlagged)
                     BalanceMath.ApplyDelta(card, snapshot, delta);
 
                 tx.Amount = newAmount;
                 tx.Points = Math.Abs(newPoints);
                 // Bu tx-in tarixi balans izi düzəlir; sonrakı tranzaksiyaların BalanceAfter-i
                 // tarixən köhnəlmiş qalır — qəbul edilən kompromis.
-                tx.BalanceAfter += delta;
+                if (!isFlagged)
+                    tx.BalanceAfter += delta;
                 tx.Description =
                     $"{tx.Description} (Məbləğ düzəlişi: {(oldAmount.HasValue ? oldAmount.Value.ToString("0.##") : "-")}→{newAmount:0.##}" +
                     $"{(string.IsNullOrWhiteSpace(reason) ? "" : $". Səbəb: {reason}")})";
@@ -441,7 +447,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     "Points {OldPoints}->{NewPoints}, Balance {BeforeBalance}->{AfterBalance}",
                     tx.Id, card.Id, oldAmount, newAmount, oldPoints, newPoints, beforePoints, card.CurrentPoints);
 
-                if (delta != 0m)
+                if (delta != 0m && !isFlagged)
                 {
                     try
                     {
