@@ -35,7 +35,8 @@ namespace Loyalty.WebAPI.Controllers
         public async Task<IActionResult> GetAppConfig(CancellationToken ct)
         {
             var showMapInApp = await _appSettingService.GetBoolAsync("ShowMapInApp", defaultValue: true, ct);
-            return Ok(new ServiceResult(true, new { showMapInApp }));
+            var appLogoUrl = await _appSettingService.GetStringAsync("AppLogoUrl", "", ct);
+            return Ok(new ServiceResult(true, new { showMapInApp, appLogoUrl }));
         }
 
         /// <summary>

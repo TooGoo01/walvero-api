@@ -26,6 +26,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             return bool.TryParse(value, out var parsed) ? parsed : defaultValue;
         }
 
+        public async Task<string> GetStringAsync(string key, string defaultValue, CancellationToken ct = default)
+        {
+            var value = await _db.AppSettings.AsNoTracking()
+                .Where(s => s.Key == key)
+                .Select(s => s.Value)
+                .FirstOrDefaultAsync(ct);
+
+            return string.IsNullOrWhiteSpace(value) ? defaultValue : value;
+        }
+
         public async Task<ServiceResult> GetAllAsync(CancellationToken ct = default)
         {
             var settings = await _db.AppSettings.AsNoTracking()

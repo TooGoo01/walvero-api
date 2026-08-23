@@ -156,5 +156,27 @@ namespace Loyalty.WebAPI.Controllers
                 return BadRequest(result);
             return Ok(result);
         }
+
+        // === Amount edit (points recalculated proportionally) ===
+        public sealed record EditAmountRequest(int TransactionId, decimal NewAmount, string? Reason);
+
+        [HttpPost]
+        [Authorize(Policy = "TenantAdminOrSuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult<EditAmountResponseDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> EditAmount([FromBody] EditAmountRequest req, CancellationToken ct)
+        {
+            if (req.TransactionId <= 0)
+                return BadRequest(new ServiceResult(false, "TransactionId is required"));
+            if (req.NewAmount <= 0)
+                return BadRequest(new ServiceResult(false, "NewAmount must be positive"));
+
+            // Tenant Admin öz tenant-ına kilidlənir; Super Admin (claim yoxdur) → null keçir
+            var result = await _transactionReverseService.EditTransactionAmountAsync(
+                req.TransactionId, req.NewAmount, req.Reason, _tenantProvider.CurrentTenantId, ct);
+            if (!result.Success)
+                return BadRequest(result);
+            return Ok(result);
+        }
     }
 }

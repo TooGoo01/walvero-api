@@ -24,6 +24,14 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// FlaggedForReview transaction-ı rədd et — status Reversed, balans dəyişməz (artıq dəyişməyib).
         /// </summary>
         Task<ServiceResult> RejectFlaggedAsync(int transactionId, int? callerBranchId, string? reason, CancellationToken ct = default);
+
+        /// <summary>
+        /// Tranzaksiya məbləğini düzəlt — xallar proporsional yenidən hesablanır
+        /// (newPoints = oldPoints × newAmount ÷ oldAmount), kart balansı fərq qədər dəyişir.
+        /// callerTenantId null isə (Super Admin) tenant yoxlanmır.
+        /// </summary>
+        Task<ServiceResult<EditAmountResponseDto>> EditTransactionAmountAsync(
+            int transactionId, decimal newAmount, string? reason, int? callerTenantId, CancellationToken ct = default);
     }
 }
 

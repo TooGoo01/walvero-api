@@ -361,6 +361,124 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
         }
 
+        public async Task<ServiceResult<EditAmountResponseDto>> EditTransactionAmountAsync(
+            int transactionId, decimal newAmount, string? reason, int? callerTenantId, CancellationToken ct = default)
+        {
+            try
+            {
+                if (newAmount <= 0)
+                    return ServiceResult<EditAmountResponseDto>.Fail("NewAmount must be positive.");
+
+                var tx = await _transactionRepository.GetByIdAsync(transactionId, ct);
+                if (tx == null)
+                    return ServiceResult<EditAmountResponseDto>.Fail("Transaction not found.");
+
+                // Yalnız tətbiq olunmuş Earn tranzaksiyaları redaktə edilə bilər
+                if (tx.Type != TransactionType.Earned || tx.Status != RedeemStatus.Applied)
+                    return ServiceResult<EditAmountResponseDto>.Fail(
+                        "Yalnız Applied statuslu Earn tranzaksiyalarının məbləği düzəldilə bilər.");
+
+                var cardRepo = _unitOfWork.Repository<LoyaltyCard>();
+                var card = await cardRepo.GetByIdAsync(tx.LoyaltyCardId, ct);
+                if (card == null)
+                    return ServiceResult<EditAmountResponseDto>.Fail("Loyalty card not found.");
+
+                // Tenant admin yalnız öz tenant-ının tranzaksiyasını düzəldə bilər (null = Super Admin)
+                if (callerTenantId.HasValue && card.TenantId != callerTenantId.Value)
+                    return ServiceResult<EditAmountResponseDto>.Fail("Bu əməliyyat sizin tenant-a aid deyil.");
+
+                var program = await _dbContext.Set<LoyaltyProgram>()
+                    .Include(p => p.CardTemplate)
+                    .FirstOrDefaultAsync(p => p.Id == card.LoyaltyProgramId, ct);
+                if (program == null)
+                    return ServiceResult<EditAmountResponseDto>.Fail("Loyalty program not found.");
+                if (program.CardTemplate == null)
+                    return ServiceResult<EditAmountResponseDto>.Fail("Card template not found for this program.");
+
+                var branding = await _tenantBrandingRepository.GetByTenantIdAsync(card.TenantId, ct);
+                var snapshot = Helpers.CardTemplateSnapshotFactory.From(
+                    program,
+                    program.CardTemplate,
+                    branding,
+                    (url) => url);
+
+                var oldAmount = tx.Amount;
+                var oldPoints = tx.Points;
+                decimal newPoints = oldPoints;
+                decimal delta = 0m;
+
+                // ProgressBased: xal = tam addım sayı, proporsional kəsr mənasızdır — yalnız məbləğ dəyişir.
+                // Köhnə məbləğ/xal 0 və ya null-dursa nisbət qurmaq mümkün deyil — yalnız məbləğ dəyişir.
+                if (snapshot.TemplateType != CardTemplateType.ProgressBased
+                    && oldAmount.HasValue && oldAmount.Value != 0m
+                    && oldPoints != 0m)
+                {
+                    // Proporsional: kəsr saxlanır, rounding yoxdur (mövcud earn axını ilə eyni)
+                    newPoints = oldPoints * newAmount / oldAmount.Value;
+                    delta = newPoints - oldPoints;
+                }
+
+                var beforePoints = card.CurrentPoints;
+                if (delta != 0m)
+                    BalanceMath.ApplyDelta(card, snapshot, delta);
+
+                tx.Amount = newAmount;
+                tx.Points = Math.Abs(newPoints);
+                // Bu tx-in tarixi balans izi düzəlir; sonrakı tranzaksiyaların BalanceAfter-i
+                // tarixən köhnəlmiş qalır — qəbul edilən kompromis.
+                tx.BalanceAfter += delta;
+                tx.Description =
+                    $"{tx.Description} (Məbləğ düzəlişi: {(oldAmount.HasValue ? oldAmount.Value.ToString("0.##") : "-")}→{newAmount:0.##}" +
+                    $"{(string.IsNullOrWhiteSpace(reason) ? "" : $". Səbəb: {reason}")})";
+
+                // LifetimePoints və lottery sayğacları qəsdən toxunulmur — düzəliş yeni alış deyil.
+                cardRepo.Update(card);
+                _unitOfWork.Repository<Transaction>().Update(tx);
+                _unitOfWork.Commit();
+
+                _logger.LogInformation(
+                    "Transaction amount edited. TxId={TxId}, CardId={CardId}, Amount {OldAmount}->{NewAmount}, " +
+                    "Points {OldPoints}->{NewPoints}, Balance {BeforeBalance}->{AfterBalance}",
+                    tx.Id, card.Id, oldAmount, newAmount, oldPoints, newPoints, beforePoints, card.CurrentPoints);
+
+                if (delta != 0m)
+                {
+                    try
+                    {
+                        var primaryPlatform = card.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
+                        await _walletRouter.RouteAsync(
+                            primaryPlatform,
+                            card.Id,
+                            snapshot,
+                            card.CurrentPoints,
+                            card.CurrentSteps,
+                            card.CompletedCycles,
+                            (int)delta,
+                            ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to update wallet pass after amount edit. CardId={CardId}", card.Id);
+                    }
+                }
+
+                return ServiceResult<EditAmountResponseDto>.Ok(new EditAmountResponseDto
+                {
+                    OldAmount = oldAmount,
+                    NewAmount = newAmount,
+                    OldPoints = oldPoints,
+                    NewPoints = tx.Points,
+                    PointsDelta = delta,
+                    UpdatedBalance = card.CurrentPoints
+                }, "Amount updated.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to edit transaction amount. TransactionId={TransactionId}", transactionId);
+                return ServiceResult<EditAmountResponseDto>.Fail($"Failed to edit transaction amount: {ex.Message}");
+            }
+        }
+
         public async Task<ServiceResult> ApproveFlaggedAsync(int transactionId, int? callerBranchId, CancellationToken ct = default)
         {
             try
