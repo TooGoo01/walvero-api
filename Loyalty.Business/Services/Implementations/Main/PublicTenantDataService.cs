@@ -103,7 +103,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     TwitterUrl = b.TwitterUrl,
                     YelpUrl = b.YelpUrl,
                     ThreadsUrl = b.ThreadsUrl,
-                    PinterestUrl = b.PinterestUrl
+                    PinterestUrl = b.PinterestUrl,
+                    WoltUrl = b.WoltUrl,
+                    BoltFoodUrl = b.BoltFoodUrl
                 })
                 .ToListAsync(ct);
 
@@ -217,6 +219,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 YelpUrl = tenant.YelpUrl,
                 ThreadsUrl = tenant.ThreadsUrl,
                 PinterestUrl = tenant.PinterestUrl,
+                WoltUrl = tenant.WoltUrl,
+                BoltFoodUrl = tenant.BoltFoodUrl,
                 Branding = tenant.Branding != null
                     ? new TenantConfigBrandingDto
                     {
@@ -270,6 +274,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     YelpUrl = branchEntity.YelpUrl,
                     ThreadsUrl = branchEntity.ThreadsUrl,
                     PinterestUrl = branchEntity.PinterestUrl,
+                    WoltUrl = branchEntity.WoltUrl,
+                    BoltFoodUrl = branchEntity.BoltFoodUrl,
                     WebsiteUrl = branchEntity.WebsiteUrl,
                     LocationUrl = branchEntity.LocationUrl,
                     WazeLocationUrl = branchEntity.WazeLocationUrl,

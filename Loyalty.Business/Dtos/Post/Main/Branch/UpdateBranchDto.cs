@@ -36,6 +36,9 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
         [MaxLength(100)]
         public string? AppDisplayName { get; set; } // null = dəyişmə; boş string = sil (format-a qayıt)
 
+        // AI köməkçi axtarışı üçün açar sözlər (vergüllə). null = dəyişmə.
+        public string? Keywords { get; set; }
+
         [MaxLength(500)] public string? LocationUrl { get; set; }
         [MaxLength(500)] public string? WazeLocationUrl { get; set; }
         [MaxLength(500)] public string? MenuUrl { get; set; }
@@ -52,6 +55,8 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
         [MaxLength(500)] public string? YelpUrl { get; set; }
         [MaxLength(500)] public string? ThreadsUrl { get; set; }
         [MaxLength(500)] public string? PinterestUrl { get; set; }
+        [MaxLength(500)] public string? WoltUrl { get; set; }
+        [MaxLength(500)] public string? BoltFoodUrl { get; set; }
 
         [MaxLength(20)] public string? BackgroundColor { get; set; }
         [MaxLength(20)] public string? ForegroundColor { get; set; }

@@ -81,6 +81,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<HappyHoursWindow> HappyHoursWindows { get; set; }
         public DbSet<TelegramAdminLink> TelegramAdminLinks { get; set; }
         public DbSet<TelegramLinkCode> TelegramLinkCodes { get; set; }
+        public DbSet<LinkClickEvent> LinkClickEvents { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1137,6 +1138,8 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(b => b.WhatsAppUrl).HasMaxLength(500);
                 entity.Property(b => b.TelegramUrl).HasMaxLength(500);
                 entity.Property(b => b.LinkedInUrl).HasMaxLength(500);
+                entity.Property(b => b.WoltUrl).HasMaxLength(500);
+                entity.Property(b => b.BoltFoodUrl).HasMaxLength(500);
 
                 entity.HasIndex(b => b.TenantId);
                 entity.HasIndex(b => new { b.TenantId, b.IsActive });
@@ -1145,6 +1148,24 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(t => t.Branches)
                     .HasForeignKey(b => b.TenantId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== LINK CLICK EVENT (anonim analitika) ====
+            modelBuilder.Entity<LinkClickEvent>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.LinkType).IsRequired().HasMaxLength(50);
+                entity.HasIndex(e => new { e.TenantId, e.LinkType, e.ClickedAt });
+
+                entity.HasOne(e => e.Tenant)
+                    .WithMany()
+                    .HasForeignKey(e => e.TenantId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(e => e.Branch)
+                    .WithMany()
+                    .HasForeignKey(e => e.BranchId)
+                    .OnDelete(DeleteBehavior.NoAction);
             });
 
             // ==== ROOM ====

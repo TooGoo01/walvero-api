@@ -132,6 +132,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.YelpUrl != null) branch.YelpUrl = dto.YelpUrl;
             if (dto.ThreadsUrl != null) branch.ThreadsUrl = dto.ThreadsUrl;
             if (dto.PinterestUrl != null) branch.PinterestUrl = dto.PinterestUrl;
+            if (dto.WoltUrl != null) branch.WoltUrl = dto.WoltUrl;
+            if (dto.BoltFoodUrl != null) branch.BoltFoodUrl = dto.BoltFoodUrl;
             if (dto.BackgroundColor != null) branch.BackgroundColor = dto.BackgroundColor;
             if (dto.ForegroundColor != null) branch.ForegroundColor = dto.ForegroundColor;
 
@@ -183,6 +185,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 };
 
             if (dto.HideInApp.HasValue) branch.HideInApp = dto.HideInApp.Value;
+            if (dto.Keywords != null) branch.Keywords = dto.Keywords;
             // Boş string göndərilsə sahə silinir (app "Branch — Tenant" formatına qayıdır)
             if (dto.AppDisplayName != null)
                 branch.AppDisplayName = string.IsNullOrWhiteSpace(dto.AppDisplayName)

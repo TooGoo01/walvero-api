@@ -208,6 +208,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ProgramId = program?.Id,
                 ProgramDescription = program?.Description,
                 RewardDescription = cardTemplate?.RewardDescription,
+                IsLotteryEnabled = program?.IsLotteryEnabled ?? false,
 
                 // Card Template Images (from CardTemplate)
                 GoogleLogoUrl = ToAbsoluteUrl(cardTemplate?.GoogleLogoUrl, baseUrl),
@@ -229,6 +230,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 YelpUrl = tenant.YelpUrl,
                 ThreadsUrl = tenant.ThreadsUrl,
                 PinterestUrl = tenant.PinterestUrl,
+                WoltUrl = tenant.WoltUrl,
+                BoltFoodUrl = tenant.BoltFoodUrl,
                 BackgroundColor = cardTemplate?.BackgroundColor ?? tenant.Branding?.BackgroundColor ?? "#FFFFFF",
                 ForegroundColor = cardTemplate?.ForegroundColor ?? tenant.Branding?.TextColor ?? "#000000",
                 CashbackPercent = cashbackPercent,

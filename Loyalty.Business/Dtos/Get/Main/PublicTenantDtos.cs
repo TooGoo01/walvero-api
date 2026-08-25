@@ -60,6 +60,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? YelpUrl { get; set; }
         public string? ThreadsUrl { get; set; }
         public string? PinterestUrl { get; set; }
+        public string? WoltUrl { get; set; }
+        public string? BoltFoodUrl { get; set; }
     }
 
     public class TenantConfigWifiDto
@@ -112,6 +114,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? YelpUrl { get; set; }
         public string? ThreadsUrl { get; set; }
         public string? PinterestUrl { get; set; }
+        public string? WoltUrl { get; set; }
+        public string? BoltFoodUrl { get; set; }
 
         // Branding
         public TenantConfigBrandingDto? Branding { get; set; }
@@ -156,6 +160,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? YelpUrl { get; set; }
         public string? ThreadsUrl { get; set; }
         public string? PinterestUrl { get; set; }
+        public string? WoltUrl { get; set; }
+        public string? BoltFoodUrl { get; set; }
         public string? WebsiteUrl { get; set; }
         public string? LocationUrl { get; set; }
         public string? WazeLocationUrl { get; set; }

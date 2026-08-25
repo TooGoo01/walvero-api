@@ -30,6 +30,8 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? YelpUrl { get; set; }
         public string? ThreadsUrl { get; set; }
         public string? PinterestUrl { get; set; }
+        public string? WoltUrl { get; set; }
+        public string? BoltFoodUrl { get; set; }
         public bool ShowOnHome { get; set; } = false;
         public bool NearbyBroadcast { get; set; } = false;
         public bool AcceptAnonymous { get; set; } = false;
@@ -38,6 +40,8 @@ namespace Loyalty.Business.Dtos.Post.Main
         public bool IsHasMenu { get; set; } = false;
         public decimal? Latitude { get; set; }
         public decimal? Longitude { get; set; }
+        // AI köməkçi axtarışı üçün açar sözlər (vergüllə). null = dəyişmə.
+        public string? Keywords { get; set; }
         public List<int> admins { get; set; }
         public int categoryId { get; set; }
         public bool RequireConfirmation { get; set; } = true;

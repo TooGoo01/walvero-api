@@ -26,6 +26,11 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool HideInApp { get; set; } = false; // App listinqlərindən gizlədir; slug URL, skaner, POS, tranzaksiyalar işləyir (IsActive=false-dan fərqli)
         public string? AppDisplayName { get; set; } // Doludursa app kartlarında "Branch — Tenant" əvəzinə yalnız bu göstərilir
 
+        // AI köməkçi (place-discovery) axtarış üçün admin təyin etdiyi açar sözlər: cuisine ("burger"),
+        // xüsusiyyət ("qəlyan","wifi"), ərazi adları ("Nizami","Fəvvarələr"). Vergüllə ayrılmış; contains-match.
+        // Filial-səviyyə əlavə/override — tenant Keywords ilə birləşdirilir.
+        public string? Keywords { get; set; }
+
         // Optional contact / social links � same shape as Tenant
         public string? LocationUrl { get; set; }
         public string? WazeLocationUrl { get; set; }
@@ -43,6 +48,8 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? YelpUrl { get; set; }
         public string? ThreadsUrl { get; set; }
         public string? PinterestUrl { get; set; }
+        public string? WoltUrl { get; set; }
+        public string? BoltFoodUrl { get; set; }
 
         // Branch-a aid brand renkleri. Boshdursa LoyaltyProgram CardTemplate-den fallback olunur.
         public string? BackgroundColor { get; set; }

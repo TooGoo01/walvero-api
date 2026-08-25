@@ -29,11 +29,14 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? YelpUrl { get; set; }
         public string? ThreadsUrl { get; set; }
         public string? PinterestUrl { get; set; }
+        public string? WoltUrl { get; set; }
+        public string? BoltFoodUrl { get; set; }
         public bool ShowOnHome { get; set; } = false;
         public bool NearbyBroadcast { get; set; } = false;
         public bool IsHidden { get; set; } = false;
         public bool IsHasMenu { get; set; } = false;
         public bool AcceptAnonymous { get; set; } = false;
+        public string? Keywords { get; set; } // AI köməkçi axtarışı üçün açar sözlər (vergüllə)
         public bool RequireConfirmation { get; set; } = true;
         public int ConfirmationTtlMinutes { get; set; } = 10;
         public int? categoryId { get; set; }

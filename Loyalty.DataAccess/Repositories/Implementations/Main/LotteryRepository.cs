@@ -85,6 +85,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         public async Task<LotteryDraw?> GetNextScheduledDrawAsync(int tenantId, int programId)
         {
             return await _context.LotteryDraws
+                .Include(d => d.Prizes)
                 .Where(d => d.TenantId == tenantId
                     && d.LoyaltyProgramId == programId
                     && d.Status == LotteryDrawStatus.Pending

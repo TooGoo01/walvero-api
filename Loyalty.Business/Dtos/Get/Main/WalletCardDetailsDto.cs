@@ -34,6 +34,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? ProgramName { get; set; }
         public string? ProgramDescription { get; set; }
         public string? RewardDescription { get; set; }
+        // Lotereya app-da bu tenant üçün aktivdirsə true — mobil app lotereya kartını şərtləndirir.
+        public bool IsLotteryEnabled { get; set; }
         public string? GoogleLogoUrl { get; set; }
         public string? StripImageUrl { get; set; }
         public string? LocationUrl { get; set; }
@@ -52,6 +54,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? YelpUrl { get; set; }
         public string? ThreadsUrl { get; set; }
         public string? PinterestUrl { get; set; }
+        public string? WoltUrl { get; set; }
+        public string? BoltFoodUrl { get; set; }
         public string BackgroundColor { get; set; } = "#FFFFFF";
         public string ForegroundColor { get; set; } = "#000000";
         public decimal? CashbackPercent { get; set; }

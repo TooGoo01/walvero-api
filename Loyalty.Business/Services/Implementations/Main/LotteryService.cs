@@ -198,6 +198,31 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, dtos);
         }
 
+        public async Task<ServiceResult> GetMyLotteryInfoAsync(int tenantId, int programId, int cardId)
+        {
+            var program = await _unitOfWork.Repository<LoyaltyProgram>().GetByIdAsync(programId);
+            var isEnabled = program?.IsLotteryEnabled ?? false;
+
+            var dto = new MyLotteryInfoDto { IsEnabled = isEnabled };
+
+            if (!isEnabled)
+                return new ServiceResult(true, dto);
+
+            var nextDraw = await _lotteryRepository.GetNextScheduledDrawAsync(tenantId, programId);
+            if (nextDraw != null)
+                dto.NextDraw = MapDrawDto(nextDraw);
+
+            dto.MyActiveTicketCount = await _lotteryRepository.GetActiveTicketCountByCardIdAsync(cardId);
+
+            var allTickets = await _lotteryRepository.GetTicketsByCardIdAsync(cardId);
+            dto.MyTotalTicketCount = allTickets.Count();
+
+            var wins = await _lotteryRepository.GetWinsByCardIdAsync(cardId);
+            dto.MyWins = wins.Select(t => MapTicketDto(t)).ToList();
+
+            return new ServiceResult(true, dto);
+        }
+
         public async Task<ServiceResult> DeletePrizeAsync(int prizeId)
         {
             var prize = await _unitOfWork.Repository<LotteryPrize>().GetByIdAsync(prizeId);

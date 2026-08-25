@@ -115,6 +115,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IPasskitService, PasskitService>();
             services.AddScoped<ITransactionService, TransactionService>();
             services.AddScoped<IStatisticsService, StatisticsService>();
+            services.AddScoped<IAnalyticsService, AnalyticsService>();
             services.AddScoped<IFilePathResolver, FilePathResolver>();
             services.AddScoped<IUserCardService, UserCardService>();
             services.AddScoped<IDeviceTokenService, DeviceTokenService>();
@@ -169,6 +170,15 @@ namespace Loyalty.Business.Services
             services.AddScoped<IPosSyncService, PosSyncService>();
             services.AddScoped<IBranchService, BranchService>();
             services.AddScoped<IRoomService, RoomService>();
+
+            // === AI place-discovery + şəxsi hesab köməkçisi (chatbot) ===
+            services.AddScoped<IPlaceSearchService, PlaceSearchService>();
+            services.AddScoped<ICustomerAssistantTools, CustomerAssistantTools>();
+            services.AddScoped<IPlaceAssistantService, AzureOpenAiPlaceAssistantService>();
+            services.AddHttpClient(AzureOpenAiPlaceAssistantService.HttpClientName, c =>
+            {
+                c.Timeout = TimeSpan.FromSeconds(60);
+            });
 
             services.AddSignalR(options =>
             {

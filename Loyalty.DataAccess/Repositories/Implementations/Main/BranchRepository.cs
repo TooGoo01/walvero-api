@@ -32,6 +32,25 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .FirstOrDefaultAsync(b => b.Id == id, ct);
         }
 
+        public async Task<List<Branch>> GetDiscoverableAsync(CancellationToken ct = default)
+        {
+            // Görünən filiallar: filial aktiv & app-da gizli deyil, tenant aktiv & gizli/silinmiş/app-da gizli deyil.
+            // Tenant qrafiki (Category, Branding, TenantLocation) keyword/menu üçün daxil edilir.
+            return await GetAsQueryable()
+                .AsNoTracking()
+                .Include(b => b.Tenant!).ThenInclude(t => t!.Category)
+                .Include(b => b.Tenant!).ThenInclude(t => t!.Branding)
+                .Include(b => b.Tenant!).ThenInclude(t => t!.TenantLocation)
+                .Where(b => b.IsActive
+                    && !b.HideInApp
+                    && b.Tenant != null
+                    && b.Tenant.IsActive
+                    && !b.Tenant.IsHidden
+                    && !b.Tenant.IsDeleted
+                    && !b.Tenant.HideInApp)
+                .ToListAsync(ct);
+        }
+
         public async Task<IEnumerable<Branch>> GetNearbyAsync(int tenantId, double lat, double lng, double radiusKm, CancellationToken ct = default)
         {
             var latRad = lat * Math.PI / 180.0;

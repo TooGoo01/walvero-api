@@ -331,6 +331,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                                 YelpUrl = b.YelpUrl,
                                 ThreadsUrl = b.ThreadsUrl,
                                 PinterestUrl = b.PinterestUrl,
+                                WoltUrl = b.WoltUrl,
+                                BoltFoodUrl = b.BoltFoodUrl,
                                 BackgroundColor = b.BackgroundColor,
                                 ForegroundColor = b.ForegroundColor
                             })
@@ -484,6 +486,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (dto.YelpUrl != null) category.YelpUrl = dto.YelpUrl;
                 if (dto.ThreadsUrl != null) category.ThreadsUrl = dto.ThreadsUrl;
                 if (dto.PinterestUrl != null) category.PinterestUrl = dto.PinterestUrl;
+                if (dto.WoltUrl != null) category.WoltUrl = dto.WoltUrl;
+                if (dto.BoltFoodUrl != null) category.BoltFoodUrl = dto.BoltFoodUrl;
                 category.ShowOnHome = dto.ShowOnHome;
                 category.NearbyBroadcast = dto.NearbyBroadcast;
                 category.AcceptAnonymus = dto.AcceptAnonymous;
@@ -492,6 +496,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 category.IsHasMenu = dto.IsHasMenu;
                 category.Latitude = dto.Latitude;
                 category.Longitude = dto.Longitude;
+                if (dto.Keywords != null) category.Keywords = dto.Keywords;
                 category.LinkedInUrl = dto.LinkedInUrl;
                 category.WazeLocationUrl = dto.WazeLocationUrl;
                 if (dto.MenuUrl != null)

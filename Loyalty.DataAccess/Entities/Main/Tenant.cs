@@ -72,6 +72,10 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool IsHasMenu { get; set; } = false; // Menyusu olan tenant-lar public siyahıda görünür
         public int? DiscoverSortOrder { get; set; } // Admin manuel discover sıralama. null → sondadır
 
+        // AI köməkçi (place-discovery) axtarış üçün admin təyin etdiyi açar sözlər: cuisine ("burger"),
+        // xüsusiyyət ("qəlyan","24 saat"), ərazi adları. Vergüllə ayrılmış; contains-match. Filiallara da inherit.
+        public string? Keywords { get; set; }
+
         // (Opsional) OTP kanal konfiqi
         public string? ConfirmationChannel { get; set; }
         public string? LocationUrl { get; set; }
@@ -89,6 +93,8 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? YelpUrl { get; set; } = string.Empty;
         public string? ThreadsUrl { get; set; } = string.Empty;
         public string? PinterestUrl { get; set; } = string.Empty;
+        public string? WoltUrl { get; set; } = string.Empty;
+        public string? BoltFoodUrl { get; set; } = string.Empty;
 
         public string? MenuUrl { get; set; } = string.Empty;
 

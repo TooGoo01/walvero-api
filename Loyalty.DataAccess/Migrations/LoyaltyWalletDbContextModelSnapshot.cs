@@ -166,6 +166,10 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("BannerVideoUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("BoltFoodUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("DefaultMenuView")
                         .HasColumnType("nvarchar(max)");
 
@@ -206,6 +210,9 @@ namespace Loyalty.DataAccess.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
+
+                    b.Property<string>("Keywords")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal?>("Latitude")
                         .HasColumnType("decimal(9,6)");
@@ -337,6 +344,10 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("WhatsAppUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("WoltUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
@@ -1084,6 +1095,52 @@ namespace Loyalty.DataAccess.Migrations
                         .IsUnique();
 
                     b.ToTable("IntegrationTypes", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LinkClickEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("BranchId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ClickedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LinkType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("TenantId", "LinkType", "ClickedAt");
+
+                    b.ToTable("LinkClickEvents");
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LotteryDraw", b =>
@@ -2711,6 +2768,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<bool>("AllowNonFiscalReceipts")
                         .HasColumnType("bit");
 
+                    b.Property<string>("BoltFoodUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("CompanyName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -2781,6 +2841,9 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<bool>("IsServiceSuspended")
                         .HasColumnType("bit");
+
+                    b.Property<string>("Keywords")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal?>("Latitude")
                         .HasPrecision(9, 6)
@@ -2893,6 +2956,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("WhatsAppUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("WoltUrl")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("YelpUrl")
@@ -4229,6 +4295,24 @@ namespace Loyalty.DataAccess.Migrations
                         .IsRequired();
 
                     b.Navigation("CardTemplate");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LinkClickEvent", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.LotteryDraw", b =>

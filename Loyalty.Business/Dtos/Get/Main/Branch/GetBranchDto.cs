@@ -20,6 +20,7 @@ namespace Loyalty.Business.Dtos.Get.Main.Branch
         public bool IsMainBranch { get; set; }
         public bool HideInApp { get; set; }
         public string? AppDisplayName { get; set; }
+        public string? Keywords { get; set; } // AI köməkçi axtarış açar sözləri
         public bool IsActive { get; set; }
         public DateTime RegDate { get; set; }
         public int StaffCount { get; set; }
@@ -41,6 +42,8 @@ namespace Loyalty.Business.Dtos.Get.Main.Branch
         public string? YelpUrl { get; set; }
         public string? ThreadsUrl { get; set; }
         public string? PinterestUrl { get; set; }
+        public string? WoltUrl { get; set; }
+        public string? BoltFoodUrl { get; set; }
 
         public string? BackgroundColor { get; set; }
         public string? ForegroundColor { get; set; }
