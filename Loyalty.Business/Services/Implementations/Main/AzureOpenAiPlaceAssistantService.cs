@@ -245,7 +245,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 sb.AppendLine("İstifadəçi öz balansı/kartları haqda soruşarsa, ona hesabına daxil olmağı təklif et (login).");
             }
             sb.AppendLine("Yalnız tool-ların qaytardığı məlumatdan istifadə et. Uydurma.");
-            sb.AppendLine("İstifadəçinin dilində cavab ver (Azərbaycan/İngilis/Rus). Qısa və faydalı ol.");
+            sb.AppendLine("DİL: İstifadəçinin SON mesajının dilini avtomatik təyin et və HƏMİŞƏ məhz o dildə cavab ver.");
+            sb.AppendLine("Bu istənilən dil ola bilər (Azərbaycan, İngilis, Rus, Türk, Ərəb və s.) — yalnız AZ/EN/RU ilə məhdudlaşma.");
+            sb.AppendLine("İstifadəçi dili dəyişsə, sən də dərhal o dilə keç. Qısa və faydalı ol.");
             sb.AppendLine("Məkan tövsiyə edəndə adını və (varsa) ünvanı/məsafəni qeyd et; menyu app-da göstəriləcək.");
             return sb.ToString();
         }
