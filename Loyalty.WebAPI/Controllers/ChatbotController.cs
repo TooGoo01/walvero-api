@@ -44,9 +44,9 @@ namespace Loyalty.WebAPI.Controllers
         [AllowAnonymous]
         public IActionResult ConfigStatus([FromServices] Microsoft.Extensions.Configuration.IConfiguration cfg)
         {
-            var ep = cfg["AzureOpenAI:Endpoint"];
-            var key = cfg["AzureOpenAI:ApiKey"];
-            var dep = cfg["AzureOpenAI:Deployment"];
+            var ep = cfg["AzureOpenAI:Endpoint"] ?? cfg["AZURE_OPENAI_ENDPOINT"];
+            var key = cfg["AzureOpenAI:ApiKey"] ?? cfg["AZURE_OPENAI_API_KEY"];
+            var dep = cfg["AzureOpenAI:Deployment"] ?? cfg["AZURE_OPENAI_DEPLOYMENT"] ?? cfg["AZURE_OPENAI_DEPLOYMENT_NAME"];
             string? host = null;
             if (!string.IsNullOrWhiteSpace(ep))
                 host = Uri.TryCreate(ep, UriKind.Absolute, out var u) ? u.Host : "INVALID_URL_FORMAT";

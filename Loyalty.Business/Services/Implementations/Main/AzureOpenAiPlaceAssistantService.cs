@@ -49,10 +49,16 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<AssistantReply> AskAsync(ChatbotAskRequest request, CancellationToken ct = default)
         {
-            var endpoint = _config["AzureOpenAI:Endpoint"];
-            var apiKey = _config["AzureOpenAI:ApiKey"];
-            var deployment = _config["AzureOpenAI:Deployment"];
-            var apiVersion = _config["AzureOpenAI:ApiVersion"] ?? "2024-08-01-preview";
+            // Həm `AzureOpenAI__X` (ASP.NET hierarxiya), həm də flat `AZURE_OPENAI_X`
+            // (yaygın env-var konvensiyası) adlarını dəstəklə.
+            var endpoint = _config["AzureOpenAI:Endpoint"] ?? _config["AZURE_OPENAI_ENDPOINT"];
+            var apiKey = _config["AzureOpenAI:ApiKey"] ?? _config["AZURE_OPENAI_API_KEY"];
+            var deployment = _config["AzureOpenAI:Deployment"]
+                ?? _config["AZURE_OPENAI_DEPLOYMENT"]
+                ?? _config["AZURE_OPENAI_DEPLOYMENT_NAME"];
+            var apiVersion = _config["AzureOpenAI:ApiVersion"]
+                ?? _config["AZURE_OPENAI_API_VERSION"]
+                ?? "2024-08-01-preview";
 
             if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(deployment))
             {
