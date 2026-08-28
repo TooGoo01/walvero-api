@@ -21,6 +21,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> Update(UpdateTenantDto dto);
         // Tenant-ı aktiv/deaktiv edir — deaktiv tenant-da bütün əməliyyatlar dayanır (TenantStatusGuard).
         Task<ServiceResult> SetActiveAsync(int id, bool active);
+        // AI axtarış açar sözlərini (Tenant.Keywords) tək endpoint-lə yenilə (super-admin AI səhifəsi).
+        Task<ServiceResult> SetKeywordsAsync(int id, string? keywords);
         // Ödəniş suspensiyası — display-only mask + Google/Apple pass batch refresh. Data dəyişmir.
         Task<ServiceResult> SetServiceSuspendedAsync(int id, bool suspended, string? message = null);
         Task<ServiceResult> Delete(int id);

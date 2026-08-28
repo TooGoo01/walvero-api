@@ -148,6 +148,22 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, new { id, isDeleted = true });
         }
 
+        public async Task<ServiceResult> SetKeywordsAsync(int id, string? keywords)
+        {
+            var tenant = await _dbContext.Tenants.FirstOrDefaultAsync(t => t.Id == id);
+            if (tenant == null)
+                return new ServiceResult(false, "Tenant tapılmadı");
+
+            tenant.Keywords = string.IsNullOrWhiteSpace(keywords) ? null : keywords.Trim();
+            await _dbContext.SaveChangesAsync();
+
+            // AI axtarış cache-i (discoverable branches) dərhal təzələnsin
+            InvalidateAllFilterCache();
+            _cache.Remove("assistant:discoverable-branches");
+
+            return new ServiceResult(true, new { id, keywords = tenant.Keywords });
+        }
+
         public async Task<ServiceResult> SetActiveAsync(int id, bool active)
         {
             var tenant = await _dbContext.Tenants.FirstOrDefaultAsync(t => t.Id == id);

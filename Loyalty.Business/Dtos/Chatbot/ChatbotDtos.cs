@@ -60,6 +60,26 @@ namespace Loyalty.Business.Dtos.Chatbot
         public string? ExternalMenuUrl { get; set; } // fallback xarici link
     }
 
+    /// <summary>search_menu_items tool sorğusu — yeməyə/məhsula görə məkan axtarışı.</summary>
+    public class MenuItemSearchQuery
+    {
+        public string[] Keywords { get; set; } = System.Array.Empty<string>(); // yemək adı: "lazanya", "vegan burger"
+        public double? Lat { get; set; }
+        public double? Lng { get; set; }
+        public double? RadiusKm { get; set; }
+        public int Take { get; set; } = 8;
+    }
+
+    /// <summary>Menyu axtarışı nəticəsi: uyğun yemək + onu satan məkan (Flutter kartı = Place).</summary>
+    public class MenuItemResultDto
+    {
+        public PlaceResultDto Place { get; set; } = new();
+        public string DishName { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public double Price { get; set; }
+        public string? CurrencySign { get; set; }
+    }
+
     // ---- Şəxsi hesab tool-larının nəticələri (AI-a JSON kimi qaytarılır) ----
     public class MyCardDto
     {

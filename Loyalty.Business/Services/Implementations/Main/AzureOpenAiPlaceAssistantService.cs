@@ -25,6 +25,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IHttpClientFactory _httpFactory;
         private readonly IConfiguration _config;
         private readonly IPlaceSearchService _placeSearch;
+        private readonly IMenuSearchService _menuSearch;
         private readonly ICustomerAssistantTools _customerTools;
         private readonly ILogger<AzureOpenAiPlaceAssistantService> _logger;
 
@@ -34,9 +35,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             IHttpClientFactory httpFactory,
             IConfiguration config,
             IPlaceSearchService placeSearch,
+            IMenuSearchService menuSearch,
             ICustomerAssistantTools customerTools,
             ILogger<AzureOpenAiPlaceAssistantService> logger)
         {
+            _menuSearch = menuSearch;
             _httpFactory = httpFactory;
             _config = config;
             _placeSearch = placeSearch;
@@ -181,6 +184,33 @@ namespace Loyalty.Business.Services.Implementations.Main
                         }));
                     }
 
+                    case "search_menu_items":
+                    {
+                        var mq = new MenuItemSearchQuery
+                        {
+                            Keywords = args["keywords"]?.AsArray()?
+                                .Select(n => GetString(n)).Where(s => !string.IsNullOrEmpty(s)).Select(s => s!).ToArray()
+                                ?? Array.Empty<string>(),
+                            RadiusKm = GetDouble(args["radiusKm"]),
+                            Lat = request.Lat,
+                            Lng = request.Lng,
+                            Take = 8
+                        };
+                        var hits = await _menuSearch.SearchAsync(mq, ct);
+
+                        foreach (var h in hits)
+                            if (!collectedPlaces.Any(x => x.BranchId == h.Place.BranchId))
+                                collectedPlaces.Add(h.Place);
+
+                        return Serialize(hits.Select(h => new
+                        {
+                            h.Place.TenantId, h.Place.BranchId, place = h.Place.Name,
+                            h.Place.Address, h.Place.DistanceKm,
+                            dish = h.DishName, h.Description, h.Price, h.CurrencySign,
+                            menuInApp = h.Place.Menu.InApp
+                        }));
+                    }
+
                     case "get_my_cards":
                     case "get_my_balance":
                     {
@@ -233,6 +263,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             sb.AppendLine("Sən Walvero loyallıq platformasının köməkçisisən.");
             sb.AppendLine("İstifadəçilərə platformadakı məkanları (restoran/kafe/və s.) tapmaqda kömək edirsən.");
             sb.AppendLine("Məkan tapmaq üçün HƏMİŞƏ `search_places` tool-unu çağır — heç vaxt məkan uydurma.");
+            sb.AppendLine("İstifadəçi konkret YEMƏK/məhsul adı soruşarsa (məs. 'kim lazanya satır', 'vegan burger var?') `search_menu_items` çağır.");
             sb.AppendLine("İstifadəçi 'mənə yaxın' / 'yaxınlıqda' desə `radiusKm` (məs. 5) ötür.");
             if (isAuth)
             {
@@ -272,6 +303,23 @@ namespace Loyalty.Business.Services.Implementations.Main
                             ["categoryName"] = new JsonObject { ["type"] = "string", ["description"] = "Biznes kateqoriyası, məs. Restoran, Kafe." },
                             ["city"] = new JsonObject { ["type"] = "string" },
                             ["radiusKm"] = new JsonObject { ["type"] = "number", ["description"] = "Yalnız yaxınlıq istənəndə (məs. 'mənə yaxın'). Kilometrlə." }
+                        },
+                        ["required"] = new JsonArray { "keywords" }
+                    }),
+                Fn("search_menu_items",
+                    "Konkret YEMƏK/məhsul adına görə onu menyusunda satan məkanları tap (məs. 'lazanya', 'vegan burger', 'sushi'). İstifadəçi məkanı deyil, yeməyi soruşanda bunu işlət.",
+                    new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["keywords"] = new JsonObject
+                            {
+                                ["type"] = "array",
+                                ["items"] = new JsonObject { ["type"] = "string" },
+                                ["description"] = "Yemək/məhsul adı sözləri, məs. ['lazanya'] və ya ['vegan','burger']."
+                            },
+                            ["radiusKm"] = new JsonObject { ["type"] = "number", ["description"] = "Yalnız yaxınlıq istənəndə. Kilometrlə." }
                         },
                         ["required"] = new JsonArray { "keywords" }
                     })

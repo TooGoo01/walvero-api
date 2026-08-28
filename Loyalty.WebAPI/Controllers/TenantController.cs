@@ -190,6 +190,18 @@ namespace Loyalty.WebAPI.Controllers
             return BadRequest(result);
         }
 
+        /// <summary>AI axtarış açar sözlərini (Tenant.Keywords) tək sahə kimi yenilə. Super-admin AI səhifəsi.</summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> SetKeywords([FromBody] SetKeywordsDto dto)
+        {
+            var result = await _tenantService.SetKeywordsAsync(dto.Id, dto.Keywords);
+            if (!result.Success)
+                return BadRequest(result);
+            return Ok(result);
+        }
+
         [HttpPost]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]

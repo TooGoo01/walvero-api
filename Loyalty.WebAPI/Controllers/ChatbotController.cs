@@ -1,6 +1,7 @@
 using Loyalty.Business.Dtos.Chatbot;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
@@ -16,6 +17,7 @@ namespace Loyalty.WebAPI.Controllers
     public class ChatbotController : ControllerBase
     {
         private readonly IPlaceAssistantService _assistant;
+        private readonly IPlaceSearchService _placeSearch;
         private readonly ITenantProvider _tenantProvider;
         private readonly IMemoryCache _cache;
 
@@ -24,12 +26,45 @@ namespace Loyalty.WebAPI.Controllers
 
         public ChatbotController(
             IPlaceAssistantService assistant,
+            IPlaceSearchService placeSearch,
             ITenantProvider tenantProvider,
             IMemoryCache cache)
         {
             _assistant = assistant;
+            _placeSearch = placeSearch;
             _tenantProvider = tenantProvider;
             _cache = cache;
+        }
+
+        /// <summary>
+        /// Super-admin AI səhifəsi — keyword-lərin necə işlədiyini test et (LLM-siz, birbaşa
+        /// PlaceSearchService). Azure OpenAI qoşulmasa belə işləyir.
+        /// </summary>
+        [HttpGet]
+        [Authorize(
+            AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
+            Policy = "SuperAdminOnly")]
+        public async Task<IActionResult> TestSearch(
+            [FromQuery] string q,
+            [FromQuery] double? lat,
+            [FromQuery] double? lng,
+            [FromQuery] double? radiusKm,
+            CancellationToken ct)
+        {
+            var keywords = (q ?? string.Empty)
+                .Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+
+            var query = new Loyalty.Business.Dtos.Chatbot.PlaceSearchQuery
+            {
+                Keywords = keywords,
+                Lat = lat,
+                Lng = lng,
+                RadiusKm = radiusKm,
+                Take = 12
+            };
+
+            var places = await _placeSearch.SearchAsync(query, ct);
+            return Ok(new ServiceResult(true, places));
         }
 
         /// <summary>
