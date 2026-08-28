@@ -37,6 +37,31 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
+        /// DİAQNOSTİKA — AzureOpenAI config-in App Service-də düzgün gəldiyini yoxlayır.
+        /// Açar dəyərini SIZDIRMIR: yalnız var/yox + uzunluq + endpoint host + deployment adı.
+        /// </summary>
+        [HttpGet]
+        [AllowAnonymous]
+        public IActionResult ConfigStatus([FromServices] Microsoft.Extensions.Configuration.IConfiguration cfg)
+        {
+            var ep = cfg["AzureOpenAI:Endpoint"];
+            var key = cfg["AzureOpenAI:ApiKey"];
+            var dep = cfg["AzureOpenAI:Deployment"];
+            string? host = null;
+            if (!string.IsNullOrWhiteSpace(ep))
+                host = Uri.TryCreate(ep, UriKind.Absolute, out var u) ? u.Host : "INVALID_URL_FORMAT";
+            return Ok(new
+            {
+                endpointSet = !string.IsNullOrWhiteSpace(ep),
+                endpointHost = host,
+                apiKeySet = !string.IsNullOrWhiteSpace(key),
+                apiKeyLength = key?.Length ?? 0,
+                deploymentSet = !string.IsNullOrWhiteSpace(dep),
+                deployment = dep
+            });
+        }
+
+        /// <summary>
         /// Super-admin AI səhifəsi — keyword-lərin necə işlədiyini test et (LLM-siz, birbaşa
         /// PlaceSearchService). Azure OpenAI qoşulmasa belə işləyir.
         /// </summary>
