@@ -63,6 +63,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new AssistantReply { Reply = "AI köməkçi hazırda əlçatan deyil." };
             }
 
+            // Endpoint-i baza host-a normalize et — istifadəçi tam URL (path/query ilə)
+            // yapışdırsa belə yalnız `scheme://host` istifadə olunur (cüt-yol 404 qarşısı).
+            if (Uri.TryCreate(endpoint, UriKind.Absolute, out var epUri))
+                endpoint = $"{epUri.Scheme}://{epUri.Authority}";
+
             bool isAuth = _customerTools.IsAuthenticated;
 
             var messages = new JsonArray
