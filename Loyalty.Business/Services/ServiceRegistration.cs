@@ -174,6 +174,7 @@ namespace Loyalty.Business.Services
             // === AI place-discovery + şəxsi hesab köməkçisi (chatbot) ===
             services.AddScoped<IPlaceSearchService, PlaceSearchService>();
             services.AddScoped<IMenuSearchService, MenuSearchService>();
+            services.AddScoped<IKeywordGenerationService, KeywordGenerationService>();
             services.AddScoped<ICustomerAssistantTools, CustomerAssistantTools>();
             services.AddScoped<IPlaceAssistantService, AzureOpenAiPlaceAssistantService>();
             services.AddHttpClient(AzureOpenAiPlaceAssistantService.HttpClientName, c =>

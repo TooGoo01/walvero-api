@@ -18,6 +18,7 @@ namespace Loyalty.WebAPI.Controllers
     {
         private readonly IPlaceAssistantService _assistant;
         private readonly IPlaceSearchService _placeSearch;
+        private readonly IKeywordGenerationService _keywordGen;
         private readonly ITenantProvider _tenantProvider;
         private readonly IMemoryCache _cache;
 
@@ -27,13 +28,28 @@ namespace Loyalty.WebAPI.Controllers
         public ChatbotController(
             IPlaceAssistantService assistant,
             IPlaceSearchService placeSearch,
+            IKeywordGenerationService keywordGen,
             ITenantProvider tenantProvider,
             IMemoryCache cache)
         {
             _assistant = assistant;
             _placeSearch = placeSearch;
+            _keywordGen = keywordGen;
             _tenantProvider = tenantProvider;
             _cache = cache;
+        }
+
+        /// <summary>Super-admin: tenant üçün AI ilə açar sözləri generasiya et (redaktəyə təklif).</summary>
+        [HttpPost]
+        [Authorize(
+            AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
+            Policy = "SuperAdminOnly")]
+        public async Task<IActionResult> GenerateKeywords([FromQuery] int tenantId, CancellationToken ct)
+        {
+            var result = await _keywordGen.GenerateForTenantAsync(tenantId, ct);
+            if (!result.Success)
+                return BadRequest(result);
+            return Ok(result);
         }
 
         /// <summary>
