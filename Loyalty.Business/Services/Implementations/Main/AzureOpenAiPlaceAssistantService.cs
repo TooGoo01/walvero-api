@@ -110,9 +110,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (!resp.IsSuccessStatusCode)
                 {
                     _logger.LogError("AzureOpenAI error {Status}: {Body}", (int)resp.StatusCode, json);
-                    // MÜVƏQQƏTİ DİAQNOSTİKA: real Azure xətasını + istəyin URL-ini göstər.
-                    var detail = json.Length > 300 ? json.Substring(0, 300) : json;
-                    return new AssistantReply { Reply = $"[diag] {(int)resp.StatusCode} url={url} :: {detail}" };
+                    return new AssistantReply { Reply = "AI köməkçidə müvəqqəti xəta oldu, bir azdan yenidən yoxlayın." };
                 }
 
                 JsonNode? root = JsonNode.Parse(json);

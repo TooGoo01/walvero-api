@@ -37,53 +37,6 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
-        /// DİAQNOSTİKA — AzureOpenAI config-in App Service-də düzgün gəldiyini yoxlayır.
-        /// Açar dəyərini SIZDIRMIR: yalnız var/yox + uzunluq + endpoint host + deployment adı.
-        /// </summary>
-        [HttpGet]
-        [AllowAnonymous]
-        public IActionResult ConfigStatus([FromServices] Microsoft.Extensions.Configuration.IConfiguration cfg)
-        {
-            static string? Pick(Microsoft.Extensions.Configuration.IConfiguration c, params string[] keys)
-            {
-                foreach (var k in keys) { var v = c[k]; if (!string.IsNullOrWhiteSpace(v)) return v.Trim(); }
-                return null;
-            }
-            var ep = Pick(cfg, "AzureOpenAI:Endpoint", "AZURE_OPENAI_ENDPOINT");
-            var key = Pick(cfg, "AzureOpenAI:ApiKey", "AZURE_OPENAI_API_KEY");
-            var dep = Pick(cfg, "AzureOpenAI:Deployment", "AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_DEPLOYMENT_NAME");
-            string? host = null;
-            if (!string.IsNullOrWhiteSpace(ep))
-                host = Uri.TryCreate(ep, UriKind.Absolute, out var u) ? u.Host : "INVALID_URL_FORMAT";
-
-            // Bu app-ın kimliyi — hansı App Service/slot işləyir (env var-ları BURA yazılmalıdır).
-            var siteName = cfg["WEBSITE_SITE_NAME"];
-            var slot = cfg["WEBSITE_SLOT_NAME"];
-            var rg = cfg["WEBSITE_RESOURCE_GROUP"];
-
-            // Bu app-ın gördüyü OPENAI-ə aid açar ADLARI (dəyər yox — yalnız adlar).
-            var openAiKeyNames = cfg.AsEnumerable()
-                .Where(kv => kv.Key.Contains("OPENAI", StringComparison.OrdinalIgnoreCase))
-                .Select(kv => kv.Key)
-                .Distinct()
-                .ToList();
-
-            return Ok(new
-            {
-                siteName,
-                slot,
-                resourceGroup = rg,
-                endpointSet = !string.IsNullOrWhiteSpace(ep),
-                endpointHost = host,
-                apiKeySet = !string.IsNullOrWhiteSpace(key),
-                apiKeyLength = key?.Length ?? 0,
-                deploymentSet = !string.IsNullOrWhiteSpace(dep),
-                deployment = dep,
-                openAiKeyNamesSeenByApp = openAiKeyNames
-            });
-        }
-
-        /// <summary>
         /// Super-admin AI səhifəsi — keyword-lərin necə işlədiyini test et (LLM-siz, birbaşa
         /// PlaceSearchService). Azure OpenAI qoşulmasa belə işləyir.
         /// </summary>
