@@ -49,16 +49,13 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<AssistantReply> AskAsync(ChatbotAskRequest request, CancellationToken ct = default)
         {
-            // Həm `AzureOpenAI__X` (ASP.NET hierarxiya), həm də flat `AZURE_OPENAI_X`
-            // (yaygın env-var konvensiyası) adlarını dəstəklə.
-            var endpoint = _config["AzureOpenAI:Endpoint"] ?? _config["AZURE_OPENAI_ENDPOINT"];
-            var apiKey = _config["AzureOpenAI:ApiKey"] ?? _config["AZURE_OPENAI_API_KEY"];
-            var deployment = _config["AzureOpenAI:Deployment"]
-                ?? _config["AZURE_OPENAI_DEPLOYMENT"]
-                ?? _config["AZURE_OPENAI_DEPLOYMENT_NAME"];
-            var apiVersion = _config["AzureOpenAI:ApiVersion"]
-                ?? _config["AZURE_OPENAI_API_VERSION"]
-                ?? "2024-08-01-preview";
+            // Həm `AzureOpenAI__X` (hierarxiya), həm flat `AZURE_OPENAI_X` adlarını dəstəklə.
+            // DİQQƏT: appsettings.json boş placeholder ("") saxlayır → `??` boş string-də
+            // keçmir. Ona görə boş/whitespace-i də "yoxdur" sayan PickConfig istifadə olunur.
+            var endpoint = PickConfig(_config, "AzureOpenAI:Endpoint", "AZURE_OPENAI_ENDPOINT");
+            var apiKey = PickConfig(_config, "AzureOpenAI:ApiKey", "AZURE_OPENAI_API_KEY");
+            var deployment = PickConfig(_config, "AzureOpenAI:Deployment", "AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_DEPLOYMENT_NAME");
+            var apiVersion = PickConfig(_config, "AzureOpenAI:ApiVersion", "AZURE_OPENAI_API_VERSION") ?? "2024-08-01-preview";
 
             if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(deployment))
             {
@@ -244,6 +241,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _logger.LogError(ex, "Tool dispatch failed: {Tool}", name);
                 return "{\"error\":\"tool_failed\"}";
             }
+        }
+
+        /// <summary>İlk boş-olmayan config dəyərini qaytar (boş/whitespace = yoxdur).</summary>
+        private static string? PickConfig(IConfiguration cfg, params string[] keys)
+        {
+            foreach (var k in keys)
+            {
+                var v = cfg[k];
+                if (!string.IsNullOrWhiteSpace(v)) return v.Trim();
+            }
+            return null;
         }
 
         private static string? GetString(JsonNode? node)
