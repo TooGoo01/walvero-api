@@ -50,14 +50,31 @@ namespace Loyalty.WebAPI.Controllers
             string? host = null;
             if (!string.IsNullOrWhiteSpace(ep))
                 host = Uri.TryCreate(ep, UriKind.Absolute, out var u) ? u.Host : "INVALID_URL_FORMAT";
+
+            // Bu app-ın kimliyi — hansı App Service/slot işləyir (env var-ları BURA yazılmalıdır).
+            var siteName = cfg["WEBSITE_SITE_NAME"];
+            var slot = cfg["WEBSITE_SLOT_NAME"];
+            var rg = cfg["WEBSITE_RESOURCE_GROUP"];
+
+            // Bu app-ın gördüyü OPENAI-ə aid açar ADLARI (dəyər yox — yalnız adlar).
+            var openAiKeyNames = cfg.AsEnumerable()
+                .Where(kv => kv.Key.Contains("OPENAI", StringComparison.OrdinalIgnoreCase))
+                .Select(kv => kv.Key)
+                .Distinct()
+                .ToList();
+
             return Ok(new
             {
+                siteName,
+                slot,
+                resourceGroup = rg,
                 endpointSet = !string.IsNullOrWhiteSpace(ep),
                 endpointHost = host,
                 apiKeySet = !string.IsNullOrWhiteSpace(key),
                 apiKeyLength = key?.Length ?? 0,
                 deploymentSet = !string.IsNullOrWhiteSpace(dep),
-                deployment = dep
+                deployment = dep,
+                openAiKeyNamesSeenByApp = openAiKeyNames
             });
         }
 
