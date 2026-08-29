@@ -83,13 +83,14 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             for (int iter = 0; iter < MaxToolIterations; iter++)
             {
+                // gpt-5 / reasoning modelləri: `max_tokens` yerinə `max_completion_tokens`,
+                // `temperature` yalnız default (1). Köhnə gpt-4o üçün də bu formatı işlədirik.
                 var body = new JsonObject
                 {
                     ["messages"] = messages.DeepClone(),
                     ["tools"] = tools.DeepClone(),
                     ["tool_choice"] = "auto",
-                    ["temperature"] = 0.2,
-                    ["max_tokens"] = 900
+                    ["max_completion_tokens"] = 1200
                 };
 
                 using var req = new HttpRequestMessage(HttpMethod.Post, url)
@@ -104,7 +105,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (!resp.IsSuccessStatusCode)
                 {
                     _logger.LogError("AzureOpenAI error {Status}: {Body}", (int)resp.StatusCode, json);
-                    return new AssistantReply { Reply = "AI köməkçidə müvəqqəti xəta oldu, bir azdan yenidən yoxlayın." };
+                    // MÜVƏQQƏTİ DİAQNOSTİKA: real Azure xətasını göstər (sonra geri qaytar).
+                    var detail = json.Length > 400 ? json.Substring(0, 400) : json;
+                    return new AssistantReply { Reply = $"[diag] AzureOpenAI {(int)resp.StatusCode}: {detail}" };
                 }
 
                 JsonNode? root = JsonNode.Parse(json);
