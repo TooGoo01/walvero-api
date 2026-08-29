@@ -85,7 +85,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     new JsonObject { ["role"] = "system", ["content"] = "Sən dəqiq, qısa açar söz generatoru-san." },
                     new JsonObject { ["role"] = "user", ["content"] = sb.ToString() }
                 },
-                ["max_completion_tokens"] = 400
+                // gpt-5/reasoning modelləri reasoning-ə token xərcləyir → output üçün geniş limit.
+                ["max_completion_tokens"] = 2000
             };
 
             var url = $"{endpoint.TrimEnd('/')}/openai/deployments/{deployment}/chat/completions?api-version={apiVersion}";
@@ -114,6 +115,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Select(k => k.Trim().TrimStart('-', '•', '*').Trim())
                 .Where(k => k.Length is > 1 and <= 40 && seen.Add(k))
                 .ToList();
+
+            if (keywords.Count == 0)
+                return new ServiceResult(false, "AI boş nəticə qaytardı, bir daha cəhd et.");
 
             return new ServiceResult(true, new { tenantId, keywords = string.Join(", ", keywords) });
         }
