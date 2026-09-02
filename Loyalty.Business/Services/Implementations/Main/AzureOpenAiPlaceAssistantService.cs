@@ -95,6 +95,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ["messages"] = messages.DeepClone(),
                     ["tools"] = tools.DeepClone(),
                     ["tool_choice"] = "auto",
+                    // gpt-5 reasoning modeli default olaraq çox düşünür → yavaş. Sadə məkan-axtarış
+                    // üçün minimal reasoning kifayətdir və cavabı kəskin sürətləndirir.
+                    ["reasoning_effort"] = "minimal",
                     ["max_completion_tokens"] = 1200
                 };
 

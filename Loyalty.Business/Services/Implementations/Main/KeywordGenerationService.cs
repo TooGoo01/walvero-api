@@ -86,6 +86,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     new JsonObject { ["role"] = "user", ["content"] = sb.ToString() }
                 },
                 // gpt-5/reasoning modelləri reasoning-ə token xərcləyir → output üçün geniş limit.
+                ["reasoning_effort"] = "minimal",
                 ["max_completion_tokens"] = 2000
             };
 
