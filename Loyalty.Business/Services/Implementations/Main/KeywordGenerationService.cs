@@ -68,21 +68,22 @@ namespace Loyalty.Business.Services.Implementations.Main
             var existing = tenant.Keywords;
 
             var sb = new StringBuilder();
-            sb.AppendLine("Sən Azərbaycan (Bakı) bazarı üçün məkan-axtarış açar sözləri yaradan köməkçisən.");
-            sb.AppendLine("Aşağıdakı məkan üçün 15-25 qısa açar söz təklif et: mətbəx növləri, populyar yeməklər,");
-            sb.AppendLine("xüsusiyyətlər (qəlyan, wifi, çatdırılma, terras və s.), ərazi/məhəllə (əgər bilinirsə).");
-            sb.AppendLine("YALNIZ açar sözləri vergüllə ayırıb qaytar — izah, nömrələmə, başqa mətn YOX.");
-            sb.AppendLine($"Məkan adı: {tenant.CompanyName}");
-            if (!string.IsNullOrWhiteSpace(category)) sb.AppendLine($"Kateqoriya: {category}");
-            if (!string.IsNullOrWhiteSpace(description)) sb.AppendLine($"Təsvir: {description}");
-            if (dishes.Count > 0) sb.AppendLine($"Menyu yeməkləri: {string.Join(", ", dishes)}");
-            if (!string.IsNullOrWhiteSpace(existing)) sb.AppendLine($"Mövcud açar sözlər (təkrar etmə, tamamla): {existing}");
+            sb.AppendLine("You generate place-search keywords for the Azerbaijan (Baku) market.");
+            sb.AppendLine("For the place below, propose 15-25 short keywords: cuisine types, popular dishes,");
+            sb.AppendLine("features (hookah, wifi, delivery, terrace, etc.), area/neighborhood (if known).");
+            sb.AppendLine("Output the keywords in Azerbaijani. Return ONLY the keywords, comma-separated — no");
+            sb.AppendLine("explanation, numbering, or other text.");
+            sb.AppendLine($"Place name: {tenant.CompanyName}");
+            if (!string.IsNullOrWhiteSpace(category)) sb.AppendLine($"Category: {category}");
+            if (!string.IsNullOrWhiteSpace(description)) sb.AppendLine($"Description: {description}");
+            if (dishes.Count > 0) sb.AppendLine($"Menu dishes: {string.Join(", ", dishes)}");
+            if (!string.IsNullOrWhiteSpace(existing)) sb.AppendLine($"Existing keywords (do not repeat, complement): {existing}");
 
             var body = new JsonObject
             {
                 ["messages"] = new JsonArray
                 {
-                    new JsonObject { ["role"] = "system", ["content"] = "Sən dəqiq, qısa açar söz generatoru-san." },
+                    new JsonObject { ["role"] = "system", ["content"] = "You are a precise, concise keyword generator." },
                     new JsonObject { ["role"] = "user", ["content"] = sb.ToString() }
                 },
                 // gpt-5/reasoning modelləri reasoning-ə token xərcləyir → output üçün geniş limit.

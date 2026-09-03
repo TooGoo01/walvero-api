@@ -82,6 +82,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<TelegramAdminLink> TelegramAdminLinks { get; set; }
         public DbSet<TelegramLinkCode> TelegramLinkCodes { get; set; }
         public DbSet<LinkClickEvent> LinkClickEvents { get; set; }
+        public DbSet<AiReferencePlace> AiReferencePlaces { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1148,6 +1149,20 @@ namespace Loyalty.DataAccess.Context
                     .WithMany(t => t.Branches)
                     .HasForeignKey(b => b.TenantId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== AI REFERENCE PLACE (xarici məkan bilik bazası — app-da görünmür) ====
+            modelBuilder.Entity<AiReferencePlace>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Name).IsRequired().HasMaxLength(300);
+                entity.Property(e => e.Category).HasMaxLength(100);
+                entity.Property(e => e.City).HasMaxLength(100);
+                entity.Property(e => e.Area).HasMaxLength(150);
+                entity.Property(e => e.Address).HasMaxLength(500);
+                entity.Property(e => e.Phone).HasMaxLength(50);
+                entity.Property(e => e.MenuUrl).HasMaxLength(500);
+                entity.HasIndex(e => e.Name);
             });
 
             // ==== LINK CLICK EVENT (anonim analitika) ====

@@ -116,6 +116,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<ITransactionService, TransactionService>();
             services.AddScoped<IStatisticsService, StatisticsService>();
             services.AddScoped<IAnalyticsService, AnalyticsService>();
+            services.AddScoped<IReferencePlaceService, ReferencePlaceService>();
             services.AddScoped<IFilePathResolver, FilePathResolver>();
             services.AddScoped<IUserCardService, UserCardService>();
             services.AddScoped<IDeviceTokenService, DeviceTokenService>();
