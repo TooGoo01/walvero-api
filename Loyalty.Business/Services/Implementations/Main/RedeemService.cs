@@ -507,6 +507,21 @@ namespace Loyalty.Business.Services.Implementations.Main
                         Message = "Çek OCR yoxlaması üçün göndərildi. Balans yoxlamadan sonra yenilənəcək."
                     };
                 }
+                // Pay (delta<0): OCR qəsdən söndürülüb (yuxarıdakı şərh), amma çekin şəklini
+                // yenə də blob-a yüklə ki, web transaction tarixçəsində görünsün. Yalnız upload —
+                // OCR job yox, məbləğ yoxlaması yox. Uğursuzluq redeem-i bloklamır.
+                else if (delta < 0 && request.ReceiptImage is { Length: > 0 })
+                {
+                    try
+                    {
+                        var uploaded = await _receiptValidation.UploadReceiptOnlyAsync(request.ReceiptImage, ct);
+                        receiptUrl = uploaded.url;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Redeem receipt upload failed (non-blocking). CardId={CardId}", card.Id);
+                    }
+                }
 
                 // Suspicious check — amount cap OR spendCount cap (OCR-də flag olunmuş ola bilər artıq)
                 if (!isSuspicious && cfg.AmountCap.HasValue && Math.Abs(delta) > cfg.AmountCap.Value)
