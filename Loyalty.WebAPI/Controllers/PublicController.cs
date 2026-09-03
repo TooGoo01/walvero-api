@@ -36,7 +36,18 @@ namespace Loyalty.WebAPI.Controllers
         {
             var showMapInApp = await _appSettingService.GetBoolAsync("ShowMapInApp", defaultValue: true, ct);
             var appLogoUrl = await _appSettingService.GetStringAsync("AppLogoUrl", "", ct);
-            return Ok(new ServiceResult(true, new { showMapInApp, appLogoUrl }));
+            // Splash dizaynı — admin paneldən (AppSettings key-value). Boş = default.
+            var splashBackgroundImageUrl = await _appSettingService.GetStringAsync("SplashBackgroundImageUrl", "", ct);
+            var splashBgColor = await _appSettingService.GetStringAsync("SplashBgColor", "", ct);
+            var splashTagline = await _appSettingService.GetStringAsync("SplashTagline", "", ct);
+            return Ok(new ServiceResult(true, new
+            {
+                showMapInApp,
+                appLogoUrl,
+                splashBackgroundImageUrl,
+                splashBgColor,
+                splashTagline
+            }));
         }
 
         /// <summary>
