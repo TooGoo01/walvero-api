@@ -1,9 +1,11 @@
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.Business.Services.Abstractions.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
 using System.Net;
 
 namespace Loyalty.WebAPI.Controllers
@@ -14,10 +16,30 @@ namespace Loyalty.WebAPI.Controllers
     public class AppSettingController : ControllerBase
     {
         private readonly IAppSettingService _appSettingService;
+        private readonly IStorage _storage;
 
-        public AppSettingController(IAppSettingService appSettingService)
+        public AppSettingController(IAppSettingService appSettingService, IStorage storage)
         {
             _appSettingService = appSettingService;
+            _storage = storage;
+        }
+
+        /// <summary>Qlobal app assetini (splash fon/logo) file kimi yüklə → public URL qaytar.</summary>
+        [HttpPost]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> UploadImage()
+        {
+            var file = Request.Form.Files.FirstOrDefault();
+            if (file == null || file.Length == 0)
+                return BadRequest(new ServiceResult(false, "Fayl yoxdur"));
+
+            var uploaded = await _storage.UploadFileAsync("app-assets", new[] { file });
+            if (uploaded.Count == 0)
+                return BadRequest(new ServiceResult(false, "Yükləmə alınmadı"));
+
+            var url = uploaded[0].pathOrContainerName; // 2-ci element public URL-dir
+            return Ok(new ServiceResult(true, new { url }));
         }
 
         [HttpGet]
