@@ -19,11 +19,16 @@ namespace Loyalty.WebAPI.Controllers
     {
         private readonly ITransactionService _transactionService;
         private readonly ITenantProvider _tenantProvider;
+        private readonly IStatisticsService _statisticsService;
 
-        public StatisticsController(ITransactionService transactionService, ITenantProvider tenantProvider)
+        public StatisticsController(
+            ITransactionService transactionService,
+            ITenantProvider tenantProvider,
+            IStatisticsService statisticsService)
         {
             _transactionService = transactionService;
             _tenantProvider = tenantProvider;
+            _statisticsService = statisticsService;
         }
 
         [HttpGet]
@@ -48,7 +53,6 @@ namespace Loyalty.WebAPI.Controllers
 
             var totalPointsEarned = 0;
             var totalPointsSpent = 0;
-            var cardIds = new HashSet<int>();
 
             var dailyMap = new SortedDictionary<string, (int count, int earned, int spent)>();
 
@@ -69,9 +73,6 @@ namespace Loyalty.WebAPI.Controllers
                 else if (type == TransactionType.Redeemed)
                     totalPointsSpent += points;
 
-                if (tx.LoyaltyCardId > 0)
-                    cardIds.Add(tx.LoyaltyCardId);
-
                 if (!dailyMap.ContainsKey(dateKey))
                     dailyMap[dateKey] = (0, 0, 0);
 
@@ -91,12 +92,17 @@ namespace Loyalty.WebAPI.Controllers
                 pointsSpent = kvp.Value.spent
             }).ToList();
 
+            // Ümumi müştəri = tenant-ın aktiv kartlı unikal müştəriləri. Əvvəlki kod tarix
+            // aralığında Applied tx-i olan KART sayını göstərirdi — həm kartı müştəri kimi
+            // sayırdı, həm də əməliyyatsız müştəriləri itirirdi.
+            var uniqueCustomers = await _statisticsService.GetUniqueCustomerCountAsync(tenantId);
+
             var dashboard = new
             {
                 totalTransactions = totalAppliedCount,
                 totalPointsEarned,
                 totalPointsSpent,
-                uniqueCustomers = cardIds.Count,
+                uniqueCustomers,
                 dailyStats
             };
 

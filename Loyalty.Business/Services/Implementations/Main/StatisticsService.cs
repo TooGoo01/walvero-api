@@ -19,6 +19,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             _dbContext = dbContext;
         }
 
+        public Task<int> GetUniqueCustomerCountAsync(int tenantId, CancellationToken ct = default)
+            => _dbContext.Set<LoyaltyCard>()
+                .Where(c => c.TenantId == tenantId && c.IsActive && c.CustomerId > 0)
+                .Select(c => c.CustomerId)
+                .Distinct()
+                .CountAsync(ct);
+
         public async Task<ServiceResult<DashboardStatisticsDto>> GetDashboardAsync(
             int tenantId,
             DateOnly startDate,
