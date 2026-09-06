@@ -178,5 +178,58 @@ namespace Loyalty.WebAPI.Controllers
                 return BadRequest(result);
             return Ok(result);
         }
+
+        // === Soft delete (balance corrected for Applied txs) ===
+        public sealed record DeleteTransactionRequest(int TransactionId, string? Reason);
+        public sealed record DeleteBulkRequest(List<int> TransactionIds, string? Reason);
+        public sealed record DeleteByCustomerRequest(int CustomerId, string? Reason);
+
+        [HttpPost]
+        [Authorize(Policy = "TenantAdminOrSuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult<DeleteTransactionsResponseDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> Delete([FromBody] DeleteTransactionRequest req, CancellationToken ct)
+        {
+            if (req.TransactionId <= 0)
+                return BadRequest(new ServiceResult(false, "TransactionId is required"));
+
+            var result = await _transactionReverseService.DeleteTransactionsAsync(
+                new[] { req.TransactionId }, req.Reason, _tenantProvider.CurrentTenantId, ct);
+            if (!result.Success)
+                return BadRequest(result);
+            return Ok(result);
+        }
+
+        [HttpPost]
+        [Authorize(Policy = "TenantAdminOrSuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult<DeleteTransactionsResponseDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> DeleteBulk([FromBody] DeleteBulkRequest req, CancellationToken ct)
+        {
+            if (req.TransactionIds is not { Count: > 0 })
+                return BadRequest(new ServiceResult(false, "TransactionIds is required"));
+
+            var result = await _transactionReverseService.DeleteTransactionsAsync(
+                req.TransactionIds, req.Reason, _tenantProvider.CurrentTenantId, ct);
+            if (!result.Success)
+                return BadRequest(result);
+            return Ok(result);
+        }
+
+        [HttpPost]
+        [Authorize(Policy = "TenantAdminOrSuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult<DeleteTransactionsResponseDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> DeleteByCustomer([FromBody] DeleteByCustomerRequest req, CancellationToken ct)
+        {
+            if (req.CustomerId <= 0)
+                return BadRequest(new ServiceResult(false, "CustomerId is required"));
+
+            var result = await _transactionReverseService.DeleteTransactionsByCustomerAsync(
+                req.CustomerId, req.Reason, _tenantProvider.CurrentTenantId, ct);
+            if (!result.Success)
+                return BadRequest(result);
+            return Ok(result);
+        }
     }
 }

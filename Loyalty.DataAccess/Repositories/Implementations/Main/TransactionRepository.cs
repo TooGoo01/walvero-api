@@ -18,7 +18,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         public async Task<IEnumerable<Transaction>> GetByCardIdAsync(int cardId, CancellationToken cancellationToken = default)
         {
             return await GetAsQueryable()
-                .Where(t => t.LoyaltyCardId == cardId)
+                .Where(t => t.LoyaltyCardId == cardId && t.IsActive)
                 .OrderByDescending(t => t.LocalOccurredAt)
                 .ToListAsync(cancellationToken);
         }
@@ -30,7 +30,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             CancellationToken cancellationToken = default)
         {
             return await GetAsQueryable()
-                .Where(t => t.LoyaltyCardId == cardId)
+                .Where(t => t.LoyaltyCardId == cardId && t.IsActive)
                 .OrderByDescending(t => t.LocalOccurredAt)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
@@ -42,7 +42,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             return await GetAsQueryable()
                 .Include(t => t.LoyaltyCard)
                     .ThenInclude(lc => lc.Customer)
-                .Where(t => t.LoyaltyCard.CustomerId == customerId)
+                .Where(t => t.LoyaltyCard.CustomerId == customerId && t.IsActive)
                 .OrderByDescending(t => t.RegDate)
                 .ToListAsync(cancellationToken);
         }
@@ -55,7 +55,8 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Include(t => t.LoyaltyCard)
                     .ThenInclude(lc => lc.Tenant) // mobil tarixçədə tenant adı üçün
                 .Include(t => t.Branch) // filial adı üçün
-                .Where(t => t.LoyaltyCard.Customer != null
+                .Where(t => t.IsActive
+                         && t.LoyaltyCard.Customer != null
                          && t.LoyaltyCard.Customer.applicationUserId == applicationUserId)
                 .OrderByDescending(t => t.RegDate)
                 .ToListAsync(cancellationToken);
@@ -68,7 +69,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 return new Dictionary<int, DateTime>();
 
             return await GetAsQueryable()
-                .Where(t => ids.Contains(t.LoyaltyCardId))
+                .Where(t => ids.Contains(t.LoyaltyCardId) && t.IsActive)
                 .GroupBy(t => t.LoyaltyCardId)
                 .Select(g => new { CardId = g.Key, Last = g.Max(x => x.RegDate) })
                 .ToDictionaryAsync(x => x.CardId, x => x.Last, cancellationToken);
@@ -79,7 +80,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             return await GetAsQueryable()
                 .Include(t => t.LoyaltyCard)
                     .ThenInclude(lc => lc.Customer)
-                .Where(t => t.LoyaltyCard.TenantId == tenantId)
+                .Where(t => t.LoyaltyCard.TenantId == tenantId && t.IsActive)
                 .OrderByDescending(t => t.RegDate)
                 .Take(limit)
                 .ToListAsync(cancellationToken);
@@ -97,6 +98,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Include(t => t.Branch)
                 .Where(t =>
                     t.LoyaltyCard.TenantId == tenantId &&
+                    t.IsActive &&
                     t.LocalOccurredAt.Date >= startDate.ToDateTime(TimeOnly.MinValue) &&
                     t.LocalOccurredAt.Date <= endDate.ToDateTime(TimeOnly.MaxValue))
                 .OrderByDescending(t => t.LocalOccurredAt)
@@ -106,14 +108,14 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         public async Task<decimal> GetTotalPointsEarnedAsync(int cardId, CancellationToken cancellationToken = default)
         {
             return await GetAsQueryable()
-                .Where(t => t.LoyaltyCardId == cardId && t.Type == TransactionType.Earned)
+                .Where(t => t.LoyaltyCardId == cardId && t.IsActive && t.Type == TransactionType.Earned)
                 .SumAsync(t => t.Points, cancellationToken);
         }
 
         public async Task<decimal> GetTotalPointsRedeemedAsync(int cardId, CancellationToken cancellationToken = default)
         {
             return await GetAsQueryable()
-                .Where(t => t.LoyaltyCardId == cardId && t.Type == TransactionType.Redeemed)
+                .Where(t => t.LoyaltyCardId == cardId && t.IsActive && t.Type == TransactionType.Redeemed)
                 .SumAsync(t => t.Points, cancellationToken);
         }
 
@@ -123,6 +125,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .AsNoTracking()
                 .Include(t => t.Branch)
                 .Where(t => t.LoyaltyCard.CustomerId == customerId
+                         && t.IsActive
                          && t.Type == TransactionType.Redeemed
                          && t.Status == Enums.RedeemStatus.Applied)
                 .OrderByDescending(t => t.LocalOccurredAt)

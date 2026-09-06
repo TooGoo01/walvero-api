@@ -32,6 +32,18 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// </summary>
         Task<ServiceResult<EditAmountResponseDto>> EditTransactionAmountAsync(
             int transactionId, decimal newAmount, string? reason, int? callerTenantId, CancellationToken ct = default);
+
+        /// <summary>
+        /// Tranzaksiyaları soft-delete et (IsActive=false). Applied Earn/Bonus xalları geri çıxılır,
+        /// Applied Redeemed xalları qaytarılır; digər statuslar balansa toxunmur.
+        /// callerTenantId null isə (Super Admin) tenant yoxlanmır.
+        /// </summary>
+        Task<ServiceResult<DeleteTransactionsResponseDto>> DeleteTransactionsAsync(
+            IReadOnlyCollection<int> transactionIds, string? reason, int? callerTenantId, CancellationToken ct = default);
+
+        /// <summary>Müştərinin bütün aktiv tranzaksiyalarını soft-delete et (balans korreksiyası ilə).</summary>
+        Task<ServiceResult<DeleteTransactionsResponseDto>> DeleteTransactionsByCustomerAsync(
+            int customerId, string? reason, int? callerTenantId, CancellationToken ct = default);
     }
 }
 

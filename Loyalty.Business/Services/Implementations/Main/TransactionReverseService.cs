@@ -94,6 +94,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     return ServiceResult<ReverseTransactionResponseDto>.Fail("Original transaction not found.");
                 }
+                if (!originalTransaction.IsActive)
+                {
+                    return ServiceResult<ReverseTransactionResponseDto>.Fail("Bu tranzaksiya silinib, reverse mümkün deyil.");
+                }
 
                 // Validate original type
                 TransactionType expectedType;
@@ -136,6 +140,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     var previousTransaction = await _dbContext.Set<Transaction>()
                         .Where(t => t.LoyaltyCardId == originalTransaction.LoyaltyCardId &&
+                                   t.IsActive &&
                                    t.Id < originalTransaction.Id)
                         .OrderByDescending(t => t.Id)
                         .FirstOrDefaultAsync(ct);
@@ -280,6 +285,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // 2. Son aktiv transaction-ı tap (Earned və ya Redeemed, status=Active)
                 var lastTransaction = await _dbContext.Set<Transaction>()
                     .Where(t => t.LoyaltyCardId == card.Id
+                        && t.IsActive
                         && (t.Type == TransactionType.Earned || t.Type == TransactionType.Redeemed)
                         && t.Status == RedeemStatus.Applied)
                     .OrderByDescending(t => t.Id)
@@ -372,6 +378,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var tx = await _transactionRepository.GetByIdAsync(transactionId, ct);
                 if (tx == null)
                     return ServiceResult<EditAmountResponseDto>.Fail("Transaction not found.");
+                if (!tx.IsActive)
+                    return ServiceResult<EditAmountResponseDto>.Fail("Bu tranzaksiya silinib, düzəliş mümkün deyil.");
 
                 // Earn tranzaksiyaları: Applied (balans düzəlişi ilə) və ya
                 // FlaggedForReview (təsdiqdən əvvəl düzəliş — balans hələ tətbiq olunmayıb)
@@ -482,6 +490,172 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 _logger.LogError(ex, "Failed to edit transaction amount. TransactionId={TransactionId}", transactionId);
                 return ServiceResult<EditAmountResponseDto>.Fail($"Failed to edit transaction amount: {ex.Message}");
+            }
+        }
+
+        public async Task<ServiceResult<DeleteTransactionsResponseDto>> DeleteTransactionsAsync(
+            IReadOnlyCollection<int> transactionIds, string? reason, int? callerTenantId, CancellationToken ct = default)
+        {
+            var ids = transactionIds?.Where(i => i > 0).Distinct().ToList() ?? new List<int>();
+            if (ids.Count == 0)
+                return ServiceResult<DeleteTransactionsResponseDto>.Fail("Tranzaksiya ID-si göndərilməyib.");
+            if (ids.Count > 200)
+                return ServiceResult<DeleteTransactionsResponseDto>.Fail("Bir sorğuda maksimum 200 tranzaksiya silinə bilər.");
+
+            var txs = await _dbContext.Set<Transaction>()
+                .Where(t => ids.Contains(t.Id) && t.IsActive)
+                .ToListAsync(ct);
+
+            return await DeleteTransactionsCoreAsync(txs, ids.Count, reason, callerTenantId, ct);
+        }
+
+        public async Task<ServiceResult<DeleteTransactionsResponseDto>> DeleteTransactionsByCustomerAsync(
+            int customerId, string? reason, int? callerTenantId, CancellationToken ct = default)
+        {
+            if (customerId <= 0)
+                return ServiceResult<DeleteTransactionsResponseDto>.Fail("CustomerId düzgün deyil.");
+
+            var txs = await _dbContext.Set<Transaction>()
+                .Where(t => t.IsActive && _dbContext.Set<LoyaltyCard>()
+                    .Any(c => c.Id == t.LoyaltyCardId && c.CustomerId == customerId))
+                .ToListAsync(ct);
+
+            if (txs.Count == 0)
+                return ServiceResult<DeleteTransactionsResponseDto>.Fail("Müştərinin aktiv tranzaksiyası tapılmadı.");
+
+            return await DeleteTransactionsCoreAsync(txs, txs.Count, reason, callerTenantId, ct);
+        }
+
+        private async Task<ServiceResult<DeleteTransactionsResponseDto>> DeleteTransactionsCoreAsync(
+            List<Transaction> txs, int requestedCount, string? reason, int? callerTenantId, CancellationToken ct)
+        {
+            try
+            {
+                if (txs.Count == 0)
+                    return ServiceResult<DeleteTransactionsResponseDto>.Fail("Aktiv tranzaksiya tapılmadı.");
+
+                var cardRepo = _unitOfWork.Repository<LoyaltyCard>();
+                var txRepo = _unitOfWork.Repository<Transaction>();
+                int deleted = 0;
+                int skipped = requestedCount - txs.Count;
+                var walletUpdates = new List<(LoyaltyCard Card, CardTemplateSnapshot Snapshot, decimal Delta)>();
+
+                // Kart üzrə qruplaşdır — eyni kartın bir neçə tx-i silinəndə balans bir dəfə,
+                // yekun delta ilə düzəlir; wallet push da kart başına bir dəfə gedir.
+                foreach (var cardGroup in txs.GroupBy(t => t.LoyaltyCardId))
+                {
+                    var card = await cardRepo.GetByIdAsync(cardGroup.Key, ct);
+                    if (card == null)
+                    {
+                        skipped += cardGroup.Count();
+                        continue;
+                    }
+
+                    // Tenant admin yalnız öz tenant-ının tranzaksiyasını silə bilər (null = Super Admin)
+                    if (callerTenantId.HasValue && card.TenantId != callerTenantId.Value)
+                    {
+                        skipped += cardGroup.Count();
+                        continue;
+                    }
+
+                    decimal delta = 0m;
+                    foreach (var tx in cardGroup)
+                    {
+                        // Yalnız Applied tx balansa yazılıb — yalnız onun effekti geri alınır.
+                        // Adjusted-in Points sahəsi delta yox, son balansdır — etibarlı geri alına bilməz.
+                        if (tx.Status == RedeemStatus.Applied)
+                        {
+                            if (tx.Type == TransactionType.Earned || tx.Type == TransactionType.Bonus)
+                                delta -= Math.Abs(tx.Points);
+                            else if (tx.Type == TransactionType.Redeemed)
+                                delta += Math.Abs(tx.Points);
+                        }
+
+                        tx.IsActive = false;
+                        tx.EditDate = DateTime.UtcNow;
+                        tx.Description =
+                            $"{tx.Description} (Silindi{(string.IsNullOrWhiteSpace(reason) ? "" : $": {reason}")})";
+                        txRepo.Update(tx);
+                        deleted++;
+                    }
+
+                    if (delta != 0m)
+                    {
+                        var program = await _dbContext.Set<LoyaltyProgram>()
+                            .Include(p => p.CardTemplate)
+                            .FirstOrDefaultAsync(p => p.Id == card.LoyaltyProgramId, ct);
+                        if (program?.CardTemplate != null)
+                        {
+                            var branding = await _tenantBrandingRepository.GetByTenantIdAsync(card.TenantId, ct);
+                            var snapshot = Helpers.CardTemplateSnapshotFactory.From(
+                                program,
+                                program.CardTemplate,
+                                branding,
+                                (url) => url);
+
+                            var beforePoints = card.CurrentPoints;
+                            BalanceMath.ApplyDelta(card, snapshot, delta);
+                            cardRepo.Update(card);
+                            walletUpdates.Add((card, snapshot, delta));
+
+                            _logger.LogInformation(
+                                "Delete balance correction. CardId={CardId}, Delta={Delta}, Points {Before}->{After}",
+                                card.Id, delta, beforePoints, card.CurrentPoints);
+                        }
+                        else
+                        {
+                            _logger.LogWarning(
+                                "Delete: program/template not found, balance NOT corrected. CardId={CardId}, Delta={Delta}",
+                                card.Id, delta);
+                        }
+                    }
+                }
+
+                if (deleted == 0)
+                    return ServiceResult<DeleteTransactionsResponseDto>.Fail("Bu əməliyyat sizin tenant-a aid deyil.");
+
+                // Sonrakı tranzaksiyaların BalanceAfter-i tarixən köhnəlmiş qalır —
+                // EditAmount ilə eyni qəbul edilən kompromis, tarix yenidən yazılmır.
+                _unitOfWork.Commit();
+
+                foreach (var (card, snapshot, delta) in walletUpdates)
+                {
+                    try
+                    {
+                        var primaryPlatform = card.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
+                        await _walletRouter.RouteAsync(
+                            primaryPlatform,
+                            card.Id,
+                            snapshot,
+                            card.CurrentPoints,
+                            card.CurrentSteps,
+                            card.CompletedCycles,
+                            (int)delta,
+                            ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to update wallet pass after delete. CardId={CardId}", card.Id);
+                    }
+                }
+
+                _logger.LogInformation(
+                    "Transactions soft-deleted. Deleted={Deleted}, Skipped={Skipped}, AffectedCards={Cards}",
+                    deleted, skipped, walletUpdates.Count);
+
+                return ServiceResult<DeleteTransactionsResponseDto>.Ok(
+                    new DeleteTransactionsResponseDto
+                    {
+                        DeletedCount = deleted,
+                        SkippedCount = skipped,
+                        AffectedCardCount = walletUpdates.Count
+                    },
+                    "Transactions deleted.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to delete transactions.");
+                return ServiceResult<DeleteTransactionsResponseDto>.Fail($"Failed to delete transactions: {ex.Message}");
             }
         }
 
