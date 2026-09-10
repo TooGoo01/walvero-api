@@ -1,4 +1,5 @@
 using Loyalty.Business.Dtos.Get.Users;
+using Loyalty.Business.Resources;
 using Loyalty.Business.Dtos.Post.Users;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Users;
@@ -240,7 +241,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var userIdStr = _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
                 if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
                 {
-                    return new ServiceResult(false, "User not authenticated.");
+                    return new ServiceResult(false, AppMessages.Get("NotAuthenticated"));
                 }
 
                 var user = await _dbContext.Users
@@ -251,7 +252,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 
                 if (user == null)
                 {
-                    return new ServiceResult(false, "User not found.");
+                    return new ServiceResult(false, AppMessages.Get("UserNotFound"));
                 }
 
                 // Ensure user is guest or profile not completed
@@ -280,7 +281,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var existingUser = await _userManager.FindByNameAsync(dto.PhoneNumber);
                 if (existingUser != null && existingUser.Id != user.Id && !existingUser.IsGuest)
                 {
-                    return new ServiceResult(false, "Phone number is already registered by another user.");
+                    return new ServiceResult(false, AppMessages.Get("PhoneAlreadyExists"));
                 }
 
                 // IMPORTANT: Update existing ApplicationUser, do NOT create new one
@@ -417,13 +418,13 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var userIdStr = _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
                 if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
                 {
-                    return new ServiceResult(false, "User not authenticated.");
+                    return new ServiceResult(false, AppMessages.Get("NotAuthenticated"));
                 }
 
                 var user = await _userManager.FindByIdAsync(userIdStr);
                 if (user == null)
                 {
-                    return new ServiceResult(false, "User not found.");
+                    return new ServiceResult(false, AppMessages.Get("UserNotFound"));
                 }
 
                 var status = new ProfileStatusDto
@@ -457,7 +458,7 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 if (refreshToken == null)
                 {
-                    return new ServiceResult(false, "Invalid refresh token.");
+                    return new ServiceResult(false, AppMessages.Get("NotAuthenticated"));
                 }
 
                 if (!refreshToken.IsActive)
@@ -468,7 +469,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var user = refreshToken.User;
                 if (user == null)
                 {
-                    return new ServiceResult(false, "User not found.");
+                    return new ServiceResult(false, AppMessages.Get("UserNotFound"));
                 }
 
                 // Revoke old refresh token

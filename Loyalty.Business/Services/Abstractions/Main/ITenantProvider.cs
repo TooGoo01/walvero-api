@@ -13,5 +13,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         int? CurrentProgramId { get; }
         int? CurrentBranchId { get; }
         string? CurrentUserId { get; }
+
+        /// <summary>Request dili: Accept-Language-in ilk 2 hərfi ("az"|"en"|"ru"), default "az".</summary>
+        string CurrentLanguage { get; }
     }
 }

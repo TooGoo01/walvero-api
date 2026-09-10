@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using Loyalty.Business.Dtos.Get.Users;
+using Loyalty.Business.Resources;
 using Loyalty.Business.Dtos.Post.Users;
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
@@ -118,7 +119,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     return new ServiceResult(true, response, "user successfully found");
                 }
 
-                return new ServiceResult(false, "user not found");
+                return new ServiceResult(false, AppMessages.Get("UserNotFound"));
             }
             catch (Exception ex)
             {
@@ -276,7 +277,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 //    return new ServiceResult(true, detail, "guest login success");
                 //}
 
-                return new ServiceResult(false, "Login failed");
+                return new ServiceResult(false, AppMessages.Get("LoginFailed"));
             }
             catch (Exception ex)
             {
@@ -382,7 +383,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var user = await _userManager.FindByIdAsync(userId);
                 if (user == null)
                 {
-                    return new ServiceResult(false, "User not found");
+                    return new ServiceResult(false, AppMessages.Get("UserNotFound"));
                 }
 
                 // Get all customers linked to this user
@@ -421,7 +422,7 @@ namespace Loyalty.Business.Services.Implementations.Users
         {
             //var name = await _userManager.FindByNameAsync(phone);
             //if (name == null)
-            //    return new ServiceResult(false, "user not found");
+            //    return new ServiceResult(false, AppMessages.Get("UserNotFound"));
             //if (inputRandom == null)
             //{
             //    return new ServiceResult(false, "rantom not found");
@@ -509,7 +510,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     return new ServiceResult(true, response);
                 }
 
-                return new ServiceResult(false, "user not found");
+                return new ServiceResult(false, AppMessages.Get("UserNotFound"));
             }
             catch (Exception ex)
             {
@@ -531,7 +532,7 @@ namespace Loyalty.Business.Services.Implementations.Users
 
 
                 if (user == null)
-                    return new ServiceResult(false, "user not found");
+                    return new ServiceResult(false, AppMessages.Get("UserNotFound"));
 
                 var result = await _userManager.AddToRoleAsync(user, model.Name);
 
@@ -558,7 +559,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     return new ServiceResult(true, response, "user successfully found");
                 }
 
-                return new ServiceResult(false, "user not found");
+                return new ServiceResult(false, AppMessages.Get("UserNotFound"));
             }
             catch (Exception ex)
             {
@@ -628,7 +629,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 if (existingUser != null)
                 {
                     _logger?.LogWarning("User already exists with phone: {Phone}", WalletCodeHelper.MaskPhone(registerDto.PhoneNumber));
-                    return new ServiceResult(false, "User with this phone number already exists");
+                    return new ServiceResult(false, AppMessages.Get("PhoneAlreadyExists"));
                 }
 
                 // Create new user in pending state
@@ -729,7 +730,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 if (user == null)
                 {
                     _logger?.LogWarning("User not found for OTP generation: {UserId}", userId);
-                    return new ServiceResult(false, "User not found");
+                    return new ServiceResult(false, AppMessages.Get("UserNotFound"));
                 }
 
                 // Invalidate previous unused OTPs of the same purpose
@@ -777,14 +778,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 // Send SMS
                 try
                 {
-                    var message = purpose switch
-                    {
-                        OtpPurpose.Registration => $"Your registration code is: {otpCode}. Valid for 10 minutes.",
-                        OtpPurpose.PasswordReset => $"Your password reset code is: {otpCode}. Valid for 10 minutes.",
-                        OtpPurpose.PhoneUpdateOld => $"Your verification code for phone number update is: {otpCode}. Valid for 10 minutes.",
-                        OtpPurpose.PhoneUpdateNew => $"Your verification code for new phone number is: {otpCode}. Valid for 10 minutes.",
-                        _ => $"Your verification code is: {otpCode}. Valid for 10 minutes."
-                    };
+                    var message = AppMessages.Get("OtpSmsText", otpCode);
 
                     await Helper.SendSmsAsync(user.PhoneNumber!, message);
                     _logger?.LogInformation("OTP SMS sent successfully to UserId: {UserId}, Phone: {Phone}", userId, WalletCodeHelper.MaskPhone(user.PhoneNumber));
@@ -829,7 +823,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 
                 if (user == null)
                 {
-                    return new ServiceResult(false, "User not found");
+                    return new ServiceResult(false, AppMessages.Get("UserNotFound"));
                 }
 
                 // Find the latest OTP for this user and purpose
@@ -843,7 +837,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 if (otp == null)
                 {
                     _logger?.LogWarning("No active OTP found for UserId: {UserId}, Purpose: {Purpose}", userId, purpose);
-                    return new ServiceResult(false, "No active OTP found. Please request a new one.");
+                    return new ServiceResult(false, AppMessages.Get("OtpNotFound"));
                 }
 
                 // Check expiration
@@ -853,7 +847,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     otp.IsUsed = true;
                     otp.UsedAt = DateTime.UtcNow;
                     await _dbContext.SaveChangesAsync();
-                    return new ServiceResult(false, "OTP has expired. Please request a new one.");
+                    return new ServiceResult(false, AppMessages.Get("OtpExpired"));
                 }
 
                 // Check attempts
@@ -863,7 +857,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     otp.IsUsed = true;
                     otp.UsedAt = DateTime.UtcNow;
                     await _dbContext.SaveChangesAsync();
-                    return new ServiceResult(false, "Maximum verification attempts exceeded. Please request a new OTP.");
+                    return new ServiceResult(false, AppMessages.Get("OtpMaxAttempts"));
                 }
 
                 // Verify code
@@ -874,7 +868,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 {
                     _logger?.LogWarning("Invalid OTP code for UserId: {UserId}, Purpose: {Purpose}, Attempts: {Attempts}", userId, purpose, otp.AttemptsCount);
                     await _dbContext.SaveChangesAsync();
-                    return new ServiceResult(false, $"Invalid OTP code. Attempts remaining: {5 - otp.AttemptsCount}");
+                    return new ServiceResult(false, AppMessages.Get("OtpInvalid", 5 - otp.AttemptsCount));
                 }
 
                 // OTP is valid - mark as used
@@ -1077,7 +1071,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 if (tokenEntity == null)
                 {
                     _logger?.LogWarning("Invalid password reset token");
-                    return new ServiceResult(false, "Invalid or expired reset token");
+                    return new ServiceResult(false, AppMessages.Get("ResetTokenInvalid"));
                 }
 
                 if (tokenEntity.IsExpired)
@@ -1086,13 +1080,13 @@ namespace Loyalty.Business.Services.Implementations.Users
                     tokenEntity.IsUsed = true;
                     tokenEntity.UsedAt = DateTime.UtcNow;
                     await _dbContext.SaveChangesAsync();
-                    return new ServiceResult(false, "Reset token has expired. Please request a new one.");
+                    return new ServiceResult(false, AppMessages.Get("ResetTokenInvalid"));
                 }
 
                 if (tokenEntity.IsUsed)
                 {
                     _logger?.LogWarning("Already used password reset token for UserId: {UserId}", tokenEntity.ApplicationUserId);
-                    return new ServiceResult(false, "Reset token has already been used. Please request a new one.");
+                    return new ServiceResult(false, AppMessages.Get("ResetTokenInvalid"));
                 }
 
                 // Reset password using Identity's password reset token mechanism
@@ -1187,13 +1181,13 @@ namespace Loyalty.Business.Services.Implementations.Users
                     {
                         // User is already verified and active
                         _logger?.LogWarning("User already exists and is verified with phone: {Phone}", WalletCodeHelper.MaskPhone(request.Phone));
-                        return ServiceResult<OtpRequiredResponse>.Fail("User with this phone number already exists and is verified.");
+                        return ServiceResult<OtpRequiredResponse>.Fail(AppMessages.Get("PhoneAlreadyExists"));
                     }
                     else
                     {
                         // User exists but is blocked or other status
                         _logger?.LogWarning("User exists with blocked/invalid status: {Phone}, Status: {Status}", WalletCodeHelper.MaskPhone(request.Phone), existingUser.Status);
-                        return ServiceResult<OtpRequiredResponse>.Fail("User with this phone number already exists but account is not available.");
+                        return ServiceResult<OtpRequiredResponse>.Fail(AppMessages.Get("PhoneAlreadyExists"));
                     }
                 }
                 else
@@ -1255,7 +1249,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     {
                         var errors = string.Join("; ", result.Errors.Select(e => e.Description));
                         _logger?.LogError("User creation failed: {Errors}", errors);
-                        return ServiceResult<OtpRequiredResponse>.Fail($"Registration failed: {errors}");
+                        return ServiceResult<OtpRequiredResponse>.Fail(AppMessages.Get("RegistrationFailed"));
                     }
 
                     // Add Customer role
@@ -1305,7 +1299,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 if (!otpResult.Success)
                 {
                     _logger?.LogError("Failed to generate/send OTP during registration");
-                    return ServiceResult<OtpRequiredResponse>.Fail("Registration successful, but OTP could not be sent. Please contact support.");
+                    return ServiceResult<OtpRequiredResponse>.Fail(AppMessages.Get("OtpSendFailed"));
                 }
 
                 var response = new OtpRequiredResponse
@@ -1325,7 +1319,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Error during registration for phone: {Phone}", WalletCodeHelper.MaskPhone(request.Phone));
-                return ServiceResult<OtpRequiredResponse>.Fail($"Registration failed: {ex.Message}");
+                return ServiceResult<OtpRequiredResponse>.Fail(AppMessages.Get("RegistrationFailed"));
             }
         }
 
@@ -1344,7 +1338,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 if (user == null)
                 {
                     _logger?.LogWarning("Login attempt with non-existent phone: {Phone}", WalletCodeHelper.MaskPhone(request.Phone));
-                    return ServiceResult<object>.Fail("Invalid phone or password");
+                    return ServiceResult<object>.Fail(AppMessages.Get("LoginFailed"));
                 }
 
                 // Check password
@@ -1352,14 +1346,14 @@ namespace Loyalty.Business.Services.Implementations.Users
                 if (!passwordValid)
                 {
                     _logger?.LogWarning("Invalid password attempt for UserId: {UserId}", user.Id);
-                    return ServiceResult<object>.Fail("Invalid phone or password");
+                    return ServiceResult<object>.Fail(AppMessages.Get("LoginFailed"));
                 }
 
                 // Check user status
                 if (user.Status == UserStatus.Blocked)
                 {
                     _logger?.LogWarning("Login attempt for blocked user: {UserId}", user.Id);
-                    return ServiceResult<object>.Fail("Your account is blocked.");
+                    return ServiceResult<object>.Fail(AppMessages.Get("AccountBlocked"));
                 }
 
                 // If user is Active, create JWT and return session
@@ -1440,7 +1434,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     if (!otpResult.Success)
                     {
                         _logger?.LogError("Failed to generate/send OTP during login");
-                        return ServiceResult<object>.Fail("Failed to send OTP. Please try again.");
+                        return ServiceResult<object>.Fail(AppMessages.Get("OtpSendFailed"));
                     }
 
                     var otpResponse = new OtpRequiredResponse
@@ -1454,12 +1448,12 @@ namespace Loyalty.Business.Services.Implementations.Users
                     return ServiceResult<object>.Ok(otpResponse, "Your account requires verification. OTP has been sent to your phone. Please verify to complete login.");
                 }
 
-                return ServiceResult<object>.Fail("Invalid user status");
+                return ServiceResult<object>.Fail(AppMessages.Get("GenericError"));
             }
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Error during login for phone: {Phone}", WalletCodeHelper.MaskPhone(request.Phone));
-                return ServiceResult<object>.Fail($"Login error: {ex.Message}");
+                return ServiceResult<object>.Fail(AppMessages.Get("GenericError"));
             }
         }
 
@@ -1476,7 +1470,7 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 if (user == null)
                 {
-                    return ServiceResult<VerifyOtpResponse>.Fail("User not found");
+                    return ServiceResult<VerifyOtpResponse>.Fail(AppMessages.Get("UserNotFound"));
                 }
 
                 // Map purpose string to OtpPurpose enum
@@ -1492,7 +1486,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var verifyResult = await VerifyOtpAsyncInternal(user.Id, request.OtpCode, otpPurpose);
                 if (!verifyResult.Success)
                 {
-                    return ServiceResult<VerifyOtpResponse>.Fail(verifyResult.Message ?? "Invalid or expired OTP.");
+                    return ServiceResult<VerifyOtpResponse>.Fail(verifyResult.Message ?? AppMessages.Get("OtpInvalidOrExpired"));
                 }
 
                 // If verification was successful, activate user if still pending
@@ -1530,7 +1524,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 // Check if user is blocked
                 if (user.Status == UserStatus.Blocked)
                 {
-                    return ServiceResult<VerifyOtpResponse>.Fail("Your account is blocked.");
+                    return ServiceResult<VerifyOtpResponse>.Fail(AppMessages.Get("AccountBlocked"));
                 }
 
                 // Generate JWT and return session
@@ -1594,7 +1588,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Error verifying OTP for UserId: {UserId}", request.UserId);
-                return ServiceResult<VerifyOtpResponse>.Fail($"OTP verification failed: {ex.Message}");
+                return ServiceResult<VerifyOtpResponse>.Fail(AppMessages.Get("GenericError"));
             }
         }
 
@@ -1608,13 +1602,13 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var user = await _userManager.FindByIdAsync(request.UserId.ToString());
                 if (user == null)
                 {
-                    return ServiceResult<OtpRequiredResponse>.Fail("User not found");
+                    return ServiceResult<OtpRequiredResponse>.Fail(AppMessages.Get("UserNotFound"));
                 }
 
                 // Check if user is in a valid state for OTP resend
                 if (user.Status == UserStatus.Blocked)
                 {
-                    return ServiceResult<OtpRequiredResponse>.Fail("Your account is blocked.");
+                    return ServiceResult<OtpRequiredResponse>.Fail(AppMessages.Get("AccountBlocked"));
                 }
 
                 // Map purpose string to OtpPurpose enum
@@ -1631,7 +1625,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 if (!otpResult.Success)
                 {
                     _logger?.LogError("Failed to generate/send OTP during resend for UserId: {UserId}", user.Id);
-                    return ServiceResult<OtpRequiredResponse>.Fail("Failed to send OTP. Please try again.");
+                    return ServiceResult<OtpRequiredResponse>.Fail(AppMessages.Get("OtpSendFailed"));
                 }
 
                 var response = new OtpRequiredResponse
@@ -1647,7 +1641,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Error resending OTP for UserId: {UserId}", request.UserId);
-                return ServiceResult<OtpRequiredResponse>.Fail($"Failed to resend OTP: {ex.Message}");
+                return ServiceResult<OtpRequiredResponse>.Fail(AppMessages.Get("OtpSendFailed"));
             }
         }
 
@@ -1659,12 +1653,12 @@ namespace Loyalty.Business.Services.Implementations.Users
             {
                 var userId = GetCurrentUserId();
                 if (userId == null)
-                    return ServiceResult<ApplicationUserDto>.Fail("User not authenticated");
+                    return ServiceResult<ApplicationUserDto>.Fail(AppMessages.Get("NotAuthenticated"));
 
                 var user = await _dbContext.Users
                     .FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
                 if (user == null)
-                    return ServiceResult<ApplicationUserDto>.Fail("User not found");
+                    return ServiceResult<ApplicationUserDto>.Fail(AppMessages.Get("UserNotFound"));
 
                 var roles = await _userManager.GetRolesAsync(user);
                 var dto = new ApplicationUserDto
@@ -1687,7 +1681,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "GetMyProfileAsync failed");
-                return ServiceResult<ApplicationUserDto>.Fail($"Failed to load profile: {ex.Message}");
+                return ServiceResult<ApplicationUserDto>.Fail(AppMessages.Get("GenericError"));
             }
         }
 
@@ -1698,7 +1692,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var userId = GetCurrentUserId();
                 if (userId == null)
                 {
-                    return ServiceResult<UpdateProfileResponseDto>.Fail("User not authenticated");
+                    return ServiceResult<UpdateProfileResponseDto>.Fail(AppMessages.Get("NotAuthenticated"));
                 }
 
                 var user = await _dbContext.Users
@@ -1706,7 +1700,7 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 if (user == null)
                 {
-                    return ServiceResult<UpdateProfileResponseDto>.Fail("User not found");
+                    return ServiceResult<UpdateProfileResponseDto>.Fail(AppMessages.Get("UserNotFound"));
                 }
 
                 // Əvvəlcə telefon nömrəsi istisna olmaqla digər məlumatları yenilə
@@ -1747,7 +1741,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                         var otpResult = await GenerateAndSendOtpAsync(userId.Value, OtpPurpose.PhoneUpdateOld);
                         if (!otpResult.Success)
                         {
-                            return ServiceResult<UpdateProfileResponseDto>.Fail(otpResult.Message ?? "Failed to send OTP to old phone number");
+                            return ServiceResult<UpdateProfileResponseDto>.Fail(otpResult.Message ?? AppMessages.Get("OtpSendFailed"));
                         }
 
                         return ServiceResult<UpdateProfileResponseDto>.Ok(new UpdateProfileResponseDto
@@ -1786,7 +1780,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     if (existingUser != null && existingUser.Id != userId.Value)
                     {
                         // ApplicationUser üçün error qaytar
-                        return ServiceResult<UpdateProfileResponseDto>.Fail("This phone number is already registered by another user.");
+                        return ServiceResult<UpdateProfileResponseDto>.Fail(AppMessages.Get("PhoneAlreadyExists"));
                     }
 
                     // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (Customer)
@@ -1815,7 +1809,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                         var sendResult = await SendOtpToNewPhoneAsync(userId.Value, newPhoneNumber, ct);
                         if (!sendResult.Success)
                         {
-                            return ServiceResult<UpdateProfileResponseDto>.Fail(sendResult.Message ?? "Failed to send OTP to new phone number");
+                            return ServiceResult<UpdateProfileResponseDto>.Fail(sendResult.Message ?? AppMessages.Get("OtpSendFailed"));
                         }
 
                         return ServiceResult<UpdateProfileResponseDto>.Ok(new UpdateProfileResponseDto
@@ -1840,8 +1834,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var updateResult = await _userManager.UpdateAsync(user);
                 if (!updateResult.Succeeded)
                 {
-                    return ServiceResult<UpdateProfileResponseDto>.Fail(
-                        $"Failed to update profile: {string.Join(", ", updateResult.Errors.Select(e => e.Description))}");
+                    return ServiceResult<UpdateProfileResponseDto>.Fail(AppMessages.Get("GenericError"));
                 }
 
                 // Customer entity-ləri də yenilə
@@ -1904,7 +1897,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Error updating profile for user");
-                return ServiceResult<UpdateProfileResponseDto>.Fail($"Error updating profile: {ex.Message}");
+                return ServiceResult<UpdateProfileResponseDto>.Fail(AppMessages.Get("GenericError"));
             }
         }
 
@@ -1915,7 +1908,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var userId = GetCurrentUserId();
                 if (userId == null)
                 {
-                    return new ServiceResult(false, "User not authenticated");
+                    return new ServiceResult(false, AppMessages.Get("NotAuthenticated"));
                 }
 
                 var verifyResult = await VerifyOtpAsyncInternal(userId.Value, otpCode, OtpPurpose.PhoneUpdateOld);
@@ -1942,7 +1935,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var userId = GetCurrentUserId();
                 if (userId == null)
                 {
-                    return new ServiceResult(false, "User not authenticated");
+                    return new ServiceResult(false, AppMessages.Get("NotAuthenticated"));
                 }
 
                 // Əvvəlcə köhnə telefonun təsdiqləndiyini yoxla
@@ -1956,7 +1949,7 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 if (!oldPhoneVerified)
                 {
-                    return new ServiceResult(false, "Please verify your old phone number first.");
+                    return new ServiceResult(false, AppMessages.Get("VerifyOldPhoneFirst"));
                 }
 
                 // Yeni telefon nömrəsinin OTP-sini təsdiqlə
@@ -1965,14 +1958,14 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 if (user == null)
                 {
-                    return new ServiceResult(false, "User not found");
+                    return new ServiceResult(false, AppMessages.Get("UserNotFound"));
                 }
 
                 // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (ApplicationUser)
                 var existingUser = await _userManager.FindByNameAsync(newPhoneNumber);
                 if (existingUser != null && existingUser.Id != userId.Value)
                 {
-                    return new ServiceResult(false, "This phone number is already registered by another user.");
+                    return new ServiceResult(false, AppMessages.Get("PhoneAlreadyExists"));
                 }
 
                 // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (Customer)
@@ -2081,7 +2074,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 var userId = GetCurrentUserId();
                 if (userId == null)
                 {
-                    return new ServiceResult(false, "User not authenticated");
+                    return new ServiceResult(false, AppMessages.Get("NotAuthenticated"));
                 }
 
                 var user = await _dbContext.Users
@@ -2089,7 +2082,7 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 if (user == null)
                 {
-                    return new ServiceResult(false, "User not found");
+                    return new ServiceResult(false, AppMessages.Get("UserNotFound"));
                 }
 
                 if (dto.OtpType.ToLower() == "oldphone")
@@ -2108,7 +2101,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     // Yeni telefon nömrəsi verilməlidir
                     if (string.IsNullOrEmpty(dto.NewPhoneNumber))
                     {
-                        return new ServiceResult(false, "New phone number is required for resending OTP to new phone.");
+                        return new ServiceResult(false, AppMessages.Get("NewPhoneRequired"));
                     }
 
                     // Köhnə telefonun təsdiqləndiyini yoxla
@@ -2122,14 +2115,14 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                     if (!oldPhoneVerified)
                     {
-                        return new ServiceResult(false, "Please verify your old phone number first.");
+                        return new ServiceResult(false, AppMessages.Get("VerifyOldPhoneFirst"));
                     }
 
                     // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (ApplicationUser)
                     var existingUser = await _userManager.FindByNameAsync(dto.NewPhoneNumber);
                     if (existingUser != null && existingUser.Id != userId.Value)
                     {
-                        return new ServiceResult(false, "This phone number is already registered by another user.");
+                        return new ServiceResult(false, AppMessages.Get("PhoneAlreadyExists"));
                     }
 
                     // Yeni telefon nömrəsinin artıq istifadə olunub-olunmadığını yoxla (Customer)
@@ -2174,7 +2167,7 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 if (user == null)
                 {
-                    return new ServiceResult(false, "User not found");
+                    return new ServiceResult(false, AppMessages.Get("UserNotFound"));
                 }
 
                 // Müvəqqəti olaraq user-ın telefon nömrəsini dəyişdirib OTP göndəririk
@@ -2309,7 +2302,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             {
                 var user = await _userManager.FindByIdAsync(userId);
                 if (user == null)
-                    return new ServiceResult(false, "User not found");
+                    return new ServiceResult(false, AppMessages.Get("UserNotFound"));
 
                 if (tenantId.HasValue)
                     user.TenantId = tenantId.Value;

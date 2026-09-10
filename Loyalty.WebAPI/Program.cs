@@ -472,6 +472,21 @@ else
 
 app.UseCors("AllowAll");
 
+// Accept-Language → AppMessages.CurrentLanguage (az/en/ru, default az).
+// AsyncLocal olduğu üçün bütün downstream async axına daşınır — servislər DI-siz oxuyur.
+app.Use((context, next) =>
+{
+    var header = context.Request.Headers.AcceptLanguage.ToString();
+    var lang = "az";
+    if (!string.IsNullOrWhiteSpace(header))
+    {
+        var first = header.Split(',')[0].Trim();
+        if (first.Length >= 2) lang = first.Substring(0, 2).ToLowerInvariant();
+    }
+    Loyalty.Business.Resources.AppMessages.CurrentLanguage = lang;
+    return next(context);
+});
+
 // Response Compression — must come EARLY (before UseRouting/MapControllers).
 // Brotli/Gzip daxil olan request-in `Accept-Encoding` header-inə uyğun olur.
 app.UseResponseCompression();

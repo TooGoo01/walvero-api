@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Azure.Core;
 using Google.Apis.Walletobjects.v1.Data;
 using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Resources;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
@@ -124,7 +125,7 @@ UserManager<ApplicationUser> userManager,
         {
             var tenantId = dto.TenantId;
             if (tenantId <= 0)
-                return new ServiceResult(false, "Tenant not resolved.");
+                return new ServiceResult(false, AppMessages.Get("TenantNotResolved"));
 
             var userId = _tp.CurrentUserId ?? "";
             if (string.IsNullOrWhiteSpace(userId))
@@ -317,16 +318,16 @@ UserManager<ApplicationUser> userManager,
         {
             var tenantId = dto.TenantId;
             if (tenantId <= 0)
-                return new ServiceResult(false, "Tenant not resolved.");
+                return new ServiceResult(false, AppMessages.Get("TenantNotResolved"));
 
             // Deaktiv tenant-a yeni müştəri qoşulması qadağandır (abunə dayandırılıb)
             if (!await _tenantStatusGuard.IsActiveAsync(tenantId, ct))
                 return new ServiceResult(false, TenantStatusGuard.InactiveMessage);
 
             if (string.IsNullOrWhiteSpace(dto.FirstName))
-                return new ServiceResult(false, "Ad tələb olunur.");
+                return new ServiceResult(false, AppMessages.Get("NameRequired"));
             if (string.IsNullOrWhiteSpace(dto.PhoneNumber))
-                return new ServiceResult(false, "Telefon nömrəsi tələb olunur.");
+                return new ServiceResult(false, AppMessages.Get("PhoneRequired"));
 
             // 1) Program tenant-ə məxsusdurmu?
             var program = await _programRepo.GetByIdNameAsync(dto.LoyaltyProgramId, ct);
@@ -447,7 +448,7 @@ UserManager<ApplicationUser> userManager,
             if (customer.OtpLastSentAt.HasValue &&
                 (DateTime.UtcNow - customer.OtpLastSentAt.Value).TotalSeconds < 30)
             {
-                return new ServiceResult(false, "Zəhmət olmasa 30 saniyə gözləyin.");
+                return new ServiceResult(false, AppMessages.Get("Wait30Sec"));
             }
 
             // 5) OTP yarat, hash-la, saxla
@@ -490,17 +491,17 @@ UserManager<ApplicationUser> userManager,
         public async Task<ServiceResult> VerifyEnrollmentAsync(VerifyCustomerOtpDto dto, CancellationToken ct = default)
         {
             var customer = await _uow.Repository<Customer>().GetByIdAsync(dto.CustomerId);
-            if (customer is null) return new ServiceResult(false, "Customer not found.");
+            if (customer is null) return new ServiceResult(false, AppMessages.Get("CustomerNotFound"));
 
             // Deaktiv tenant-da qoşulma təsdiqi də qadağandır
             if (!await _tenantStatusGuard.IsActiveAsync(customer.TenantId, ct))
                 return new ServiceResult(false, TenantStatusGuard.InactiveMessage);
 
             if (string.IsNullOrWhiteSpace(customer.OtpHash) || string.IsNullOrWhiteSpace(customer.OtpSalt) || !customer.OtpExpiresAt.HasValue)
-                return new ServiceResult(false, "No active code.");
+                return new ServiceResult(false, AppMessages.Get("CodeNotFound"));
 
             if (DateTime.UtcNow > customer.OtpExpiresAt.Value)
-                return new ServiceResult(false, "Code expired.");
+                return new ServiceResult(false, AppMessages.Get("CodeExpired"));
 
             if (customer.OtpAttempts >= 5)
                 return new ServiceResult(false, "Too many attempts.");
@@ -512,7 +513,7 @@ UserManager<ApplicationUser> userManager,
             {
                 _uow.Repository<Customer>().Update(customer);
                 _uow.Commit();
-                return new ServiceResult(false, "Invalid code.");
+                return new ServiceResult(false, AppMessages.Get("CodeInvalid"));
             }
 
             // uğurlu – OTP sahələrini sıfırla

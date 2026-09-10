@@ -17,6 +17,18 @@ namespace Loyalty.WebAPI.Tenancy
         public int? CurrentBranchId => GetIntClaim("branch_id") ?? GetIntHeader("X-Branch-Id");
         public string? CurrentUserId => GetClaim(ClaimTypes.NameIdentifier);
 
+        public string CurrentLanguage
+        {
+            get
+            {
+                var header = _httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString();
+                if (string.IsNullOrWhiteSpace(header)) return "az";
+                var lang = header.Split(',')[0].Trim();
+                if (lang.Length >= 2) lang = lang.Substring(0, 2).ToLowerInvariant();
+                return lang is "az" or "en" or "ru" ? lang : "az";
+            }
+        }
+
         private ClaimsPrincipal? User =>
             _httpContextAccessor.HttpContext?.User;
 

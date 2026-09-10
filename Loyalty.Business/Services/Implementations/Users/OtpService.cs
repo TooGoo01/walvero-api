@@ -99,12 +99,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             // Send SMS
             try
             {
-                var message = purpose.ToLower() switch
-                {
-                    "login" => $"Your login code is: {otpCode}. Valid for 5 minutes.",
-                    "passwordreset" => $"Your password reset code is: {otpCode}. Valid for 5 minutes.",
-                    _ => $"Your registration code is: {otpCode}. Valid for 5 minutes."
-                };
+                var message = Resources.AppMessages.Get("OtpSmsText", otpCode);
 
                 await Helper.SendSmsAsync(user.PhoneNumber!, message);
                 _logger.LogInformation("OTP SMS sent successfully to UserId: {UserId}, Phone: {Phone}", 

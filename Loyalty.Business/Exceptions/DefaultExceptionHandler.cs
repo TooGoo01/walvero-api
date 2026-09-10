@@ -37,7 +37,9 @@ namespace Loyalty.Business.Exceptions
                 .FirstOrDefault(new ProblemDetails
                 {
                     Status = (int)HttpStatusCode.InternalServerError,
-                    Type = "Internal server error has occurred"
+                    Type = "Internal server error has occurred",
+                    // Client-ə göstərilə bilən, dilə uyğun generic mesaj (texniki detal sızmır)
+                    Title = Resources.AppMessages.Get("GenericError")
                 });
 
             var environment = context.RequestServices.GetRequiredService<IHostEnvironment>();
