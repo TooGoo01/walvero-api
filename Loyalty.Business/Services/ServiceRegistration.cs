@@ -56,6 +56,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IWalletRouter, WalletRouter>();
             services.AddScoped<IRedeemService, RedeemService>();
             services.AddScoped<IReceiptValidationService, ReceiptValidationService>();
+            services.AddScoped<IReceiptVisionOcr, ReceiptVisionOcrService>();
             services.AddScoped<IWhatsAppAlertService, TwilioWhatsAppAlertService>();
             services.AddScoped<IEkassaImageFetcher, EkassaImageFetcher>();
             services.AddHttpClient(EkassaImageFetcher.HttpClientName, c =>

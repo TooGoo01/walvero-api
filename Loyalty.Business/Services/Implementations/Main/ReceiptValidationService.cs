@@ -16,7 +16,8 @@ namespace Loyalty.Business.Services.Implementations.Main
     public sealed class ReceiptValidationService : IReceiptValidationService
     {
         private const string ReceiptContainer = "receipts";
-        private const int MaxOcrDimension = 1600;
+        private const int MaxOcrDimension = 2200; // telefon fotosunda kiçik rəqəmlər 1600-də əriyirdi
+        private const int MinOcrDimension = 1400; // kiçik/uzaqdan çəkilmiş şəkilləri upscale et — LSTM kiçik mətni tutmur
 
         private static readonly Lazy<TesseractEngine> _engine = new(() =>
         {
@@ -45,15 +46,18 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         private readonly IAzureStorage _storage;
         private readonly IEkassaImageFetcher _ekassaFetcher;
+        private readonly IReceiptVisionOcr _vision;
         private readonly ILogger<ReceiptValidationService> _logger;
 
         public ReceiptValidationService(
             IAzureStorage storage,
             IEkassaImageFetcher ekassaFetcher,
+            IReceiptVisionOcr vision,
             ILogger<ReceiptValidationService> logger)
         {
             _storage = storage;
             _ekassaFetcher = ekassaFetcher;
+            _vision = vision;
             _logger = logger;
         }
 
@@ -126,6 +130,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             string? taxNumber = null;
             string? physicalReceiptId = null;
             bool qrVerified = false;
+            bool visionFiscal = false;      // vision OCR: fiskal əlaməti
+            string? visionOrderNo = null;   // vision OCR: sifariş №
 
             // Step 1A: Flutter-in fetch etdiyi e-kassa image priority. AZ ISP-dən gəlir, ən etibarlı.
             byte[] ocrBytes = rawBytes;
@@ -247,6 +253,29 @@ namespace Loyalty.Business.Services.Implementations.Main
                     physicalReceiptId = ExtractByLabelString(ocrText, ctx.OcrLabelReceiptId, ReceiptIdValuePattern);
                 receiptDate ??= ExtractDate(ocrText);
 
+                // Vision OCR (Azure OpenAI) — Tesseract çek fotolarında məbləği səhv oxuyur.
+                // Məbləği authoritative vision-dan götür; digər boş sahələri doldur.
+                // Vision uğursuzsa Tesseract nəticəsi qalır (graceful degrade).
+                try
+                {
+                    var v = await _vision.ReadAsync(ocrBytes, ct);
+                    if (v.Ok)
+                    {
+                        if (v.Amount.HasValue) extracted = v.Amount;
+                        objectCode ??= v.ObjectCode;
+                        taxNumber ??= v.TaxNumber;
+                        if (string.IsNullOrWhiteSpace(physicalReceiptId)) physicalReceiptId = v.ReceiptId;
+                        receiptDate ??= v.Date;
+                        visionFiscal = v.IsFiscal;
+                        visionOrderNo = v.OrderNo;
+                        _logger.LogInformation("Vision OCR ok. Amount={Amount} Fiscal={F}", v.Amount, v.IsFiscal);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Vision OCR failed; falling back to Tesseract result.");
+                }
+
                 if (extracted is null)
                 {
                     _logger.LogInformation("OCR found no amount in receipt text.");
@@ -266,6 +295,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 || !string.IsNullOrWhiteSpace(qrDocId)
                 || !string.IsNullOrWhiteSpace(taxNumber)
                 || !string.IsNullOrWhiteSpace(physicalReceiptId)
+                || visionFiscal
                 || FiscalMarkerRegex.IsMatch(ocrText);
             bool nonFiscalMode = ctx.AllowNonFiscalReceipts && !looksFiscal;
 
@@ -278,10 +308,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (string.IsNullOrWhiteSpace(physicalReceiptId))
                 {
                     var orderMatch = OrderNoRegex.Match(ocrText);
-                    if (orderMatch.Success)
+                    var orderVal = orderMatch.Success ? orderMatch.Groups["val"].Value : visionOrderNo;
+                    if (!string.IsNullOrWhiteSpace(orderVal))
                     {
                         var dedupeDate = receiptDate ?? TodayInTenantZone(ctx.TimeZoneId);
-                        physicalReceiptId = $"NF:{ctx.BranchId ?? 0}:{dedupeDate:yyyyMMdd}:{orderMatch.Groups["val"].Value}";
+                        physicalReceiptId = $"NF:{ctx.BranchId ?? 0}:{dedupeDate:yyyyMMdd}:{orderVal}";
                     }
                 }
             }
@@ -393,15 +424,23 @@ namespace Loyalty.Business.Services.Implementations.Main
         private static async Task<byte[]> PreprocessAsync(byte[] input, CancellationToken ct)
         {
             using var image = Image.Load<L8>(input);
+
+            // Ölçünü OCR üçün optimal pəncərəyə gətir: çox böyükdürsə kiçilt (noise/sürət),
+            // çox kiçikdirsə böyüt (LSTM ~30px-dən kiçik simvolları tanımır).
             var maxDim = Math.Max(image.Width, image.Height);
-            if (maxDim > MaxOcrDimension)
-            {
-                var scale = (float)MaxOcrDimension / maxDim;
-                var newW = (int)(image.Width * scale);
-                var newH = (int)(image.Height * scale);
-                image.Mutate(x => x.Resize(newW, newH));
-            }
-            image.Mutate(x => x.Contrast(1.4f));
+            float scale = 1f;
+            if (maxDim > MaxOcrDimension) scale = (float)MaxOcrDimension / maxDim;
+            else if (maxDim < MinOcrDimension) scale = (float)MinOcrDimension / maxDim;
+            if (scale != 1f)
+                image.Mutate(x => x.Resize((int)(image.Width * scale), (int)(image.Height * scale)));
+
+            // Termal çek printi solğun/boz + telefon fotosunda kölgə olur. AdaptiveThreshold
+            // lokal pəncərəyə görə binarizasiya edir — kölgəli hissələr qaralmır (sabit
+            // threshold-dan fərqli). Əvvəl yüngül contrast + sharpen ki, sönük print tündləşsin.
+            image.Mutate(x => x
+                .Contrast(1.3f)
+                .GaussianSharpen(1.2f)
+                .AdaptiveThreshold());
 
             using var outMs = new MemoryStream();
             await image.SaveAsPngAsync(outMs, ct);
@@ -413,11 +452,27 @@ namespace Loyalty.Business.Services.Implementations.Main
             lock (_engineLock)
             {
                 var engine = _engine.Value;
-                engine.DefaultPageSegMode = PageSegMode.SingleBlock;
                 using var pix = Pix.LoadFromMemory(imageBytes);
-                using var page = engine.Process(pix);
-                return page.GetText() ?? string.Empty;
+
+                // Çek = tək dar sütun → SingleColumn ən düzgün seqmentləşmə.
+                // SingleBlock bütün çeki tək blok sayırdı → sətirlər qarışırdı.
+                var text = RunOcrPass(engine, pix, PageSegMode.SingleColumn);
+
+                // Nəticə çox qısadırsa (seqmentləşmə uğursuz) köhnə rejimlə təkrar cəhd.
+                if (text.Trim().Length < 20)
+                {
+                    var fallback = RunOcrPass(engine, pix, PageSegMode.SingleBlock);
+                    if (fallback.Trim().Length > text.Trim().Length) text = fallback;
+                }
+                return text;
             }
+        }
+
+        private static string RunOcrPass(TesseractEngine engine, Pix pix, PageSegMode psm)
+        {
+            engine.DefaultPageSegMode = psm;
+            using var page = engine.Process(pix);
+            return page.GetText() ?? string.Empty;
         }
 
         private static string? TryDecodeQr(byte[] imageBytes)
