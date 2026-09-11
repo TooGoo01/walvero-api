@@ -158,6 +158,62 @@ namespace Loyalty.WebAPI.Controllers
                 if (!ownBranchId.HasValue)
                     return StatusCode((int)HttpStatusCode.Forbidden, new ServiceResult(false, "Branch təyin olunmayıb"));
                 dto.BranchId = ownBranchId;
+                dto.BranchIds = null; // branch-scoped user multi-filial yarada bilməz
+            }
+
+            // Şəkilləri bir dəfə sıx — multi-filial dövründə təkrar sıxılmasın
+            if (dto.Files != null && dto.Files.Count > 0)
+            {
+                var compressedFiles = CompressImages(dto.Files);
+                dto.Files = new FormFileCollection(compressedFiles);
+            }
+
+            // Multi-filial: seçilmiş filialların hamısında ayrıca MenuItem yaradılır
+            if (dto.BranchIds is { Count: > 0 })
+            {
+                var branchIds = dto.BranchIds.Where(b => b > 0).Distinct().ToList();
+                if (branchIds.Count == 0)
+                    return BadRequest(new ServiceResult(false, "Filial seçilməyib"));
+
+                // Kateqoriya tenant-ı ilə filial tenant-ı uyğunluğu
+                var categoryTenantId = await _db.MenuCategories.AsNoTracking()
+                    .Where(mc => mc.Id == dto.MenuCategoryId)
+                    .Select(mc => (int?)mc.TenantId)
+                    .FirstOrDefaultAsync();
+                if (categoryTenantId == null)
+                    return BadRequest(new ServiceResult(false, "Menyu kateqoriyası tapılmadı"));
+
+                var validBranchIds = await _db.Branches.AsNoTracking()
+                    .Where(b => branchIds.Contains(b.Id) && b.TenantId == categoryTenantId.Value && b.IsActive)
+                    .Select(b => b.Id)
+                    .ToListAsync();
+                if (validBranchIds.Count == 0)
+                    return BadRequest(new ServiceResult(false, "Seçilmiş filiallar tapılmadı"));
+
+                var createdIds = new List<int>();
+                foreach (var branchId in validBranchIds)
+                {
+                    dto.BranchId = branchId;
+                    var r = await _menuItemService.Add(dto);
+                    if (!r.Success) continue;
+
+                    var itemId = (int)r.Data;
+                    createdIds.Add(itemId);
+
+                    if (dto.Files != null && dto.Files.Count > 0)
+                        await _menuItemImageService.AddRangeAsync(dto, itemId);
+
+                    if (dto.IngredientVideoFile != null)
+                        await _menuItemImageService.UploadIngredientVideoAsync(
+                            itemId, dto.IngredientVideoFile, remove: false);
+                }
+
+                if (createdIds.Count == 0)
+                    return BadRequest(new ServiceResult(false, "Menyu elementi yaradıla bilmədi"));
+
+                return Ok(new ServiceResult(true,
+                    new { createdCount = createdIds.Count, ids = createdIds },
+                    $"{createdIds.Count} filialda yaradıldı"));
             }
 
             var result = await _menuItemService.Add(dto);
@@ -166,8 +222,6 @@ namespace Loyalty.WebAPI.Controllers
                     // Şəkil yalnız fayl gələndə əlavə olunur (Files null olduqda 500 olmasın).
                     if (dto.Files != null && dto.Files.Count > 0)
                     {
-                        var compressedFiles = CompressImages(dto.Files);
-                        dto.Files = new FormFileCollection(compressedFiles);
                         await _menuItemImageService.AddRangeAsync(dto, (int)result.Data);
                     }
 

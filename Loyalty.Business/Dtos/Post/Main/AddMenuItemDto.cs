@@ -37,6 +37,12 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         public int? BranchId { get; set; }
 
+        /// <summary>
+        /// Multi-filial yaratma: doludursa məhsul bu filialların HAMISINDA yaradılır
+        /// (hərəsində ayrıca MenuItem). BranchId bu halda nəzərə alınmır.
+        /// </summary>
+        public List<int>? BranchIds { get; set; }
+
         public IFormFileCollection? Files { get; set; }
 
         // Redaktədə silinəcək mövcud şəkillərin id-ləri (boş/null = heç nə silinmir).
