@@ -49,6 +49,49 @@ namespace Loyalty.WebAPI.Controllers
                    // Menu Admin: branch_id claim-i varsa filiala kilidli, yoxdursa tenant-wide
                    || (User.IsInRole("Menu Admin") && _tenantProvider.CurrentBranchId.HasValue));
 
+        /// <summary>
+        /// Multi-filial yaratmada item-in kateqoriyasını hədəf filial üçün həll edir:
+        /// Ümumi (BranchId=null) və ya öz filialı → olduğu kimi; əks halda hədəf filialda
+        /// eyni AzName-li aktiv kateqoriya axtarılır, tapılmasa kopyası yaradılır.
+        /// </summary>
+        private async Task<int> ResolveCategoryForBranchAsync(
+            Loyalty.DataAccess.Entities.Main.MenuCategory source, int branchId)
+        {
+            if (source.BranchId == null || source.BranchId == branchId)
+                return source.Id;
+
+            var existing = await _db.MenuCategories
+                .AsNoTracking()
+                .Where(mc => mc.TenantId == source.TenantId
+                          && mc.BranchId == branchId
+                          && mc.IsActive
+                          && mc.AzName == source.AzName)
+                .Select(mc => (int?)mc.Id)
+                .FirstOrDefaultAsync();
+            if (existing != null)
+                return existing.Value;
+
+            var copy = new Loyalty.DataAccess.Entities.Main.MenuCategory
+            {
+                AzName = source.AzName,
+                EnName = source.EnName,
+                RuName = source.RuName,
+                AzDescription = source.AzDescription,
+                EnDescription = source.EnDescription,
+                RuDescription = source.RuDescription,
+                DescriptionColor = source.DescriptionColor,
+                DescriptionFontSize = source.DescriptionFontSize,
+                SortOrder = source.SortOrder,
+                TenantId = source.TenantId,
+                BranchId = branchId,
+                IsActive = true,
+                RegDate = DateTime.UtcNow
+            };
+            _db.MenuCategories.Add(copy);
+            await _db.SaveChangesAsync();
+            return copy.Id;
+        }
+
         [HttpGet]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         [ProducesResponseType(typeof(ServiceResult<List<GetMenuItemDto>>), (int)HttpStatusCode.OK)]
@@ -175,16 +218,14 @@ namespace Loyalty.WebAPI.Controllers
                 if (branchIds.Count == 0)
                     return BadRequest(new ServiceResult(false, "Filial seçilməyib"));
 
-                // Kateqoriya tenant-ı ilə filial tenant-ı uyğunluğu
-                var categoryTenantId = await _db.MenuCategories.AsNoTracking()
-                    .Where(mc => mc.Id == dto.MenuCategoryId)
-                    .Select(mc => (int?)mc.TenantId)
-                    .FirstOrDefaultAsync();
-                if (categoryTenantId == null)
+                // Seçilmiş kateqoriyanı tam yüklə — filial üzrə həll (tap/yarat) üçün lazımdır
+                var sourceCategory = await _db.MenuCategories.AsNoTracking()
+                    .FirstOrDefaultAsync(mc => mc.Id == dto.MenuCategoryId);
+                if (sourceCategory == null)
                     return BadRequest(new ServiceResult(false, "Menyu kateqoriyası tapılmadı"));
 
                 var validBranchIds = await _db.Branches.AsNoTracking()
-                    .Where(b => branchIds.Contains(b.Id) && b.TenantId == categoryTenantId.Value && b.IsActive)
+                    .Where(b => branchIds.Contains(b.Id) && b.TenantId == sourceCategory.TenantId && b.IsActive)
                     .Select(b => b.Id)
                     .ToListAsync();
                 if (validBranchIds.Count == 0)
@@ -193,6 +234,9 @@ namespace Loyalty.WebAPI.Controllers
                 var createdIds = new List<int>();
                 foreach (var branchId in validBranchIds)
                 {
+                    // Filial-spesifik kateqoriya seçilibsə: hədəf filialda eyni adlı
+                    // kateqoriya tapılır, yoxdursa kopyası yaradılır.
+                    dto.MenuCategoryId = await ResolveCategoryForBranchAsync(sourceCategory, branchId);
                     dto.BranchId = branchId;
                     var r = await _menuItemService.Add(dto);
                     if (!r.Success) continue;
