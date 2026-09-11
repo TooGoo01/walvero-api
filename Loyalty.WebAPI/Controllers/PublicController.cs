@@ -92,6 +92,16 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
+        /// Menu-app kampaniya popup-u — tenant-ın birinci aktiv popup-u (yoxdursa data=null)
+        /// </summary>
+        [HttpGet("menu-popup/{tenantSlug}")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> GetMenuPopup(string tenantSlug, [FromServices] IMenuPopupService menuPopupService, CancellationToken ct)
+        {
+            return Ok(await menuPopupService.GetPublicAsync(tenantSlug, ct));
+        }
+
+        /// <summary>
         /// Get home page offers (active, ordered by newest)
         /// </summary>
         [HttpGet("home/offers")]

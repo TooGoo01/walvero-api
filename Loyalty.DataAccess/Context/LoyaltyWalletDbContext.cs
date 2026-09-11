@@ -83,6 +83,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<TelegramLinkCode> TelegramLinkCodes { get; set; }
         public DbSet<LinkClickEvent> LinkClickEvents { get; set; }
         public DbSet<AiReferencePlace> AiReferencePlaces { get; set; }
+        public DbSet<MenuPopup> MenuPopups { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1163,6 +1164,29 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(e => e.Phone).HasMaxLength(50);
                 entity.Property(e => e.MenuUrl).HasMaxLength(500);
                 entity.HasIndex(e => e.Name);
+            });
+
+            // ==== MENU POPUP (menu-app kampaniya popup-u) ====
+            modelBuilder.Entity<MenuPopup>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.ImageUrl).HasMaxLength(500);
+                entity.Property(e => e.AzTitle).HasMaxLength(200);
+                entity.Property(e => e.EnTitle).HasMaxLength(200);
+                entity.Property(e => e.RuTitle).HasMaxLength(200);
+                entity.Property(e => e.AzDescription).HasMaxLength(1000);
+                entity.Property(e => e.EnDescription).HasMaxLength(1000);
+                entity.Property(e => e.RuDescription).HasMaxLength(1000);
+                entity.Property(e => e.CtaUrl).HasMaxLength(500);
+                entity.Property(e => e.AzCtaText).HasMaxLength(100);
+                entity.Property(e => e.EnCtaText).HasMaxLength(100);
+                entity.Property(e => e.RuCtaText).HasMaxLength(100);
+                entity.HasIndex(e => new { e.TenantId, e.IsEnabled, e.SortOrder });
+
+                entity.HasOne(e => e.Tenant)
+                    .WithMany()
+                    .HasForeignKey(e => e.TenantId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             // ==== LINK CLICK EVENT (anonim analitika) ====
