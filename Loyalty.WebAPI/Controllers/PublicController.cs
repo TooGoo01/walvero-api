@@ -44,6 +44,13 @@ namespace Loyalty.WebAPI.Controllers
             var splashTaglineColor = await _appSettingService.GetStringAsync("SplashTaglineColor", "", ct);
             var splashTaglineFontSize = await _appSettingService.GetStringAsync("SplashTaglineFontSize", "", ct);
             var splashTaglineBold = await _appSettingService.GetStringAsync("SplashTaglineBold", "", ct);
+            // iOS deferred deep-link clipboard dialoqunun mətnləri (boş = app l10n defaultu)
+            var clipboardPromptTitleAz = await _appSettingService.GetStringAsync("ClipboardPromptTitleAz", "", ct);
+            var clipboardPromptTitleEn = await _appSettingService.GetStringAsync("ClipboardPromptTitleEn", "", ct);
+            var clipboardPromptTitleRu = await _appSettingService.GetStringAsync("ClipboardPromptTitleRu", "", ct);
+            var clipboardPromptBodyAz = await _appSettingService.GetStringAsync("ClipboardPromptBodyAz", "", ct);
+            var clipboardPromptBodyEn = await _appSettingService.GetStringAsync("ClipboardPromptBodyEn", "", ct);
+            var clipboardPromptBodyRu = await _appSettingService.GetStringAsync("ClipboardPromptBodyRu", "", ct);
             return Ok(new ServiceResult(true, new
             {
                 showMapInApp,
@@ -53,7 +60,13 @@ namespace Loyalty.WebAPI.Controllers
                 splashTagline,
                 splashTaglineColor,
                 splashTaglineFontSize,
-                splashTaglineBold
+                splashTaglineBold,
+                clipboardPromptTitleAz,
+                clipboardPromptTitleEn,
+                clipboardPromptTitleRu,
+                clipboardPromptBodyAz,
+                clipboardPromptBodyEn,
+                clipboardPromptBodyRu
             }));
         }
 
