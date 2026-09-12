@@ -131,6 +131,12 @@ namespace Loyalty.WebAPI.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
+            // Client tenantId göndərməyibsə (0) token-dən götür — FK xətasının qarşısını alır
+            if (dto.TenantId <= 0 && _tenantProvider.CurrentTenantId is > 0)
+                dto.TenantId = _tenantProvider.CurrentTenantId.Value;
+            if (dto.TenantId <= 0)
+                return BadRequest(new ServiceResult(false, "Tenant təyin olunmayıb"));
+
             if (IsBranchScoped())
             {
                 var ownBranchId = _tenantProvider.CurrentBranchId;
@@ -156,6 +162,9 @@ namespace Loyalty.WebAPI.Controllers
         {
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
+
+            if (dto.TenantId <= 0 && _tenantProvider.CurrentTenantId is > 0)
+                dto.TenantId = _tenantProvider.CurrentTenantId.Value;
 
             if (IsBranchScoped())
             {
