@@ -72,7 +72,8 @@ namespace Loyalty.WebAPI.Controllers
         [Required]
         public string Key { get; set; } = default!;
 
-        [Required]
+        // AllowEmptyStrings: boş dəyər = açarı sıfırla (məs. splash şəklini sil)
+        [Required(AllowEmptyStrings = true)]
         public string Value { get; set; } = default!;
     }
 }
