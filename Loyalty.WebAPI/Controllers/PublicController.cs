@@ -40,13 +40,20 @@ namespace Loyalty.WebAPI.Controllers
             var splashBackgroundImageUrl = await _appSettingService.GetStringAsync("SplashBackgroundImageUrl", "", ct);
             var splashBgColor = await _appSettingService.GetStringAsync("SplashBgColor", "", ct);
             var splashTagline = await _appSettingService.GetStringAsync("SplashTagline", "", ct);
+            // Sloqan stili — boş = app-dakı default (15px, w500, avtomatik kontrast rəngi)
+            var splashTaglineColor = await _appSettingService.GetStringAsync("SplashTaglineColor", "", ct);
+            var splashTaglineFontSize = await _appSettingService.GetStringAsync("SplashTaglineFontSize", "", ct);
+            var splashTaglineBold = await _appSettingService.GetStringAsync("SplashTaglineBold", "", ct);
             return Ok(new ServiceResult(true, new
             {
                 showMapInApp,
                 appLogoUrl,
                 splashBackgroundImageUrl,
                 splashBgColor,
-                splashTagline
+                splashTagline,
+                splashTaglineColor,
+                splashTaglineFontSize,
+                splashTaglineBold
             }));
         }
 
