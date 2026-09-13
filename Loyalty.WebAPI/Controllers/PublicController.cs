@@ -51,6 +51,11 @@ namespace Loyalty.WebAPI.Controllers
             var clipboardPromptBodyAz = await _appSettingService.GetStringAsync("ClipboardPromptBodyAz", "", ct);
             var clipboardPromptBodyEn = await _appSettingService.GetStringAsync("ClipboardPromptBodyEn", "", ct);
             var clipboardPromptBodyRu = await _appSettingService.GetStringAsync("ClipboardPromptBodyRu", "", ct);
+            // AI köməkçi düyməsi: görünmə + görünüş (boş = app defaultları)
+            var aiAssistantEnabled = await _appSettingService.GetBoolAsync("AiAssistantEnabled", defaultValue: true, ct);
+            var aiButtonColor1 = await _appSettingService.GetStringAsync("AiButtonColor1", "", ct);
+            var aiButtonColor2 = await _appSettingService.GetStringAsync("AiButtonColor2", "", ct);
+            var aiButtonSize = await _appSettingService.GetStringAsync("AiButtonSize", "", ct);
             return Ok(new ServiceResult(true, new
             {
                 showMapInApp,
@@ -66,7 +71,11 @@ namespace Loyalty.WebAPI.Controllers
                 clipboardPromptTitleRu,
                 clipboardPromptBodyAz,
                 clipboardPromptBodyEn,
-                clipboardPromptBodyRu
+                clipboardPromptBodyRu,
+                aiAssistantEnabled,
+                aiButtonColor1,
+                aiButtonColor2,
+                aiButtonSize
             }));
         }
 
