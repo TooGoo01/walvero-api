@@ -87,7 +87,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             if (result.Succeeded)
                 return new ServiceResult(true, "registration completed");
 
-            return new ServiceResult(false, String.Join(';', result.Errors.Select(x => x.Code)));
+            return new ServiceResult(false, MapIdentityErrors(result.Errors));
         }
 
 
@@ -539,7 +539,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 if (result.Succeeded)
                     return new ServiceResult(true, "aded role successfull");
 
-                return new ServiceResult(false, String.Join(';', result.Errors.Select(x => x.Code)));
+                return new ServiceResult(false, MapIdentityErrors(result.Errors));
             }
             catch (Exception ex)
             {
@@ -801,6 +801,23 @@ namespace Loyalty.Business.Services.Implementations.Users
         }
 
         /// <summary>
+        /// Identity error kodlarını istifadəçiyə göstəriləcək lokallaşdırılmış mesaja çevirir.
+        /// </summary>
+        private static string MapIdentityErrors(IEnumerable<IdentityError> errors)
+        {
+            foreach (var e in errors)
+            {
+                if (e.Code.Contains("Duplicate")) return AppMessages.Get("PhoneAlreadyExists");
+                if (e.Code == "PasswordTooShort") return AppMessages.Get("PasswordTooShort", 6);
+                if (e.Code.StartsWith("PasswordRequires") || e.Code == "InvalidPassword")
+                    return AppMessages.Get("PasswordInvalid");
+                if (e.Code.Contains("InvalidUserName") || e.Code.Contains("InvalidEmail"))
+                    return AppMessages.Get("PhoneInvalidFormat");
+            }
+            return AppMessages.Get("GenericError");
+        }
+
+        /// <summary>
         /// Public method for legacy VerifyOtp endpoint. Verifies OTP and activates user if needed.
         /// </summary>
         public async Task<ServiceResult> VerifyOtpAsync(int userId, string otpCode, OtpPurpose purpose)
@@ -981,8 +998,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     return new ServiceResult(false, new ForgotPasswordResponseDto
                     {
                         OtpSent = false,
-                        Message = "No user found with this phone number."
-                    }, "No user found with this phone number.");
+                        Message = AppMessages.Get("PhoneNotFound")
+                    }, AppMessages.Get("PhoneNotFound"));
                 }
 
                 // Generate and send OTP
@@ -1099,7 +1116,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 {
                     var errors = string.Join("; ", resetResult.Errors.Select(e => e.Description));
                     _logger?.LogError("Failed to reset password for UserId: {UserId}, Errors: {Errors}", tokenEntity.ApplicationUserId, errors);
-                    return new ServiceResult(false, $"Failed to reset password: {errors}");
+                    return new ServiceResult(false, MapIdentityErrors(resetResult.Errors));
                 }
 
                 // Mark token as used
@@ -1250,7 +1267,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     {
                         var errors = string.Join("; ", result.Errors.Select(e => e.Description));
                         _logger?.LogError("User creation failed: {Errors}", errors);
-                        return ServiceResult<OtpRequiredResponse>.Fail(AppMessages.Get("RegistrationFailed"));
+                        return ServiceResult<OtpRequiredResponse>.Fail(MapIdentityErrors(result.Errors));
                     }
 
                     // Add Customer role

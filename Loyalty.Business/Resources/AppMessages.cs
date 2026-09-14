@@ -28,6 +28,10 @@ namespace Loyalty.Business.Resources
             ["PhoneAlreadyExists"] = ("Bu nömrə ilə hesab artıq mövcuddur.", "An account with this phone number already exists.", "Аккаунт с этим номером уже существует."),
             ["RegistrationFailed"] = ("Qeydiyyat alınmadı. Yenidən cəhd edin.", "Registration failed. Please try again.", "Регистрация не удалась. Попробуйте ещё раз."),
             ["PasswordTooWeak"] = ("Şifrə çox sadədir. Ən azı 6 simvol istifadə edin.", "Password is too weak. Use at least 6 characters.", "Пароль слишком простой. Используйте минимум 6 символов."),
+            ["PhoneNotFound"] = ("Bu nömrə ilə hesab tapılmadı.", "No account found with this number.", "Аккаунт с этим номером не найден."),
+            ["PasswordTooShort"] = ("Şifrə ən azı {0} simvol olmalıdır.", "Password must be at least {0} characters.", "Пароль должен содержать не менее {0} символов."),
+            ["PasswordInvalid"] = ("Şifrə tələblərə uyğun deyil.", "Password does not meet the requirements.", "Пароль не соответствует требованиям."),
+            ["PhoneInvalidFormat"] = ("Telefon nömrəsi düzgün formatda deyil.", "Invalid phone number format.", "Неверный формат номера телефона."),
 
             ["OtpNotFound"] = ("Aktiv təsdiq kodu tapılmadı. Yenisini istəyin.", "No active verification code. Please request a new one.", "Активный код не найден. Запросите новый."),
             ["OtpExpired"] = ("Kodun vaxtı bitib. Yenisini istəyin.", "The code has expired. Please request a new one.", "Срок действия кода истёк. Запросите новый."),
