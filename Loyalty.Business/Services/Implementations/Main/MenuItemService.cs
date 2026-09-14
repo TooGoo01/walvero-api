@@ -206,5 +206,42 @@ namespace Loyalty.Business.Services.Implementations.Main
             _unitOfWork.Commit();
             return new ServiceResult(true, "Sıralama uğurla yeniləndi");
         }
+
+        public async Task<ServiceResult> BulkUpdateAsync(BulkUpdateMenuItemDto dto, int? lockedBranchId)
+        {
+            var ids = dto.Ids?.Where(i => i > 0).Distinct().ToList() ?? new List<int>();
+            if (ids.Count == 0)
+                return new ServiceResult(false, "Item seçilməyib");
+
+            var query = _db.MenuItems
+                .Where(mi => mi.IsActive && ids.Contains(mi.Id)
+                          && (mi.TenantId == dto.TenantId || mi.MenuCategory.TenantId == dto.TenantId));
+            if (lockedBranchId.HasValue)
+                query = query.Where(mi => mi.BranchId == lockedBranchId.Value);
+
+            var entities = await query.ToListAsync();
+            if (entities.Count == 0)
+                return new ServiceResult(false, "Seçilmiş itemlər tapılmadı");
+
+            foreach (var e in entities)
+            {
+                // Yalnız dolu sahələr — qiymət/endirim QƏSDƏN toxunulmur (filial-spesifik)
+                if (!string.IsNullOrWhiteSpace(dto.AzName)) e.AzName = dto.AzName.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.EnName)) e.EnName = dto.EnName.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.RuName)) e.RuName = dto.RuName.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.AzDescription)) e.AzDescription = dto.AzDescription.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.EnDescription)) e.EnDescription = dto.EnDescription.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.RuDescription)) e.RuDescription = dto.RuDescription.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.PrepTimeMinutes)) e.PrepTimeMinutes = dto.PrepTimeMinutes.Trim();
+                // Qiymət yalnız user bilərəkdən dolu göndərəndə dəyişir
+                if (dto.Price.HasValue && dto.Price.Value >= 0) e.Price = dto.Price.Value;
+                if (dto.DiscountPrice.HasValue && dto.DiscountPrice.Value >= 0) e.DiscountPrice = dto.DiscountPrice.Value;
+                _unitOfWork.Repository<MenuItem>().Update(e);
+            }
+            _unitOfWork.Commit();
+
+            return new ServiceResult(true, entities.Select(x => x.Id).ToList(),
+                $"{entities.Count} item yeniləndi");
+        }
     }
 }

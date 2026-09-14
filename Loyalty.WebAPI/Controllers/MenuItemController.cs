@@ -285,6 +285,76 @@ namespace Loyalty.WebAPI.Controllers
             return BadRequest(result);
         }
 
+        /// <summary>
+        /// Seçilmiş itemlərin toplu redaktəsi: yalnız dolu sahələr tətbiq olunur.
+        /// Files doludursa bütün itemlərin şəkilləri əvəz olunur.
+        /// </summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+        [RequestSizeLimit(30_000_000)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> BulkUpdate([FromForm] BulkUpdateMenuItemDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            if (dto.TenantId <= 0)
+                dto.TenantId = _tenantProvider.CurrentTenantId ?? 0;
+            if (dto.TenantId <= 0)
+                return BadRequest(new ServiceResult(false, "Tenant Id təyin olunmayıb"));
+
+            int? lockedBranchId = null;
+            if (IsBranchScoped())
+            {
+                lockedBranchId = _tenantProvider.CurrentBranchId;
+                if (!lockedBranchId.HasValue)
+                    return StatusCode((int)HttpStatusCode.Forbidden, new ServiceResult(false, "Branch təyin olunmayıb"));
+            }
+
+            var result = await _menuItemService.BulkUpdateAsync(dto, lockedBranchId);
+            if (!result.Success)
+                return BadRequest(result);
+
+            var updatedIds = result.Data as List<int> ?? new List<int>();
+
+            // Şəkillər: doludursa bir dəfə sıx, hər itemdə köhnələri silib yeniləri əlavə et
+            if (dto.Files is { Count: > 0 } && updatedIds.Count > 0)
+            {
+                var compressed = new FormFileCollection(CompressImages(dto.Files));
+                var imageDto = new AddMenuItemDto
+                {
+                    Currency = "AZN", CurrencySign = "₼",
+                    AzName = "-", EnName = "-", RuName = "-",
+                    Price = 0, MenuCategoryId = 0,
+                    Files = compressed
+                };
+                foreach (var itemId in updatedIds)
+                {
+                    var existingImageIds = await _db.MenuItemImages
+                        .Where(i => i.MenuItemId == itemId)
+                        .Select(i => i.Id)
+                        .ToListAsync();
+                    if (existingImageIds.Count > 0)
+                        await _menuItemImageService.DeleteImagesAsync(itemId, existingImageIds);
+                    await _menuItemImageService.AddRangeAsync(imageDto, itemId);
+                }
+            }
+
+            // Video: hər item üçün eyni video / silmə
+            if ((dto.IngredientVideoFile != null || dto.RemoveIngredientVideo) && updatedIds.Count > 0)
+            {
+                foreach (var itemId in updatedIds)
+                {
+                    await _menuItemImageService.UploadIngredientVideoAsync(
+                        itemId, dto.IngredientVideoFile, dto.RemoveIngredientVideo);
+                }
+            }
+
+            return Ok(new ServiceResult(true, new { updatedCount = updatedIds.Count },
+                $"{updatedIds.Count} item yeniləndi"));
+        }
+
         [HttpPut("{id}")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         [ProducesResponseType(typeof(ServiceResult<GetMenuItemDto>), (int)HttpStatusCode.OK)]
