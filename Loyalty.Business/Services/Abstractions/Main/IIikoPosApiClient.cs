@@ -49,6 +49,12 @@ namespace Loyalty.Business.Services.Abstractions.Main
             string accessToken, IEnumerable<Guid> organizationIds, CancellationToken ct = default);
 
         /// <summary>
+        /// Verilən org üçün loyalty proqramlarını alır.
+        /// </summary>
+        Task<List<IikoLoyaltyProgram>?> GetLoyaltyProgramsAsync(
+            string accessToken, Guid organizationId, CancellationToken ct = default);
+
+        /// <summary>
         /// iiko menyusunu (nomenclature) alır.
         /// </summary>
         Task<IikoNomenclatureResponse?> GetNomenclatureAsync(
@@ -119,6 +125,13 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public Guid OrganizationId { get; set; }
         public string? Name { get; set; }
         public string? Address { get; set; }
+    }
+
+    public class IikoLoyaltyProgram
+    {
+        public Guid Id { get; set; }
+        public string? Name { get; set; }
+        public bool IsActive { get; set; }
     }
 
     public class IikoNomenclatureResponse

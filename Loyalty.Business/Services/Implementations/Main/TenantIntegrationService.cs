@@ -280,14 +280,25 @@ namespace Loyalty.Business.Services.Implementations.Main
             var tgBlocks = await _iikoClient.GetTerminalGroupsAsync(token, orgs.Select(o => o.Id), ct);
             var tgByOrg = (tgBlocks ?? new()).ToDictionary(b => b.OrganizationId, b => b.Items ?? new());
 
-            var result = orgs.Select(o => new IikoOrgOptionDto
+            var result = new List<IikoOrgOptionDto>();
+            foreach (var o in orgs)
             {
-                OrganizationId = o.Id.ToString(),
-                Name = o.Name,
-                TerminalGroups = (tgByOrg.TryGetValue(o.Id, out var items) ? items : new())
-                    .Select(i => new IikoTerminalGroupOptionDto { Id = i.Id.ToString(), Name = i.Name })
-                    .ToList()
-            }).ToList();
+                // Loyalty proqramları org üzrədir — ayrıca çağırış (xəta olsa boş keç).
+                List<IikoLoyaltyProgram>? programs = null;
+                try { programs = await _iikoClient.GetLoyaltyProgramsAsync(token, o.Id, ct); } catch { /* optional */ }
+
+                result.Add(new IikoOrgOptionDto
+                {
+                    OrganizationId = o.Id.ToString(),
+                    Name = o.Name,
+                    TerminalGroups = (tgByOrg.TryGetValue(o.Id, out var items) ? items : new())
+                        .Select(i => new IikoTerminalGroupOptionDto { Id = i.Id.ToString(), Name = i.Name })
+                        .ToList(),
+                    Programs = (programs ?? new())
+                        .Select(p => new IikoProgramOptionDto { Id = p.Id.ToString(), Name = p.Name })
+                        .ToList()
+                });
+            }
 
             return ServiceResult<List<IikoOrgOptionDto>>.Ok(result);
         }

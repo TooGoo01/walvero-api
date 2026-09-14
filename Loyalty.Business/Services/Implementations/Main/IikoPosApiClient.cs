@@ -149,6 +149,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             return response?.TerminalGroups;
         }
 
+        public async Task<List<IikoLoyaltyProgram>?> GetLoyaltyProgramsAsync(
+            string accessToken, Guid organizationId, CancellationToken ct = default)
+        {
+            var response = await PostAsync<IikoLoyaltyProgramsResponse>(
+                accessToken, "/api/1/loyalty/iiko/program", new { organizationId }, ct);
+
+            return response?.Programs;
+        }
+
         public async Task<IikoNomenclatureResponse?> GetNomenclatureAsync(
             string accessToken, Guid organizationId, CancellationToken ct = default)
         {
@@ -231,6 +240,11 @@ namespace Loyalty.Business.Services.Implementations.Main
         private class IikoTerminalGroupsResponse
         {
             public List<IikoTerminalGroupBlock>? TerminalGroups { get; set; }
+        }
+
+        private class IikoLoyaltyProgramsResponse
+        {
+            public List<IikoLoyaltyProgram>? Programs { get; set; }
         }
     }
 }

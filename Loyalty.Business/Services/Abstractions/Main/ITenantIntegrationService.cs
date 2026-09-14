@@ -115,9 +115,16 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string OrganizationId { get; set; } = string.Empty;
         public string? Name { get; set; }
         public List<IikoTerminalGroupOptionDto> TerminalGroups { get; set; } = new();
+        public List<IikoProgramOptionDto> Programs { get; set; } = new();
     }
 
     public class IikoTerminalGroupOptionDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string? Name { get; set; }
+    }
+
+    public class IikoProgramOptionDto
     {
         public string Id { get; set; } = string.Empty;
         public string? Name { get; set; }
