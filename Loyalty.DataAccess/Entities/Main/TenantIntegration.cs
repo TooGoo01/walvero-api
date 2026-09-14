@@ -22,6 +22,10 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? ApiUsername { get; set; }
         public string? ApiTokenEncrypted { get; set; }
 
+        // iiko v2 app-auth (optional): appId gizli deyil (plain), clientSecret şifrəli saxlanılır.
+        public string? ApiAppId { get; set; }
+        public string? ApiSecretEncrypted { get; set; }
+
         public string? WalletTokenHash { get; set; }
         public string? WalletTokenEncrypted { get; set; }
 

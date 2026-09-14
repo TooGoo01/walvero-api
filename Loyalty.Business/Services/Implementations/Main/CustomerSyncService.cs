@@ -134,8 +134,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             TenantIntegration integration, string apiToken, Customer customer,
             int customerId, string? barcode, string name, CancellationToken ct)
         {
-            // apiToken = iiko apiLogin; ExternalVenueId = iiko organizationId
-            var accessToken = await _iikoClient.GetAccessTokenAsync(apiToken, ct);
+            // apiToken = iiko apiLogin; ExternalVenueId = iiko organizationId; v2 app-auth (appId/clientSecret optional)
+            var clientSecret = string.IsNullOrEmpty(integration.ApiSecretEncrypted) ? null : _protector.Decrypt(integration.ApiSecretEncrypted);
+            var accessToken = await _iikoClient.GetAccessTokenAsync(apiToken, integration.ApiAppId, clientSecret, ct: ct);
             if (string.IsNullOrEmpty(accessToken))
                 return CustomerSyncResult.Fail();
 

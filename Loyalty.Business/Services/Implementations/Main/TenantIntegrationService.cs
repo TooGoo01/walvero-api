@@ -48,6 +48,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ApiBaseUrl = dto.ApiBaseUrl?.Trim(),
                 ApiUsername = dto.ApiUsername?.Trim(),
                 ApiTokenEncrypted = !string.IsNullOrEmpty(dto.ApiToken) ? _protector.Encrypt(dto.ApiToken) : null,
+                ApiAppId = dto.ApiAppId?.Trim(),
+                ApiSecretEncrypted = !string.IsNullOrEmpty(dto.ApiSecret) ? _protector.Encrypt(dto.ApiSecret) : null,
                 WalletTokenHash = hash,
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true,
@@ -110,6 +112,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 LoyaltyProgramId = ti.LoyaltyProgramId,
                 ApiBaseUrl = ti.ApiBaseUrl,
                 ApiUsername = ti.ApiUsername,
+                ApiAppId = ti.ApiAppId,
                 IsActive = ti.IsActive
             });
         }
@@ -129,6 +132,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.ApiBaseUrl != null) ti.ApiBaseUrl = dto.ApiBaseUrl.Trim();
             if (dto.ApiUsername != null) ti.ApiUsername = dto.ApiUsername.Trim();
             if (!string.IsNullOrEmpty(dto.ApiToken)) ti.ApiTokenEncrypted = _protector.Encrypt(dto.ApiToken);
+            if (dto.ApiAppId != null) ti.ApiAppId = dto.ApiAppId.Trim();
+            if (!string.IsNullOrEmpty(dto.ApiSecret)) ti.ApiSecretEncrypted = _protector.Encrypt(dto.ApiSecret);
             if (dto.IsActive.HasValue) ti.IsActive = dto.IsActive.Value;
             ti.UpdatedAt = DateTime.UtcNow;
             _repo.Update(ti);

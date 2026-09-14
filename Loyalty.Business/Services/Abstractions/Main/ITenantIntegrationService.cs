@@ -24,6 +24,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ApiBaseUrl { get; set; }
         public string? ApiUsername { get; set; }
         public string? ApiToken { get; set; }
+        public string? ApiAppId { get; set; }
+        public string? ApiSecret { get; set; }
     }
 
     public class TenantIntegrationCreateResult
@@ -58,6 +60,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public int? LoyaltyProgramId { get; set; }
         public string? ApiBaseUrl { get; set; }
         public string? ApiUsername { get; set; }
+        public string? ApiAppId { get; set; }
         public bool IsActive { get; set; }
     }
 
@@ -71,6 +74,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ApiBaseUrl { get; set; }
         public string? ApiUsername { get; set; }
         public string? ApiToken { get; set; }
+        public string? ApiAppId { get; set; }
+        public string? ApiSecret { get; set; }
         public bool? IsActive { get; set; }
     }
 }

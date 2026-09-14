@@ -32,15 +32,21 @@ namespace Loyalty.Business.Services.Implementations.Main
             _logger = logger;
         }
 
-        public async Task<string?> GetAccessTokenAsync(string apiLogin, CancellationToken ct = default)
+        public async Task<string?> GetAccessTokenAsync(string apiLogin, string? appId = null, string? clientSecret = null, CancellationToken ct = default)
         {
-            var cacheKey = $"iiko_token_{apiLogin}";
+            var cacheKey = $"iiko_token_{apiLogin}_{appId}";
             if (_cache.TryGetValue(cacheKey, out string? cachedToken))
                 return cachedToken;
 
-            // iiko auth v2 — body {apiLogin} → {correlationId, token} (Token oxunur).
+            // iiko auth v2 — body {apiLogin, appId?, clientSecret?} → {correlationId, token}.
+            // appId/clientSecret backward-compat üçün optional — boşdursa göndərilmir.
+            // Dictionary istifadə olunur (camelCase policy dict açarlarına şamil olunmur → açarlar düz gedir).
+            var body = new Dictionary<string, string> { ["apiLogin"] = apiLogin };
+            if (!string.IsNullOrWhiteSpace(appId)) body["appId"] = appId;
+            if (!string.IsNullOrWhiteSpace(clientSecret)) body["clientSecret"] = clientSecret;
+
             var response = await PostAsync<IikoTokenResponse>(
-                null, "/api/v2/access_token", new { apiLogin }, ct);
+                null, "/api/v2/access_token", body, ct);
 
             if (response?.Token == null)
                 return null;

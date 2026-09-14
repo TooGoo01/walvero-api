@@ -3226,9 +3226,15 @@ namespace Loyalty.DataAccess.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("ApiAppId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("ApiBaseUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ApiSecretEncrypted")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ApiTokenEncrypted")
                         .HasMaxLength(2000)

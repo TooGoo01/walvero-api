@@ -261,8 +261,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (string.IsNullOrEmpty(apiLogin))
                 return (null, false);
 
-            // iiko access token (55 dəq cache)
-            var accessToken = await _iikoClient.GetAccessTokenAsync(apiLogin, ct);
+            // iiko access token (55 dəq cache) — v2 app-auth (appId/clientSecret optional)
+            var clientSecret = string.IsNullOrEmpty(integration.ApiSecretEncrypted) ? null : _protector.Decrypt(integration.ApiSecretEncrypted);
+            var accessToken = await _iikoClient.GetAccessTokenAsync(apiLogin, integration.ApiAppId, clientSecret, ct: ct);
             if (string.IsNullOrEmpty(accessToken))
             {
                 _logger.LogWarning("iiko sync: access_token alınmadı. IntegrationId={Id}", integration.Id);
@@ -397,7 +398,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             var apiLogin = _protector.Decrypt(integration.ApiTokenEncrypted);
             if (string.IsNullOrEmpty(apiLogin)) return false;
 
-            var accessToken = await _iikoClient.GetAccessTokenAsync(apiLogin, ct);
+            var clientSecret = string.IsNullOrEmpty(integration.ApiSecretEncrypted) ? null : _protector.Decrypt(integration.ApiSecretEncrypted);
+            var accessToken = await _iikoClient.GetAccessTokenAsync(apiLogin, integration.ApiAppId, clientSecret, ct: ct);
             if (string.IsNullOrEmpty(accessToken)) return false;
 
             if (!Guid.TryParse(integration.ExternalVenueId, out var orgId)) return false;
@@ -427,7 +429,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     }
 
                     var apiLogin = _protector.Decrypt(integration.ApiTokenEncrypted!);
-                    var accessToken = await _iikoClient.GetAccessTokenAsync(apiLogin, ct);
+                    var clientSecret = string.IsNullOrEmpty(integration.ApiSecretEncrypted) ? null : _protector.Decrypt(integration.ApiSecretEncrypted);
+                    var accessToken = await _iikoClient.GetAccessTokenAsync(apiLogin, integration.ApiAppId, clientSecret, ct: ct);
                     if (string.IsNullOrEmpty(accessToken)) continue;
 
                     if (!Guid.TryParse(integration.ExternalVenueId, out var orgId)) continue;

@@ -5,7 +5,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// <summary>
         /// iiko Cloud API-dən access token alır (1 saat ömür).
         /// </summary>
-        Task<string?> GetAccessTokenAsync(string apiLogin, CancellationToken ct = default);
+        Task<string?> GetAccessTokenAsync(string apiLogin, string? appId = null, string? clientSecret = null, CancellationToken ct = default);
 
         /// <summary>
         /// iiko-da müştəri yaradır və ya yeniləyir.
