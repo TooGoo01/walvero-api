@@ -6,5 +6,6 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
     {
         Task<int?> GetCustomerIdByExternalIdAsync(int tenantIntegrationId, string externalCustomerId, CancellationToken ct = default);
         Task<PosCustomerMapping?> GetByTenantIntegrationAndCustomerAsync(int tenantIntegrationId, int customerId, CancellationToken ct = default);
+        Task<PosCustomerMapping?> GetByVenueAndCustomerAsync(int tenantIntegrationVenueId, int customerId, CancellationToken ct = default);
     }
 }

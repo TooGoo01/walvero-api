@@ -13,5 +13,9 @@ namespace Loyalty.Business.Models.TenantIntegration
         public string Source { get; set; } = string.Empty;
         public int TenantIntegrationId { get; set; }
         public string? ExternalVenueId { get; set; }
+
+        // Multi-org (per-branch): resolved via TenantIntegrationVenue. Null for legacy single-org tenants.
+        public int? BranchId { get; set; }
+        public int? TenantIntegrationVenueId { get; set; }
     }
 }

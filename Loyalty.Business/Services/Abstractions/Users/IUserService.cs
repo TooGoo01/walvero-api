@@ -32,7 +32,7 @@ namespace Loyalty.Business.Services.Abstractions.Users
         Task<ServiceResult> VerifyOtpAsync(int userId, string otpCode, OtpPurpose purpose);
         
         // Phone-based password reset methods
-        Task<ServiceResult> StartForgotPasswordAsync(string phoneNumber);
+        Task<ServiceResult> StartForgotPasswordAsync(string phoneNumber, string? channel = null);
         Task<ServiceResult> VerifyForgotPasswordOtpAsync(string phoneNumber, string otpCode);
         Task<ServiceResult> ResetPasswordAsync(string resetToken, string newPassword);
 

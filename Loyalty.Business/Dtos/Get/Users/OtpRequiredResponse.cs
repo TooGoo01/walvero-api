@@ -6,6 +6,9 @@ namespace Loyalty.Business.Dtos.Get.Users
         public bool OtpRequired { get; set; }
         public bool OtpSent { get; set; }
         public string Purpose { get; set; } = string.Empty;
+
+        /// <summary>Kodun faktiki göndərildiyi kanal: "whatsapp" | "sms".</summary>
+        public string? SentVia { get; set; }
     }
 }
 

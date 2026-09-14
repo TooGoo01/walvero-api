@@ -10,22 +10,28 @@ namespace Loyalty.Business.Services.Implementations.Main
     public class TenantIntegrationService : ITenantIntegrationService
     {
         private readonly ITenantIntegrationRepository _repo;
+        private readonly ITenantIntegrationVenueRepository _venueRepo;
         private readonly IIntegrationTypeRepository _typeRepo;
         private readonly IWalletTokenGenerator _tokenGenerator;
         private readonly ISensitiveDataProtector _protector;
+        private readonly IIikoPosApiClient _iikoClient;
         private readonly IUnitOfWork _uow;
 
         public TenantIntegrationService(
             ITenantIntegrationRepository repo,
+            ITenantIntegrationVenueRepository venueRepo,
             IIntegrationTypeRepository typeRepo,
             IWalletTokenGenerator tokenGenerator,
             ISensitiveDataProtector protector,
+            IIikoPosApiClient iikoClient,
             IUnitOfWork uow)
         {
             _repo = repo;
+            _venueRepo = venueRepo;
             _typeRepo = typeRepo;
             _tokenGenerator = tokenGenerator;
             _protector = protector;
+            _iikoClient = iikoClient;
             _uow = uow;
         }
 
@@ -164,6 +170,126 @@ namespace Loyalty.Business.Services.Implementations.Main
             _repo.Update(ti);
             await _uow.CommitAsync(ct);
             return ServiceResult<string?>.Ok(token);
+        }
+
+        // ── Per-branch venues (iiko multi-org) ──
+
+        private async Task<TenantIntegration?> GetOwnedIntegrationAsync(int integrationId, int? tenantId, CancellationToken ct)
+        {
+            var ti = await _repo.GetByIdAsync(integrationId, ct);
+            if (ti == null) return null;
+            if (tenantId.HasValue && ti.TenantId != tenantId.Value) return null;
+            return ti;
+        }
+
+        public async Task<ServiceResult<List<TenantIntegrationVenueDto>>> ListVenuesAsync(int integrationId, int? tenantId, CancellationToken ct = default)
+        {
+            var ti = await GetOwnedIntegrationAsync(integrationId, tenantId, ct);
+            if (ti == null) return ServiceResult<List<TenantIntegrationVenueDto>>.Fail("Tapılmadı.");
+
+            var venues = await _venueRepo.GetActiveByIntegrationAsync(integrationId, ct);
+            var list = venues.Select(v => new TenantIntegrationVenueDto
+            {
+                Id = v.Id,
+                TenantIntegrationId = v.TenantIntegrationId,
+                BranchId = v.BranchId,
+                BranchName = v.Branch?.Name,
+                ExternalVenueId = v.ExternalVenueId,
+                ExternalTerminalGroupId = v.ExternalTerminalGroupId,
+                ExternalProgramId = v.ExternalProgramId,
+                DisplayName = v.DisplayName,
+                IsActive = v.IsActive
+            }).ToList();
+            return ServiceResult<List<TenantIntegrationVenueDto>>.Ok(list);
+        }
+
+        public async Task<ServiceResult<int>> AddVenueAsync(int integrationId, TenantIntegrationVenueUpsertDto dto, int? tenantId, CancellationToken ct = default)
+        {
+            var ti = await GetOwnedIntegrationAsync(integrationId, tenantId, ct);
+            if (ti == null) return ServiceResult<int>.Fail("Tapılmadı.");
+            if (string.IsNullOrWhiteSpace(dto.ExternalVenueId))
+                return ServiceResult<int>.Fail("ExternalVenueId (organizationId) tələb olunur.");
+
+            var venue = new TenantIntegrationVenue
+            {
+                TenantIntegrationId = integrationId,
+                BranchId = dto.BranchId,
+                ExternalVenueId = dto.ExternalVenueId.Trim(),
+                ExternalTerminalGroupId = string.IsNullOrWhiteSpace(dto.ExternalTerminalGroupId) ? null : dto.ExternalTerminalGroupId.Trim(),
+                ExternalProgramId = string.IsNullOrWhiteSpace(dto.ExternalProgramId) ? null : dto.ExternalProgramId.Trim(),
+                DisplayName = dto.DisplayName?.Trim(),
+                IsActive = dto.IsActive ?? true,
+                RegUserId = 1,
+                RegDate = DateTime.UtcNow
+            };
+            await _venueRepo.AddAsync(venue);
+            await _uow.CommitAsync(ct);
+            return ServiceResult<int>.Ok(venue.Id);
+        }
+
+        public async Task<ServiceResult<bool>> UpdateVenueAsync(int venueId, TenantIntegrationVenueUpsertDto dto, int? tenantId, CancellationToken ct = default)
+        {
+            var venue = await _venueRepo.GetByIdAsync(venueId, ct);
+            if (venue == null) return ServiceResult<bool>.Fail("Tapılmadı.");
+            var ti = await GetOwnedIntegrationAsync(venue.TenantIntegrationId, tenantId, ct);
+            if (ti == null) return ServiceResult<bool>.Fail("Yetkisiz.");
+
+            if (dto.BranchId.HasValue) venue.BranchId = dto.BranchId;
+            if (!string.IsNullOrWhiteSpace(dto.ExternalVenueId)) venue.ExternalVenueId = dto.ExternalVenueId.Trim();
+            if (dto.ExternalTerminalGroupId != null) venue.ExternalTerminalGroupId = string.IsNullOrWhiteSpace(dto.ExternalTerminalGroupId) ? null : dto.ExternalTerminalGroupId.Trim();
+            if (dto.ExternalProgramId != null) venue.ExternalProgramId = string.IsNullOrWhiteSpace(dto.ExternalProgramId) ? null : dto.ExternalProgramId.Trim();
+            if (dto.DisplayName != null) venue.DisplayName = dto.DisplayName.Trim();
+            if (dto.IsActive.HasValue) venue.IsActive = dto.IsActive.Value;
+            venue.EditDate = DateTime.UtcNow;
+            _venueRepo.Update(venue);
+            await _uow.CommitAsync(ct);
+            return ServiceResult<bool>.Ok(true);
+        }
+
+        public async Task<ServiceResult<bool>> DeleteVenueAsync(int venueId, int? tenantId, CancellationToken ct = default)
+        {
+            var venue = await _venueRepo.GetByIdAsync(venueId, ct);
+            if (venue == null) return ServiceResult<bool>.Fail("Tapılmadı.");
+            var ti = await GetOwnedIntegrationAsync(venue.TenantIntegrationId, tenantId, ct);
+            if (ti == null) return ServiceResult<bool>.Fail("Yetkisiz.");
+            _venueRepo.Delete(venue);
+            await _uow.CommitAsync(ct);
+            return ServiceResult<bool>.Ok(true);
+        }
+
+        public async Task<ServiceResult<List<IikoOrgOptionDto>>> GetIikoOrganizationsAsync(int integrationId, int? tenantId, CancellationToken ct = default)
+        {
+            var ti = await GetOwnedIntegrationAsync(integrationId, tenantId, ct);
+            if (ti == null) return ServiceResult<List<IikoOrgOptionDto>>.Fail("Tapılmadı.");
+            if (string.IsNullOrEmpty(ti.ApiTokenEncrypted))
+                return ServiceResult<List<IikoOrgOptionDto>>.Fail("apiLogin konfiqurasiya edilməyib.");
+
+            var apiLogin = _protector.Decrypt(ti.ApiTokenEncrypted);
+            if (string.IsNullOrEmpty(apiLogin))
+                return ServiceResult<List<IikoOrgOptionDto>>.Fail("apiLogin oxunmadı.");
+            var clientSecret = string.IsNullOrEmpty(ti.ApiSecretEncrypted) ? null : _protector.Decrypt(ti.ApiSecretEncrypted);
+
+            var token = await _iikoClient.GetAccessTokenAsync(apiLogin, ti.ApiAppId, clientSecret, ct: ct);
+            if (string.IsNullOrEmpty(token))
+                return ServiceResult<List<IikoOrgOptionDto>>.Fail("iiko access_token alınmadı (credential-ları yoxla).");
+
+            var orgs = await _iikoClient.GetOrganizationsAsync(token, ct);
+            if (orgs == null || orgs.Length == 0)
+                return ServiceResult<List<IikoOrgOptionDto>>.Ok(new List<IikoOrgOptionDto>());
+
+            var tgBlocks = await _iikoClient.GetTerminalGroupsAsync(token, orgs.Select(o => o.Id), ct);
+            var tgByOrg = (tgBlocks ?? new()).ToDictionary(b => b.OrganizationId, b => b.Items ?? new());
+
+            var result = orgs.Select(o => new IikoOrgOptionDto
+            {
+                OrganizationId = o.Id.ToString(),
+                Name = o.Name,
+                TerminalGroups = (tgByOrg.TryGetValue(o.Id, out var items) ? items : new())
+                    .Select(i => new IikoTerminalGroupOptionDto { Id = i.Id.ToString(), Name = i.Name })
+                    .ToList()
+            }).ToList();
+
+            return ServiceResult<List<IikoOrgOptionDto>>.Ok(result);
         }
     }
 }

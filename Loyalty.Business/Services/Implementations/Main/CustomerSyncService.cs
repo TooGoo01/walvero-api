@@ -12,6 +12,7 @@ namespace Loyalty.Business.Services.Implementations.Main
     public class CustomerSyncService : ICustomerSyncService
     {
         private readonly ITenantIntegrationRepository _tenantIntegrationRepo;
+        private readonly ITenantIntegrationVenueRepository _venueRepo;
         private readonly ICustomerRepository _customerRepo;
         private readonly ILoyaltyCardRepository _loyaltyCardRepo;
         private readonly IPosCustomerMappingRepository _mappingRepo;
@@ -24,6 +25,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public CustomerSyncService(
             ITenantIntegrationRepository tenantIntegrationRepo,
+            ITenantIntegrationVenueRepository venueRepo,
             ICustomerRepository customerRepo,
             ILoyaltyCardRepository loyaltyCardRepo,
             IPosCustomerMappingRepository mappingRepo,
@@ -35,6 +37,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             ILogger<CustomerSyncService> logger)
         {
             _tenantIntegrationRepo = tenantIntegrationRepo;
+            _venueRepo = venueRepo;
             _customerRepo = customerRepo;
             _loyaltyCardRepo = loyaltyCardRepo;
             _mappingRepo = mappingRepo;
@@ -126,7 +129,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return CustomerSyncResult.Fail();
 
             var r = addResp[0];
-            await CreateMappingAsync(integration.Id, r.Id.ToString(), customerId, true, ct);
+            await CreateMappingAsync(integration.Id, null, r.Id.ToString(), customerId, true, ct);
             return CustomerSyncResult.Ok(null, barcode);
         }
 
@@ -134,15 +137,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             TenantIntegration integration, string apiToken, Customer customer,
             int customerId, string? barcode, string name, CancellationToken ct)
         {
-            // apiToken = iiko apiLogin; ExternalVenueId = iiko organizationId; v2 app-auth (appId/clientSecret optional)
+            // apiToken = iiko apiLogin; v2 app-auth (appId/clientSecret optional)
             var clientSecret = string.IsNullOrEmpty(integration.ApiSecretEncrypted) ? null : _protector.Decrypt(integration.ApiSecretEncrypted);
             var accessToken = await _iikoClient.GetAccessTokenAsync(apiToken, integration.ApiAppId, clientSecret, ct: ct);
             if (string.IsNullOrEmpty(accessToken))
                 return CustomerSyncResult.Fail();
-
-            var orgId = Guid.Parse(integration.ExternalVenueId!);
-
-            var existingMapping = await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, customerId, ct);
 
             // barcode "walveroId,actualBarcode" formatında gələ bilər — parse et
             string? walveroIdStr = null;
@@ -154,10 +153,44 @@ namespace Loyalty.Business.Services.Implementations.Main
                 actualBarcode = parts[1];
             }
 
-            // Birinci kart (actualBarcode) ilə müştəri yarat
+            // Per-branch: hər venue (org) üçün ayrıca müştəri yarat. Venue yoxdursa — legacy tək-org (parent ExternalVenueId).
+            var venues = await _venueRepo.GetActiveByIntegrationAsync(integration.Id, ct);
+            var anyOk = false;
+
+            if (venues.Count > 0)
+            {
+                foreach (var venue in venues)
+                {
+                    if (!Guid.TryParse(venue.ExternalVenueId, out var vOrgId))
+                    {
+                        _logger.LogWarning("iiko sync: venue ExternalVenueId GUID deyil: {VenueId} (venueRowId={RowId})", venue.ExternalVenueId, venue.Id);
+                        continue;
+                    }
+                    var programId = string.IsNullOrEmpty(venue.ExternalProgramId) ? integration.ExternalProgramId : venue.ExternalProgramId;
+                    var ok = await SyncCustomerToOneOrgAsync(accessToken, vOrgId, integration.Id, venue.Id, programId, customer, customerId, actualBarcode, walveroIdStr, ct);
+                    anyOk = anyOk || ok;
+                }
+            }
+            else if (!string.IsNullOrEmpty(integration.ExternalVenueId) && Guid.TryParse(integration.ExternalVenueId, out var orgId))
+            {
+                anyOk = await SyncCustomerToOneOrgAsync(accessToken, orgId, integration.Id, null, integration.ExternalProgramId, customer, customerId, actualBarcode, walveroIdStr, ct);
+            }
+
+            return anyOk ? CustomerSyncResult.Ok(null, barcode) : CustomerSyncResult.Fail();
+        }
+
+        /// <summary>Bir iiko org-da müştəri yarat/yenilə + walveroId kartı + program enroll + mapping (per-venue). venueId null = legacy tək-org.</summary>
+        private async Task<bool> SyncCustomerToOneOrgAsync(
+            string accessToken, Guid orgId, int integrationId, int? venueId, string? programId,
+            Customer customer, int customerId, string? actualBarcode, string? walveroIdStr, CancellationToken ct)
+        {
+            var existingMapping = venueId.HasValue
+                ? await _mappingRepo.GetByVenueAndCustomerAsync(venueId.Value, customerId, ct)
+                : await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integrationId, customerId, ct);
+
             var iikoCustomer = new IikoCustomerDto
             {
-                Id = existingMapping != null ? Guid.Parse(existingMapping.ExternalCustomerId) : null,
+                Id = existingMapping != null && Guid.TryParse(existingMapping.ExternalCustomerId, out var exId) ? exId : (Guid?)null,
                 Name = customer.FirstName,
                 Surname = customer.LastName,
                 CardTrack = actualBarcode,
@@ -167,22 +200,23 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var result = await _iikoClient.CreateOrUpdateCustomerAsync(accessToken, orgId, iikoCustomer, ct);
             if (result == null)
-                return CustomerSyncResult.Fail();
+            {
+                _logger.LogWarning("iiko sync: CreateOrUpdate failed. customerId={CustomerId} orgId={OrgId}", customerId, orgId);
+                return false;
+            }
 
             // İkinci kart (walveroId) əlavə et — ayrı kart olaraq
             if (!string.IsNullOrEmpty(walveroIdStr))
-            {
                 await _iikoClient.AddCustomerCardAsync(accessToken, orgId, result.Id, walveroIdStr, walveroIdStr, ct);
-            }
 
             if (existingMapping == null)
             {
-                var enrolled = await TryEnrollInIikoProgramAsync(integration, accessToken, orgId, result.Id, customerId, ct);
-                await CreateMappingAsync(integration.Id, result.Id.ToString(), customerId, enrolled, ct);
+                var enrolled = await TryEnrollInIikoProgramAsync(programId, accessToken, orgId, result.Id, customerId, ct);
+                await CreateMappingAsync(integrationId, venueId, result.Id.ToString(), customerId, enrolled, ct);
             }
             else if (!existingMapping.IsEnrolledInProgram)
             {
-                var enrolled = await TryEnrollInIikoProgramAsync(integration, accessToken, orgId, result.Id, customerId, ct);
+                var enrolled = await TryEnrollInIikoProgramAsync(programId, accessToken, orgId, result.Id, customerId, ct);
                 if (enrolled)
                 {
                     existingMapping.IsEnrolledInProgram = true;
@@ -190,26 +224,25 @@ namespace Loyalty.Business.Services.Implementations.Main
                     await _uow.CommitAsync(ct);
                 }
             }
-
-            return CustomerSyncResult.Ok(null, barcode);
+            return true;
         }
 
         /// <summary>
-        /// iiko proqramına əlavə et. ExternalProgramId yoxdursa true qayıdır (heç bir iş yoxdur).
+        /// iiko proqramına əlavə et. programId yoxdursa true qayıdır (heç bir iş yoxdur).
         /// Çağrı edilibsə HTTP nəticəsi qaytarılır. Bad GUID — false + warning.
         /// </summary>
         private async Task<bool> TryEnrollInIikoProgramAsync(
-            TenantIntegration integration, string accessToken, Guid orgId, Guid iikoCustomerId,
+            string? programIdStr, string accessToken, Guid orgId, Guid iikoCustomerId,
             int customerId, CancellationToken ct)
         {
-            if (string.IsNullOrEmpty(integration.ExternalProgramId))
+            if (string.IsNullOrEmpty(programIdStr))
                 return true; // proqram konfiqurasiya edilməyib — enroll lazım deyil
 
-            if (!Guid.TryParse(integration.ExternalProgramId, out var programId))
+            if (!Guid.TryParse(programIdStr, out var programId))
             {
                 _logger.LogWarning(
                     "iiko ExternalProgramId is not a valid GUID; skipping customer_program/add. value={Value} customerId={CustomerId}",
-                    integration.ExternalProgramId, customerId);
+                    programIdStr, customerId);
                 return false;
             }
 
@@ -220,11 +253,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             return added;
         }
 
-        private async Task CreateMappingAsync(int integrationId, string externalId, int customerId, bool isEnrolledInProgram, CancellationToken ct)
+        private async Task CreateMappingAsync(int integrationId, int? venueId, string externalId, int customerId, bool isEnrolledInProgram, CancellationToken ct)
         {
             var mapping = new PosCustomerMapping
             {
                 TenantIntegrationId = integrationId,
+                TenantIntegrationVenueId = venueId,
                 ExternalCustomerId = externalId,
                 CustomerId = customerId,
                 IsEnrolledInProgram = isEnrolledInProgram,

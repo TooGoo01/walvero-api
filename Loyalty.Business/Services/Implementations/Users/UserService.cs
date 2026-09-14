@@ -722,7 +722,7 @@ namespace Loyalty.Business.Services.Implementations.Users
         /// <summary>
         /// Private helper method to generate and send OTP. Handles invalidating previous OTPs and sending SMS.
         /// </summary>
-        private async Task<ServiceResult> GenerateAndSendOtpAsync(int userId, OtpPurpose purpose)
+        private async Task<ServiceResult> GenerateAndSendOtpAsync(int userId, OtpPurpose purpose, string? channel = null)
         {
             try
             {
@@ -775,22 +775,23 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 _logger?.LogInformation("OTP generated for UserId: {UserId}, Purpose: {Purpose}", userId, purpose);
 
-                // Send SMS
+                // Kanal: WhatsApp-first (approved template varsa), "sms" → məcburi SMS
+                var sentVia = "sms";
                 try
                 {
                     var message = AppMessages.Get("OtpSmsText", otpCode);
-
-                    await Helper.SendSmsAsync(user.PhoneNumber!, message);
-                    _logger?.LogInformation("OTP SMS sent successfully to UserId: {UserId}, Phone: {Phone}", userId, WalletCodeHelper.MaskPhone(user.PhoneNumber));
+                    var preferWhatsApp = !string.Equals(channel, "sms", StringComparison.OrdinalIgnoreCase);
+                    sentVia = await OtpSender.SendAsync(user.PhoneNumber!, otpCode, message, preferWhatsApp);
+                    _logger?.LogInformation("OTP sent via {Channel} to UserId: {UserId}, Phone: {Phone}", sentVia, userId, WalletCodeHelper.MaskPhone(user.PhoneNumber));
                 }
                 catch (Exception smsEx)
                 {
-                    _logger?.LogError(smsEx, "Failed to send OTP SMS to UserId: {UserId}, Phone: {Phone}", userId, WalletCodeHelper.MaskPhone(user.PhoneNumber));
+                    _logger?.LogError(smsEx, "Failed to send OTP to UserId: {UserId}, Phone: {Phone}", userId, WalletCodeHelper.MaskPhone(user.PhoneNumber));
                     // Don't fail the operation, just log the error
                     // The OTP is still stored and can be retrieved if needed
                 }
 
-                return new ServiceResult(true, "OTP generated and sent");
+                return new ServiceResult(true, sentVia, "OTP generated and sent");
             }
             catch (Exception ex)
             {
@@ -959,7 +960,7 @@ namespace Loyalty.Business.Services.Implementations.Users
 
         // ========== PHONE-BASED PASSWORD RESET METHODS ==========
 
-        public async Task<ServiceResult> StartForgotPasswordAsync(string phoneNumber)
+        public async Task<ServiceResult> StartForgotPasswordAsync(string phoneNumber, string? channel = null)
         {
             try
             {
@@ -985,7 +986,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 }
 
                 // Generate and send OTP
-                var otpResult = await GenerateAndSendOtpAsync(user.Id, OtpPurpose.PasswordReset);
+                var otpResult = await GenerateAndSendOtpAsync(user.Id, OtpPurpose.PasswordReset, channel);
 
                 _logger?.LogInformation("Password reset OTP sent to UserId: {UserId}, Phone: {Phone}", user.Id, WalletCodeHelper.MaskPhone(phoneNumber));
 
@@ -1620,8 +1621,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     _ => OtpPurpose.Registration
                 };
 
-                // Use consolidated OTP generation method
-                var otpResult = await GenerateAndSendOtpAsync(user.Id, otpPurpose);
+                // Use consolidated OTP generation method (channel: "sms" → məcburi SMS)
+                var otpResult = await GenerateAndSendOtpAsync(user.Id, otpPurpose, request.Channel);
                 if (!otpResult.Success)
                 {
                     _logger?.LogError("Failed to generate/send OTP during resend for UserId: {UserId}", user.Id);
@@ -1633,7 +1634,8 @@ namespace Loyalty.Business.Services.Implementations.Users
                     UserId = user.Id,
                     OtpRequired = true,
                     OtpSent = true,
-                    Purpose = request.Purpose
+                    Purpose = request.Purpose,
+                    SentVia = otpResult.Data as string
                 };
 
                 return ServiceResult<OtpRequiredResponse>.Ok(response, "OTP has been re-sent successfully.");
@@ -2088,7 +2090,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 if (dto.OtpType.ToLower() == "oldphone")
                 {
                     // Köhnə telefon nömrəsinə OTP yenidən göndər
-                    var otpResult = await GenerateAndSendOtpAsync(userId.Value, OtpPurpose.PhoneUpdateOld);
+                    var otpResult = await GenerateAndSendOtpAsync(userId.Value, OtpPurpose.PhoneUpdateOld, dto.Channel);
                     if (!otpResult.Success)
                     {
                         return new ServiceResult(false, otpResult.Message ?? "Failed to resend OTP to old phone number");
@@ -2137,7 +2139,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     //}
 
                     // Yeni telefon nömrəsinə OTP göndər
-                    var sendResult = await SendOtpToNewPhoneAsync(userId.Value, dto.NewPhoneNumber, ct);
+                    var sendResult = await SendOtpToNewPhoneAsync(userId.Value, dto.NewPhoneNumber, ct, channel: dto.Channel);
                     if (!sendResult.Success)
                     {
                         return new ServiceResult(false, sendResult.Message ?? "Failed to resend OTP to new phone number");
@@ -2158,7 +2160,7 @@ namespace Loyalty.Business.Services.Implementations.Users
         }
 
         // Helper method to send OTP to new phone number
-        private async Task<ServiceResult> SendOtpToNewPhoneAsync(int userId, string newPhoneNumber, CancellationToken ct = default)
+        private async Task<ServiceResult> SendOtpToNewPhoneAsync(int userId, string newPhoneNumber, CancellationToken ct = default, string? channel = null)
         {
             try
             {
@@ -2175,7 +2177,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 user.PhoneNumber = newPhoneNumber;
                 await _userManager.UpdateAsync(user);
 
-                var otpResult = await GenerateAndSendOtpAsync(userId, OtpPurpose.PhoneUpdateNew);
+                var otpResult = await GenerateAndSendOtpAsync(userId, OtpPurpose.PhoneUpdateNew, channel);
                 
                 // OTP göndərildikdən sonra köhnə nömrəni geri qaytarırıq
                 user.PhoneNumber = tempPhone;

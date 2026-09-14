@@ -101,7 +101,7 @@ namespace Loyalty.Business.Services.Implementations.Users
             {
                 var message = Resources.AppMessages.Get("OtpSmsText", otpCode);
 
-                await Helper.SendSmsAsync(user.PhoneNumber!, message);
+                await OtpSender.SendAsync(user.PhoneNumber!, otpCode, message);
                 _logger.LogInformation("OTP SMS sent successfully to UserId: {UserId}, Phone: {Phone}", 
                     userId, WalletCodeHelper.MaskPhone(user.PhoneNumber));
             }

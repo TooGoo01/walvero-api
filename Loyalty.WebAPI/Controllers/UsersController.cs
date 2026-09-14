@@ -188,7 +188,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<ActionResult<ServiceResult>> ForgotPassword([FromBody] ForgotPasswordDto forgotPasswordDto)
         {
-            var result = await _userService.StartForgotPasswordAsync(forgotPasswordDto.PhoneNumber);
+            var result = await _userService.StartForgotPasswordAsync(forgotPasswordDto.PhoneNumber, forgotPasswordDto.Channel);
             return Ok(result);
         }
 

@@ -67,6 +67,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<TenantLink> TenantLinks { get; set; }
         public DbSet<IntegrationType> IntegrationTypes { get; set; }
         public DbSet<TenantIntegration> TenantIntegrations { get; set; }
+        public DbSet<TenantIntegrationVenue> TenantIntegrationVenues { get; set; }
         public DbSet<PosProductEarnRule> PosProductEarnRules { get; set; }
         public DbSet<PosLoyaltyDiscountType> PosLoyaltyDiscountTypes { get; set; }
         public DbSet<PosCustomerMapping> PosCustomerMappings { get; set; }
@@ -1114,6 +1115,32 @@ namespace Loyalty.DataAccess.Context
                     .WithMany()
                     .HasForeignKey(pcm => pcm.CustomerId)
                     .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(pcm => pcm.TenantIntegrationVenue)
+                    .WithMany()
+                    .HasForeignKey(pcm => pcm.TenantIntegrationVenueId)
+                    .OnDelete(DeleteBehavior.NoAction);
+            });
+
+            // ==== TENANT INTEGRATION VENUE (per-branch iiko org) ====
+            modelBuilder.Entity<TenantIntegrationVenue>(entity =>
+            {
+                entity.ToTable("TenantIntegrationVenues");
+                entity.HasKey(v => v.Id);
+                entity.Property(v => v.ExternalVenueId).IsRequired().HasMaxLength(100);
+                entity.Property(v => v.ExternalTerminalGroupId).HasMaxLength(100);
+                entity.Property(v => v.ExternalProgramId).HasMaxLength(100);
+                entity.Property(v => v.DisplayName).HasMaxLength(200);
+                entity.HasIndex(v => v.ExternalTerminalGroupId);
+                entity.HasIndex(v => new { v.TenantIntegrationId, v.IsActive });
+
+                entity.HasOne(v => v.TenantIntegration)
+                    .WithMany()
+                    .HasForeignKey(v => v.TenantIntegrationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(v => v.Branch)
+                    .WithMany()
+                    .HasForeignKey(v => v.BranchId)
+                    .OnDelete(DeleteBehavior.NoAction); // SetNull çoxlu cascade yolu yaradır (Tenant→Branch + Tenant→TenantIntegration→Venue)
             });
 
             // ==== BRANCH ====

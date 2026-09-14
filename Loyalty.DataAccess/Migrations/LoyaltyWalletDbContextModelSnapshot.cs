@@ -2086,9 +2086,14 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int>("TenantIntegrationId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("TenantIntegrationVenueId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CustomerId");
+
+                    b.HasIndex("TenantIntegrationVenueId");
 
                     b.HasIndex("TenantIntegrationId", "ExternalCustomerId")
                         .IsUnique();
@@ -3311,6 +3316,63 @@ namespace Loyalty.DataAccess.Migrations
                         .IsUnique();
 
                     b.ToTable("TenantIntegrations", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantIntegrationVenue", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("BranchId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ExternalProgramId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ExternalTerminalGroupId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ExternalVenueId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantIntegrationId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BranchId");
+
+                    b.HasIndex("ExternalTerminalGroupId");
+
+                    b.HasIndex("TenantIntegrationId", "IsActive");
+
+                    b.ToTable("TenantIntegrationVenues", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantLink", b =>
@@ -4663,9 +4725,16 @@ namespace Loyalty.DataAccess.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.TenantIntegrationVenue", "TenantIntegrationVenue")
+                        .WithMany()
+                        .HasForeignKey("TenantIntegrationVenueId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.Navigation("Customer");
 
                     b.Navigation("TenantIntegration");
+
+                    b.Navigation("TenantIntegrationVenue");
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosLoyaltyDiscountType", b =>
@@ -4865,6 +4934,24 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("LoyaltyProgram");
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantIntegrationVenue", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.TenantIntegration", "TenantIntegration")
+                        .WithMany()
+                        .HasForeignKey("TenantIntegrationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("TenantIntegration");
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantLink", b =>

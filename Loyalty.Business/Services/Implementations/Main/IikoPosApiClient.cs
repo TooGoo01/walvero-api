@@ -140,6 +140,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             return response?.Organizations;
         }
 
+        public async Task<List<IikoTerminalGroupBlock>?> GetTerminalGroupsAsync(
+            string accessToken, IEnumerable<Guid> organizationIds, CancellationToken ct = default)
+        {
+            var response = await PostAsync<IikoTerminalGroupsResponse>(
+                accessToken, "/api/1/terminal_groups", new { organizationIds = organizationIds.ToArray() }, ct);
+
+            return response?.TerminalGroups;
+        }
+
         public async Task<IikoNomenclatureResponse?> GetNomenclatureAsync(
             string accessToken, Guid organizationId, CancellationToken ct = default)
         {
@@ -217,6 +226,11 @@ namespace Loyalty.Business.Services.Implementations.Main
         private class IikoOrganizationsResponse
         {
             public IikoOrganization[]? Organizations { get; set; }
+        }
+
+        private class IikoTerminalGroupsResponse
+        {
+            public List<IikoTerminalGroupBlock>? TerminalGroups { get; set; }
         }
     }
 }

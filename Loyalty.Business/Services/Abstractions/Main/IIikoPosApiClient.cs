@@ -43,6 +43,12 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<IikoOrganization[]?> GetOrganizationsAsync(string accessToken, CancellationToken ct = default);
 
         /// <summary>
+        /// Verilən org-lar üçün terminal qruplarını alır.
+        /// </summary>
+        Task<List<IikoTerminalGroupBlock>?> GetTerminalGroupsAsync(
+            string accessToken, IEnumerable<Guid> organizationIds, CancellationToken ct = default);
+
+        /// <summary>
         /// iiko menyusunu (nomenclature) alır.
         /// </summary>
         Task<IikoNomenclatureResponse?> GetNomenclatureAsync(
@@ -98,6 +104,20 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public Guid Id { get; set; }
         public string? Name { get; set; }
         public string? Country { get; set; }
+        public string? Address { get; set; }
+    }
+
+    public class IikoTerminalGroupBlock
+    {
+        public Guid OrganizationId { get; set; }
+        public List<IikoTerminalGroupItem>? Items { get; set; }
+    }
+
+    public class IikoTerminalGroupItem
+    {
+        public Guid Id { get; set; }
+        public Guid OrganizationId { get; set; }
+        public string? Name { get; set; }
         public string? Address { get; set; }
     }
 

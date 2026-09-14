@@ -148,5 +148,57 @@ namespace Loyalty.WebAPI.Controllers
             if (!result.Success) return BadRequest(result.Message);
             return Ok(new { walletToken = result.Data });
         }
+
+        // ── Per-branch venues (iiko multi-org) ──
+
+        [HttpGet("{id}/venues")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> ListVenues(int id, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var result = await _service.ListVenuesAsync(id, tid, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok(result.Data);
+        }
+
+        [HttpPost("{id}/venues")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> AddVenue(int id, [FromBody] TenantIntegrationVenueUpsertDto dto, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var result = await _service.AddVenueAsync(id, dto, tid, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok(new { id = result.Data });
+        }
+
+        [HttpPut("venues/{venueId}")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> UpdateVenue(int venueId, [FromBody] TenantIntegrationVenueUpsertDto dto, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var result = await _service.UpdateVenueAsync(venueId, dto, tid, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok();
+        }
+
+        [HttpDelete("venues/{venueId}")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> DeleteVenue(int venueId, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var result = await _service.DeleteVenueAsync(venueId, tid, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok();
+        }
+
+        [HttpGet("{id}/iiko/organizations")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> GetIikoOrganizations(int id, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var result = await _service.GetIikoOrganizationsAsync(id, tid, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok(result.Data);
+        }
     }
 }

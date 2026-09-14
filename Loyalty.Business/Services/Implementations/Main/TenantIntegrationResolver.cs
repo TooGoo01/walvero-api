@@ -9,13 +9,16 @@ namespace Loyalty.Business.Services.Implementations.Main
     public class TenantIntegrationResolver : ITenantIntegrationResolver
     {
         private readonly ITenantIntegrationRepository _tenantIntegrationRepository;
+        private readonly ITenantIntegrationVenueRepository _venueRepository;
         private readonly ISensitiveDataProtector _protector;
 
         public TenantIntegrationResolver(
             ITenantIntegrationRepository tenantIntegrationRepository,
+            ITenantIntegrationVenueRepository venueRepository,
             ISensitiveDataProtector protector)
         {
             _tenantIntegrationRepository = tenantIntegrationRepository;
+            _venueRepository = venueRepository;
             _protector = protector;
         }
 
@@ -43,6 +46,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (string.IsNullOrWhiteSpace(terminalGroupId) || string.IsNullOrWhiteSpace(source))
                 return null;
 
+            // Per-branch: əvvəl venue-səviyyə terminalGroupId axtar → BranchId + org id ilə context.
+            var venue = await _venueRepository.GetByTerminalGroupIdAndSourceAsync(terminalGroupId, source, ct);
+            if (venue != null)
+                return MapVenueToContext(venue);
+
+            // Backward-compat: legacy tək-org tenant (terminalGroupId parent-də).
             var ti = await _tenantIntegrationRepository.GetByTerminalGroupIdAndSourceAsync(terminalGroupId, source, ct);
             return MapToContext(ti);
         }
@@ -64,6 +73,21 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Source = ti.IntegrationType?.Source ?? string.Empty,
                 TenantIntegrationId = ti.Id,
                 ExternalVenueId = ti.ExternalVenueId
+            };
+        }
+
+        private static WalletWebhookResolvedContext MapVenueToContext(TenantIntegrationVenue venue)
+        {
+            var ti = venue.TenantIntegration;
+            return new WalletWebhookResolvedContext
+            {
+                TenantId = ti.TenantId,
+                LoyaltyProgramId = ti.LoyaltyProgramId,
+                Source = ti.IntegrationType?.Source ?? string.Empty,
+                TenantIntegrationId = ti.Id,
+                ExternalVenueId = venue.ExternalVenueId,
+                BranchId = venue.BranchId,
+                TenantIntegrationVenueId = venue.Id
             };
         }
     }

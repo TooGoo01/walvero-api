@@ -49,6 +49,7 @@ namespace Loyalty.DataAccess
             services.AddScoped<ITenantLinkRepository, TenantLinkRepository>();
             services.AddScoped<IIntegrationTypeRepository, IntegrationTypeRepository>();
             services.AddScoped<ITenantIntegrationRepository, TenantIntegrationRepository>();
+            services.AddScoped<ITenantIntegrationVenueRepository, TenantIntegrationVenueRepository>();
             services.AddScoped<IPosProductEarnRuleRepository, PosProductEarnRuleRepository>();
             services.AddScoped<IPosLoyaltyDiscountTypeRepository, PosLoyaltyDiscountTypeRepository>();
             services.AddScoped<IPosCustomerMappingRepository, PosCustomerMappingRepository>();

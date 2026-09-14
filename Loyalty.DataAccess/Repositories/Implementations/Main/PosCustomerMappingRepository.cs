@@ -36,5 +36,11 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
             return GetAsQueryable()
                 .FirstOrDefaultAsync(m => m.TenantIntegrationId == tenantIntegrationId && m.CustomerId == customerId, ct);
         }
+
+        public Task<PosCustomerMapping?> GetByVenueAndCustomerAsync(int tenantIntegrationVenueId, int customerId, CancellationToken ct = default)
+        {
+            return GetAsQueryable()
+                .FirstOrDefaultAsync(m => m.TenantIntegrationVenueId == tenantIntegrationVenueId && m.CustomerId == customerId, ct);
+        }
     }
 }

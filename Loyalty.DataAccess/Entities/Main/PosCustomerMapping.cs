@@ -14,7 +14,11 @@ namespace Loyalty.DataAccess.Entities.Main
         public int CustomerId { get; set; }
         public bool IsEnrolledInProgram { get; set; }
 
+        // Multi-org (per-branch): hansı iiko venue/org-da yaradılıb. Legacy tək-org sətirlərdə null.
+        public int? TenantIntegrationVenueId { get; set; }
+
         public TenantIntegration TenantIntegration { get; set; } = null!;
         public Customer Customer { get; set; } = null!;
+        public TenantIntegrationVenue? TenantIntegrationVenue { get; set; }
     }
 }

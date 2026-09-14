@@ -8,5 +8,8 @@ namespace Loyalty.Business.Dtos.Post.Users
         public string OtpType { get; set; } = string.Empty; // "OldPhone" or "NewPhone"
         
         public string? NewPhoneNumber { get; set; } // Yalnız NewPhone üçün lazımdır
+
+        /// <summary>"sms" → məcburi SMS; boş → WhatsApp-first.</summary>
+        public string? Channel { get; set; }
     }
 }

@@ -16,6 +16,7 @@ namespace Loyalty.Business.Services.Implementations.Main
     public class PosSyncService : IPosSyncService
     {
         private readonly ITenantIntegrationRepository _integrationRepo;
+        private readonly ITenantIntegrationVenueRepository _venueRepo;
         private readonly IPosCustomerMappingRepository _mappingRepo;
         private readonly ILoyaltyCardRepository _cardRepo;
         private readonly ISensitiveDataProtector _protector;
@@ -32,6 +33,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public PosSyncService(
             ITenantIntegrationRepository integrationRepo,
+            ITenantIntegrationVenueRepository venueRepo,
             IPosCustomerMappingRepository mappingRepo,
             ILoyaltyCardRepository cardRepo,
             ISensitiveDataProtector protector,
@@ -42,6 +44,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             ILogger<PosSyncService> logger)
         {
             _integrationRepo = integrationRepo;
+            _venueRepo = venueRepo;
             _mappingRepo = mappingRepo;
             _cardRepo = cardRepo;
             _protector = protector;
@@ -64,6 +67,18 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var isIiko = integration.IntegrationType?.Source == "iiko_pos";
                 if (!isIiko && string.IsNullOrWhiteSpace(integration.ApiBaseUrl))
                     continue;
+
+                // Per-branch iiko: venue varsa hər org-a ayrıca sync (mapping per-venue). Venue yoxdursa — legacy tək-org (aşağı).
+                if (isIiko)
+                {
+                    var venues = await _venueRepo.GetActiveByIntegrationAsync(integration.Id, ct);
+                    if (venues.Count > 0)
+                    {
+                        try { await SyncIikoAllVenuesAsync(integration, customer, venues, ct); }
+                        catch (Exception ex) { _logger.LogWarning(ex, "iiko multi-venue sync FAILED: IntegrationId={IntegrationId}, CustomerId={CustomerId}", integration.Id, customer.Id); }
+                        continue;
+                    }
+                }
 
                 try
                 {
@@ -276,15 +291,84 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return (null, false);
             }
 
-            // BarcodeValue-nu LoyaltyCard-dan al
-            var cards = await _cardRepo.ListByCustomerAsync(integration.TenantId, customer.Id, ct);
+            var (cardsInfo, walveroId, primaryCard) = await GatherIikoCardInfoAsync(integration.TenantId, customer, ct);
+            return await CreateIikoCustomerInOrgAsync(customer, accessToken, orgId, integration.ExternalProgramId, cardsInfo, walveroId, primaryCard, ct);
+        }
+
+        /// <summary>Per-branch: hər venue org-una ayrıca müştəri yarat + per-venue mapping. Token bir dəfə alınır.</summary>
+        private async Task SyncIikoAllVenuesAsync(TenantIntegration integration, Customer customer, List<TenantIntegrationVenue> venues, CancellationToken ct)
+        {
+            if (string.IsNullOrEmpty(integration.ApiTokenEncrypted)) return;
+            var accessToken = await GetIikoTokenAsync(integration, ct);
+            if (string.IsNullOrEmpty(accessToken))
+            {
+                _logger.LogWarning("iiko multi-venue sync: access_token alınmadı. IntegrationId={Id}", integration.Id);
+                return;
+            }
+
+            var (cardsInfo, walveroId, primaryCard) = await GatherIikoCardInfoAsync(integration.TenantId, customer, ct);
+
+            foreach (var venue in venues)
+            {
+                if (!Guid.TryParse(venue.ExternalVenueId, out var orgId))
+                {
+                    _logger.LogWarning("iiko sync: venue ExternalVenueId GUID deyil: {VenueId} (venueRowId={RowId})", venue.ExternalVenueId, venue.Id);
+                    continue;
+                }
+                var programId = string.IsNullOrEmpty(venue.ExternalProgramId) ? integration.ExternalProgramId : venue.ExternalProgramId;
+                var existing = await _mappingRepo.GetByVenueAndCustomerAsync(venue.Id, customer.Id, ct);
+
+                if (existing != null)
+                {
+                    if (!existing.IsEnrolledInProgram && !string.IsNullOrEmpty(programId) && Guid.TryParse(existing.ExternalCustomerId, out var exCustId))
+                    {
+                        var retried = await TryEnrollIikoCustomerInProgramAsync(programId, accessToken, orgId, exCustId, customer.Id, ct);
+                        if (retried)
+                        {
+                            existing.IsEnrolledInProgram = true;
+                            _mappingRepo.Update(existing);
+                            await _uow.CommitAsync(ct);
+                        }
+                    }
+                    continue;
+                }
+
+                var (externalId, enrolled) = await CreateIikoCustomerInOrgAsync(customer, accessToken, orgId, programId, cardsInfo, walveroId, primaryCard, ct);
+                externalId ??= customer.Id.ToString();
+                var mapping = new PosCustomerMapping
+                {
+                    TenantIntegrationId = integration.Id,
+                    TenantIntegrationVenueId = venue.Id,
+                    ExternalCustomerId = externalId,
+                    CustomerId = customer.Id,
+                    IsEnrolledInProgram = enrolled,
+                    RegUserId = 1,
+                    RegDate = DateTime.UtcNow,
+                    IsActive = true
+                };
+                await _mappingRepo.AddAsync(mapping);
+                await _uow.CommitAsync(ct);
+                _logger.LogInformation("iiko venue sync OK: IntegrationId={Id}, VenueRowId={VenueId}, CustomerId={CustomerId}, iikoId={IikoId}", integration.Id, venue.Id, customer.Id, externalId);
+            }
+        }
+
+        private async Task<string?> GetIikoTokenAsync(TenantIntegration integration, CancellationToken ct)
+        {
+            var apiLogin = _protector.Decrypt(integration.ApiTokenEncrypted!);
+            if (string.IsNullOrEmpty(apiLogin)) return null;
+            var clientSecret = string.IsNullOrEmpty(integration.ApiSecretEncrypted) ? null : _protector.Decrypt(integration.ApiSecretEncrypted);
+            return await _iikoClient.GetAccessTokenAsync(apiLogin, integration.ApiAppId, clientSecret, ct: ct);
+        }
+
+        private async Task<(List<LoyaltyCard>? Cards, long? WalveroId, string PrimaryCard)> GatherIikoCardInfoAsync(int tenantId, Customer customer, CancellationToken ct)
+        {
+            var cards = await _cardRepo.ListByCustomerAsync(tenantId, customer.Id, ct);
             var barcodeValue = cards?
                 .Where(c => c.IsActive && !string.IsNullOrEmpty(c.BarcodeValue))
                 .OrderByDescending(c => c.Id)
                 .Select(c => c.BarcodeValue)
                 .FirstOrDefault();
 
-            // WalveroId-ni ApplicationUser-dən al
             long? walveroId = null;
             if (customer.applicationUserId.HasValue)
             {
@@ -294,12 +378,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                     .FirstOrDefaultAsync(ct);
             }
 
-            // Əsas barcode (cardTrack) — LoyaltyCard barcode və ya customer ID
-            var primaryCard = !string.IsNullOrEmpty(barcodeValue)
-                ? barcodeValue
-                : customer.Id.ToString();
+            var primaryCard = !string.IsNullOrEmpty(barcodeValue) ? barcodeValue! : customer.Id.ToString();
+            return (cards?.ToList(), walveroId, primaryCard);
+        }
 
-            // iiko müştəri yarat/yenilə (1-ci kart: primaryCard)
+        /// <summary>Bir iiko org-da müştəri yarat/yenilə + program enroll + walveroId kartı + balans topup. programId — per-org (venue) və ya parent.</summary>
+        private async Task<(string? ExternalId, bool EnrolledInProgram)> CreateIikoCustomerInOrgAsync(
+            Customer customer, string accessToken, Guid orgId, string? programId,
+            List<LoyaltyCard>? cards, long? walveroId, string primaryCard, CancellationToken ct)
+        {
             var iikoCustomer = new IikoCustomerDto
             {
                 Name = customer.FirstName?.Trim() ?? "",
@@ -312,72 +399,55 @@ namespace Loyalty.Business.Services.Implementations.Main
             var result = await _iikoClient.CreateOrUpdateCustomerAsync(accessToken, orgId, iikoCustomer, ct);
             if (result == null)
             {
-                _logger.LogWarning("iiko sync: CreateOrUpdate failed. CustomerId={CustomerId}", customer.Id);
+                _logger.LogWarning("iiko sync: CreateOrUpdate failed. CustomerId={CustomerId} orgId={OrgId}", customer.Id, orgId);
                 return (null, false);
             }
 
-            // customer_program/add — yalnız ExternalProgramId konfiqurasiya edilibsə chağrılır.
-            var enrolledInProgram = await TryEnrollIikoCustomerInProgramAsync(
-                integration, accessToken, orgId, result.Id, customer.Id, ct);
+            var enrolledInProgram = await TryEnrollIikoCustomerInProgramAsync(programId, accessToken, orgId, result.Id, customer.Id, ct);
 
-            // 2-ci kart: WalveroId (əgər varsa)
             if (walveroId.HasValue)
             {
                 var walveroIdStr = walveroId.Value.ToString();
-                var addCardOk = await _iikoClient.AddCustomerCardAsync(
-                    accessToken, orgId, result.Id, walveroIdStr, walveroIdStr, ct);
+                var addCardOk = await _iikoClient.AddCustomerCardAsync(accessToken, orgId, result.Id, walveroIdStr, walveroIdStr, ct);
                 if (!addCardOk)
-                {
-                    _logger.LogInformation(
-                        "iiko sync: WalveroId kart əlavə edilmədi (ola bilsin ki, artıq var). CustomerId={CustomerId}, WalveroId={WalveroId}",
-                        customer.Id, walveroIdStr);
-                }
+                    _logger.LogInformation("iiko sync: WalveroId kart əlavə edilmədi (ola bilsin artıq var). CustomerId={CustomerId}, WalveroId={WalveroId}", customer.Id, walveroIdStr);
             }
 
-            // 3) Mövcud balansı iiko wallet-ə göndər
             if (cards != null && cards.Any())
             {
                 var activeCard = cards.Where(c => c.IsActive).OrderByDescending(c => c.Id).FirstOrDefault();
                 if (activeCard != null && activeCard.CurrentPoints > 0)
                 {
-                    // iiko müştəri info-dan wallet ID-ni al
                     var customerInfo = await _iikoClient.GetCustomerInfoAsync(accessToken, orgId, cardTrack: primaryCard, ct: ct);
                     if (customerInfo?.WalletBalances != null && customerInfo.WalletBalances.Count > 0)
                     {
                         var wallet = customerInfo.WalletBalances.First();
-                        var topUpOk = await _iikoClient.TopUpWalletAsync(
-                            accessToken, orgId, result.Id, wallet.Id, activeCard.CurrentPoints, ct);
-
-                        _logger.LogInformation(
-                            "iiko sync balance: CustomerId={CustomerId}, WalletId={WalletId}, Amount={Amount}, Success={Success}",
-                            customer.Id, wallet.Id, activeCard.CurrentPoints, topUpOk);
+                        var topUpOk = await _iikoClient.TopUpWalletAsync(accessToken, orgId, result.Id, wallet.Id, activeCard.CurrentPoints, ct);
+                        _logger.LogInformation("iiko sync balance: CustomerId={CustomerId}, WalletId={WalletId}, Amount={Amount}, Success={Success}", customer.Id, wallet.Id, activeCard.CurrentPoints, topUpOk);
                     }
                 }
             }
 
-            _logger.LogInformation(
-                "iiko sync OK: IntegrationId={Id}, CustomerId={CustomerId}, iikoId={IikoId}",
-                integration.Id, customer.Id, result.Id);
-
+            _logger.LogInformation("iiko sync OK: CustomerId={CustomerId}, orgId={OrgId}, iikoId={IikoId}", customer.Id, orgId, result.Id);
             return (result.Id.ToString(), enrolledInProgram);
         }
 
         /// <summary>
-        /// iiko customer_program/add chağırışı. ExternalProgramId yoxdursa true qayıdır (nothing to do).
+        /// iiko customer_program/add chağırışı. programId yoxdursa true qayıdır (nothing to do).
         /// Bad GUID — false + warning. HTTP success/fail nəticəsi log-da result={True|False} kimi yazılır.
         /// </summary>
         private async Task<bool> TryEnrollIikoCustomerInProgramAsync(
-            TenantIntegration integration, string accessToken, Guid orgId, Guid iikoCustomerId,
+            string? programIdStr, string accessToken, Guid orgId, Guid iikoCustomerId,
             int customerId, CancellationToken ct)
         {
-            if (string.IsNullOrEmpty(integration.ExternalProgramId))
+            if (string.IsNullOrEmpty(programIdStr))
                 return true;
 
-            if (!Guid.TryParse(integration.ExternalProgramId, out var programId))
+            if (!Guid.TryParse(programIdStr, out var programId))
             {
                 _logger.LogWarning(
                     "iiko ExternalProgramId is not a valid GUID; skipping customer_program/add. value={Value} customerId={CustomerId}",
-                    integration.ExternalProgramId, customerId);
+                    programIdStr, customerId);
                 return false;
             }
 
@@ -389,23 +459,19 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
 
         /// <summary>
-        /// Mövcud mapping üçün proqrama enrollment-i təkrar et. Token + GUID-lər valid deyilsə false.
+        /// Legacy (tək-org) mapping üçün proqrama enrollment-i təkrar et. Token + GUID-lər valid deyilsə false.
         /// </summary>
         private async Task<bool> RetryIikoProgramEnrollmentAsync(
             TenantIntegration integration, PosCustomerMapping mapping, int customerId, CancellationToken ct)
         {
             if (string.IsNullOrEmpty(integration.ApiTokenEncrypted)) return false;
-            var apiLogin = _protector.Decrypt(integration.ApiTokenEncrypted);
-            if (string.IsNullOrEmpty(apiLogin)) return false;
-
-            var clientSecret = string.IsNullOrEmpty(integration.ApiSecretEncrypted) ? null : _protector.Decrypt(integration.ApiSecretEncrypted);
-            var accessToken = await _iikoClient.GetAccessTokenAsync(apiLogin, integration.ApiAppId, clientSecret, ct: ct);
+            var accessToken = await GetIikoTokenAsync(integration, ct);
             if (string.IsNullOrEmpty(accessToken)) return false;
 
             if (!Guid.TryParse(integration.ExternalVenueId, out var orgId)) return false;
             if (!Guid.TryParse(mapping.ExternalCustomerId, out var iikoCustomerId)) return false;
 
-            return await TryEnrollIikoCustomerInProgramAsync(integration, accessToken, orgId, iikoCustomerId, customerId, ct);
+            return await TryEnrollIikoCustomerInProgramAsync(integration.ExternalProgramId, accessToken, orgId, iikoCustomerId, customerId, ct);
         }
 
         public async Task SyncBalanceToPosAsync(int tenantId, int customerId, decimal currentPoints, CancellationToken ct = default)
@@ -421,20 +487,9 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 try
                 {
-                    var mapping = await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, customerId, ct);
-                    if (mapping == null)
-                    {
-                        _logger.LogDebug("Balance sync skipped (no mapping): IntegrationId={IntegrationId}, CustomerId={CustomerId}", integration.Id, customerId);
-                        continue;
-                    }
-
-                    var apiLogin = _protector.Decrypt(integration.ApiTokenEncrypted!);
-                    var clientSecret = string.IsNullOrEmpty(integration.ApiSecretEncrypted) ? null : _protector.Decrypt(integration.ApiSecretEncrypted);
-                    var accessToken = await _iikoClient.GetAccessTokenAsync(apiLogin, integration.ApiAppId, clientSecret, ct: ct);
+                    var accessToken = await GetIikoTokenAsync(integration, ct);
                     if (string.IsNullOrEmpty(accessToken)) continue;
 
-                    if (!Guid.TryParse(integration.ExternalVenueId, out var orgId)) continue;
-                    // iiko müştəri info-dan wallet ID-ni al (cardTrack ilə axtar)
                     var cards = await _cardRepo.ListByCustomerAsync(tenantId, customerId, ct);
                     var cardTrack = cards?
                         .Where(c => c.IsActive && !string.IsNullOrEmpty(c.BarcodeValue))
@@ -442,31 +497,54 @@ namespace Loyalty.Business.Services.Implementations.Main
                         .Select(c => c.BarcodeValue)
                         .FirstOrDefault() ?? customerId.ToString();
 
-                    var customerInfo = await _iikoClient.GetCustomerInfoAsync(accessToken, orgId, cardTrack: cardTrack, ct: ct);
-                    if (!Guid.TryParse(mapping.ExternalCustomerId, out var iikoCustomerId))
+                    // Per-branch: venue varsa hər org-da balans sync. Venue yoxdursa — legacy parent org.
+                    var venues = await _venueRepo.GetActiveByIntegrationAsync(integration.Id, ct);
+                    if (venues.Count > 0)
                     {
-                        // ExternalCustomerId GUID deyilsə, customerInfo-dan al
-                        iikoCustomerId = customerInfo?.Id ?? Guid.Empty;
-                    }
-                    if (customerInfo?.WalletBalances != null && customerInfo.WalletBalances.Count > 0)
-                    {
-                        var wallet = customerInfo.WalletBalances.First();
-                        var diff = currentPoints - wallet.Balance;
-
-                        if (diff != 0)
+                        foreach (var venue in venues)
                         {
-                            var topUpOk = await _iikoClient.TopUpWalletAsync(
-                                accessToken, orgId, iikoCustomerId, wallet.Id, diff, ct);
-
-                            _logger.LogInformation(
-                                "iiko balance sync: CustomerId={CustomerId}, WalletId={WalletId}, Diff={Diff}, NewBalance={NewBalance}, Success={Success}",
-                                customerId, wallet.Id, diff, currentPoints, topUpOk);
+                            if (!Guid.TryParse(venue.ExternalVenueId, out var vOrgId)) continue;
+                            var vMapping = await _mappingRepo.GetByVenueAndCustomerAsync(venue.Id, customerId, ct);
+                            if (vMapping == null) continue;
+                            await TopUpIikoBalanceAsync(accessToken, vOrgId, vMapping, cardTrack, currentPoints, customerId, ct);
                         }
+                    }
+                    else
+                    {
+                        var mapping = await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, customerId, ct);
+                        if (mapping == null)
+                        {
+                            _logger.LogDebug("Balance sync skipped (no mapping): IntegrationId={IntegrationId}, CustomerId={CustomerId}", integration.Id, customerId);
+                            continue;
+                        }
+                        if (!Guid.TryParse(integration.ExternalVenueId, out var orgId)) continue;
+                        await TopUpIikoBalanceAsync(accessToken, orgId, mapping, cardTrack, currentPoints, customerId, ct);
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "iiko balance sync FAILED: IntegrationId={IntegrationId}, CustomerId={CustomerId}", integration.Id, customerId);
+                }
+            }
+        }
+
+        /// <summary>Bir iiko org-da müştərinin wallet balansını currentPoints-ə uyğunlaşdır (diff topup).</summary>
+        private async Task TopUpIikoBalanceAsync(string accessToken, Guid orgId, PosCustomerMapping mapping, string cardTrack, decimal currentPoints, int customerId, CancellationToken ct)
+        {
+            var customerInfo = await _iikoClient.GetCustomerInfoAsync(accessToken, orgId, cardTrack: cardTrack, ct: ct);
+            if (!Guid.TryParse(mapping.ExternalCustomerId, out var iikoCustomerId))
+                iikoCustomerId = customerInfo?.Id ?? Guid.Empty;
+
+            if (customerInfo?.WalletBalances != null && customerInfo.WalletBalances.Count > 0)
+            {
+                var wallet = customerInfo.WalletBalances.First();
+                var diff = currentPoints - wallet.Balance;
+                if (diff != 0)
+                {
+                    var topUpOk = await _iikoClient.TopUpWalletAsync(accessToken, orgId, iikoCustomerId, wallet.Id, diff, ct);
+                    _logger.LogInformation(
+                        "iiko balance sync: CustomerId={CustomerId}, orgId={OrgId}, WalletId={WalletId}, Diff={Diff}, NewBalance={NewBalance}, Success={Success}",
+                        customerId, orgId, wallet.Id, diff, currentPoints, topUpOk);
                 }
             }
         }

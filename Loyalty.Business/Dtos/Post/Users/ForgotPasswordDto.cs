@@ -6,6 +6,9 @@ namespace Loyalty.Business.Dtos.Post.Users
     {
         [Required]
         public string PhoneNumber { get; set; } = string.Empty; // With country code
+
+        /// <summary>"sms" → məcburi SMS; boş → WhatsApp-first.</summary>
+        public string? Channel { get; set; }
     }
 }
 
