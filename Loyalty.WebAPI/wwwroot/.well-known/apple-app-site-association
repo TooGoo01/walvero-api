@@ -8,7 +8,10 @@
           {
             "/": "/join/*",
             "comment": "QR enrollment links"
-          }
+          },
+          { "/": "/az/join/*" },
+          { "/": "/en/join/*" },
+          { "/": "/ru/join/*" }
         ]
       }
     ]
