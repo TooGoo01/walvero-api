@@ -38,8 +38,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (_cache.TryGetValue(cacheKey, out string? cachedToken))
                 return cachedToken;
 
+            // iiko auth v2 — body {apiLogin} → {correlationId, token} (Token oxunur).
             var response = await PostAsync<IikoTokenResponse>(
-                null, "/api/1/access_token", new { apiLogin }, ct);
+                null, "/api/v2/access_token", new { apiLogin }, ct);
 
             if (response?.Token == null)
                 return null;
