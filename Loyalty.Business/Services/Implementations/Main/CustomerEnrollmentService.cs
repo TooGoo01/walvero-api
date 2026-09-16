@@ -21,6 +21,7 @@ using Loyalty.DataAccess.UnitOfWorks;
 using Loyalty.Infrastructure.Extensions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Data.Entity.Core.Metadata.Edm;
@@ -50,6 +51,9 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly ITenantStatusGuard _tenantStatusGuard;
         private readonly ITenantSuspensionGuard _tenantSuspensionGuard;
+        // POS sync-i ayrı DI scope-da işlətmək üçün — enrollment DbContext-ini
+        // zəhərləməsin (iiko multi-venue sync uğursuz olsa da kart əlavəsi keçir).
+        private readonly IServiceScopeFactory _scopeFactory;
         public CustomerEnrollmentService(
             ITenantProvider tp,
             ICustomerRepository customerRepo,
@@ -72,7 +76,8 @@ UserManager<ApplicationUser> userManager,
             ILogger<CustomerEnrollmentService> logger,
             LoyaltyWalletDbContext dbContext,
             ITenantStatusGuard tenantStatusGuard,
-            ITenantSuspensionGuard tenantSuspensionGuard)
+            ITenantSuspensionGuard tenantSuspensionGuard,
+            IServiceScopeFactory scopeFactory)
         {
             _tp = tp; _customerRepo = customerRepo; _programRepo = programRepo;
             _cardRepo = cardRepo; _cardSvc = cardSvc; _credSvc = credSvc;
@@ -88,6 +93,7 @@ UserManager<ApplicationUser> userManager,
             _dbContext = dbContext;
             _tenantStatusGuard = tenantStatusGuard;
             _tenantSuspensionGuard = tenantSuspensionGuard;
+            _scopeFactory = scopeFactory;
         }
 
 
@@ -96,6 +102,28 @@ UserManager<ApplicationUser> userManager,
         private static string BuildTenantBaseUrl(string? subdomain)
         {
             return $"https://appapi.walvero.com";
+        }
+
+        /// <summary>
+        /// POS customer sync-i AYRI DI scope-da (öz DbContext-i ilə) işlədir.
+        /// Best-effort: iiko multi-venue sync uğursuz olsa belə enrollment
+        /// context-i zəhərlənmir — kart əlavəsi/OTP təsdiqi 500 vermir.
+        /// </summary>
+        private async Task SyncPosSafeAsync(int tenantId, int customerId, CancellationToken ct)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var sync = scope.ServiceProvider.GetRequiredService<IPosSyncService>();
+                var db = scope.ServiceProvider.GetRequiredService<LoyaltyWalletDbContext>();
+                var customer = await db.Set<Customer>().FirstOrDefaultAsync(x => x.Id == customerId, ct);
+                if (customer == null) return;
+                await sync.SyncCustomerToPosAsync(tenantId, customer, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "POS sync (isolated) failed for CustomerId={CustomerId}, TenantId={TenantId}", customerId, tenantId);
+            }
         }
 
         public async Task<ServiceResult> GetTenantCustomers(int tenantId, string username, CancellationToken ct = default)
@@ -210,15 +238,8 @@ UserManager<ApplicationUser> userManager,
                     _uow.Commit();
                 }
 
-                // Sync new customer to POS systems
-                try
-                {
-                    await _posSyncService.SyncCustomerToPosAsync(tenantId, customer, ct);
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning(ex, "POS sync failed for customer {CustomerId}", customer.Id);
-                }
+                // Sync new customer to POS systems (ayrı scope — context zəhərlənməsin)
+                await SyncPosSafeAsync(tenantId, customer.Id, ct);
             }
             customer.applicationUserId = int.Parse(userId);
             // 3) Son aktiv kartı reuse et / yoxdursa deactive kartı aktivləşdir / yoxdursa yarat
@@ -285,15 +306,8 @@ UserManager<ApplicationUser> userManager,
                 hasPendingCardUpdate = true;
             }
 
-            // Auto-sync customer to POS systems (supports Basic Auth and Bearer token)
-            try
-            {
-                await _posSyncService.SyncCustomerToPosAsync(tenantId, customer, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, " POS sync failed for CustomerId={CustomerId}, TenantId={TenantId}", customer.Id, tenantId);
-            }
+            // Auto-sync customer to POS systems (ayrı scope — context zəhərlənməsin)
+            await SyncPosSafeAsync(tenantId, customer.Id, ct);
 
             // 4) Son update — kart dəyişiklikləri varsa commit et
             if (hasPendingCardUpdate)
@@ -524,15 +538,8 @@ UserManager<ApplicationUser> userManager,
             _uow.Repository<Customer>().Update(customer);
             _uow.Commit();
 
-            // Auto-sync customer to POS systems (supports Basic Auth and Bearer token)
-            try
-            {
-                await _posSyncService.SyncCustomerToPosAsync(customer.TenantId, customer, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "POS sync failed for CustomerId={CustomerId}, TenantId={TenantId}", customer.Id, customer.TenantId);
-            }
+            // Auto-sync customer to POS systems (ayrı scope — context zəhərlənməsin)
+            await SyncPosSafeAsync(customer.TenantId, customer.Id, ct);
 
             // Müştərinin son aktiv kartını götür
             // (və ya frontdan CardId ötürürsə, onu istifadə et)
