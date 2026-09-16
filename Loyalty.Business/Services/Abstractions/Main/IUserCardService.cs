@@ -14,5 +14,6 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> GetMyCardsAsync(int currentPage, int pageSize, TenantSearchDto model, double? userLat = null, double? userLng = null, CancellationToken ct = default);
         Task<ServiceResult> GetGeofencePointsAsync(double? lat, double? lng, double radiusKm, CancellationToken ct = default);
         Task<ServiceResult> Delete(int id);
+        Task<ServiceResult> DeleteByTenant(int tenantId, CancellationToken ct = default);
     }
 }

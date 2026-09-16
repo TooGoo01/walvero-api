@@ -57,5 +57,19 @@ namespace Loyalty.WebAPI.Controllers
             }
             return new ServiceResult(false, result.Message);
         }
+
+        // Discover-dən silmə: klientdə cardId olmaya bilər (lokal index boşluğu),
+        // tenant üzrə cari userin aktiv kartını server tapıb deaktiv edir.
+        [HttpPost]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<ActionResult<ServiceResult>> DeactiveByTenant(int tenantId, CancellationToken ct)
+        {
+            var result = await _userCardService.DeleteByTenant(tenantId, ct);
+            if (result.Success)
+            {
+                return new ServiceResult(true, result.Data, "Delete completed");
+            }
+            return new ServiceResult(false, result.Message);
+        }
     }
 }

@@ -423,5 +423,23 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
             return new ServiceResult(false);
         }
+
+        public async Task<ServiceResult> DeleteByTenant(int tenantId, CancellationToken ct = default)
+        {
+            var userName = _tp.CurrentUserId;
+            if (string.IsNullOrWhiteSpace(userName))
+                return new ServiceResult(false, "User not resolved.");
+
+            var appUser = await _userManager.FindByIdAsync(userName);
+            if (appUser == null)
+                return new ServiceResult(false, "User not found.");
+
+            var card = await _cardRepo.GetActiveCardForTenantAndUserAsync(tenantId, appUser.Id, ct);
+            // Kart onsuz da yoxdursa nəticə eynidir — idempotent uğur
+            if (card == null)
+                return new ServiceResult(true);
+
+            return await Delete(card.Id);
+        }
     }
 }
