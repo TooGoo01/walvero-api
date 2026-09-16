@@ -257,6 +257,60 @@ namespace Loyalty.Business.Services.Implementations.Main
             return ServiceResult<bool>.Ok(true);
         }
 
+        /// <summary>
+        /// ExternalProgramId boş olan venue-ları iiko-dan avtomatik doldurur:
+        /// hər venue-nun org-u üçün loyalty proqramlarını çəkir, tək (və ya ilk)
+        /// aktiv proqramı yazır. Feature-dən əvvəl yaradılmış venue-ları düzəldir.
+        /// </summary>
+        public async Task<ServiceResult<int>> AutoFillVenueProgramsAsync(int integrationId, int? tenantId, CancellationToken ct = default)
+        {
+            var ti = await GetOwnedIntegrationAsync(integrationId, tenantId, ct);
+            if (ti == null) return ServiceResult<int>.Fail("Tapılmadı.");
+            if (string.IsNullOrEmpty(ti.ApiTokenEncrypted))
+                return ServiceResult<int>.Fail("apiLogin konfiqurasiya edilməyib.");
+
+            var apiLogin = _protector.Decrypt(ti.ApiTokenEncrypted);
+            if (string.IsNullOrEmpty(apiLogin))
+                return ServiceResult<int>.Fail("apiLogin oxunmadı.");
+            var clientSecret = string.IsNullOrEmpty(ti.ApiSecretEncrypted) ? null : _protector.Decrypt(ti.ApiSecretEncrypted);
+
+            var token = await _iikoClient.GetAccessTokenAsync(apiLogin, ti.ApiAppId, clientSecret, ct: ct);
+            if (string.IsNullOrEmpty(token))
+                return ServiceResult<int>.Fail("iiko access_token alınmadı (credential-ları yoxla).");
+
+            var venues = await _venueRepo.GetActiveByIntegrationAsync(integrationId, ct);
+            int filled = 0;
+            foreach (var v in venues)
+            {
+                if (!string.IsNullOrWhiteSpace(v.ExternalProgramId)) continue; // artıq dolu
+                if (!Guid.TryParse(v.ExternalVenueId, out var orgId)) continue;   // org yoxdur
+
+                List<IikoLoyaltyProgram>? programs = null;
+                try { programs = await _iikoClient.GetLoyaltyProgramsAsync(token, orgId, ct); } catch { /* keç */ }
+                var program = programs?.FirstOrDefault(p => p.IsActive) ?? programs?.FirstOrDefault();
+                if (program == null) continue; // bu org-da proqram yoxdur
+
+                v.ExternalProgramId = program.Id.ToString();
+                v.EditDate = DateTime.UtcNow;
+                _venueRepo.Update(v);
+                filled++;
+            }
+
+            // Parent inteqrasiyada da ExternalProgramId boşdursa, ilk dolan venue-nunku ilə doldur (legacy fallback).
+            if (filled > 0 && string.IsNullOrWhiteSpace(ti.ExternalProgramId))
+            {
+                var firstProgram = venues.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v.ExternalProgramId))?.ExternalProgramId;
+                if (!string.IsNullOrWhiteSpace(firstProgram))
+                {
+                    ti.ExternalProgramId = firstProgram;
+                    _repo.Update(ti);
+                }
+            }
+
+            if (filled > 0) await _uow.CommitAsync(ct);
+            return ServiceResult<int>.Ok(filled);
+        }
+
         public async Task<ServiceResult<List<IikoOrgOptionDto>>> GetIikoOrganizationsAsync(int integrationId, int? tenantId, CancellationToken ct = default)
         {
             var ti = await GetOwnedIntegrationAsync(integrationId, tenantId, ct);

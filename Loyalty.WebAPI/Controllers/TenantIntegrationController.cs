@@ -200,5 +200,16 @@ namespace Loyalty.WebAPI.Controllers
             if (!result.Success) return BadRequest(result.Message);
             return Ok(result.Data);
         }
+
+        /// <summary>ExternalProgramId boş venue-ları iiko-dan avtomatik doldurur.</summary>
+        [HttpPost("{id}/iiko/autofill-programs")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> AutoFillVenuePrograms(int id, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var result = await _service.AutoFillVenueProgramsAsync(id, tid, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok(new { filled = result.Data });
+        }
     }
 }

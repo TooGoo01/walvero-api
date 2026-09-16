@@ -18,6 +18,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult<bool>> DeleteVenueAsync(int venueId, int? tenantId, CancellationToken ct = default);
         /// <summary>Live-fetch iiko organizations + terminal groups using the integration's stored credentials.</summary>
         Task<ServiceResult<List<IikoOrgOptionDto>>> GetIikoOrganizationsAsync(int integrationId, int? tenantId, CancellationToken ct = default);
+        /// <summary>ExternalProgramId boş venue-ları iiko-dan avtomatik doldurur. Doldurulan venue sayını qaytarır.</summary>
+        Task<ServiceResult<int>> AutoFillVenueProgramsAsync(int integrationId, int? tenantId, CancellationToken ct = default);
     }
 
     public class TenantIntegrationCreateDto
