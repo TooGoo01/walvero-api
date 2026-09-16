@@ -64,6 +64,8 @@ namespace Loyalty.Business.Dtos.Chatbot
     public class MenuItemSearchQuery
     {
         public string[] Keywords { get; set; } = System.Array.Empty<string>(); // yemək adı: "lazanya", "vegan burger"
+        /// <summary>Konkret məkan/filial adı — user "X-də Y neçəyədir?" soruşanda nəticələri o məkana daraldır.</summary>
+        public string? PlaceName { get; set; }
         public double? Lat { get; set; }
         public double? Lng { get; set; }
         public double? RadiusKm { get; set; }

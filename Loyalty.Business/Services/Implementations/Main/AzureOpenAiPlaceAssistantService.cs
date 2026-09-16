@@ -206,6 +206,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                             Keywords = args["keywords"]?.AsArray()?
                                 .Select(n => GetString(n)).Where(s => !string.IsNullOrEmpty(s)).Select(s => s!).ToArray()
                                 ?? Array.Empty<string>(),
+                            PlaceName = GetString(args["placeName"]),
                             RadiusKm = GetDouble(args["radiusKm"]),
                             Lat = request.Lat,
                             Lng = request.Lng,
@@ -350,6 +351,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             sb.AppendLine("search_reference_places results are external info only — NEVER state prices for them.");
             sb.AppendLine("KEYWORDS: when calling search tools pass BOTH the full dish phrase and its main words as");
             sb.AppendLine("separate keywords, in the user's original spelling (e.g. ['alma pastası','alma','pasta']).");
+            sb.AppendLine("When the user asks about a dish AT a specific place ('X-də Y neçəyədir?'), call");
+            sb.AppendLine("search_menu_items immediately with keywords=dish and placeName=place — do NOT ask for");
+            sb.AppendLine("clarification when both the dish and the place are already in the message.");
             sb.AppendLine("LANGUAGE: auto-detect the language of the user's LAST message and ALWAYS reply in exactly that language.");
             sb.AppendLine("It can be any language (Azerbaijani, English, Russian, Turkish, Arabic, etc.) — not limited to AZ/EN/RU.");
             sb.AppendLine("If the user switches language, switch immediately. Be concise and helpful.");
@@ -393,6 +397,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                                 ["items"] = new JsonObject { ["type"] = "string" },
                                 ["description"] = "Dish/product name words, e.g. ['lasagna'] or ['vegan','burger']."
                             },
+                            ["placeName"] = new JsonObject { ["type"] = "string", ["description"] = "Restaurant/branch name when the user asks about a SPECIFIC place (e.g. 'Port Marine', 'Evolution'). Scopes results to that place." },
                             ["radiusKm"] = new JsonObject { ["type"] = "number", ["description"] = "Only when proximity is requested. In kilometers." }
                         },
                         ["required"] = new JsonArray { "keywords" }

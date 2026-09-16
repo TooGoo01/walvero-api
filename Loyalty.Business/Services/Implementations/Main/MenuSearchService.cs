@@ -153,6 +153,26 @@ namespace Loyalty.Business.Services.Implementations.Main
                 scored.Add((e, branch, score, specific, distanceKm));
             }
 
+            // Məkan filtri: "X-də Y neçəyədir?" — filial/tenant adına görə daralt.
+            var placeNorm = Normalize(query.PlaceName ?? string.Empty);
+            if (placeNorm.Length > 0)
+            {
+                var placeFiltered = scored.Where(x =>
+                {
+                    var b = x.branch;
+                    var hay = Normalize(string.Join(" ", new[]
+                    {
+                        b.AppDisplayName, b.Name, b.Tenant?.CompanyName
+                    }.Where(s => !string.IsNullOrWhiteSpace(s))));
+                    // Tam ad və ya adın hər sözü (ən azı 3 hərfli) uyğun gəlsin
+                    if (hay.Contains(placeNorm, StringComparison.Ordinal)) return true;
+                    var words = placeNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                        .Where(w => w.Length >= 3).ToArray();
+                    return words.Length > 0 && words.All(w => hay.Contains(w, StringComparison.Ordinal));
+                }).ToList();
+                if (placeFiltered.Count > 0) scored = placeFiltered;
+            }
+
             // Hər filial üçün ən yaxşı sətir: skor, sonra filial-spesifik üstünlüyü.
             var perBranch = scored
                 .GroupBy(x => x.branch.Id)
