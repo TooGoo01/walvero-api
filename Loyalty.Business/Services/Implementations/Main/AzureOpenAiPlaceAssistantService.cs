@@ -339,7 +339,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             sb.AppendLine("Use it when search_places is empty or when it would help. BUT when presenting those results you");
             sb.AppendLine("MUST note that the place is not available in the Walvero app (info only) — so the user does not try");
             sb.AppendLine("to find it in the app.");
-            sb.AppendLine("If the user says 'near me' / 'nearby', pass `radiusKm` (e.g. 5).");
+            sb.AppendLine("If the user says 'near me' / 'nearby' without a distance, use radiusKm=5 by DEFAULT and");
+            sb.AppendLine("search immediately — do NOT ask the user to choose a radius. If nothing is within 5 km,");
+            sb.AppendLine("retry once with radiusKm=15 and say the distance.");
             if (isAuth)
             {
                 sb.AppendLine("For the user's own account questions:");
@@ -369,8 +371,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             sb.AppendLine("For 'what are the prices at X' / 'what's on the menu at X' → call get_place_menu(placeName).");
             sb.AppendLine("For a whole category at a place ('burgers at X', 'X-də qəlyanlar') → get_place_menu with");
             sb.AppendLine("categoryName. For ONE specific dish price → search_menu_items with placeName.");
-            sb.AppendLine("For 'where is X cheaper' compare the `price` fields across the returned places and state");
-            sb.AppendLine("each price together with its place name.");
+            sb.AppendLine("For 'where is X cheaper/cheapest' call search_menu_items with the dish keywords RIGHT AWAY");
+            sb.AppendLine("(no radius unless the user said nearby) and compare the returned `price` fields, stating each");
+            sb.AppendLine("price with its place name — do NOT ask for a location first.");
+            sb.AppendLine("NEVER narrate tool usage ('yoxlayıram...', '(tool çağırılır)') and never reply with a promise");
+            sb.AppendLine("to check — call the tool in the same turn and reply with the actual result.");
             sb.AppendLine("FEATURES/AMENITIES (qəlyan, wifi, canlı musiqi, terras...): rely on search_places results —");
             sb.AppendLine("each has `keywords` (admin data) and `menuHints` (menu categories matching the query).");
             sb.AppendLine("Present a place as offering a feature ONLY if keywords or menuHints confirm it; if none");
