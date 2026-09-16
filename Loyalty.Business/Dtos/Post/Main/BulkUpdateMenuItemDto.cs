@@ -26,6 +26,9 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         public string? PrepTimeMinutes { get; set; }
 
+        /// <summary>Dolu göndərilsə itemlər bu kateqoriyaya köçürülür (filial uyğunluğu yoxlanılır).</summary>
+        public int? MenuCategoryId { get; set; }
+
         /// <summary>Dolu göndərilsə BÜTÜN seçilmiş itemlərə tətbiq olunur (user bilərəkdən seçir).</summary>
         public double? Price { get; set; }
         public double? DiscountPrice { get; set; }

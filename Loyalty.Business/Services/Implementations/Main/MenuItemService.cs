@@ -223,6 +223,18 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (entities.Count == 0)
                 return new ServiceResult(false, "Seçilmiş itemlər tapılmadı");
 
+            MenuCategory? targetCategory = null;
+            if (dto.MenuCategoryId.HasValue)
+            {
+                targetCategory = await _db.MenuCategories
+                    .FirstOrDefaultAsync(c => c.Id == dto.MenuCategoryId.Value
+                                           && c.IsActive
+                                           && c.TenantId == dto.TenantId);
+                if (targetCategory == null)
+                    return new ServiceResult(false, "Kateqoriya tapılmadı");
+            }
+
+            int categorySkipped = 0;
             foreach (var e in entities)
             {
                 // Yalnız dolu sahələr — qiymət/endirim QƏSDƏN toxunulmur (filial-spesifik)
@@ -236,12 +248,22 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // Qiymət yalnız user bilərəkdən dolu göndərəndə dəyişir
                 if (dto.Price.HasValue && dto.Price.Value >= 0) e.Price = dto.Price.Value;
                 if (dto.DiscountPrice.HasValue && dto.DiscountPrice.Value >= 0) e.DiscountPrice = dto.DiscountPrice.Value;
+                if (targetCategory != null)
+                {
+                    // Filial-spesifik kateqoriyaya yalnız eyni filialın itemləri köçürülə bilər
+                    if (targetCategory.BranchId == null || targetCategory.BranchId == e.BranchId)
+                        e.MenuCategoryId = targetCategory.Id;
+                    else
+                        categorySkipped++;
+                }
                 _unitOfWork.Repository<MenuItem>().Update(e);
             }
             _unitOfWork.Commit();
 
-            return new ServiceResult(true, entities.Select(x => x.Id).ToList(),
-                $"{entities.Count} item yeniləndi");
+            var message = categorySkipped > 0
+                ? $"{entities.Count} item yeniləndi, {categorySkipped} itemdə kateqoriya filial uyğunsuzluğuna görə dəyişmədi"
+                : $"{entities.Count} item yeniləndi";
+            return new ServiceResult(true, entities.Select(x => x.Id).ToList(), message);
         }
     }
 }
