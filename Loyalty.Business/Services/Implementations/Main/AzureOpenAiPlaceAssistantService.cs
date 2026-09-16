@@ -219,9 +219,13 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                         return Serialize(hits.Select(h => new
                         {
-                            h.Place.TenantId, h.Place.BranchId, place = h.Place.Name,
+                            h.Place.TenantId, h.Place.BranchId,
+                            place = h.Place.Name,
                             h.Place.Address, h.Place.DistanceKm,
-                            dish = h.DishName, h.Description, h.Price, h.CurrencySign,
+                            dish = h.DishName, h.Description,
+                            price = h.Price,
+                            regularPrice = h.RegularPrice, // endirim varsa adi qiymət
+                            h.CurrencySign,
                             menuInApp = h.Place.Menu.InApp
                         }));
                     }
@@ -334,6 +338,18 @@ namespace Loyalty.Business.Services.Implementations.Main
                 sb.AppendLine("If the user asks about their balance/cards, invite them to log in.");
             }
             sb.AppendLine("Only use data returned by the tools. Do not make things up.");
+            sb.AppendLine("");
+            sb.AppendLine("PRICES & FACTS: menu prices, addresses and balances MUST come from a tool call made in");
+            sb.AppendLine("THIS turn. If the user asks about a price — ALWAYS call `search_menu_items` again, even if");
+            sb.AppendLine("the dish was discussed earlier; NEVER reuse numbers from the conversation history and NEVER");
+            sb.AppendLine("estimate or round. Quote the price EXACTLY as returned in the `price` field with `currencySign`.");
+            sb.AppendLine("If `regularPrice` is present, the item is discounted: say the current price is `price` and the");
+            sb.AppendLine("regular price is `regularPrice`. The `place` field tells WHICH branch the price belongs to —");
+            sb.AppendLine("if several branches are returned with different prices, attribute each price to its own branch.");
+            sb.AppendLine("If the tool returns no match for the dish, say you couldn't find it — do not guess a price.");
+            sb.AppendLine("search_reference_places results are external info only — NEVER state prices for them.");
+            sb.AppendLine("KEYWORDS: when calling search tools pass BOTH the full dish phrase and its main words as");
+            sb.AppendLine("separate keywords, in the user's original spelling (e.g. ['alma pastası','alma','pasta']).");
             sb.AppendLine("LANGUAGE: auto-detect the language of the user's LAST message and ALWAYS reply in exactly that language.");
             sb.AppendLine("It can be any language (Azerbaijani, English, Russian, Turkish, Arabic, etc.) — not limited to AZ/EN/RU.");
             sb.AppendLine("If the user switches language, switch immediately. Be concise and helpful.");
@@ -365,7 +381,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         ["required"] = new JsonArray { "keywords" }
                     }),
                 Fn("search_menu_items",
-                    "Find places that sell a specific DISH/product on their menu (e.g. 'lasagna', 'vegan burger', 'sushi'). Use this when the user asks about a dish rather than a place.",
+                    "Find places that sell a specific DISH/product on their menu (e.g. 'lasagna', 'vegan burger', 'sushi'). Returns the exact CURRENT price from the live menu — always call this for any price question, even if the dish was discussed before. Use this when the user asks about a dish rather than a place.",
                     new JsonObject
                     {
                         ["type"] = "object",

@@ -23,6 +23,26 @@ namespace Loyalty.Business.Services.Implementations.Main
         private const string BranchCacheKey = "assistant:discoverable-branches";
         private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
 
+        // Normalizə edilmiş menyu indeksi — DB LIKE diakritik problemini aradan
+        // qaldırır (model "albali" göndərəndə DB-dəki "Albalı" tapılmırdı).
+        private const string MenuIndexCacheKey = "assistant:menu-index";
+        private static readonly TimeSpan MenuIndexTtl = TimeSpan.FromSeconds(120);
+
+        /// <summary>Axtarış üçün əvvəlcədən normalizə olunmuş menyu sətri.</summary>
+        private sealed class MenuIndexEntry
+        {
+            public int EffTenantId;
+            public int? SpecificBranchId;   // sətir filial-spesifikdirsə həmin filial
+            public string DishName = string.Empty;
+            public string? Description;
+            public double Price;
+            public double DiscountPrice;
+            public string? CurrencySign;
+            public string NameKey = string.Empty;   // normalizə edilmiş əsas ad (qruplaşdırma)
+            public string NameHay = string.Empty;   // bütün dillərdə adlar (normalizə)
+            public string FullHay = string.Empty;   // adlar + təsvirlər (normalizə)
+        }
+
         public MenuSearchService(
             LoyaltyWalletDbContext db,
             IBranchRepository branchRepository,
@@ -57,51 +77,70 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (discoverableTenantIds.Count == 0)
                 return new List<MenuItemResultDto>();
 
-            // DB-səviyyə daralt: ən uzun (ən spesifik) token üzrə LIKE, yalnız aktiv + discoverable tenant.
-            var primary = rawTokens.OrderByDescending(t => t.Length).First();
-            var like = $"%{primary}%";
+            var index = await GetMenuIndexAsync(ct);
 
-            var candidates = await _db.MenuItems
-                .AsNoTracking()
-                .Include(m => m.MenuCategory)
-                .Where(m => m.IsActive && m.MenuCategory.IsActive)
-                .Where(m => discoverableTenantIds.Contains(m.TenantId ?? m.MenuCategory.TenantId))
-                .Where(m =>
-                    EF.Functions.Like(m.AzName, like) ||
-                    EF.Functions.Like(m.EnName, like) ||
-                    EF.Functions.Like(m.RuName, like) ||
-                    (m.AzDescription != null && EF.Functions.Like(m.AzDescription, like)) ||
-                    (m.EnDescription != null && EF.Functions.Like(m.EnDescription, like)) ||
-                    (m.RuDescription != null && EF.Functions.Like(m.RuDescription, like)))
-                .Take(300)
-                .ToListAsync(ct);
+            // Skorlama: ad hitə üstünlük (yanlış yemək seçimini azaldır).
+            var joinedNorm = Normalize(string.Join(" ", rawTokens));
+            var matched = new List<(MenuIndexEntry entry, int score)>();
+
+            foreach (var e in index)
+            {
+                if (!discoverableTenantIds.Contains(e.EffTenantId)) continue;
+
+                int score = 0;
+                bool allInName = true;
+                foreach (var tok in normTokens)
+                {
+                    if (e.NameHay.Contains(tok, StringComparison.Ordinal)) score += 3;
+                    else
+                    {
+                        allInName = false;
+                        if (e.FullHay.Contains(tok, StringComparison.Ordinal)) score += 1;
+                    }
+                }
+                if (score == 0) continue;
+                if (allInName) score += 5;
+                if (e.NameKey.Length > 0 &&
+                    (e.NameKey == joinedNorm || normTokens.Contains(e.NameKey)))
+                    score += 10;
+
+                matched.Add((e, score));
+            }
 
             bool hasGeo = query.Lat.HasValue && query.Lng.HasValue;
             bool geoFilter = hasGeo && query.RadiusKm.HasValue;
 
-            // Yaddaşda tam skorla (bütün tokenlər, normalizasiya ilə) + filiala bağla.
-            var scored = new List<(MenuItem item, Branch branch, int score, double? distanceKm)>();
+            // Filiala bağla. Per-branch qayda: eyni yemək (tenant + NameKey) üçün
+            // filial-spesifik sətir varsa, tenant-wide sətir HƏMİN filialı örtmür —
+            // qiymət filialın öz sətrindən gəlir.
+            var specificBranchKeys = matched
+                .Where(x => x.entry.SpecificBranchId.HasValue)
+                .Select(x => (x.entry.EffTenantId, x.entry.NameKey, BranchId: x.entry.SpecificBranchId!.Value))
+                .ToHashSet();
 
-            foreach (var m in candidates)
+            var scored = new List<(MenuIndexEntry entry, Branch branch, int score, bool specific, double? distanceKm)>();
+
+            foreach (var (e, score) in matched)
             {
-                var haystack = Normalize(string.Join(" ", new[]
-                {
-                    m.AzName, m.EnName, m.RuName, m.AzDescription, m.EnDescription, m.RuDescription
-                }.Where(s => !string.IsNullOrWhiteSpace(s))));
-
-                int score = normTokens.Count(tok => haystack.Contains(tok, StringComparison.Ordinal));
-                if (score == 0) continue;
-
-                var effBranchId = m.BranchId ?? m.MenuCategory.BranchId;
-                var effTenantId = m.TenantId ?? m.MenuCategory.TenantId;
-
                 Branch? branch = null;
-                if (effBranchId.HasValue && branchById.TryGetValue(effBranchId.Value, out var b))
-                    branch = b;
-                else if (repBranchByTenant.TryGetValue(effTenantId, out var rep))
-                    branch = rep;
+                bool specific = false;
 
-                if (branch == null) continue; // discoverable filial tapılmadı
+                if (e.SpecificBranchId.HasValue)
+                {
+                    if (!branchById.TryGetValue(e.SpecificBranchId.Value, out var b))
+                        continue; // filial discoverable deyil
+                    branch = b;
+                    specific = true;
+                }
+                else
+                {
+                    if (!repBranchByTenant.TryGetValue(e.EffTenantId, out var rep))
+                        continue;
+                    // Nümayəndə filialın bu yemək üçün öz sətri varsa, tenant-wide sətri atla.
+                    if (specificBranchKeys.Contains((e.EffTenantId, e.NameKey, rep.Id)))
+                        continue;
+                    branch = rep;
+                }
 
                 double? distanceKm = null;
                 if (hasGeo && branch.Latitude.HasValue && branch.Longitude.HasValue)
@@ -111,15 +150,18 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (geoFilter && (distanceKm is null || distanceKm > query.RadiusKm!.Value))
                     continue;
 
-                scored.Add((m, branch, score, distanceKm));
+                scored.Add((e, branch, score, specific, distanceKm));
             }
 
-            // Hər filial üçün ən yüksək skorlu yeməyi saxla.
+            // Hər filial üçün ən yaxşı sətir: skor, sonra filial-spesifik üstünlüyü.
             var perBranch = scored
                 .GroupBy(x => x.branch.Id)
-                .Select(g => g.OrderByDescending(x => x.score).ThenBy(x => x.item.Price).First());
+                .Select(g => g
+                    .OrderByDescending(x => x.score)
+                    .ThenByDescending(x => x.specific)
+                    .First());
 
-            IEnumerable<(MenuItem item, Branch branch, int score, double? distanceKm)> ordered = geoFilter
+            IEnumerable<(MenuIndexEntry entry, Branch branch, int score, bool specific, double? distanceKm)> ordered = geoFilter
                 ? perBranch.OrderBy(x => x.distanceKm ?? double.MaxValue).ThenByDescending(x => x.score)
                 : perBranch.OrderByDescending(x => x.score).ThenBy(x => x.distanceKm ?? double.MaxValue);
 
@@ -128,11 +170,68 @@ namespace Loyalty.Business.Services.Implementations.Main
             return ordered.Take(take).Select(x => new MenuItemResultDto
             {
                 Place = MapPlace(x.branch, x.distanceKm),
-                DishName = FirstNonEmpty(x.item.AzName, x.item.EnName, x.item.RuName),
-                Description = FirstNonEmptyOrNull(x.item.AzDescription, x.item.EnDescription, x.item.RuDescription),
-                Price = x.item.DiscountPrice > 0 ? x.item.DiscountPrice : x.item.Price,
-                CurrencySign = x.item.CurrencySign,
+                DishName = x.entry.DishName,
+                Description = x.entry.Description,
+                Price = x.entry.DiscountPrice > 0 ? x.entry.DiscountPrice : x.entry.Price,
+                RegularPrice = x.entry.DiscountPrice > 0 ? x.entry.Price : (double?)null,
+                CurrencySign = x.entry.CurrencySign,
             }).ToList();
+        }
+
+        /// <summary>
+        /// Bütün aktiv menyu sətirlərinin normalizə edilmiş proyeksiyası (120s cache).
+        /// Discoverable filtri axtarış anında tətbiq olunur ki, tenant siyahısı
+        /// dəyişəndə indeks etibarsız olmasın.
+        /// </summary>
+        private async Task<List<MenuIndexEntry>> GetMenuIndexAsync(CancellationToken ct)
+        {
+            if (_cache.TryGetValue(MenuIndexCacheKey, out List<MenuIndexEntry>? cached) && cached is not null)
+                return cached;
+
+            var rows = await _db.MenuItems
+                .AsNoTracking()
+                .Where(m => m.IsActive && m.MenuCategory.IsActive)
+                .Select(m => new
+                {
+                    m.TenantId,
+                    m.BranchId,
+                    CatTenantId = m.MenuCategory.TenantId,
+                    CatBranchId = m.MenuCategory.BranchId,
+                    m.AzName, m.EnName, m.RuName,
+                    m.AzDescription, m.EnDescription, m.RuDescription,
+                    m.Price, m.DiscountPrice, m.CurrencySign
+                })
+                .ToListAsync(ct);
+
+            var list = new List<MenuIndexEntry>(rows.Count);
+            foreach (var r in rows)
+            {
+                var dishName = FirstNonEmpty(r.AzName, r.EnName, r.RuName);
+                var names = new[] { r.AzName, r.EnName, r.RuName }
+                    .Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+                var descs = new[] { r.AzDescription, r.EnDescription, r.RuDescription }
+                    .Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+
+                var nameHay = Normalize(string.Join(" ", names));
+                list.Add(new MenuIndexEntry
+                {
+                    EffTenantId = r.TenantId ?? r.CatTenantId,
+                    SpecificBranchId = r.BranchId ?? r.CatBranchId,
+                    DishName = dishName,
+                    Description = FirstNonEmptyOrNull(r.AzDescription, r.EnDescription, r.RuDescription),
+                    Price = r.Price,
+                    DiscountPrice = r.DiscountPrice,
+                    CurrencySign = r.CurrencySign,
+                    NameKey = Normalize(dishName),
+                    NameHay = nameHay,
+                    FullHay = descs.Length == 0
+                        ? nameHay
+                        : nameHay + " " + Normalize(string.Join(" ", descs))
+                });
+            }
+
+            _cache.Set(MenuIndexCacheKey, list, MenuIndexTtl);
+            return list;
         }
 
         private async Task<List<Branch>> GetBranchesAsync(CancellationToken ct)

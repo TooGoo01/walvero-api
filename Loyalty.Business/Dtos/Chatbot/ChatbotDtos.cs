@@ -76,7 +76,10 @@ namespace Loyalty.Business.Dtos.Chatbot
         public PlaceResultDto Place { get; set; } = new();
         public string DishName { get; set; } = string.Empty;
         public string? Description { get; set; }
+        /// <summary>Effektiv (satış) qiymət — endirim varsa endirimli.</summary>
         public double Price { get; set; }
+        /// <summary>Endirim aktivdirsə adi (endirimsiz) qiymət; yoxdursa null.</summary>
+        public double? RegularPrice { get; set; }
         public string? CurrencySign { get; set; }
     }
 
