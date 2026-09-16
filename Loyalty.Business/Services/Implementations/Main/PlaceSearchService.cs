@@ -1,7 +1,9 @@
 using Loyalty.Business.Dtos.Chatbot;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using System;
 using System.Collections.Generic;
@@ -14,13 +16,27 @@ namespace Loyalty.Business.Services.Implementations.Main
     public class PlaceSearchService : IPlaceSearchService
     {
         private readonly IBranchRepository _branchRepository;
+        private readonly LoyaltyWalletDbContext _db;
         private readonly IMemoryCache _cache;
         private const string CacheKey = "assistant:discoverable-branches";
         private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
 
-        public PlaceSearchService(IBranchRepository branchRepository, IMemoryCache cache)
+        // Menyudan törədilən feature/cuisine sözləri (admin Keywords doldurmayanda
+        // da "qəlyan verən yerlər" tipli suallar menyu kateqoriya/item adlarından tapılsın).
+        private const string MenuWordsCacheKey = "assistant:place-menu-words";
+        private static readonly TimeSpan MenuWordsTtl = TimeSpan.FromSeconds(120);
+
+        /// <summary>Bir filialın menyusundan çıxarılan axtarış sözləri + kateqoriya adları.</summary>
+        private sealed class BranchMenuWords
+        {
+            public HashSet<string> Words { get; } = new(StringComparer.Ordinal);
+            public List<(string Raw, HashSet<string> Words)> Categories { get; } = new();
+        }
+
+        public PlaceSearchService(IBranchRepository branchRepository, LoyaltyWalletDbContext db, IMemoryCache cache)
         {
             _branchRepository = branchRepository;
+            _db = db;
             _cache = cache;
         }
 
@@ -47,18 +63,50 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (normTokens.Count == 0 && !geoFilter)
                 return new List<PlaceResultDto>();
 
-            var scored = new List<(Branch branch, int score, double? distanceKm)>();
+            var menuWords = await GetMenuWordsAsync(branches, ct);
+
+            var scored = new List<(Branch branch, int score, double? distanceKm, List<string>? hints)>();
 
             foreach (var b in branches)
             {
                 var haystack = BuildHaystack(b);
+                menuWords.TryGetValue(b.Id, out var mw);
 
-                int score = normTokens.Count == 0
-                    ? 1 // yalnız geo — hamısı bərabər bal
-                    : normTokens.Count(tok => haystack.Contains(tok, StringComparison.Ordinal));
+                int score;
+                List<string>? hints = null;
 
-                if (normTokens.Count > 0 && score == 0)
-                    continue; // heç bir keyword uyğun gəlmədi
+                if (normTokens.Count == 0)
+                {
+                    score = 1; // yalnız geo — hamısı bərabər bal
+                }
+                else
+                {
+                    score = 0;
+                    bool allCovered = true;
+                    foreach (var tok in normTokens)
+                    {
+                        bool hayHit = haystack.Contains(tok, StringComparison.Ordinal);
+                        bool menuHit = mw is not null && WordHit(mw.Words, tok);
+                        if (hayHit) score += 1;
+                        if (menuHit) score += 2;
+                        if (!hayHit && !menuHit) allCovered = false;
+                    }
+                    if (score == 0)
+                        continue; // heç bir keyword uyğun gəlmədi
+                    if (allCovered) score += 5; // bütün tokenlər örtülüb — AND-ə yaxın
+
+                    // Token-uyğun menyu kateqoriyaları → modelə əsas ("menuHints")
+                    if (mw is not null)
+                    {
+                        hints = mw.Categories
+                            .Where(c => normTokens.Any(tok => WordHit(c.Words, tok)))
+                            .Select(c => c.Raw)
+                            .Distinct()
+                            .Take(3)
+                            .ToList();
+                        if (hints.Count == 0) hints = null;
+                    }
+                }
 
                 double? distanceKm = null;
                 if (hasGeo && b.Latitude.HasValue && b.Longitude.HasValue)
@@ -74,16 +122,106 @@ namespace Loyalty.Business.Services.Implementations.Main
                         continue;
                 }
 
-                scored.Add((b, score, distanceKm));
+                scored.Add((b, score, distanceKm, hints));
             }
 
-            IEnumerable<(Branch branch, int score, double? distanceKm)> ordered = geoFilter
+            IEnumerable<(Branch branch, int score, double? distanceKm, List<string>? hints)> ordered = geoFilter
                 ? scored.OrderBy(x => x.distanceKm ?? double.MaxValue).ThenByDescending(x => x.score)
                 : scored.OrderByDescending(x => x.score).ThenBy(x => x.distanceKm ?? double.MaxValue);
 
             int take = Math.Clamp(query.Take <= 0 ? 8 : query.Take, 1, 20);
 
-            return ordered.Take(take).Select(x => Map(x.branch, x.distanceKm)).ToList();
+            return ordered.Take(take).Select(x =>
+            {
+                var dto = Map(x.branch, x.distanceKm);
+                dto.MenuHints = x.hints;
+                return dto;
+            }).ToList();
+        }
+
+        /// <summary>
+        /// Söz-səviyyəli uyğunluq: token sözə bərabərdir və ya cəm forması sözdür.
+        /// Contains İŞLƏNMİR — "qəlyanaltı" (snack) "qəlyan" tokenına düşməsin.
+        /// </summary>
+        private static bool WordHit(HashSet<string> words, string tok) =>
+            words.Contains(tok) || words.Contains(tok + "lar") || words.Contains(tok + "ler");
+
+        /// <summary>
+        /// branchId → menyudan çıxarılan normalizə sözlər (kateqoriya + item adları).
+        /// Tenant-wide sətirlər tenantın bütün discoverable filiallarına şamil olunur.
+        /// </summary>
+        private async Task<Dictionary<int, BranchMenuWords>> GetMenuWordsAsync(List<Branch> branches, CancellationToken ct)
+        {
+            if (_cache.TryGetValue(MenuWordsCacheKey, out Dictionary<int, BranchMenuWords>? cached) && cached is not null)
+                return cached;
+
+            var rows = await _db.MenuItems
+                .AsNoTracking()
+                .Where(m => m.IsActive && m.MenuCategory.IsActive)
+                .Select(m => new
+                {
+                    TenantId = m.TenantId ?? m.MenuCategory.TenantId,
+                    BranchId = m.BranchId ?? m.MenuCategory.BranchId,
+                    m.AzName, m.EnName, m.RuName,
+                    CatAz = m.MenuCategory.AzName,
+                    CatEn = m.MenuCategory.EnName,
+                    CatRu = m.MenuCategory.RuName
+                })
+                .ToListAsync(ct);
+
+            var branchesByTenant = branches.GroupBy(b => b.TenantId)
+                .ToDictionary(g => g.Key, g => g.Select(b => b.Id).ToList());
+            var result = new Dictionary<int, BranchMenuWords>();
+
+            BranchMenuWords Get(int branchId)
+            {
+                if (!result.TryGetValue(branchId, out var v))
+                    result[branchId] = v = new BranchMenuWords();
+                return v;
+            }
+
+            foreach (var r in rows)
+            {
+                List<int> targets;
+                if (r.BranchId.HasValue)
+                    targets = new List<int> { r.BranchId.Value };
+                else if (branchesByTenant.TryGetValue(r.TenantId, out var all))
+                    targets = all;
+                else
+                    continue;
+
+                var itemWords = SplitWords(r.AzName, r.EnName, r.RuName);
+                var catRaw = new[] { r.CatAz, r.CatEn, r.CatRu }
+                    .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
+                var catWords = SplitWords(r.CatAz, r.CatEn, r.CatRu);
+
+                foreach (var id in targets)
+                {
+                    var bucket = Get(id);
+                    bucket.Words.UnionWith(itemWords);
+                    bucket.Words.UnionWith(catWords);
+                    if (catRaw is not null && !bucket.Categories.Any(c => c.Raw == catRaw))
+                        bucket.Categories.Add((catRaw, catWords));
+                }
+            }
+
+            _cache.Set(MenuWordsCacheKey, result, MenuWordsTtl);
+            return result;
+        }
+
+        private static readonly char[] WordSeparators =
+            { ' ', '-', '(', ')', ',', '.', '/', '&', '"', '\'', ':' };
+
+        private static HashSet<string> SplitWords(params string?[] texts)
+        {
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var t in texts)
+            {
+                if (string.IsNullOrWhiteSpace(t)) continue;
+                foreach (var w in Normalize(t).Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries))
+                    if (w.Length >= 3) set.Add(w);
+            }
+            return set;
         }
 
         private async Task<List<Branch>> GetBranchesAsync(CancellationToken ct)

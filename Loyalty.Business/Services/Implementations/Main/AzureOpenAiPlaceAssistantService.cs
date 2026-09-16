@@ -194,7 +194,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                         return Serialize(places.Select(p => new
                         {
                             p.TenantId, p.BranchId, p.Name, p.CategoryName, p.Address,
-                            p.DistanceKm, p.Keywords, p.Phone,
+                            p.DistanceKm, p.Keywords,
+                            menuHints = p.MenuHints, // sorğuya uyğun menyu kateqoriyaları
+                            p.Phone,
                             menuInApp = p.Menu.InApp, p.Menu.ExternalMenuUrl
                         }));
                     }
@@ -229,6 +231,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                             h.CurrencySign,
                             menuInApp = h.Place.Menu.InApp
                         }));
+                    }
+
+                    case "get_place_menu":
+                    {
+                        var placeName = GetString(args["placeName"]) ?? string.Empty;
+                        var categoryName = GetString(args["categoryName"]);
+                        var overview = await _menuSearch.GetPlaceMenuAsync(placeName, categoryName, ct);
+                        return overview is null
+                            ? "{\"error\":\"place_not_found\"}"
+                            : Serialize(overview);
                     }
 
                     case "search_reference_places":
@@ -354,6 +366,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             sb.AppendLine("When the user asks about a dish AT a specific place ('X-də Y neçəyədir?'), call");
             sb.AppendLine("search_menu_items immediately with keywords=dish and placeName=place — do NOT ask for");
             sb.AppendLine("clarification when both the dish and the place are already in the message.");
+            sb.AppendLine("For 'what are the prices at X' / 'what's on the menu at X' → call get_place_menu(placeName).");
+            sb.AppendLine("For a whole category at a place ('burgers at X', 'X-də qəlyanlar') → get_place_menu with");
+            sb.AppendLine("categoryName. For ONE specific dish price → search_menu_items with placeName.");
+            sb.AppendLine("For 'where is X cheaper' compare the `price` fields across the returned places and state");
+            sb.AppendLine("each price together with its place name.");
+            sb.AppendLine("FEATURES/AMENITIES (qəlyan, wifi, canlı musiqi, terras...): rely on search_places results —");
+            sb.AppendLine("each has `keywords` (admin data) and `menuHints` (menu categories matching the query).");
+            sb.AppendLine("Present a place as offering a feature ONLY if keywords or menuHints confirm it; if none");
+            sb.AppendLine("confirm, say you couldn't find confirmed places with that feature. Never assume.");
             sb.AppendLine("LANGUAGE: auto-detect the language of the user's LAST message and ALWAYS reply in exactly that language.");
             sb.AppendLine("It can be any language (Azerbaijani, English, Russian, Turkish, Arabic, etc.) — not limited to AZ/EN/RU.");
             sb.AppendLine("If the user switches language, switch immediately. Be concise and helpful.");
@@ -401,6 +422,18 @@ namespace Loyalty.Business.Services.Implementations.Main
                             ["radiusKm"] = new JsonObject { ["type"] = "number", ["description"] = "Only when proximity is requested. In kilometers." }
                         },
                         ["required"] = new JsonArray { "keywords" }
+                    }),
+                Fn("get_place_menu",
+                    "Menu overview of ONE SPECIFIC place: without categoryName returns categories with item counts, min/max prices and sample dishes; with categoryName returns that category's items with exact prices. Use for 'what are the prices at X', 'what's on the menu at X', 'how much are burgers at X'.",
+                    new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["placeName"] = new JsonObject { ["type"] = "string", ["description"] = "Restaurant/branch name, e.g. 'Port Marine', 'Burger Baku'." },
+                            ["categoryName"] = new JsonObject { ["type"] = "string", ["description"] = "Optional menu category to list items for, e.g. 'burgerlər', 'qəlyan', 'salatlar'." }
+                        },
+                        ["required"] = new JsonArray { "placeName" }
                     }),
                 Fn("search_reference_places",
                     "Search a knowledge base of external restaurants/places that are NOT in the Walvero app (info only). Use as a fallback when search_places returns nothing, or when the user asks a general 'where can I find X'. Results are not in the app.",

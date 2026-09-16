@@ -38,6 +38,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             public double Price;
             public double DiscountPrice;
             public string? CurrencySign;
+            public string CategoryName = string.Empty;
+            public string CategoryNorm = string.Empty;
             public string NameKey = string.Empty;   // normalizə edilmiş əsas ad (qruplaşdırma)
             public string NameHay = string.Empty;   // bütün dillərdə adlar (normalizə)
             public string FullHay = string.Empty;   // adlar + təsvirlər (normalizə)
@@ -157,19 +159,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             var placeNorm = Normalize(query.PlaceName ?? string.Empty);
             if (placeNorm.Length > 0)
             {
-                var placeFiltered = scored.Where(x =>
-                {
-                    var b = x.branch;
-                    var hay = Normalize(string.Join(" ", new[]
-                    {
-                        b.AppDisplayName, b.Name, b.Tenant?.CompanyName
-                    }.Where(s => !string.IsNullOrWhiteSpace(s))));
-                    // Tam ad və ya adın hər sözü (ən azı 3 hərfli) uyğun gəlsin
-                    if (hay.Contains(placeNorm, StringComparison.Ordinal)) return true;
-                    var words = placeNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                        .Where(w => w.Length >= 3).ToArray();
-                    return words.Length > 0 && words.All(w => hay.Contains(w, StringComparison.Ordinal));
-                }).ToList();
+                var placeFiltered = scored.Where(x => BranchMatchesPlace(x.branch, placeNorm)).ToList();
                 if (placeFiltered.Count > 0) scored = placeFiltered;
             }
 
@@ -217,6 +207,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     m.BranchId,
                     CatTenantId = m.MenuCategory.TenantId,
                     CatBranchId = m.MenuCategory.BranchId,
+                    CatAz = m.MenuCategory.AzName,
+                    CatEn = m.MenuCategory.EnName,
+                    CatRu = m.MenuCategory.RuName,
                     m.AzName, m.EnName, m.RuName,
                     m.AzDescription, m.EnDescription, m.RuDescription,
                     m.Price, m.DiscountPrice, m.CurrencySign
@@ -233,6 +226,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     .Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
 
                 var nameHay = Normalize(string.Join(" ", names));
+                var categoryName = FirstNonEmpty(r.CatAz, r.CatEn, r.CatRu);
                 list.Add(new MenuIndexEntry
                 {
                     EffTenantId = r.TenantId ?? r.CatTenantId,
@@ -242,6 +236,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Price = r.Price,
                     DiscountPrice = r.DiscountPrice,
                     CurrencySign = r.CurrencySign,
+                    CategoryName = categoryName,
+                    CategoryNorm = Normalize(string.Join(" ", new[] { r.CatAz, r.CatEn, r.CatRu }
+                        .Where(s => !string.IsNullOrWhiteSpace(s)))),
                     NameKey = Normalize(dishName),
                     NameHay = nameHay,
                     FullHay = descs.Length == 0
@@ -261,6 +258,117 @@ namespace Loyalty.Business.Services.Implementations.Main
             var list = await _branchRepository.GetDiscoverableAsync(ct);
             _cache.Set(BranchCacheKey, list, CacheTtl);
             return list;
+        }
+
+        /// <summary>
+        /// Filial adı sorğuya uyğundurmu: tam ad contains VƏ YA sorğunun bütün
+        /// ≥3 hərfli sözləri (AppDisplayName/Name/CompanyName) haystack-dədir.
+        /// </summary>
+        internal static bool BranchMatchesPlace(Branch b, string placeNorm)
+        {
+            var hay = Normalize(string.Join(" ", new[]
+            {
+                b.AppDisplayName, b.Name, b.Tenant?.CompanyName
+            }.Where(s => !string.IsNullOrWhiteSpace(s))));
+            if (hay.Contains(placeNorm, StringComparison.Ordinal)) return true;
+            var words = placeNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length >= 3).ToArray();
+            return words.Length > 0 && words.All(w => hay.Contains(w, StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        /// `get_place_menu` tool-u: konkret məkanın kateqoriya icmalı və ya bir
+        /// kateqoriyanın itemləri. Məkan tapılmasa null.
+        /// </summary>
+        public async Task<object?> GetPlaceMenuAsync(string placeName, string? categoryName, CancellationToken ct = default)
+        {
+            var placeNorm = Normalize(placeName ?? string.Empty);
+            if (placeNorm.Length == 0) return null;
+
+            var branches = await GetBranchesAsync(ct);
+            var matches = branches.Where(b => BranchMatchesPlace(b, placeNorm)).ToList();
+            if (matches.Count == 0) return null;
+
+            // Ən yaxşı uyğunluq: dəqiq ad bərabərliyi > əsas filial.
+            var branch = matches
+                .OrderByDescending(b => Normalize(b.AppDisplayName ?? b.Name ?? string.Empty) == placeNorm)
+                .ThenByDescending(b => b.IsMainBranch)
+                .First();
+
+            var index = await GetMenuIndexAsync(ct);
+
+            // Filialın sətirləri: spesifik sətirlər + həmin filialda override olunmayan tenant-wide sətirlər.
+            var tenantRows = index.Where(e => e.EffTenantId == branch.TenantId).ToList();
+            var specificKeys = tenantRows
+                .Where(e => e.SpecificBranchId == branch.Id)
+                .Select(e => e.NameKey)
+                .ToHashSet();
+            var rows = tenantRows.Where(e =>
+                e.SpecificBranchId == branch.Id ||
+                (e.SpecificBranchId is null && !specificKeys.Contains(e.NameKey))).ToList();
+
+            if (rows.Count == 0) return null;
+
+            var placeInfo = MapPlace(branch, null);
+
+            var catNorm = Normalize(categoryName ?? string.Empty);
+            if (catNorm.Length > 0)
+            {
+                var catWords = catNorm.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .Where(w => w.Length >= 3).ToArray();
+                var items = rows.Where(e =>
+                        e.CategoryNorm.Contains(catNorm, StringComparison.Ordinal) ||
+                        (catWords.Length > 0 && catWords.All(w => e.CategoryNorm.Contains(w, StringComparison.Ordinal))))
+                    .OrderBy(e => e.CategoryName).ThenBy(e => e.Price)
+                    .Take(25)
+                    .Select(e => new
+                    {
+                        dish = e.DishName,
+                        category = e.CategoryName,
+                        price = e.DiscountPrice > 0 ? e.DiscountPrice : e.Price,
+                        regularPrice = e.DiscountPrice > 0 ? e.Price : (double?)null,
+                        e.CurrencySign
+                    })
+                    .ToList();
+
+                return new
+                {
+                    place = placeInfo.Name,
+                    tenantId = placeInfo.TenantId,
+                    branchId = placeInfo.BranchId,
+                    category = categoryName,
+                    items
+                };
+            }
+
+            var categories = rows
+                .GroupBy(e => e.CategoryName)
+                .Select(g => new
+                {
+                    category = g.Key,
+                    itemCount = g.Count(),
+                    minPrice = Math.Round(g.Min(e => e.DiscountPrice > 0 ? e.DiscountPrice : e.Price), 2),
+                    maxPrice = Math.Round(g.Max(e => e.DiscountPrice > 0 ? e.DiscountPrice : e.Price), 2),
+                    sample = g.Take(3).Select(e => new
+                    {
+                        dish = e.DishName,
+                        price = e.DiscountPrice > 0 ? e.DiscountPrice : e.Price
+                    }).ToList()
+                })
+                .OrderBy(c => c.category)
+                .Take(30)
+                .ToList();
+
+            return new
+            {
+                place = placeInfo.Name,
+                tenantId = placeInfo.TenantId,
+                branchId = placeInfo.BranchId,
+                totalItems = rows.Count,
+                currencySign = rows.Select(e => e.CurrencySign)
+                    .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s)),
+                categories
+            };
         }
 
         private static PlaceResultDto MapPlace(Branch b, double? distanceKm)

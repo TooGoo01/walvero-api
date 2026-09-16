@@ -46,6 +46,8 @@ namespace Loyalty.Business.Dtos.Chatbot
         public string? Address { get; set; }
         public double? DistanceKm { get; set; }
         public string? Keywords { get; set; }
+        /// <summary>Sorğu tokenlərinə uyğun gələn menyu kateqoriyaları (AI əsaslandırması üçün), max 3.</summary>
+        public List<string>? MenuHints { get; set; }
         public string? Phone { get; set; }
         public string? LogoUrl { get; set; }
         public string? LocationUrl { get; set; }
