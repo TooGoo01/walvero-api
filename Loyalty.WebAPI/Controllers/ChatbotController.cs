@@ -83,6 +83,46 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(new ServiceResult(true, places));
         }
 
+        // MÜVƏQQƏTİ DIAQNOSTİKA (anonim — chatbot /Ask onsuz da eyni datanı anonim verir).
+        // Tool-lar prod-da "tool_failed" qaytarır; exception mətnini görmək üçün.
+        // Fix tapılan kimi SİLİNƏCƏK.
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> DiagSearch(
+            [FromQuery] string q,
+            [FromQuery] string? place,
+            [FromServices] IMenuSearchService menuSearch,
+            CancellationToken ct)
+        {
+            var report = new System.Collections.Generic.Dictionary<string, object?>();
+            try
+            {
+                var places = await _placeSearch.SearchAsync(new PlaceSearchQuery
+                {
+                    Keywords = (q ?? "").Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries)
+                }, ct);
+                report["places"] = places.Count;
+            }
+            catch (Exception ex)
+            {
+                report["placesError"] = $"{ex.GetType().Name}: {ex.Message} | inner: {ex.InnerException?.Message}";
+            }
+            try
+            {
+                var hits = await menuSearch.SearchAsync(new MenuItemSearchQuery
+                {
+                    Keywords = (q ?? "").Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries),
+                    PlaceName = place
+                }, ct);
+                report["menuHits"] = hits.Count;
+            }
+            catch (Exception ex)
+            {
+                report["menuError"] = $"{ex.GetType().Name}: {ex.Message} | inner: {ex.InnerException?.Message}";
+            }
+            return Ok(report);
+        }
+
         /// <summary>
         /// Chatbot sorğusu. Anonim (məkan-kəşf) və ya JWT-li (şəxsi hesab) işləyir.
         /// JWT gələrsə şəxsi tool-lar avtomatik aktivləşir.
