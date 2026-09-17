@@ -363,6 +363,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             sb.AppendLine("regular price is `regularPrice`. The `place` field tells WHICH branch the price belongs to —");
             sb.AppendLine("if several branches are returned with different prices, attribute each price to its own branch.");
             sb.AppendLine("If the tool returns no match for the dish, say you couldn't find it — do not guess a price.");
+            sb.AppendLine("CURRENCY: use the `currencySign` value from the tool VERBATIM (it is '₼', Azerbaijani manat).");
+            sb.AppendLine("NEVER convert or substitute it with €, $, ₺, ₽ or any other currency symbol.");
             sb.AppendLine("search_reference_places results are external info only — NEVER state prices for them.");
             sb.AppendLine("KEYWORDS: when calling search tools pass BOTH the full dish phrase and its main words as");
             sb.AppendLine("separate keywords, in the user's original spelling (e.g. ['alma pastası','alma','pasta']).");
