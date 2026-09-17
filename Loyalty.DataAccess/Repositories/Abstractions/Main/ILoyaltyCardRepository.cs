@@ -10,8 +10,6 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
     public interface ILoyaltyCardRepository:IGenericRepository<LoyaltyCard>
     {
         Task<LoyaltyCard?> GetByCardNumberAsync(int tenantId, string cardNumber, CancellationToken ct = default);
-        /// <summary>CardNumber son rəqəmlərinə (suffix) görə tap — iiko qısa kart nömrəsi ilə matching üçün.</summary>
-        Task<LoyaltyCard?> GetByCardNumberSuffixAsync(int tenantId, string suffix, CancellationToken ct = default);
         Task<LoyaltyCard?> GetByBarcodeValueAsync(int tenantId, string cardNumber, CancellationToken ct = default);
         Task<bool> ExistsAsync(int tenantId, string cardNumber, CancellationToken ct = default);
         Task<List<LoyaltyCard>> ListByCustomerAsync(int tenantId, int customerId, CancellationToken ct = default);

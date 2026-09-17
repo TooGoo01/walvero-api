@@ -750,11 +750,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             // iiko payload-dakı Customer.CardNumber = bizim LoyaltyCard.CardNumber.
             if (customerId == null && !string.IsNullOrWhiteSpace(request.CustomerCardNumber))
             {
-                var cardNo = request.CustomerCardNumber.Trim();
-                var byCard = await _loyaltyCardRepo.GetByCardNumberAsync(context.TenantId, cardNo, ct);
-                // iiko-da yalnız son 6 rəqəm saxlanılır → tam CardNumber tapılmasa suffix ilə axtar.
-                if (byCard == null && cardNo.Length >= 4 && cardNo.Length <= 6)
-                    byCard = await _loyaltyCardRepo.GetByCardNumberSuffixAsync(context.TenantId, cardNo, ct);
+                var byCard = await _loyaltyCardRepo.GetByCardNumberAsync(context.TenantId, request.CustomerCardNumber, ct);
                 customerId = byCard?.CustomerId;
             }
             if (customerId == null)
