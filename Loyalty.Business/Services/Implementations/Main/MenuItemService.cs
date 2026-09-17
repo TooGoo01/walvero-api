@@ -235,6 +235,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             int categorySkipped = 0;
+            var branchToCat = new Dictionary<int?, int>(); // per-branch resolve cache
             foreach (var e in entities)
             {
                 // Yalnız dolu sahələr — qiymət/endirim QƏSDƏN toxunulmur (filial-spesifik)
@@ -250,11 +251,24 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (dto.DiscountPrice.HasValue && dto.DiscountPrice.Value >= 0) e.DiscountPrice = dto.DiscountPrice.Value;
                 if (targetCategory != null)
                 {
-                    // Filial-spesifik kateqoriyaya yalnız eyni filialın itemləri köçürülə bilər
-                    if (targetCategory.BranchId == null || targetCategory.BranchId == e.BranchId)
-                        e.MenuCategoryId = targetCategory.Id;
+                    if (dto.ApplyCategoryPerBranch)
+                    {
+                        // Hər item öz filialındakı (null = Ümumi) eyni adlı kateqoriyaya köçür; yoxdursa yarat. Filial dəyişmir.
+                        if (!branchToCat.TryGetValue(e.BranchId, out var catId))
+                        {
+                            catId = await ResolveCategoryForBranchAsync(targetCategory, e.BranchId);
+                            branchToCat[e.BranchId] = catId;
+                        }
+                        e.MenuCategoryId = catId;
+                    }
                     else
-                        categorySkipped++;
+                    {
+                        // Köhnə davranış: filial-spesifik kateqoriyaya yalnız eyni filialın itemləri köçürülə bilər
+                        if (targetCategory.BranchId == null || targetCategory.BranchId == e.BranchId)
+                            e.MenuCategoryId = targetCategory.Id;
+                        else
+                            categorySkipped++;
+                    }
                 }
                 _unitOfWork.Repository<MenuItem>().Update(e);
             }
@@ -264,6 +278,46 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ? $"{entities.Count} item yeniləndi, {categorySkipped} itemdə kateqoriya filial uyğunsuzluğuna görə dəyişmədi"
                 : $"{entities.Count} item yeniləndi";
             return new ServiceResult(true, entities.Select(x => x.Id).ToList(), message);
+        }
+
+        /// <summary>
+        /// Verilən filialda (null = Ümumi/tenant-wide) source ilə eyni AzName-li aktiv kateqoriyanı tapır;
+        /// yoxdursa source-un kopyasını həmin filialda yaradır. source artıq həmin filialdadırsa olduğu kimi qaytarır.
+        /// </summary>
+        private async Task<int> ResolveCategoryForBranchAsync(MenuCategory source, int? branchId)
+        {
+            if (source.BranchId == branchId)
+                return source.Id;
+
+            var existing = await _db.MenuCategories.AsNoTracking()
+                .Where(mc => mc.TenantId == source.TenantId
+                          && mc.BranchId == branchId
+                          && mc.IsActive
+                          && mc.AzName == source.AzName)
+                .Select(mc => (int?)mc.Id)
+                .FirstOrDefaultAsync();
+            if (existing != null)
+                return existing.Value;
+
+            var copy = new MenuCategory
+            {
+                AzName = source.AzName,
+                EnName = source.EnName,
+                RuName = source.RuName,
+                AzDescription = source.AzDescription,
+                EnDescription = source.EnDescription,
+                RuDescription = source.RuDescription,
+                DescriptionColor = source.DescriptionColor,
+                DescriptionFontSize = source.DescriptionFontSize,
+                SortOrder = source.SortOrder,
+                TenantId = source.TenantId,
+                BranchId = branchId,
+                IsActive = true,
+                RegDate = DateTime.UtcNow
+            };
+            _db.MenuCategories.Add(copy);
+            await _db.SaveChangesAsync();
+            return copy.Id;
         }
     }
 }

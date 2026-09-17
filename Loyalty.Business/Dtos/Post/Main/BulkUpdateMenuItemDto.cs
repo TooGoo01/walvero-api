@@ -29,6 +29,9 @@ namespace Loyalty.Business.Dtos.Post.Main
         /// <summary>Dolu göndərilsə itemlər bu kateqoriyaya köçürülür (filial uyğunluğu yoxlanılır).</summary>
         public int? MenuCategoryId { get; set; }
 
+        /// <summary>true olsa MenuCategoryId ad kimi işlənir: hər item öz filialındakı eyni adlı kateqoriyaya köçürülür (o filialda yoxdursa yaradılır). Item filialı dəyişmir.</summary>
+        public bool ApplyCategoryPerBranch { get; set; }
+
         /// <summary>Dolu göndərilsə BÜTÜN seçilmiş itemlərə tətbiq olunur (user bilərəkdən seçir).</summary>
         public double? Price { get; set; }
         public double? DiscountPrice { get; set; }
