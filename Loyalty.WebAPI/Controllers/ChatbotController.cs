@@ -23,7 +23,8 @@ namespace Loyalty.WebAPI.Controllers
         private readonly IMemoryCache _cache;
 
         // Yüngül rate-limit: eyni istifadəçi/IP-dən dəqiqədə N sorğu (spam + LLM xərci qoruması).
-        private const int MaxPerMinute = 20;
+        // 20 real söhbətdə tez bitirdi ("limit bitib") — 60-a qaldırıldı.
+        private const int MaxPerMinute = 60;
 
         public ChatbotController(
             IPlaceAssistantService assistant,

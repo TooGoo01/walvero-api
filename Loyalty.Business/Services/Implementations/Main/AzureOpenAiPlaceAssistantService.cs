@@ -98,9 +98,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ["messages"] = messages.DeepClone(),
                     ["tools"] = tools.DeepClone(),
                     ["tool_choice"] = "auto",
-                    // gpt-5 reasoning modeli default olaraq çox düşünür → yavaş. Sadə məkan-axtarış
-                    // üçün minimal reasoning kifayətdir və cavabı kəskin sürətləndirir.
-                    ["reasoning_effort"] = "minimal",
+                    // gpt-5 reasoning modeli default olaraq çox düşünür → yavaş. "low" —
+                    // "minimal" tool-çağırış intizamını zəiflədib modeli dəqiqləşdirmə
+                    // sualı verməyə meyilli edirdi; "low" balansı saxlayır, hələ sürətlidir.
+                    ["reasoning_effort"] = "low",
                     ["max_completion_tokens"] = 1200
                 };
 
@@ -376,6 +377,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             sb.AppendLine("price with its place name — do NOT ask for a location first.");
             sb.AppendLine("NEVER narrate tool usage ('yoxlayıram...', '(tool çağırılır)') and never reply with a promise");
             sb.AppendLine("to check — call the tool in the same turn and reply with the actual result.");
+            sb.AppendLine("");
+            sb.AppendLine("DO NOT ASK CLARIFYING QUESTIONS when the message already names a dish or a place — call the");
+            sb.AppendLine("tool with exactly the words given and answer. Examples:");
+            sb.AppendLine("- 'ən ucuz kabab harada?' → search_menu_items keywords=['kabab'] → compare prices. Do NOT ask 'which kebab?'.");
+            sb.AppendLine("- 'Irish Pub-da sushi varmı?' → search_menu_items keywords=['sushi'] placeName='Irish Pub' → answer yes/no with price. Do NOT ask 'which branch?'.");
+            sb.AppendLine("- 'X-də hansı burgerlər var?' / 'list the burgers at X' → get_place_menu placeName='X' categoryName='burger' (LISTING → always pass categoryName, never the summary form).");
+            sb.AppendLine("Only ask a clarifying question when the message contains NEITHER a dish NOR a place to act on.");
+            sb.AppendLine("SPELLING: a dish can be written many ways — pass several spellings as separate keywords so nothing is");
+            sb.AppendLine("missed (e.g. 'çizburger' → ['çizburger','cheeseburger','cheese','burger']; 'suşi' → ['suşi','sushi']).");
             sb.AppendLine("FEATURES/AMENITIES (qəlyan, wifi, canlı musiqi, terras...): rely on search_places results —");
             sb.AppendLine("each has `keywords` (admin data) and `menuHints` (menu categories matching the query).");
             sb.AppendLine("Present a place as offering a feature ONLY if keywords or menuHints confirm it; if none");

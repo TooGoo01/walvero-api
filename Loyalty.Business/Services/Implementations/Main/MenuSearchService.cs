@@ -157,25 +157,39 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             // Məkan filtri: "X-də Y neçəyədir?" — filial/tenant adına görə daralt.
             var placeNorm = Normalize(query.PlaceName ?? string.Empty);
-            if (placeNorm.Length > 0)
+            bool placeScoped = placeNorm.Length > 0;
+            if (placeScoped)
             {
                 var placeFiltered = scored.Where(x => BranchMatchesPlace(x.branch, placeNorm)).ToList();
                 if (placeFiltered.Count > 0) scored = placeFiltered;
+                else placeScoped = false; // uyğun məkan tapılmadı → normal "kim satır" davranışı
             }
 
-            // Hər filial üçün ən yaxşı sətir: skor, sonra filial-spesifik üstünlüyü.
-            var perBranch = scored
-                .GroupBy(x => x.branch.Id)
-                .Select(g => g
-                    .OrderByDescending(x => x.score)
-                    .ThenByDescending(x => x.specific)
-                    .First());
+            IEnumerable<(MenuIndexEntry entry, Branch branch, int score, bool specific, double? distanceKm)> candidates;
+            if (placeScoped)
+            {
+                // Məkan verilib ("Irish Pub-da hansı sushi var") → filial-başına-1 dedup ATMA,
+                // həmin məkanın BÜTÜN uyğun yeməklərini qaytar.
+                candidates = scored;
+            }
+            else
+            {
+                // "Kim X satır" — hər filial üçün ən yaxşı sətir (skor, sonra filial-spesifik).
+                candidates = scored
+                    .GroupBy(x => x.branch.Id)
+                    .Select(g => g
+                        .OrderByDescending(x => x.score)
+                        .ThenByDescending(x => x.specific)
+                        .First());
+            }
 
             IEnumerable<(MenuIndexEntry entry, Branch branch, int score, bool specific, double? distanceKm)> ordered = geoFilter
-                ? perBranch.OrderBy(x => x.distanceKm ?? double.MaxValue).ThenByDescending(x => x.score)
-                : perBranch.OrderByDescending(x => x.score).ThenBy(x => x.distanceKm ?? double.MaxValue);
+                ? candidates.OrderBy(x => x.distanceKm ?? double.MaxValue).ThenByDescending(x => x.score)
+                : candidates.OrderByDescending(x => x.score).ThenBy(x => x.distanceKm ?? double.MaxValue);
 
-            int take = Math.Clamp(query.Take <= 0 ? 8 : query.Take, 1, 20);
+            // Məkan-daxili siyahıda daha çox item lazımdır (kateqoriya-tipli sual) —
+            // dispatch Take=8 göndərsə də məkan halında 20-yə qaldır.
+            int take = placeScoped ? 20 : Math.Clamp(query.Take <= 0 ? 8 : query.Take, 1, 20);
 
             return ordered.Take(take).Select(x => new MenuItemResultDto
             {
@@ -341,6 +355,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 };
             }
 
+            const int sampleSize = 5;
             var categories = rows
                 .GroupBy(e => e.CategoryName)
                 .Select(g => new
@@ -349,7 +364,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     itemCount = g.Count(),
                     minPrice = Math.Round(g.Min(e => e.DiscountPrice > 0 ? e.DiscountPrice : e.Price), 2),
                     maxPrice = Math.Round(g.Max(e => e.DiscountPrice > 0 ? e.DiscountPrice : e.Price), 2),
-                    sample = g.Take(3).Select(e => new
+                    // Model tam siyahı üçün categoryName ilə get_place_menu-nu təkrar çağırmalıdır.
+                    hasMore = g.Count() > sampleSize,
+                    sample = g.Take(sampleSize).Select(e => new
                     {
                         dish = e.DishName,
                         price = e.DiscountPrice > 0 ? e.DiscountPrice : e.Price
