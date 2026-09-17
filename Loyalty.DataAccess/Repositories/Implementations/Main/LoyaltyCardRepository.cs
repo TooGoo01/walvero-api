@@ -18,6 +18,13 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         }
         public Task<LoyaltyCard?> GetByCardNumberAsync(int tenantId, string cardNumber, CancellationToken ct = default)
          => GetAsQueryable().AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CardNumber == cardNumber, ct);
+
+        // iiko qısa kart nömrəsi (son 6 rəqəm) → CardNumber suffix ilə tap. Ən son aktiv kart üstün.
+        public Task<LoyaltyCard?> GetByCardNumberSuffixAsync(int tenantId, string suffix, CancellationToken ct = default)
+         => GetAsQueryable().AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.CardNumber != null && x.CardNumber.EndsWith(suffix))
+                .OrderByDescending(x => x.IsActive).ThenByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct);
         // ⚠️ tracked qalır — WalletWebhookService / PosSessionService / RedeemService
         // qayıdan card-i Status, CurrentPoints və s. ilə yeniləyirlər (komment də belə deyirdi).
         public Task<LoyaltyCard?> GetByBarcodeValueAsync(int tenantId, string cardNumber, CancellationToken ct = default)

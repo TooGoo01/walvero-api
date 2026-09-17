@@ -1,4 +1,5 @@
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.Business.Utilities;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
@@ -188,13 +189,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ? await _mappingRepo.GetByVenueAndCustomerAsync(venueId.Value, customerId, ct)
                 : await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integrationId, customerId, ct);
 
+            // iiko-ya tam barcode yox, yalnız son 6 rəqəm göndərilir (daxildə tam qalır).
+            var iikoCard = IikoCard.Short(actualBarcode);
             var iikoCustomer = new IikoCustomerDto
             {
                 Id = existingMapping != null && Guid.TryParse(existingMapping.ExternalCustomerId, out var exId) ? exId : (Guid?)null,
                 Name = customer.FirstName,
                 Surname = customer.LastName,
-                CardTrack = actualBarcode,
-                CardNumber = actualBarcode,
+                CardTrack = iikoCard,
+                CardNumber = iikoCard,
                 Birthday = customer.DateOfBirth?.ToString("yyyy-MM-dd HH:mm:ss.fff")
             };
 

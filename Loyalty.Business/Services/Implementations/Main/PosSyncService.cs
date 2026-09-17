@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.Business.Utilities;
 using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
@@ -378,7 +379,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     .FirstOrDefaultAsync(ct);
             }
 
-            var primaryCard = !string.IsNullOrEmpty(barcodeValue) ? barcodeValue! : customer.Id.ToString();
+            // iiko-ya son 6 rəqəm göndərilir (cardTrack/lookup üçün eyni dəyər — uyğunluq qorunur)
+            var primaryCard = IikoCard.Short(!string.IsNullOrEmpty(barcodeValue) ? barcodeValue! : customer.Id.ToString());
             return (cards?.ToList(), walveroId, primaryCard);
         }
 
@@ -491,11 +493,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                     if (string.IsNullOrEmpty(accessToken)) continue;
 
                     var cards = await _cardRepo.ListByCustomerAsync(tenantId, customerId, ct);
-                    var cardTrack = cards?
+                    var cardTrack = IikoCard.Short(cards?
                         .Where(c => c.IsActive && !string.IsNullOrEmpty(c.BarcodeValue))
                         .OrderByDescending(c => c.Id)
                         .Select(c => c.BarcodeValue)
-                        .FirstOrDefault() ?? customerId.ToString();
+                        .FirstOrDefault() ?? customerId.ToString());
 
                     // Per-branch: venue varsa hər org-da balans sync. Venue yoxdursa — legacy parent org.
                     var venues = await _venueRepo.GetActiveByIntegrationAsync(integration.Id, ct);
