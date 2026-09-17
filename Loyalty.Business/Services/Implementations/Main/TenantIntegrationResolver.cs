@@ -37,6 +37,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (string.IsNullOrWhiteSpace(venueId) || string.IsNullOrWhiteSpace(source))
                 return null;
 
+            // Per-branch: əvvəl venue-səviyyə organizationId axtar → BranchId ilə context.
+            var venue = await _venueRepository.GetByExternalVenueIdAndSourceAsync(venueId, source, ct);
+            if (venue != null)
+                return MapVenueToContext(venue);
+
+            // Backward-compat: legacy tək-org tenant (organizationId parent-də).
             var ti = await _tenantIntegrationRepository.GetByVenueAndSourceAsync(venueId, source, ct);
             return MapToContext(ti);
         }

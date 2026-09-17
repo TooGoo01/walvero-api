@@ -26,6 +26,21 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     v.TenantIntegration.IntegrationType.IsActive, ct);
         }
 
+        public Task<TenantIntegrationVenue?> GetByExternalVenueIdAndSourceAsync(string externalVenueId, string source, CancellationToken ct = default)
+        {
+            return GetAsQueryable()
+                .Include(v => v.Branch)
+                .Include(v => v.TenantIntegration).ThenInclude(ti => ti.IntegrationType)
+                .Include(v => v.TenantIntegration).ThenInclude(ti => ti.Tenant)
+                .Include(v => v.TenantIntegration).ThenInclude(ti => ti.LoyaltyProgram)
+                .FirstOrDefaultAsync(v =>
+                    v.ExternalVenueId == externalVenueId &&
+                    v.IsActive &&
+                    v.TenantIntegration.IsActive &&
+                    v.TenantIntegration.IntegrationType.Source == source &&
+                    v.TenantIntegration.IntegrationType.IsActive, ct);
+        }
+
         public Task<List<TenantIntegrationVenue>> GetActiveByIntegrationAsync(int tenantIntegrationId, CancellationToken ct = default)
         {
             return GetAsQueryable()
