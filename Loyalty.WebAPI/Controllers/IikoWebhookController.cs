@@ -33,11 +33,34 @@ namespace Loyalty.WebAPI.Controllers
             _logger = logger;
         }
 
+        private static readonly JsonSerializerOptions CaseInsensitiveJson = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
         [HttpPost("iiko_webhook")]
-        public async Task<IActionResult> Receive([FromBody] IikoWebhookRequest request, CancellationToken ct)
+        public async Task<IActionResult> Receive([FromBody] JsonElement rawBody, CancellationToken ct)
         {
             try
             {
+                // ƏSL gələn JSON — format bizim DTO ilə uyğun gəlməyəndə bunu görmək lazımdır
+                _logger.LogInformation("iiko webhook RAW BODY: {RawBody}", rawBody.GetRawText());
+
+                // iiko Cloud webhook massiv göndərə bilər — ilk elementi götür
+                var element = rawBody.ValueKind == JsonValueKind.Array && rawBody.GetArrayLength() > 0
+                    ? rawBody[0]
+                    : rawBody;
+
+                IikoWebhookRequest? request = null;
+                try
+                {
+                    request = JsonSerializer.Deserialize<IikoWebhookRequest>(element.GetRawText(), CaseInsensitiveJson);
+                }
+                catch (Exception dex)
+                {
+                    _logger.LogWarning(dex, "iiko webhook: payload DTO-ya deserialize olunmadı");
+                }
+
                 // Tam JSON logla — Azure Log Stream / App Insights-da görünəcək
                 _logger.LogInformation(
                     "iiko webhook RAW: {RawJson}",
@@ -110,10 +133,27 @@ namespace Loyalty.WebAPI.Controllers
         /// Tenant payload-dakı TerminalsGroup.Id-dən resolve olunur.
         /// </summary>
         [HttpPost("iiko_transaction")]
-        public async Task<IActionResult> IikoTransaction([FromBody] IikoOrderEventWebhookRequest request, CancellationToken ct)
+        public async Task<IActionResult> IikoTransaction([FromBody] JsonElement rawBody, CancellationToken ct)
         {
             try
             {
+                // ƏSL gələn JSON — format DTO ilə uyğun gəlməyəndə bunu görmək lazımdır
+                _logger.LogInformation("iiko_transaction RAW BODY: {RawBody}", rawBody.GetRawText());
+
+                var element = rawBody.ValueKind == JsonValueKind.Array && rawBody.GetArrayLength() > 0
+                    ? rawBody[0]
+                    : rawBody;
+
+                IikoOrderEventWebhookRequest? request = null;
+                try
+                {
+                    request = JsonSerializer.Deserialize<IikoOrderEventWebhookRequest>(element.GetRawText(), CaseInsensitiveJson);
+                }
+                catch (Exception dex)
+                {
+                    _logger.LogWarning(dex, "iiko_transaction: payload DTO-ya deserialize olunmadı");
+                }
+
                 _logger.LogInformation(
                     "iiko_transaction RAW: {RawJson}",
                     JsonSerializer.Serialize(request));
