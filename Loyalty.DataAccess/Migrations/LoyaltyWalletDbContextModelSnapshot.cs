@@ -2095,8 +2095,9 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.HasIndex("TenantIntegrationVenueId");
 
-                    b.HasIndex("TenantIntegrationId", "ExternalCustomerId")
-                        .IsUnique();
+                    b.HasIndex("TenantIntegrationId", "ExternalCustomerId", "TenantIntegrationVenueId")
+                        .IsUnique()
+                        .HasFilter("[TenantIntegrationVenueId] IS NOT NULL");
 
                     b.ToTable("PosCustomerMappings", (string)null);
                 });

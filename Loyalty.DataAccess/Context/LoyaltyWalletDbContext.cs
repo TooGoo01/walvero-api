@@ -1105,7 +1105,9 @@ namespace Loyalty.DataAccess.Context
                 entity.ToTable("PosCustomerMappings");
                 entity.HasKey(pcm => pcm.Id);
                 entity.Property(pcm => pcm.ExternalCustomerId).IsRequired().HasMaxLength(100);
-                entity.HasIndex(pcm => new { pcm.TenantIntegrationId, pcm.ExternalCustomerId }).IsUnique();
+                // Venue daxil: iiko ortaq CRM-də eyni customer GUID bir neçə org-da qayıda bilər —
+                // hər venue üçün ayrıca mapping sətri lazımdır (legacy sətirlərdə venue NULL).
+                entity.HasIndex(pcm => new { pcm.TenantIntegrationId, pcm.ExternalCustomerId, pcm.TenantIntegrationVenueId }).IsUnique();
 
                 entity.HasOne(pcm => pcm.TenantIntegration)
                     .WithMany()
