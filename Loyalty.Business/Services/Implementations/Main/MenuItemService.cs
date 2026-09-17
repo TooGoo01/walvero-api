@@ -63,17 +63,35 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new ServiceResult(false, "Menyu elementi tapılmadı");
 
             _mapper.Map(dto, entity);
-
-            if (entity.TenantId == null)
-            {
-                var category = await _db.MenuCategories
-                    .AsNoTracking()
-                    .Where(mc => mc.Id == entity.MenuCategoryId)
-                    .Select(mc => new { mc.TenantId })
-                    .FirstOrDefaultAsync();
-                if (category != null) entity.TenantId = category.TenantId;
-            }
             entity.BranchId = dto.BranchId;
+
+            // Seçilmiş kateqoriya + item filialının BranchId-i uyğun olmalıdır
+            // (public menyu invariant-ı). Uyğun deyilsə item-in öz filialındakı
+            // eyni adlı kateqoriyaya resolve et — yoxdursa yarat.
+            var targetCat = await _db.MenuCategories
+                .AsNoTracking()
+                .Where(mc => mc.Id == entity.MenuCategoryId)
+                .Select(mc => new { mc.Id, mc.TenantId, mc.BranchId, mc.AzName, mc.EnName, mc.RuName,
+                    mc.AzDescription, mc.EnDescription, mc.RuDescription,
+                    mc.DescriptionColor, mc.DescriptionFontSize, mc.SortOrder })
+                .FirstOrDefaultAsync();
+
+            if (targetCat != null)
+            {
+                if (entity.TenantId == null) entity.TenantId = targetCat.TenantId;
+                if (targetCat.BranchId != entity.BranchId)
+                {
+                    var source = new MenuCategory
+                    {
+                        Id = targetCat.Id, TenantId = targetCat.TenantId, BranchId = targetCat.BranchId,
+                        AzName = targetCat.AzName, EnName = targetCat.EnName, RuName = targetCat.RuName,
+                        AzDescription = targetCat.AzDescription, EnDescription = targetCat.EnDescription,
+                        RuDescription = targetCat.RuDescription, DescriptionColor = targetCat.DescriptionColor,
+                        DescriptionFontSize = targetCat.DescriptionFontSize, SortOrder = targetCat.SortOrder
+                    };
+                    entity.MenuCategoryId = await ResolveCategoryForBranchAsync(source, entity.BranchId);
+                }
+            }
 
             _unitOfWork.Repository<MenuItem>().Update(entity);
             _unitOfWork.Commit();
@@ -234,7 +252,6 @@ namespace Loyalty.Business.Services.Implementations.Main
                     return new ServiceResult(false, "Kateqoriya tapılmadı");
             }
 
-            int categorySkipped = 0;
             var branchToCat = new Dictionary<int?, int>(); // per-branch resolve cache
             foreach (var e in entities)
             {
@@ -251,33 +268,22 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (dto.DiscountPrice.HasValue && dto.DiscountPrice.Value >= 0) e.DiscountPrice = dto.DiscountPrice.Value;
                 if (targetCategory != null)
                 {
-                    if (dto.ApplyCategoryPerBranch)
+                    // İnvariant: item HƏMİŞƏ öz filialındakı (null = Ümumi) eyni adlı
+                    // kateqoriyaya köçür — yoxdursa yarat. Filial dəyişmir. Beləliklə
+                    // item.BranchId == kateqoriya.BranchId qalır (public menyu gizlətməz).
+                    if (!branchToCat.TryGetValue(e.BranchId, out var catId))
                     {
-                        // Hər item öz filialındakı (null = Ümumi) eyni adlı kateqoriyaya köçür; yoxdursa yarat. Filial dəyişmir.
-                        if (!branchToCat.TryGetValue(e.BranchId, out var catId))
-                        {
-                            catId = await ResolveCategoryForBranchAsync(targetCategory, e.BranchId);
-                            branchToCat[e.BranchId] = catId;
-                        }
-                        e.MenuCategoryId = catId;
+                        catId = await ResolveCategoryForBranchAsync(targetCategory, e.BranchId);
+                        branchToCat[e.BranchId] = catId;
                     }
-                    else
-                    {
-                        // Köhnə davranış: filial-spesifik kateqoriyaya yalnız eyni filialın itemləri köçürülə bilər
-                        if (targetCategory.BranchId == null || targetCategory.BranchId == e.BranchId)
-                            e.MenuCategoryId = targetCategory.Id;
-                        else
-                            categorySkipped++;
-                    }
+                    e.MenuCategoryId = catId;
                 }
                 _unitOfWork.Repository<MenuItem>().Update(e);
             }
             _unitOfWork.Commit();
 
-            var message = categorySkipped > 0
-                ? $"{entities.Count} item yeniləndi, {categorySkipped} itemdə kateqoriya filial uyğunsuzluğuna görə dəyişmədi"
-                : $"{entities.Count} item yeniləndi";
-            return new ServiceResult(true, entities.Select(x => x.Id).ToList(), message);
+            return new ServiceResult(true, entities.Select(x => x.Id).ToList(),
+                $"{entities.Count} item yeniləndi");
         }
 
         /// <summary>
@@ -289,11 +295,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (source.BranchId == branchId)
                 return source.Id;
 
+            // Ad-uyğunluğu trim ilə: "Sağlam Qida " (boşluqlu) ≡ "Sağlam Qida" —
+            // trailing-space dublikat kateqoriya yaranmasın.
+            var srcName = (source.AzName ?? string.Empty).Trim();
             var existing = await _db.MenuCategories.AsNoTracking()
                 .Where(mc => mc.TenantId == source.TenantId
                           && mc.BranchId == branchId
                           && mc.IsActive
-                          && mc.AzName == source.AzName)
+                          && mc.AzName.Trim() == srcName)
                 .Select(mc => (int?)mc.Id)
                 .FirstOrDefaultAsync();
             if (existing != null)
@@ -301,7 +310,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var copy = new MenuCategory
             {
-                AzName = source.AzName,
+                AzName = srcName,
                 EnName = source.EnName,
                 RuName = source.RuName,
                 AzDescription = source.AzDescription,
