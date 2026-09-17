@@ -43,6 +43,31 @@ namespace Loyalty.Business.Services.Implementations.Main
             public string NameKey = string.Empty;   // normalizə edilmiş əsas ad (qruplaşdırma)
             public string NameHay = string.Empty;   // bütün dillərdə adlar (normalizə)
             public string FullHay = string.Empty;   // adlar + təsvirlər (normalizə)
+            // Söz-səviyyəli uyğunluq üçün (substring yalançı-pozitivi qarşısı:
+            // "sushi"→"susi" "Xüsusi"-yə düşməsin).
+            public HashSet<string> NameWords = new(StringComparer.Ordinal);
+            public HashSet<string> FullWords = new(StringComparer.Ordinal);
+        }
+
+        private static readonly char[] WordSeparators =
+            { ' ', '-', '(', ')', ',', '.', '/', '&', '"', '\'', ':', ';' };
+
+        private static HashSet<string> SplitWords(string normalized)
+        {
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var w in normalized.Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries))
+                if (w.Length >= 2) set.Add(w);
+            return set;
+        }
+
+        /// <summary>Söz uyğunluğu: bərabər, və ya biri digərinin prefiksi (AZ şəkilçi
+        /// toleransı: "kabab"↔"kababı"). Substring YOX — mid-word yalançı-pozitiv olmasın.</summary>
+        private static bool WordMatch(string word, string qt)
+        {
+            if (word == qt) return true;
+            if (qt.Length >= 3 && word.StartsWith(qt, StringComparison.Ordinal)) return true;   // kabab → kababı
+            if (word.Length >= 4 && qt.StartsWith(word, StringComparison.Ordinal)) return true; // kababı → kabab
+            return false;
         }
 
         public MenuSearchService(
@@ -81,8 +106,17 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var index = await GetMenuIndexAsync(ct);
 
-            // Skorlama: ad hitə üstünlük (yanlış yemək seçimini azaldır).
+            // Skorlama: söz-səviyyəli (prefiks), ad hitə üstünlük. Substring YOX —
+            // "sushi"→"susi" "Xüsusi"-yə düşməsin (mid-word yalançı-pozitiv qarşısı).
             var joinedNorm = Normalize(string.Join(" ", rawTokens));
+            var queryWords = normTokens
+                .SelectMany(t => t.Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries))
+                .Where(w => w.Length >= 2)
+                .Distinct()
+                .ToList();
+            if (queryWords.Count == 0)
+                return new List<MenuItemResultDto>();
+
             var matched = new List<(MenuIndexEntry entry, int score)>();
 
             foreach (var e in index)
@@ -91,13 +125,13 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 int score = 0;
                 bool allInName = true;
-                foreach (var tok in normTokens)
+                foreach (var qt in queryWords)
                 {
-                    if (e.NameHay.Contains(tok, StringComparison.Ordinal)) score += 3;
+                    if (e.NameWords.Any(w => WordMatch(w, qt))) score += 3;
                     else
                     {
                         allInName = false;
-                        if (e.FullHay.Contains(tok, StringComparison.Ordinal)) score += 1;
+                        if (e.FullWords.Any(w => WordMatch(w, qt))) score += 1;
                     }
                 }
                 if (score == 0) continue;
@@ -259,6 +293,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                         ? nameHay
                         : nameHay + " " + Normalize(string.Join(" ", descs))
                 });
+                var last = list[^1];
+                last.NameWords = SplitWords(last.NameHay);
+                last.FullWords = SplitWords(last.FullHay);
             }
 
             _cache.Set(MenuIndexCacheKey, list, MenuIndexTtl);
