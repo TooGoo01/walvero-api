@@ -148,6 +148,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                     offer.TenantId = offerDto.TenantId;
                 }
 
+                // Kampaniya metadata: 0% = endirimi sil; tarix/şərt yalnız göndəriləndə dəyişir
+                if (offerDto.DiscountPercent.HasValue)
+                    offer.DiscountPercent = offerDto.DiscountPercent.Value <= 0 ? null : offerDto.DiscountPercent;
+                if (offerDto.ValidFrom.HasValue) offer.ValidFrom = offerDto.ValidFrom;
+                if (offerDto.ValidTo.HasValue) offer.ValidTo = offerDto.ValidTo;
+                if (offerDto.AzTerms != null) offer.AzTerms = string.IsNullOrWhiteSpace(offerDto.AzTerms) ? null : offerDto.AzTerms.Trim();
+                if (offerDto.EnTerms != null) offer.EnTerms = string.IsNullOrWhiteSpace(offerDto.EnTerms) ? null : offerDto.EnTerms.Trim();
+                if (offerDto.RuTerms != null) offer.RuTerms = string.IsNullOrWhiteSpace(offerDto.RuTerms) ? null : offerDto.RuTerms.Trim();
+
                 // Handle file upload
                 var container = $"offers-tenant-{offerDto.TenantId ?? offer.TenantId ?? 0}";
                 offer.PhotoUrl = await UploadOrUseUrl(container, "photo", offerDto.PhotoFile, offerDto.PhotoUrl, offer.PhotoUrl);

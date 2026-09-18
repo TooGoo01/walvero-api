@@ -14,6 +14,12 @@ namespace Loyalty.DataAccess.Models
         public string? RuDescription { get; set; }
         public string? PhotoUrl { get; set; }
         public int? TenantId { get; set; }
+        public int? DiscountPercent { get; set; }
+        public System.DateTime? ValidFrom { get; set; }
+        public System.DateTime? ValidTo { get; set; }
+        public string? AzTerms { get; set; }
+        public string? EnTerms { get; set; }
+        public string? RuTerms { get; set; }
     }
 }
 

@@ -49,9 +49,13 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
 
         public async Task<IReadOnlyList<HomeOfferProjection>> ListHomeOffersAsync(CancellationToken ct = default)
         {
+            var now = System.DateTime.UtcNow;
             return await _LoyaltyDbContext.Offers
                 .AsNoTracking()
                 .Where(o => o.IsActive)
+                // Kampaniya tarixi: vaxtı bitmiş və ya hələ başlamamışları göstərmə
+                .Where(o => o.ValidTo == null || o.ValidTo >= now)
+                .Where(o => o.ValidFrom == null || o.ValidFrom <= now)
                 .OrderByDescending(o => o.RegDate)
                 .ThenByDescending(o => o.Id)
                 .Select(o => new HomeOfferProjection
@@ -64,7 +68,13 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     EnDescription = o.EnDescription,
                     RuDescription = o.RuDescription,
                     PhotoUrl = o.PhotoUrl,
-                    TenantId = o.TenantId
+                    TenantId = o.TenantId,
+                    DiscountPercent = o.DiscountPercent,
+                    ValidFrom = o.ValidFrom,
+                    ValidTo = o.ValidTo,
+                    AzTerms = o.AzTerms,
+                    EnTerms = o.EnTerms,
+                    RuTerms = o.RuTerms
                 })
                 .ToListAsync(ct);
         }

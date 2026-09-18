@@ -1933,9 +1933,15 @@ namespace Loyalty.DataAccess.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("AzTerms")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("AzTitle")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("DiscountPercent")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("EditDate")
                         .HasColumnType("datetime2");
@@ -1945,6 +1951,9 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<string>("EnDescription")
                         .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EnTerms")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("EnTitle")
@@ -1967,12 +1976,21 @@ namespace Loyalty.DataAccess.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("RuTerms")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("RuTitle")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int?>("TenantId")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("ValidFrom")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ValidTo")
+                        .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 

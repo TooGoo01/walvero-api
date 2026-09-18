@@ -20,5 +20,12 @@ namespace Loyalty.DataAccess.Entities.Main
         public int? TenantId { get; set; }
         public Tenant? Tenant { get; set; }
 
+        // Kampaniya metadata (hamısı optional — köhnə offers pozulmur)
+        public int? DiscountPercent { get; set; }
+        public DateTime? ValidFrom { get; set; }
+        public DateTime? ValidTo { get; set; }
+        public string? AzTerms { get; set; }
+        public string? EnTerms { get; set; }
+        public string? RuTerms { get; set; }
     }
 }
