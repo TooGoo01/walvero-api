@@ -23,12 +23,18 @@ namespace Loyalty.Infrastructure.Extensions
                 {
                     try
                     {
-                        var ok = await WhatsAppHelper.SendWhatsAppTemplateAsync(
+                        var sid = await WhatsAppHelper.SendTemplateReturningSidAsync(
                             phone,
                             templateSid!,
                             new Dictionary<string, string> { ["1"] = code },
                             ct);
-                        if (ok) return "whatsapp";
+
+                        // Twilio yaratma anında yalnız "queued" qaytarır — çatıb-çatmadığını
+                        // bilmək üçün delivery statusunu qısa müddət poll et. Çatıbsa whatsapp,
+                        // uğursuz/ilişib qalıbsa SMS fallback.
+                        if (!string.IsNullOrWhiteSpace(sid) &&
+                            await DeliveredViaWhatsAppAsync(sid!, ct))
+                            return "whatsapp";
                     }
                     catch
                     {
@@ -39,6 +45,32 @@ namespace Loyalty.Infrastructure.Extensions
 
             await Helper.SendSmsAsync(phone, smsText);
             return "sms";
+        }
+
+        // Success = WhatsApp serverlərinə/cihaza çatdı; failure/timeout → SMS lazımdır.
+        private static readonly HashSet<string> _successStatuses =
+            new(StringComparer.OrdinalIgnoreCase) { "delivered", "read", "sent" };
+        private static readonly HashSet<string> _failureStatuses =
+            new(StringComparer.OrdinalIgnoreCase) { "failed", "undelivered" };
+
+        /// <summary>
+        /// Mesaj statusunu ~8 saniyəyə qədər poll edir. delivered/read/sent → true;
+        /// failed/undelivered → false; timeout-da hələ queued/accepted qalıbsa (ilişib) → false.
+        /// </summary>
+        private static async Task<bool> DeliveredViaWhatsAppAsync(string sid, CancellationToken ct)
+        {
+            const int maxAttempts = 6;
+            for (int i = 0; i < maxAttempts; i++)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(1300), ct);
+                var status = await WhatsAppHelper.FetchDeliveryStatusAsync(sid, ct);
+                if (status == null) continue;
+                if (_successStatuses.Contains(status)) return true;
+                if (_failureStatuses.Contains(status)) return false;
+                // queued/accepted/sending/scheduled → hələ nəticə yoxdur, gözlə
+            }
+            // Timeout: hələ terminal statusa çatmayıb → təhlükəsizlik üçün SMS
+            return false;
         }
 
         private static string? GetOtpTemplateSid()

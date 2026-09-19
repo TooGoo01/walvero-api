@@ -38,6 +38,79 @@ namespace Loyalty.Infrastructure.Extensions
             return await SendInternalAsync(toPhone, null, contentSid, json, ct);
         }
 
+        /// <summary>
+        /// OTP üçün: template mesajı göndərir və Twilio message SID-ni qaytarır
+        /// (delivery statusunu sonradan yoxlamaq üçün). Yaradılma alınmasa exception.
+        /// </summary>
+        public static async Task<string?> SendTemplateReturningSidAsync(
+            string toPhone,
+            string contentSid,
+            IDictionary<string, string> contentVariables,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(contentSid))
+                throw new InvalidOperationException("contentSid required for template send.");
+            var json = System.Text.Json.JsonSerializer.Serialize(contentVariables);
+            return await SendInternalReturningSidAsync(toPhone, contentSid, json, ct);
+        }
+
+        /// <summary>
+        /// Twilio-dan mesajın cari delivery statusunu çəkir (lowercase):
+        /// queued/accepted/sending/sent/delivered/read/failed/undelivered.
+        /// </summary>
+        public static async Task<string?> FetchDeliveryStatusAsync(string messageSid, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(messageSid)) return null;
+            try
+            {
+                var configuration = Helper_GetConfiguration();
+                var accountSid = configuration["Twilio:AccountSid"];
+                var authToken = configuration["Twilio:AuthToken"];
+                if (string.IsNullOrWhiteSpace(accountSid) || string.IsNullOrWhiteSpace(authToken))
+                    return null;
+                TwilioClient.Init(accountSid, authToken);
+                var msg = await MessageResource.FetchAsync(pathSid: messageSid);
+                return msg?.Status?.ToString()?.ToLowerInvariant();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static async Task<string?> SendInternalReturningSidAsync(
+            string toPhone, string contentSid, string contentVariables, CancellationToken ct)
+        {
+            var configuration = Helper_GetConfiguration();
+            var accountSid = configuration["Twilio:AccountSid"];
+            var authToken = configuration["Twilio:AuthToken"];
+            var fromNumber = configuration["Twilio:WhatsAppFrom"];
+
+            if (string.IsNullOrWhiteSpace(accountSid) || string.IsNullOrWhiteSpace(authToken))
+                throw new InvalidOperationException("Twilio not configured (AccountSid/AuthToken).");
+            if (string.IsNullOrWhiteSpace(fromNumber))
+                throw new InvalidOperationException("Twilio:WhatsAppFrom not configured.");
+
+            var toE164 = NormalizeToE164(toPhone);
+            TwilioClient.Init(accountSid, authToken);
+
+            var options = new Twilio.Rest.Api.V2010.Account.CreateMessageOptions(
+                new PhoneNumber($"whatsapp:{toE164}"))
+            {
+                From = new PhoneNumber($"whatsapp:{fromNumber}"),
+                ContentSid = contentSid,
+                ContentVariables = contentVariables,
+            };
+            var msg = await MessageResource.CreateAsync(options);
+
+            // Yaradılma anında error code varsa (məs. nömrə WhatsApp-da yoxdur) — uğursuz
+            if (msg.ErrorCode.HasValue)
+                throw new InvalidOperationException(
+                    $"Twilio WhatsApp send failed (ErrorCode={msg.ErrorCode}, SID={msg.Sid})");
+
+            return msg.Sid;
+        }
+
         private static async Task<bool> SendInternalAsync(
             string toPhone, string? body, string? contentSid, string? contentVariables, CancellationToken ct)
         {
