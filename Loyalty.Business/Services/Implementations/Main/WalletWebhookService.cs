@@ -747,11 +747,20 @@ namespace Loyalty.Business.Services.Implementations.Main
                 customerId = byPhone?.Id;
             }
             // Fallback: iiko müştəri GUID-i / telefonu tapılmadıqda loyallıq kart nömrəsi ilə tap.
-            // iiko payload-dakı Customer.CardNumber = bizim LoyaltyCard.CardNumber.
+            // iiko payload-dakı Customer.CardNumber = bizim LoyaltyCard.CardNumber və ya BarcodeValue.
             if (customerId == null && !string.IsNullOrWhiteSpace(request.CustomerCardNumber))
             {
-                var byCard = await _loyaltyCardRepo.GetByCardNumberAsync(context.TenantId, request.CustomerCardNumber, ct);
+                var byCard = await _loyaltyCardRepo.GetByCardNumberAsync(context.TenantId, request.CustomerCardNumber, ct)
+                             ?? await _loyaltyCardRepo.GetByBarcodeValueAsync(context.TenantId, request.CustomerCardNumber, ct);
                 customerId = byCard?.CustomerId;
+            }
+            // Fallback: iiko "kart nömrəsi" əslində müştərinin WalveroId-si ola bilər —
+            // POS müştərini WalveroId ilə axtarır və sync WalveroId-ni iiko-ya kart kimi yazır.
+            if (customerId == null && !string.IsNullOrWhiteSpace(request.CustomerCardNumber)
+                && long.TryParse(request.CustomerCardNumber.Trim(), out var walveroId))
+            {
+                var byWalvero = await _customerRepo.GetByWalveroIdAsync(context.TenantId, walveroId, ct);
+                customerId = byWalvero?.Id;
             }
             if (customerId == null)
                 return new IikoTransactionResponse { Success = false, Message = $"Customer not found (extId={request.ExternalCustomerId}, phone={request.CustomerPhone}, card={request.CustomerCardNumber})" };
