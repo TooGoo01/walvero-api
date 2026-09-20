@@ -38,6 +38,7 @@ namespace Loyalty.DataAccess
             services.AddScoped<ICategoryRepository, CategoryRepository>();
             services.AddScoped<IAppVersionRepository, AppVersionRepository>();
             services.AddScoped<IOfferRepository, OfferRepository>();
+            services.AddScoped<IIikoWebhookFailureRepository, IikoWebhookFailureRepository>();
             services.AddScoped<IStoryRepository, StoryRepository>();
             services.AddScoped<ISequenceRepository, SequenceRepository>();
             

@@ -511,6 +511,12 @@ app.UseHangfireDashboard("/hangfire", new Hangfire.DashboardOptions
     Authorization = new[] { new Loyalty.WebAPI.Hangfire.TenantAdminDashboardFilter() }
 });
 
+// Recurring: uğursuz iiko webhook sifarişlərini hər 10 dəqiqədən bir yenidən emal et
+Hangfire.RecurringJob.AddOrUpdate<Loyalty.Business.Services.Abstractions.Main.IIikoWebhookFailureService>(
+    "iiko-webhook-retry",
+    s => s.RetryPendingAsync(CancellationToken.None),
+    "*/10 * * * *");
+
 // 🔹 Minimal hostingda ayrı `UseRouting/UseEndpoints` ehtiyac yoxdur
 app.MapControllers();
 app.MapHub<LoyaltyHub>("/hubs/loyalty");

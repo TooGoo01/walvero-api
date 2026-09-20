@@ -71,6 +71,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<PosProductEarnRule> PosProductEarnRules { get; set; }
         public DbSet<PosLoyaltyDiscountType> PosLoyaltyDiscountTypes { get; set; }
         public DbSet<PosCustomerMapping> PosCustomerMappings { get; set; }
+        public DbSet<IikoWebhookFailure> IikoWebhookFailures { get; set; }
 
         // Branches & Rooms
         public DbSet<Branch> Branches { get; set; }

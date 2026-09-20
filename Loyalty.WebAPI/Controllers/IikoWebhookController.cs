@@ -19,17 +19,20 @@ namespace Loyalty.WebAPI.Controllers
         private readonly ITenantIntegrationResolver _resolver;
         private readonly IWalletWebhookService _webhookService;
         private readonly ITenantStatusGuard _tenantStatusGuard;
+        private readonly IIikoWebhookFailureService _failureService;
         private readonly ILogger<IikoWebhookController> _logger;
 
         public IikoWebhookController(
             ITenantIntegrationResolver resolver,
             IWalletWebhookService webhookService,
             ITenantStatusGuard tenantStatusGuard,
+            IIikoWebhookFailureService failureService,
             ILogger<IikoWebhookController> logger)
         {
             _resolver = resolver;
             _webhookService = webhookService;
             _tenantStatusGuard = tenantStatusGuard;
+            _failureService = failureService;
             _logger = logger;
         }
 
@@ -162,22 +165,7 @@ namespace Loyalty.WebAPI.Controllers
                 if (request == null || string.IsNullOrWhiteSpace(terminalGroupId))
                     return Ok(new { success = false, message = "TerminalsGroup.Id is required" });
 
-                var ctx = await _resolver.ResolveByTerminalGroupIdAsync(terminalGroupId, IikoSource, ct);
-                if (ctx == null)
-                {
-                    _logger.LogWarning(
-                        "iiko_transaction: tenant not found. terminalGroupId={TerminalGroupId} orderId={OrderId}",
-                        terminalGroupId, request.OrderId);
-                    return Ok(new { success = false, message = "Tenant integration not found" });
-                }
-
-                // Deaktiv tenant-da POS auto-earn qadağandır (abunə dayandırılıb)
-                if (!await _tenantStatusGuard.IsActiveAsync(ctx.TenantId, ct))
-                {
-                    _logger.LogWarning("iiko_transaction blocked — tenant inactive. TenantId={TenantId}", ctx.TenantId);
-                    return Ok(new { success = false, message = Business.Services.Implementations.Main.TenantStatusGuard.InactiveMessage });
-                }
-
+                // internalReq-i ctx-dən əvvəl qur — tenant tapılmasa da uğursuzluğu loglaya bilək.
                 var firstCustomer = request.Customer?.FirstOrDefault();
 
                 var internalReq = new IikoOrderEventRequest
@@ -224,11 +212,33 @@ namespace Loyalty.WebAPI.Controllers
                     }).ToList()
                 };
 
+                var ctx = await _resolver.ResolveByTerminalGroupIdAsync(terminalGroupId, IikoSource, ct);
+                if (ctx == null)
+                {
+                    _logger.LogWarning(
+                        "iiko_transaction: tenant not found. terminalGroupId={TerminalGroupId} orderId={OrderId}",
+                        terminalGroupId, request.OrderId);
+                    // İnteqrasiya sonradan qurula bilər → retry növbəsinə yaz.
+                    await _failureService.RecordFailureAsync(internalReq, null, "Tenant integration not found", ct);
+                    return Ok(new { success = false, message = "Tenant integration not found" });
+                }
+
+                // Deaktiv tenant-da POS auto-earn qadağandır (abunə dayandırılıb) — retry-ə yazmırıq.
+                if (!await _tenantStatusGuard.IsActiveAsync(ctx.TenantId, ct))
+                {
+                    _logger.LogWarning("iiko_transaction blocked — tenant inactive. TenantId={TenantId}", ctx.TenantId);
+                    return Ok(new { success = false, message = Business.Services.Implementations.Main.TenantStatusGuard.InactiveMessage });
+                }
+
                 var result = await _webhookService.ProcessIikoOrderEventAsync(ctx, internalReq, ct);
 
                 _logger.LogInformation(
                     "iiko_transaction processed: orderId={OrderId} terminalGroupId={TerminalGroupId} success={Success} message={Message}",
                     request.OrderId, terminalGroupId, result.Success, result.Message);
+
+                // Uğursuz (customer not found və s.) → retry növbəsinə yaz.
+                if (!result.Success)
+                    await _failureService.RecordFailureAsync(internalReq, ctx.TenantIntegrationId, result.Message, ct);
 
                 return Ok(new { success = result.Success, message = result.Message });
             }

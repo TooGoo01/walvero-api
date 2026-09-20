@@ -180,6 +180,8 @@ namespace Loyalty.Business.Services
             services.AddScoped<IKeywordGenerationService, KeywordGenerationService>();
             services.AddScoped<ICustomerAssistantTools, CustomerAssistantTools>();
             services.AddScoped<IPlaceAssistantService, AzureOpenAiPlaceAssistantService>();
+            services.AddScoped<IWalletPushJob, WalletPushJob>();
+            services.AddScoped<IIikoWebhookFailureService, IikoWebhookFailureService>();
             services.AddHttpClient(AzureOpenAiPlaceAssistantService.HttpClientName, c =>
             {
                 c.Timeout = TimeSpan.FromSeconds(60);

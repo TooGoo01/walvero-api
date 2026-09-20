@@ -1,3 +1,4 @@
+using Hangfire;
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Models.TenantIntegration;
 using Loyalty.Business.Services.Abstractions.Main;
@@ -696,15 +697,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             _uow.Repository<Transaction>().Add(tx);
             await _uow.CommitAsync(ct);
 
-            // Wallet pass push (Apple + Google) — DB commit-dən sonra fire-and-forget pattern
-            try
-            {
-                await PushWalletUpdateAsync(card, program, delta, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "iiko webhook: wallet push failed. CardId={CardId}", card.Id);
-            }
+            // Wallet pass push — Hangfire background (webhook cavabı gözlətməsin → 499 qarşısı)
+            EnqueueWalletPush(card.Id, program, delta);
 
             return new IikoTransactionResponse
             {
@@ -866,8 +860,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             await _uow.CommitAsync(ct);
 
-            try { await PushWalletUpdateAsync(c, program, -totalReverseDelta, ct); }
-            catch (Exception ex) { _logger.LogWarning(ex, "iiko OrderReturned: wallet push failed. CardId={CardId}", c.Id); }
+            EnqueueWalletPush(c.Id, program, -totalReverseDelta);
 
             return new IikoTransactionResponse
             {
@@ -1213,8 +1206,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             decimal effectiveWalletRedeem = walletRedeemApplied ? walletRedeemSum : 0m;
             decimal netDelta = earnedValue - effectiveWalletRedeem - discountRedeemPoints;
-            try { await PushWalletUpdateAsync(c, program, netDelta, ct); }
-            catch (Exception ex) { _logger.LogWarning(ex, "iiko OrderClosed: wallet push failed. CardId={CardId}", c.Id); }
+            EnqueueWalletPush(c.Id, program, netDelta);
 
             string msg = templateType switch
             {
@@ -1226,63 +1218,18 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new IikoTransactionResponse { Success = true, Message = msg };
         }
 
-        private async Task PushWalletUpdateAsync(LoyaltyCard card, LoyaltyProgram? program, decimal delta, CancellationToken ct)
+        /// <summary>
+        /// Wallet pass push-u Hangfire background-a atır (webhook cavabı gözlətməsin → 499 fix).
+        /// program null-dursa push mənasızdır (skip).
+        /// </summary>
+        private void EnqueueWalletPush(int cardId, LoyaltyProgram? program, decimal delta)
         {
-            if (program?.CardTemplate == null)
+            if (program == null)
             {
-                _logger.LogDebug("Wallet push skipped: program/CardTemplate is null. CardId={CardId}", card.Id);
+                _logger.LogDebug("Wallet push skipped: program null. CardId={CardId}", cardId);
                 return;
             }
-
-            var branding = await _brandingRepo.GetByTenantIdAsync(card.TenantId, ct);
-            const string baseUrl = "https://appapi.walvero.com";
-            string ToAbs(string? dbPath)
-            {
-                if (string.IsNullOrWhiteSpace(dbPath)) return string.Empty;
-                if (dbPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                    dbPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return dbPath;
-                var normalizedBaseUrl = baseUrl.TrimEnd('/', '\\');
-                var normalizedPath = dbPath.TrimStart('~').TrimStart('/', '\\');
-                normalizedPath = string.IsNullOrWhiteSpace(normalizedPath) ? "/" : "/" + normalizedPath;
-                return normalizedBaseUrl + normalizedPath;
-            }
-
-            var snapshot = CardTemplateSnapshotFactory.From(program, program.CardTemplate, branding, ToAbs);
-            var primaryPlatform = card.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
-            var secondaryPlatform = card.IsIOS ? WalletPlatform.GooglePay : WalletPlatform.AppleWallet;
-            var intDelta = (int)delta;
-
-            // ⚠️ CancellationToken.None: DB commit tamamlandıqdan sonra push ləğv olunmamalıdır
-            _logger.LogInformation("iiko webhook: routing wallet push to PRIMARY {Platform}. CardId={CardId}", primaryPlatform, card.Id);
-            try
-            {
-                var primaryRes = await _walletRouter.RouteAsync(
-                    primaryPlatform, card.Id, snapshot,
-                    card.CurrentPoints, card.CurrentSteps, card.CompletedCycles, intDelta,
-                    CancellationToken.None);
-                if (!primaryRes.Success)
-                    _logger.LogWarning("iiko webhook: wallet push FAILED on PRIMARY {Platform}. CardId={CardId}", primaryPlatform, card.Id);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "iiko webhook: wallet push error on PRIMARY {Platform}. CardId={CardId}", primaryPlatform, card.Id);
-            }
-
-            _logger.LogInformation("iiko webhook: trying SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
-            try
-            {
-                var secondaryRes = await _walletRouter.RouteAsync(
-                    secondaryPlatform, card.Id, snapshot,
-                    card.CurrentPoints, card.CurrentSteps, card.CompletedCycles, intDelta,
-                    CancellationToken.None);
-                if (!secondaryRes.Success)
-                    _logger.LogWarning("iiko webhook: wallet push FAILED on SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "iiko webhook: wallet push error on SECONDARY {Platform}. CardId={CardId}", secondaryPlatform, card.Id);
-            }
+            BackgroundJob.Enqueue<IWalletPushJob>(j => j.RunAsync(cardId, program.Id, delta));
         }
-
     }
 }
