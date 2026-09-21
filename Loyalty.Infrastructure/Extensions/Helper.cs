@@ -18,7 +18,7 @@ namespace Loyalty.Infrastructure.Extensions
         /// - Əks halda → Twilio ilə göndərir
         /// Uğurda true qaytarır; əks halda InvalidOperationException atır.
         /// </summary>
-        public static async Task<bool> SendSmsAsync(string phone, string message, CancellationToken ct = default)
+        public static async Task<bool> SendSmsAsync(string phone, string message, CancellationToken ct = default, string purpose = "INF")
         {
             // Telefon nömrəsindən rəqəmləri çıxar
             static string ExtractDigits(string p)
@@ -28,13 +28,14 @@ namespace Loyalty.Infrastructure.Extensions
 
             var digits = ExtractDigits(phone);
 
-            // Əgər nömrə 994 ilə başlayırsa, PoctGoyercini istifadə et
+            // Əgər nömrə 994 ilə başlayırsa, PoctGoyercini istifadə et.
+            // purpose: OTP kodları "OTP" kateqoriyası (prioritet çatdırılma), digərləri "INF".
             if (digits.StartsWith("994"))
             {
-                return await SendSmsViaPoctGoyerciniAsync(phone, message, ct);
+                return await SendSmsViaPoctGoyerciniAsync(phone, message, ct, purpose);
             }
 
-            // Əks halda Twilio istifadə et
+            // Əks halda Twilio istifadə et (purpose Twilio-da yoxdur — ignore)
             return await SendSmsViaTwilioAsync(phone, message, ct);
         }
 
@@ -42,7 +43,7 @@ namespace Loyalty.Infrastructure.Extensions
         /// PG365 (Poct Goyercini) SMS API v1.0.4 ilə SMS göndərir.
         /// Endpoint: POST https://api.poctgoyercini.com/gateway/api/sms/v1/message/send
         /// </summary>
-        private static async Task<bool> SendSmsViaPoctGoyerciniAsync(string phone, string message, CancellationToken ct = default)
+        private static async Task<bool> SendSmsViaPoctGoyerciniAsync(string phone, string message, CancellationToken ct = default, string purpose = "INF")
         {
             // 1) Telefonu beynəlxalq formata sal: 994XXXXXXXXX (ölkə kodu ilə)
             static string NormalizePhone(string p)
@@ -64,7 +65,7 @@ namespace Loyalty.Infrastructure.Extensions
             var requestBody = new
             {
                 Text = message,
-                Purpose = "INF",
+                Purpose = string.IsNullOrWhiteSpace(purpose) ? "INF" : purpose,
                 Options = new
                 {
                     Originator = "Walvero",

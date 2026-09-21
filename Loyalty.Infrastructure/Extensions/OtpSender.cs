@@ -43,7 +43,8 @@ namespace Loyalty.Infrastructure.Extensions
                 }
             }
 
-            await Helper.SendSmsAsync(phone, smsText);
+            // OTP kodları "OTP" kateqoriyası ilə — prioritet çatdırılma (reklam-imtina nömrələrinə də gedir).
+            await Helper.SendSmsAsync(phone, smsText, purpose: "OTP");
             return "sms";
         }
 
