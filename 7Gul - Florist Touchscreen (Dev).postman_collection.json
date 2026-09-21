@@ -1,0 +1,492 @@
+{
+  "info": {
+    "_postman_id": "21d42cb0-8956-4285-954b-47692b020729",
+    "name": "7Gul - Florist Touchscreen (Dev)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "52065678",
+    "_collection_link": "https://go.postman.co/collection/52065678-21d42cb0-8956-4285-954b-47692b020729?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "SETUP",
+      "item": [
+        {
+          "name": "1. Admin Login (normal)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if(json.token) pm.collectionVariables.set('adminToken', json.token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"emailOrPhone\": \"admin@7gul.az\",\n  \"password\": \"sifreniz\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "2. Create Terminal (POS)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if(json.token) pm.collectionVariables.set('terminalToken', json.token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"POS-1 Mağaza\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/florist/create-terminal",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "florist",
+                "create-terminal"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "3. Set PIN for user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{floristUserId}}\",\n  \"pin\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/florist/set-pin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "florist",
+                "set-pin"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "POS (Florist Touchscreen)",
+      "item": [
+        {
+          "name": "4. PIN Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if(json.token) pm.collectionVariables.set('userToken', json.token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Terminal-Token",
+                "value": "{{terminalToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pin\": \"1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/pin",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "pin"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "5. Get Blank Statuses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-Terminal-Token",
+                "value": "{{terminalToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/florist/blank-statuses",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "florist",
+                "blank-statuses"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "6. Get Florist Blanks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-Terminal-Token",
+                "value": "{{terminalToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/florist/blanks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "florist",
+                "blanks"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "7. Get Blank Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-Terminal-Token",
+                "value": "{{terminalToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/florist/blanks/{{blankId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "florist",
+                "blanks",
+                "{{blankId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "8. Get Stock Flowers (grid)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-Terminal-Token",
+                "value": "{{terminalToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/florist/stock-flowers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "florist",
+                "stock-flowers"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "9. Add Stock Flower",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-Terminal-Token",
+                "value": "{{terminalToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"blankId\": {{blankId}},\n  \"stockFlowerId\": {{stockFlowerId}},\n  \"count\": 3\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/florist/add-stock-flower",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "florist",
+                "add-stock-flower"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "10. Remove Stock Flower",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-Terminal-Token",
+                "value": "{{terminalToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"blankId\": {{blankId}},\n  \"stockFlowerId\": {{stockFlowerId}},\n  \"count\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/florist/remove-stock-flower",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "florist",
+                "remove-stock-flower"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "11. Change Blank Status (Ready)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{userToken}}"
+              },
+              {
+                "key": "X-Terminal-Token",
+                "value": "{{terminalToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"blankId\": {{blankId}},\n  \"statusId\": 4\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/florist/change-blank-status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "florist",
+                "change-blank-status"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "ADMIN",
+      "item": [
+        {
+          "name": "12. Set Florist to Blank",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"blankId\": {{blankId}},\n  \"floristId\": {{floristId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/florist/set-florist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "florist",
+                "set-florist"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "13. Admin Unlock Blank",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"blankId\": {{blankId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/florist/admin-unlock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "florist",
+                "admin-unlock"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://dev.7gul.az/api"
+    },
+    {
+      "key": "terminalToken",
+      "value": "6d97886d360a7c2a3a9f6b3c1e75b35e6f140c727cad4a2b74e80d80cc11f169"
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "userToken",
+      "value": ""
+    },
+    {
+      "key": "floristUserId",
+      "value": ""
+    },
+    {
+      "key": "blankId",
+      "value": "1"
+    },
+    {
+      "key": "stockFlowerId",
+      "value": "1"
+    },
+    {
+      "key": "floristId",
+      "value": "1"
+    }
+  ]
+}

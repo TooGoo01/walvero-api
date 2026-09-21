@@ -89,6 +89,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             var url = $"{endpoint.TrimEnd('/')}/openai/deployments/{deployment}/chat/completions?api-version={apiVersion}";
             var client = _httpFactory.CreateClient(HttpClientName);
 
+            // reasoning_effort env-konfiqurativ (model dəyişəndə koda toxunmadan).
+            // Bəzi gpt-5 deployment-ləri function tools ilə yalnız "none" qəbul edir
+            // (chat/completions): '400 ... use reasoning_effort none'. Ona görə default "none".
+            // Tam çıxarmaq üçün env dəyərini "omit" et.
+            var reasoningEffort = PickConfig(_config, "AzureOpenAI:ReasoningEffort", "AZURE_OPENAI_REASONING_EFFORT") ?? "none";
+
             for (int iter = 0; iter < MaxToolIterations; iter++)
             {
                 // gpt-5 / reasoning modelləri: `max_tokens` yerinə `max_completion_tokens`,
@@ -98,12 +104,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ["messages"] = messages.DeepClone(),
                     ["tools"] = tools.DeepClone(),
                     ["tool_choice"] = "auto",
-                    // gpt-5 reasoning modeli default olaraq çox düşünür → yavaş. "low" —
-                    // "minimal" tool-çağırış intizamını zəiflədib modeli dəqiqləşdirmə
-                    // sualı verməyə meyilli edirdi; "low" balansı saxlayır, hələ sürətlidir.
-                    ["reasoning_effort"] = "low",
                     ["max_completion_tokens"] = 1200
                 };
+                if (!string.Equals(reasoningEffort, "omit", StringComparison.OrdinalIgnoreCase))
+                    body["reasoning_effort"] = reasoningEffort;
 
                 using var req = new HttpRequestMessage(HttpMethod.Post, url)
                 {
