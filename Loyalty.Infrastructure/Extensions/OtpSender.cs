@@ -48,15 +48,18 @@ namespace Loyalty.Infrastructure.Extensions
             return "sms";
         }
 
-        // Success = WhatsApp serverlərinə/cihaza çatdı; failure/timeout → SMS lazımdır.
+        // Success = YALNIZ cihaza TƏSDİQLƏNMİŞ çatma. "sent" (WhatsApp serverinə ötürüldü)
+        // uğur SAYILMIR — Twilio "sent" qaytarıb sonra "undelivered"-ə düşür, o zaman
+        // istifadəçi kodsuz qalırdı. İndi təsdiq olmasa SMS-ə keçir.
         private static readonly HashSet<string> _successStatuses =
-            new(StringComparer.OrdinalIgnoreCase) { "delivered", "read", "sent" };
+            new(StringComparer.OrdinalIgnoreCase) { "delivered", "read" };
         private static readonly HashSet<string> _failureStatuses =
             new(StringComparer.OrdinalIgnoreCase) { "failed", "undelivered" };
 
         /// <summary>
-        /// Mesaj statusunu ~8 saniyəyə qədər poll edir. delivered/read/sent → true;
-        /// failed/undelivered → false; timeout-da hələ queued/accepted qalıbsa (ilişib) → false.
+        /// Mesaj statusunu ~8 saniyəyə qədər poll edir. delivered/read → true;
+        /// failed/undelivered → false; timeout-da hələ queued/sent/accepted qalıbsa
+        /// (təsdiqlənmiş çatma yoxdur) → false → SMS fallback.
         /// </summary>
         private static async Task<bool> DeliveredViaWhatsAppAsync(string sid, CancellationToken ct)
         {
