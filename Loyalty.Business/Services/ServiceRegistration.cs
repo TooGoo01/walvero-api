@@ -50,6 +50,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<ICardTemplateService, CardTemplateService>();
             services.AddScoped<ICardTemplateIconService, CardTemplateIconService>();
             services.AddScoped<ICustomerEnrollmentService, CustomerEnrollmentService>();
+            services.AddScoped<IAmbassadorService, AmbassadorService>();
             services.AddScoped<ILoyaltyCardService, LoyaltyCardService>();
              services.AddScoped<GoogleWalletRedeemer>();
              services.AddScoped<AppleWalletRedeemer>();

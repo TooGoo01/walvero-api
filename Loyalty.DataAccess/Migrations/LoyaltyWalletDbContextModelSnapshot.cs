@@ -835,6 +835,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsAmbassador")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime?>("LastActivityDate")
                         .HasColumnType("datetime2");
 
@@ -3038,6 +3041,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("EkassaReceiptUrlTemplate")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("EnableAmbassadors")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("EnableSuspiciousAlert")
                         .HasColumnType("bit");

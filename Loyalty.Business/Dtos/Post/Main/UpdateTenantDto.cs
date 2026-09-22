@@ -38,6 +38,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public bool IsHidden { get; set; } = false;
         public bool HideInApp { get; set; } = false;
         public bool IsHasMenu { get; set; } = false;
+        public bool EnableAmbassadors { get; set; } = false;
         public decimal? Latitude { get; set; }
         public decimal? Longitude { get; set; }
         // AI köməkçi axtarışı üçün açar sözlər (vergüllə). null = dəyişmə.

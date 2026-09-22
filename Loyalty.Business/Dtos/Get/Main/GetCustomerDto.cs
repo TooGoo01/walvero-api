@@ -27,6 +27,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public Gender? Gender { get; set; }
         public DateTime? DateOfBirth { get; set; }
         public bool IsActive { get; set; }
+        public bool IsAmbassador { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? LastActivityDate { get; set; }
         public string? CardNumber { get; set; }

@@ -1,0 +1,296 @@
+using Hangfire;
+using Loyalty.Business.Dtos.Post.Main;
+using Loyalty.Business.Results;
+using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.Business.Services.Abstractions.Sequences;
+using Loyalty.DataAccess.Context;
+using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Entities.Users;
+using Loyalty.DataAccess.Enums;
+using Loyalty.DataAccess.Repositories.Abstractions.Main;
+using Loyalty.DataAccess.UnitOfWorks;
+using Loyalty.Infrastructure.Extensions;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
+namespace Loyalty.Business.Services.Implementations.Main
+{
+    public sealed class AmbassadorService : IAmbassadorService
+    {
+        private readonly ICustomerRepository _customerRepo;
+        private readonly ILoyaltyProgramRepository _programRepo;
+        private readonly ILoyaltyCardRepository _cardRepo;
+        private readonly ICardNumberGenerator _cardNumberGenerator;
+        private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IUnitOfWork _uow;
+        private readonly IServiceScopeFactory _scopeFactory;
+        private readonly LoyaltyWalletDbContext _db;
+        private readonly ILogger<AmbassadorService> _logger;
+
+        public AmbassadorService(
+            ICustomerRepository customerRepo,
+            ILoyaltyProgramRepository programRepo,
+            ILoyaltyCardRepository cardRepo,
+            ICardNumberGenerator cardNumberGenerator,
+            UserManager<ApplicationUser> userManager,
+            IUnitOfWork uow,
+            IServiceScopeFactory scopeFactory,
+            LoyaltyWalletDbContext db,
+            ILogger<AmbassadorService> logger)
+        {
+            _customerRepo = customerRepo;
+            _programRepo = programRepo;
+            _cardRepo = cardRepo;
+            _cardNumberGenerator = cardNumberGenerator;
+            _userManager = userManager;
+            _uow = uow;
+            _scopeFactory = scopeFactory;
+            _db = db;
+            _logger = logger;
+        }
+
+        public async Task<ServiceResult> CreateAmbassadorAsync(int tenantId, string userId, CreateAmbassadorDto dto, CancellationToken ct = default)
+        {
+            if (tenantId <= 0)
+                return new ServiceResult(false, "Tenant not resolved.");
+            if (dto == null || string.IsNullOrWhiteSpace(dto.PhoneNumber))
+                return new ServiceResult(false, "Phone number is required.");
+
+            // 1) Tenant-də ambassador aktivdirmi?
+            var tenant = await _db.Set<Tenant>().FirstOrDefaultAsync(t => t.Id == tenantId, ct);
+            if (tenant == null)
+                return new ServiceResult(false, "Tenant not found.");
+            if (!tenant.EnableAmbassadors)
+                return new ServiceResult(false, "Ambassador proqramı bu tenant üçün aktiv deyil.");
+
+            // 2) Program tenant-ə aiddirmi?
+            var program = await _programRepo.GetByIdNameAsync(dto.LoyaltyProgramId, ct);
+            if (program is null || program.TenantId != tenantId)
+                return new ServiceResult(false, "Program not found for this tenant.");
+
+            var phone = dto.PhoneNumber.Trim();
+            var regUserId = int.TryParse(userId, out var uid) ? uid : 1;
+
+            // Telefonla mövcud app user-i tap (kart avtomatik app-da görünsün deyə)
+            var phoneDigits = new string(phone.Where(char.IsDigit).ToArray());
+            var existingAppUser = await _userManager.Users.FirstOrDefaultAsync(u =>
+                u.PhoneNumber == phone || u.PhoneNumber == phoneDigits || u.PhoneNumber == "+" + phoneDigits, ct);
+
+            // 3) Customer tap / yarat
+            var customer = await _customerRepo.GetByPhoneAsync(tenantId, phone, ct);
+            if (customer is null)
+            {
+                var cardNumber = !string.IsNullOrWhiteSpace(dto.CardNumber)
+                    ? dto.CardNumber!.Trim()
+                    : await _cardNumberGenerator.GenerateCardNumberAsync(tenantId, ct);
+
+                customer = new Customer
+                {
+                    TenantId = tenantId,
+                    FirstName = dto.FirstName?.Trim() ?? "",
+                    LastName = dto.LastName?.Trim() ?? "",
+                    PhoneNumber = phone,
+                    Email = dto.Email?.Trim(),
+                    IsActive = true,
+                    IsAmbassador = true,
+                    LastActivityDate = DateTime.UtcNow,
+                    CardNumber = cardNumber,
+                    applicationUserId = existingAppUser?.Id,
+                    RegUserId = regUserId,
+                    RegDate = DateTime.UtcNow
+                };
+
+                await _uow.Repository<Customer>().AddAsync(customer);
+                try
+                {
+                    await _uow.CommitAsync(ct);
+                }
+                catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 2601 || ex.Number == 2627)
+                {
+                    // CardNumber toqquşması — yalnız avtomatik generasiyada təkrar cəhd
+                    if (string.IsNullOrWhiteSpace(dto.CardNumber))
+                    {
+                        customer.CardNumber = await _cardNumberGenerator.GenerateCardNumberAsync(tenantId, ct);
+                        await _uow.CommitAsync(ct);
+                    }
+                    else
+                    {
+                        return new ServiceResult(false, "Bu kart nömrəsi artıq istifadə olunur.");
+                    }
+                }
+            }
+            else
+            {
+                // Mövcud müştəri — ambassador kimi işarələ + məlumatları yenilə
+                customer.IsAmbassador = true;
+                if (!string.IsNullOrWhiteSpace(dto.FirstName)) customer.FirstName = dto.FirstName.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.LastName)) customer.LastName = dto.LastName!.Trim();
+                if (!string.IsNullOrWhiteSpace(dto.Email)) customer.Email = dto.Email!.Trim();
+                if (!customer.IsActive) customer.IsActive = true;
+                if (!customer.applicationUserId.HasValue && existingAppUser != null)
+                    customer.applicationUserId = existingAppUser.Id;
+                if (!string.IsNullOrWhiteSpace(dto.CardNumber) && string.IsNullOrWhiteSpace(customer.CardNumber))
+                    customer.CardNumber = dto.CardNumber!.Trim();
+                customer.LastActivityDate = DateTime.UtcNow;
+                _uow.Repository<Customer>().Update(customer);
+                await _uow.CommitAsync(ct);
+            }
+
+            // 4) Kart tap / yarat (BarcodeValue boş → SaveChanges Customer.CardNumber-dən doldurur)
+            var card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
+            if (card is null)
+            {
+                var deactive = await _cardRepo.GetLastInactiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
+                if (deactive != null)
+                {
+                    deactive.IsActive = true;
+                    deactive.Status = CardStatus.Active;
+                    deactive.ActivatedAt = DateTime.UtcNow;
+                    deactive.EditDate = DateTime.UtcNow;
+                    deactive.EditUserId = regUserId;
+                    _uow.Repository<LoyaltyCard>().Update(deactive);
+                    await _uow.CommitAsync(ct);
+                    card = deactive;
+                }
+                else
+                {
+                    card = new LoyaltyCard
+                    {
+                        TenantId = tenantId,
+                        CustomerId = customer.Id,
+                        LoyaltyProgramId = program.Id,
+                        BarcodeType = BarcodeType.Code128,
+                        Status = CardStatus.Active,
+                        ActivatedAt = DateTime.UtcNow,
+                        RegUserId = regUserId,
+                        RegDate = DateTime.UtcNow,
+                        IsActive = true
+                    };
+                    await _uow.Repository<LoyaltyCard>().AddAsync(card);
+                    await _uow.CommitAsync(ct);
+                }
+            }
+
+            // 5) POS-a müştəri sync (iiko customer create + program enroll) — isolated scope, best-effort
+            await RunPosCustomerSyncSafeAsync(tenantId, customer.Id, ct);
+
+            // 6) İlkin xal (varsa)
+            if (dto.InitialPoints.HasValue && dto.InitialPoints.Value != 0)
+                await CreditPointsInternalAsync(card, program, customer.Id, dto.InitialPoints.Value, "Ambassador ilkin xal", ct);
+
+            // 7) Ambassador-a məlumat SMS-i (best-effort)
+            TrySendAmbassadorSms(phone, tenant.CompanyName);
+
+            return new ServiceResult(true, new { customerId = customer.Id, cardId = card.Id });
+        }
+
+        public async Task<ServiceResult> AddPointsAsync(int tenantId, CreditPointsDto dto, CancellationToken ct = default)
+        {
+            if (dto == null || dto.LoyaltyCardId <= 0)
+                return new ServiceResult(false, "Card is required.");
+
+            var card = await _cardRepo.GetById(dto.LoyaltyCardId, ct);
+            if (card is null)
+                return new ServiceResult(false, "Card not found.");
+            if (card.TenantId != tenantId)
+                return new ServiceResult(false, "Card does not belong to your tenant.");
+
+            var program = await _programRepo.GetByIdNameAsync(card.LoyaltyProgramId, ct);
+            if (program is null)
+                return new ServiceResult(false, "Program missing.");
+
+            var description = string.IsNullOrWhiteSpace(dto.Description) ? "Manual xal" : dto.Description!.Trim();
+            await CreditPointsInternalAsync(card, program, card.CustomerId, dto.Points, description, ct);
+
+            return new ServiceResult(true, new { cardId = card.Id, balance = card.CurrentPoints });
+        }
+
+        /// <summary>
+        /// Karta xal kredit et → Transaction + wallet pass push (background) + POS wallet forward (isolated).
+        /// </summary>
+        private async Task CreditPointsInternalAsync(
+            LoyaltyCard card, LoyaltyProgram program, int customerId, decimal points, string description, CancellationToken ct)
+        {
+            card.CurrentPoints += points;
+            if (points > 0) card.LifetimePoints += points;
+            card.EditDate = DateTime.UtcNow;
+            _uow.Repository<LoyaltyCard>().Update(card);
+
+            var tx = new Transaction
+            {
+                LoyaltyCardId = card.Id,
+                Type = points >= 0 ? TransactionType.Bonus : TransactionType.Redeemed,
+                Status = RedeemStatus.Applied,
+                Points = points,
+                BalanceAfter = card.CurrentPoints,
+                Description = description,
+                RegDate = DateTime.UtcNow,
+                IsActive = true,
+                LocalOccurredAt = DateTimeOffset.UtcNow,
+                TimeZoneIdUsed = "UTC"
+            };
+            _uow.Repository<Transaction>().Add(tx);
+            await _uow.CommitAsync(ct);
+
+            // Wallet pass push (Apple + Google) — background (Hangfire)
+            try
+            {
+                BackgroundJob.Enqueue<IWalletPushJob>(j => j.RunAsync(card.Id, program.Id, points));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Ambassador wallet push enqueue failed. CardId={CardId}", card.Id);
+            }
+
+            // POS forward — iiko wallet balansını yeni CurrentPoints-ə uyğunlaşdır (isolated, best-effort)
+            await RunPosBalanceSyncSafeAsync(card.TenantId, customerId, card.CurrentPoints, ct);
+        }
+
+        private async Task RunPosCustomerSyncSafeAsync(int tenantId, int customerId, CancellationToken ct)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var sync = scope.ServiceProvider.GetRequiredService<IPosSyncService>();
+                var db = scope.ServiceProvider.GetRequiredService<LoyaltyWalletDbContext>();
+                var customer = await db.Set<Customer>().FirstOrDefaultAsync(x => x.Id == customerId, ct);
+                if (customer == null) return;
+                await sync.SyncCustomerToPosAsync(tenantId, customer, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Ambassador POS customer sync failed. CustomerId={CustomerId}, TenantId={TenantId}", customerId, tenantId);
+            }
+        }
+
+        private async Task RunPosBalanceSyncSafeAsync(int tenantId, int customerId, decimal currentPoints, CancellationToken ct)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var sync = scope.ServiceProvider.GetRequiredService<IPosSyncService>();
+                await sync.SyncBalanceToPosAsync(tenantId, customerId, currentPoints, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Ambassador POS balance sync failed. CustomerId={CustomerId}, TenantId={TenantId}", customerId, tenantId);
+            }
+        }
+
+        private void TrySendAmbassadorSms(string phone, string? companyName)
+        {
+            try
+            {
+                var name = string.IsNullOrWhiteSpace(companyName) ? "Walvero" : companyName!.Trim();
+                var text = $"{name} sizi ambassador olaraq əlavə etdi. Kartınızı Walvero tətbiqində görə bilərsiniz: https://walvero.com";
+                _ = Helper.SendSmsAsync(phone, text);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Ambassador SMS failed. Phone={Phone}", phone);
+            }
+        }
+    }
+}

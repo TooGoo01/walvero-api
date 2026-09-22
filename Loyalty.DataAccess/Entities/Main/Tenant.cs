@@ -72,6 +72,10 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool IsHasMenu { get; set; } = false; // Menyusu olan tenant-lar public siyahıda görünür
         public int? DiscoverSortOrder { get; set; } // Admin manuel discover sıralama. null → sondadır
 
+        // Ambassador (promoter) proqramı: yalnız super admin açdığı tenant-larda tenant admin
+        // ambassador müştəri yarada + xal verə bilir. Default bağlı.
+        public bool EnableAmbassadors { get; set; } = false;
+
         // AI köməkçi (place-discovery) axtarış üçün admin təyin etdiyi açar sözlər: cuisine ("burger"),
         // xüsusiyyət ("qəlyan","24 saat"), ərazi adları. Vergüllə ayrılmış; contains-match. Filiallara da inherit.
         public string? Keywords { get; set; }

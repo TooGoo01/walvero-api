@@ -36,6 +36,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public bool NearbyBroadcast { get; set; } = false;
         public bool IsHidden { get; set; } = false;
         public bool HideInApp { get; set; } = false;
+        public bool EnableAmbassadors { get; set; } = false;
         public bool IsActive { get; set; } = true;
         public bool IsServiceSuspended { get; set; } = false;
         public string? SuspensionMessage { get; set; }
