@@ -14,6 +14,7 @@ namespace Loyalty.Business.Dtos.Main
         public string? Description { get; set; }
         public string? Phone { get; set; }
         public string? MenuUrl { get; set; }
+        public string? MenuJson { get; set; }
         public bool IsActive { get; set; }
     }
 
@@ -30,6 +31,8 @@ namespace Loyalty.Business.Dtos.Main
         public string? Description { get; set; }
         [MaxLength(50)] public string? Phone { get; set; }
         [MaxLength(500)] public string? MenuUrl { get; set; }
+        /// <summary>Strukturlu menyu JSON — AI menyu suallarına cavab üçün (opsional).</summary>
+        public string? MenuJson { get; set; }
         public bool IsActive { get; set; } = true;
     }
 

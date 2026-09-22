@@ -33,6 +33,9 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> AddAsync(CreateAiReferencePlaceDto dto, CancellationToken ct = default)
         {
+            var menuJsonError = ValidateMenuJson(dto.MenuJson);
+            if (menuJsonError != null) return new ServiceResult(false, menuJsonError);
+
             var e = new AiReferencePlace();
             Apply(e, dto);
             e.RegDate = DateTime.UtcNow;
@@ -45,6 +48,9 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> UpdateAsync(UpdateAiReferencePlaceDto dto, CancellationToken ct = default)
         {
+            var menuJsonError = ValidateMenuJson(dto.MenuJson);
+            if (menuJsonError != null) return new ServiceResult(false, menuJsonError);
+
             var e = await _db.AiReferencePlaces.FirstOrDefaultAsync(p => p.Id == dto.Id, ct);
             if (e == null) return new ServiceResult(false, "Məkan tapılmadı");
             Apply(e, dto);
@@ -85,9 +91,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             var scored = new List<(AiReferencePlace p, int score)>();
             foreach (var p in all)
             {
+                // MenuJson raw string də haystack-dədir — yemək adları ilə xarici məkan tapılsın
+                // (mötərizə/dırnaq Normalize-dan sonra zərərsiz "noise"-dur).
                 var haystack = Normalize(string.Join(" ", new[]
                 {
-                    p.Name, p.Category, p.City, p.Area, p.Address, p.Keywords, p.Description
+                    p.Name, p.Category, p.City, p.Area, p.Address, p.Keywords, p.Description, p.MenuJson
                 }.Where(s => !string.IsNullOrWhiteSpace(s))));
 
                 var score = normTokens.Count(tok => haystack.Contains(tok, StringComparison.Ordinal));
@@ -100,6 +108,26 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Take(Math.Clamp(take <= 0 ? 8 : take, 1, 20))
                 .Select(x => Map(x.p))
                 .ToList();
+        }
+
+        public async Task<GetAiReferencePlaceDto?> FindByNameAsync(string name, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return null;
+            var normQuery = Normalize(name);
+            if (normQuery.Length == 0) return null;
+
+            var all = await GetActiveCachedAsync(ct);
+
+            // Ən yaxşı uyğunluq: ad ↔ sorğu qarşılıqlı contains; ən qısa ad (ən spesifik) üstün.
+            var match = all
+                .Select(p => new { p, norm = Normalize(p.Name) })
+                .Where(x => x.norm.Length > 0 &&
+                            (x.norm.Contains(normQuery, StringComparison.Ordinal) ||
+                             normQuery.Contains(x.norm, StringComparison.Ordinal)))
+                .OrderBy(x => x.norm.Length)
+                .FirstOrDefault();
+
+            return match == null ? null : Map(match.p);
         }
 
         private async Task<List<AiReferencePlace>> GetActiveCachedAsync(CancellationToken ct)
@@ -122,6 +150,22 @@ namespace Loyalty.Business.Services.Implementations.Main
             e.Description = d.Description?.Trim();
             e.Phone = d.Phone?.Trim();
             e.MenuUrl = d.MenuUrl?.Trim();
+            e.MenuJson = string.IsNullOrWhiteSpace(d.MenuJson) ? null : d.MenuJson.Trim();
+        }
+
+        /// <summary>MenuJson doludursa valid JSON olmalıdır; xəta mesajı və ya null qaytarır.</summary>
+        private static string? ValidateMenuJson(string? menuJson)
+        {
+            if (string.IsNullOrWhiteSpace(menuJson)) return null;
+            try
+            {
+                using var _ = System.Text.Json.JsonDocument.Parse(menuJson);
+                return null;
+            }
+            catch
+            {
+                return "Menyu JSON formatı yanlışdır";
+            }
         }
 
         private static GetAiReferencePlaceDto Map(AiReferencePlace p) => new()
@@ -136,6 +180,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             Description = p.Description,
             Phone = p.Phone,
             MenuUrl = p.MenuUrl,
+            MenuJson = p.MenuJson,
             IsActive = p.IsActive,
         };
 

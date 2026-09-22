@@ -108,6 +108,23 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(ServiceResult<AssistantReply>.Ok(reply));
         }
 
+        /// <summary>
+        /// Super-admin AI simulyatoru: sual real pipeline-dan keçir, bütün mərhələlərin
+        /// trace-i qaytarılır (prompt, tool schemas, model raw cavabları, tool nəticələri, token/ms).
+        /// </summary>
+        [HttpPost]
+        [Authorize(
+            AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
+            Policy = "SuperAdminOnly")]
+        public async Task<IActionResult> Simulate([FromBody] ChatbotSimulateRequest request, CancellationToken ct)
+        {
+            if (request?.Messages is null || request.Messages.Count == 0)
+                return Ok(ServiceResult<ChatbotSimulationResult>.Fail("Mesaj boşdur."));
+
+            var result = await _assistant.SimulateAsync(request, ct);
+            return Ok(ServiceResult<ChatbotSimulationResult>.Ok(result));
+        }
+
         private bool AllowRequest()
         {
             var identity = _tenantProvider.CurrentUserId

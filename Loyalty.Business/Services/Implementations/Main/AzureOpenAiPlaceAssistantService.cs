@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -50,7 +51,34 @@ namespace Loyalty.Business.Services.Implementations.Main
             _logger = logger;
         }
 
-        public async Task<AssistantReply> AskAsync(ChatbotAskRequest request, CancellationToken ct = default)
+        public Task<AssistantReply> AskAsync(ChatbotAskRequest request, CancellationToken ct = default)
+            => AskCoreAsync(request, trace: null, isAuthOverride: null, ct);
+
+        /// <summary>
+        /// Super admin simulyasiyası: EYNİ pipeline (AskCoreAsync) + hər mərhələnin trace-i.
+        /// Prod yolu üçün sıfır risk — trace null olduqda davranış dəyişmir.
+        /// </summary>
+        public async Task<ChatbotSimulationResult> SimulateAsync(ChatbotSimulateRequest request, CancellationToken ct = default)
+        {
+            var trace = new SimulationTrace();
+            var swTotal = Stopwatch.StartNew();
+            AssistantReply reply;
+            try
+            {
+                reply = await AskCoreAsync(request, trace, request.ForceAnonymous ? false : (bool?)null, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Chatbot simulate failed");
+                trace.Error ??= ex.Message;
+                reply = new AssistantReply { Reply = $"Simulyasiya xətası: {ex.Message}" };
+            }
+            trace.TotalDurationMs = swTotal.ElapsedMilliseconds;
+            return new ChatbotSimulationResult { Reply = reply, Trace = trace };
+        }
+
+        private async Task<AssistantReply> AskCoreAsync(
+            ChatbotAskRequest request, SimulationTrace? trace, bool? isAuthOverride, CancellationToken ct)
         {
             // Həm `AzureOpenAI__X` (hierarxiya), həm flat `AZURE_OPENAI_X` adlarını dəstəklə.
             // DİQQƏT: appsettings.json boş placeholder ("") saxlayır → `??` boş string-də
@@ -63,6 +91,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(deployment))
             {
                 _logger.LogWarning("AzureOpenAI not configured; chatbot disabled.");
+                if (trace is not null) trace.Error = "not_configured";
                 return new AssistantReply { Reply = "AI köməkçi hazırda əlçatan deyil." };
             }
 
@@ -71,11 +100,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (Uri.TryCreate(endpoint, UriKind.Absolute, out var epUri))
                 endpoint = $"{epUri.Scheme}://{epUri.Authority}";
 
-            bool isAuth = _customerTools.IsAuthenticated;
+            bool isAuth = isAuthOverride ?? _customerTools.IsAuthenticated;
 
+            var systemPrompt = BuildSystemPrompt(isAuth);
             var messages = new JsonArray
             {
-                new JsonObject { ["role"] = "system", ["content"] = BuildSystemPrompt(isAuth) }
+                new JsonObject { ["role"] = "system", ["content"] = systemPrompt }
             };
             foreach (var m in request.Messages ?? new List<ChatMessageDto>())
             {
@@ -95,6 +125,22 @@ namespace Loyalty.Business.Services.Implementations.Main
             // Tam çıxarmaq üçün env dəyərini "omit" et.
             var reasoningEffort = PickConfig(_config, "AzureOpenAI:ReasoningEffort", "AZURE_OPENAI_REASONING_EFFORT") ?? "none";
 
+            if (trace is not null)
+            {
+                trace.IsAuth = isAuth;
+                trace.SystemPrompt = systemPrompt;
+                trace.ToolSchemasJson = tools.ToJsonString();
+                trace.Config = new SimulationConfig
+                {
+                    Endpoint = endpoint!,
+                    Deployment = deployment!,
+                    ApiVersion = apiVersion,
+                    ReasoningEffort = reasoningEffort,
+                    ApiKeyMasked = MaskKey(apiKey!)
+                };
+            }
+            int traceMsgCount = 0;
+
             for (int iter = 0; iter < MaxToolIterations; iter++)
             {
                 // gpt-5 / reasoning modelləri: `max_tokens` yerinə `max_completion_tokens`,
@@ -109,6 +155,20 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (!string.Equals(reasoningEffort, "omit", StringComparison.OrdinalIgnoreCase))
                     body["reasoning_effort"] = reasoningEffort;
 
+                // Trace: bu iterasiyada modelə gedən YENİ mesajlar (delta) + vaxt ölçümü
+                SimulationIteration? traceIter = null;
+                Stopwatch? swIter = null;
+                if (trace is not null)
+                {
+                    var delta = new JsonArray();
+                    for (int i = traceMsgCount; i < messages.Count; i++)
+                        delta.Add(messages[i]!.DeepClone());
+                    traceMsgCount = messages.Count;
+                    traceIter = new SimulationIteration { Index = iter, RequestMessagesDeltaJson = delta.ToJsonString() };
+                    trace.Iterations.Add(traceIter);
+                    swIter = Stopwatch.StartNew();
+                }
+
                 using var req = new HttpRequestMessage(HttpMethod.Post, url)
                 {
                     Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json")
@@ -118,21 +178,53 @@ namespace Loyalty.Business.Services.Implementations.Main
                 using var resp = await client.SendAsync(req, ct);
                 var json = await resp.Content.ReadAsStringAsync(ct);
 
+                if (traceIter is not null)
+                {
+                    traceIter.HttpStatus = (int)resp.StatusCode;
+                    traceIter.DurationMs = swIter!.ElapsedMilliseconds;
+                }
+
                 if (!resp.IsSuccessStatusCode)
                 {
                     _logger.LogError("AzureOpenAI error {Status}: {Body}", (int)resp.StatusCode, json);
+                    if (traceIter is not null) traceIter.ErrorBody = json;
+                    if (trace is not null) trace.Error = "http_error";
                     return new AssistantReply { Reply = "AI köməkçidə müvəqqəti xəta oldu, bir azdan yenidən yoxlayın." };
                 }
 
                 JsonNode? root = JsonNode.Parse(json);
                 var message = root?["choices"]?[0]?["message"]?.AsObject();
                 if (message is null)
+                {
+                    if (trace is not null) trace.Error = "no_message";
                     return new AssistantReply { Reply = "Cavab alına bilmədi." };
+                }
+
+                if (traceIter is not null)
+                {
+                    traceIter.RawModelMessageJson = message.ToJsonString();
+                    var usage = root?["usage"];
+                    if (usage is not null)
+                    {
+                        traceIter.Usage = new SimulationUsage
+                        {
+                            PromptTokens = usage["prompt_tokens"]?.GetValue<int>() ?? 0,
+                            CompletionTokens = usage["completion_tokens"]?.GetValue<int>() ?? 0,
+                            TotalTokens = usage["total_tokens"]?.GetValue<int>() ?? 0
+                        };
+                    }
+                }
 
                 var toolCalls = message["tool_calls"]?.AsArray();
                 if (toolCalls is null || toolCalls.Count == 0)
                 {
                     var content = message["content"]?.GetValue<string>() ?? string.Empty;
+                    if (traceIter is not null) traceIter.Content = content;
+                    if (trace is not null)
+                    {
+                        trace.FinalReply = content;
+                        trace.Places = collectedPlaces;
+                    }
                     return new AssistantReply { Reply = content, Places = collectedPlaces };
                 }
 
@@ -147,7 +239,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var name = fn?["name"]?.GetValue<string>() ?? "";
                     var argsRaw = fn?["arguments"]?.GetValue<string>() ?? "{}";
 
+                    var swTool = traceIter is null ? null : Stopwatch.StartNew();
                     string resultJson = await DispatchToolAsync(name, argsRaw, request, isAuth, collectedPlaces, ct);
+                    traceIter?.ToolCalls.Add(new SimulationToolCall
+                    {
+                        Name = name,
+                        ArgumentsJson = argsRaw,
+                        ResultJson = resultJson,
+                        DurationMs = swTool?.ElapsedMilliseconds ?? 0
+                    });
 
                     messages.Add(new JsonObject
                     {
@@ -159,12 +259,21 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             // Tool loop limitə çatdı — sonuncu keçidi mətn üçün istifadə et.
+            if (trace is not null)
+            {
+                trace.Error = "max_iterations";
+                trace.Places = collectedPlaces;
+            }
             return new AssistantReply
             {
                 Reply = "Sorğunu tam emal edə bilmədim, zəhmət olmasa daha dəqiq yazın.",
                 Places = collectedPlaces
             };
         }
+
+        /// <summary>API key-i maskala: ilk 4 + … + son 4 (qısadırsa ****).</summary>
+        private static string MaskKey(string key)
+            => key.Length < 12 ? "****" : $"{key[..4]}…{key[^4..]}";
 
         private async Task<string> DispatchToolAsync(
             string name, string argsRaw, ChatbotAskRequest request, bool isAuth,
@@ -256,12 +365,32 @@ namespace Loyalty.Business.Services.Implementations.Main
                         var area = GetString(args["area"]);
                         var refs = await _referencePlace.SearchAsync(kws, area, 8, ct);
                         // DİQQƏT: collectedPlaces-ə ƏLAVƏ OLUNMUR — bunlar app-da yoxdur (kart yox).
+                        // MenuJson özü göndərilmir (token bloat) — yalnız hasMenu flag;
+                        // model lazım olsa get_reference_place_menu çağırır.
                         return Serialize(refs.Select(r => new
                         {
                             r.Name, r.Category, r.Area, r.City, r.Address,
                             r.Description, r.Phone, r.MenuUrl,
+                            hasMenu = !string.IsNullOrWhiteSpace(r.MenuJson),
                             notInApp = true
                         }));
+                    }
+
+                    case "get_reference_place_menu":
+                    {
+                        var placeName = GetString(args["placeName"]) ?? string.Empty;
+                        var rp = await _referencePlace.FindByNameAsync(placeName, ct);
+                        if (rp is null) return "{\"error\":\"place_not_found\"}";
+                        if (string.IsNullOrWhiteSpace(rp.MenuJson))
+                            return Serialize(new { rp.Name, error = "menu_not_available", rp.MenuUrl, notInApp = true });
+
+                        // Həddindən böyük menyu — token qoruması (real menyular bundan qat-qat kiçikdir)
+                        const int maxMenuChars = 15000;
+                        if (rp.MenuJson!.Length > maxMenuChars)
+                            return Serialize(new { rp.Name, notInApp = true, truncated = true, menuRaw = rp.MenuJson[..maxMenuChars] });
+
+                        var menuNode = JsonNode.Parse(rp.MenuJson); // DB-də pre-validated; xarici try/catch korrupsiyaya qarşı
+                        return Serialize(new { rp.Name, notInApp = true, menu = menuNode });
                     }
 
                     case "get_my_cards":
@@ -344,6 +473,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             sb.AppendLine("Use it when search_places is empty or when it would help. BUT when presenting those results you");
             sb.AppendLine("MUST note that the place is not available in the Walvero app (info only) — so the user does not try");
             sb.AppendLine("to find it in the app.");
+            sb.AppendLine("Some reference places store a menu: results with `hasMenu=true`. When the user asks about the");
+            sb.AppendLine("menu/dishes/prices of such an EXTERNAL place, call `get_reference_place_menu(placeName)` and answer");
+            sb.AppendLine("from its data — still stating the place is not in the Walvero app. If `hasMenu` is false or the tool");
+            sb.AppendLine("returns `menu_not_available`, say you don't have its menu and share `menuUrl` if present.");
             sb.AppendLine("If the user says 'near me' / 'nearby' without a distance, use radiusKm=5 by DEFAULT and");
             sb.AppendLine("search immediately — do NOT ask the user to choose a radius. If nothing is within 5 km,");
             sb.AppendLine("retry once with radiusKm=15 and say the distance.");
@@ -369,7 +502,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             sb.AppendLine("If the tool returns no match for the dish, say you couldn't find it — do not guess a price.");
             sb.AppendLine("CURRENCY: use the `currencySign` value from the tool VERBATIM (it is '₼', Azerbaijani manat).");
             sb.AppendLine("NEVER convert or substitute it with €, $, ₺, ₽ or any other currency symbol.");
-            sb.AppendLine("search_reference_places results are external info only — NEVER state prices for them.");
+            sb.AppendLine("search_reference_places results are external info — NEVER state prices for reference places from");
+            sb.AppendLine("memory or from the search result alone. Prices for an external place may ONLY come from a");
+            sb.AppendLine("`get_reference_place_menu` call made in THIS turn, and present them as indicative (external data");
+            sb.AppendLine("may be outdated).");
             sb.AppendLine("KEYWORDS: when calling search tools pass BOTH the full dish phrase and its main words as");
             sb.AppendLine("separate keywords, in the user's original spelling (e.g. ['alma pastası','alma','pasta']).");
             sb.AppendLine("When the user asks about a dish AT a specific place ('X-də Y neçəyədir?'), call");
@@ -472,6 +608,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                             ["area"] = new JsonObject { ["type"] = "string", ["description"] = "Area/neighborhood (optional), e.g. Nizami." }
                         },
                         ["required"] = new JsonArray { "keywords" }
+                    }),
+                Fn("get_reference_place_menu",
+                    "Menu of ONE external reference place (a place NOT in the Walvero app). Only call when search_reference_places returned that place with hasMenu=true and the user asks about its menu, dishes or prices.",
+                    new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["placeName"] = new JsonObject { ["type"] = "string", ["description"] = "External place name exactly as returned by search_reference_places." }
+                        },
+                        ["required"] = new JsonArray { "placeName" }
                     })
             };
 

@@ -61,6 +61,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("Keywords")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("MenuJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("MenuUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");

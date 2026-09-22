@@ -11,5 +11,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public interface IPlaceAssistantService
     {
         Task<AssistantReply> AskAsync(ChatbotAskRequest request, CancellationToken ct = default);
+
+        /// <summary>Super admin: sualı real pipeline-dan keçirib hər mərhələnin trace-ini qaytarır.</summary>
+        Task<ChatbotSimulationResult> SimulateAsync(ChatbotSimulateRequest request, CancellationToken ct = default);
     }
 }
