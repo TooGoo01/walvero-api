@@ -34,6 +34,29 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(result);
         }
 
+        /// <summary>Tenant admin: öz proqramının kart dizaynı (şəkil+rəng).</summary>
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> GetMy([FromQuery] int loyaltyProgramId)
+        {
+            var tenantId = _tenantProvider.CurrentTenantId;
+            if (!tenantId.HasValue) return Ok(new ServiceResult(false, "Tenant tapılmadı."));
+            var result = await _cardTemplateService.GetMyDesignAsync(tenantId.Value, loyaltyProgramId);
+            return Ok(result);
+        }
+
+        /// <summary>Tenant admin: yalnız kart dizaynını (şəkil+rəng) yenilə.</summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> UpdateMy([FromForm] UpdateMyCardDesignDto dto, CancellationToken ct)
+        {
+            var tenantId = _tenantProvider.CurrentTenantId;
+            if (!tenantId.HasValue) return Ok(new ServiceResult(false, "Tenant tapılmadı."));
+            var result = await _cardTemplateService.UpdateMyDesignAsync(tenantId.Value, dto, ct);
+            if (result.Success) return Ok(result);
+            return BadRequest(result);
+        }
+
         [HttpPost]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]

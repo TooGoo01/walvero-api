@@ -155,6 +155,81 @@ namespace Loyalty.Business.Services.Implementations.Main
             var result = MapToGetDto(entity);
             return new ServiceResult(true, result);
         }
+        public async Task<ServiceResult> GetMyDesignAsync(int tenantId, int loyaltyProgramId, CancellationToken ct = default)
+        {
+            var program = await _loyaltyProgramRepository.GetByIdNameAsync(loyaltyProgramId, ct);
+            if (program is null || program.TenantId != tenantId)
+                return new ServiceResult(false, "Proqram tapılmadı.");
+
+            var entity = await _repo.GetByLoyaltyProgramIdAsync(loyaltyProgramId, ct);
+            if (entity is null)
+                return new ServiceResult(true, new GetCardTemplateDto { LoyaltyProgramId = loyaltyProgramId });
+
+            return new ServiceResult(true, MapToGetDto(entity));
+        }
+
+        public async Task<ServiceResult> UpdateMyDesignAsync(int tenantId, UpdateMyCardDesignDto dto, CancellationToken ct = default)
+        {
+            if (dto == null || dto.LoyaltyProgramId <= 0)
+                return new ServiceResult(false, "Proqram tələb olunur.");
+
+            // Tenant sahibliyi — başqa tenant proqramını redaktə edə bilməz
+            var program = await _loyaltyProgramRepository.GetByIdNameAsync(dto.LoyaltyProgramId, ct);
+            if (program is null || program.TenantId != tenantId)
+                return new ServiceResult(false, "Proqram tapılmadı.");
+
+            var entity = await _repo.GetByLoyaltyProgramIdAsync(dto.LoyaltyProgramId, ct)
+                        ?? new CardTemplate { LoyaltyProgramId = dto.LoyaltyProgramId };
+
+            var container = $"tenant-{tenantId}-program-{dto.LoyaltyProgramId}-template";
+
+            // YALNIZ şəkillər (mövcud upload helper-ləri reuse)
+            entity.LogoUrl = await UpOrNullLink(container, "logo", dto.LogoFile, dto.LogoUrl, entity.LogoUrl, ct);
+            entity.GoogleLogoUrl = await UpOrNullLink(container, "google-logo", dto.GoogleLogoFile, dto.GoogleLogoUrl, entity.GoogleLogoUrl, ct);
+            entity.BackgroundImageUrl = await UpOrNullLink(container, "bg", dto.BackgroundImageFile, dto.BackgroundImageUrl, entity.BackgroundImageUrl, ct);
+            entity.StripImageUrl = await UpOrLink(container, "strip", dto.StripImageFile, dto.StripImageUrl, entity.StripImageUrl, ct);
+            entity.HeroImageUrl = await UpOrLink(container, "hero", dto.HeroImageFile, dto.HeroImageUrl, entity.HeroImageUrl, ct);
+            entity.AppLogoUrl = await UpAsWebpOrNullLink(container, "app-logo", dto.AppLogoFile, dto.AppLogoUrl, entity.AppLogoUrl, ct);
+            entity.AppStripUrl = await UpAsWebpOrNullLink(container, "app-strip", dto.AppStripFile, dto.AppStripUrl, entity.AppStripUrl, ct);
+            entity.BronzeIconUrl = await UpOrNullLink(container, "bronze", dto.BronzeIconFile, dto.BronzeIconUrl, entity.BronzeIconUrl, ct);
+            entity.SilverIconUrl = await UpOrNullLink(container, "silver", dto.SilverIconFile, dto.SilverIconUrl, entity.SilverIconUrl, ct);
+            entity.GoldIconUrl = await UpOrNullLink(container, "gold", dto.GoldIconFile, dto.GoldIconUrl, entity.GoldIconUrl, ct);
+            entity.PlatinumIconUrl = await UpOrNullLink(container, "platinum", dto.PlatinumIconFile, dto.PlatinumIconUrl, entity.PlatinumIconUrl, ct);
+
+            // Rənglər — yalnız gələn dəyər boş deyilsə (mövcudu qoru)
+            if (!string.IsNullOrWhiteSpace(dto.BackgroundColor)) entity.BackgroundColor = dto.BackgroundColor.Trim();
+            if (!string.IsNullOrWhiteSpace(dto.ForegroundColor)) entity.ForegroundColor = dto.ForegroundColor.Trim();
+            if (!string.IsNullOrWhiteSpace(dto.LabelColor)) entity.LabelColor = dto.LabelColor.Trim();
+            if (!string.IsNullOrWhiteSpace(dto.ProgressBarColor)) entity.ProgressBarColor = dto.ProgressBarColor.Trim();
+            if (!string.IsNullOrWhiteSpace(dto.BronzeColor)) entity.BronzeColor = dto.BronzeColor.Trim();
+            if (!string.IsNullOrWhiteSpace(dto.SilverColor)) entity.SilverColor = dto.SilverColor.Trim();
+            if (!string.IsNullOrWhiteSpace(dto.GoldColor)) entity.GoldColor = dto.GoldColor.Trim();
+            if (!string.IsNullOrWhiteSpace(dto.PlatinumColor)) entity.PlatinumColor = dto.PlatinumColor.Trim();
+
+            // DİQQƏT: steps/threshold/percent/reward/TemplateName TOXUNULMUR.
+
+            if (entity.Id == 0)
+            {
+                // Yeni template — minimal məcburi sahələr default qalır (loyalty konfiqi super admin-dədir)
+                await _unitOfWork.Repository<CardTemplate>().AddAsync(entity);
+            }
+            else
+            {
+                _unitOfWork.Repository<CardTemplate>().Update(entity);
+            }
+            _unitOfWork.Commit();
+
+            var tracked = await _loyaltyProgramRepository.GetByIdTrackedAsync(dto.LoyaltyProgramId, ct);
+            if (tracked != null && tracked.CardTemplateId != entity.Id)
+            {
+                tracked.CardTemplateId = entity.Id;
+                _unitOfWork.Repository<LoyaltyProgram>().Update(tracked);
+                _unitOfWork.Commit();
+            }
+
+            return new ServiceResult(true, MapToGetDto(entity));
+        }
+
         private async Task<string?> UpOrLink(
        string container, string prefix, IFormFile? file, string? url, string? oldValue, CancellationToken ct)
         {

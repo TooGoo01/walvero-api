@@ -17,5 +17,10 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> GetLast();
         Task<ServiceResult> Update(AddCardTemplateDto dto, int id);
         Task<ServiceResult> Delete(int id);
+
+        /// <summary>Tenant admin: öz proqramının kart dizaynını (şəkil+rəng) oxu.</summary>
+        Task<ServiceResult> GetMyDesignAsync(int tenantId, int loyaltyProgramId, CancellationToken ct = default);
+        /// <summary>Tenant admin: yalnız kart dizaynını (şəkil+rəng) yenilə — loyalty konfiqi toxunulmur.</summary>
+        Task<ServiceResult> UpdateMyDesignAsync(int tenantId, UpdateMyCardDesignDto dto, CancellationToken ct = default);
     }
 }
