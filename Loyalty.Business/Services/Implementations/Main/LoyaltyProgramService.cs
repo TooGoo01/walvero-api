@@ -315,6 +315,16 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             return new ServiceResult(false);
         }
+
+        public async Task<ServiceResult> GetActiveByTenantAsync(int tenantId)
+        {
+            var active = await _repo.GetActive();
+            var scoped = (active ?? new List<LoyaltyProgram>())
+                .Where(p => p.TenantId == tenantId)
+                .ToList();
+            var response = _mapper.Map<ICollection<GetLoyaltyProgramDto>>(scoped);
+            return new ServiceResult(true, response);
+        }
         public Task<ServiceResult> GetLast()
         {
             throw new NotImplementedException();

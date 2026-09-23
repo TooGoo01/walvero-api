@@ -36,6 +36,19 @@ namespace Loyalty.WebAPI.Controllers
             var result = await _loyaltyProgramService.GetAll();
             return Ok(result);
         }
+
+        /// <summary>Cari tenant-ın aktiv proqramları (tenant admin — məs. ambassador dialoqu üçün).</summary>
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        [ProducesResponseType(typeof(ServiceResult<List<GetLoyaltyProgramDto>>), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> MyList()
+        {
+            var tenantId = _tenantProvider.CurrentTenantId;
+            if (!tenantId.HasValue)
+                return Ok(new ServiceResult(false, "Tenant not found."));
+            var result = await _loyaltyProgramService.GetActiveByTenantAsync(tenantId.Value);
+            return Ok(result);
+        }
         [HttpPost]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]

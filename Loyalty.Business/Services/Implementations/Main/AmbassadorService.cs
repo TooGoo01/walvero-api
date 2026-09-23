@@ -186,6 +186,62 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, new { customerId = customer.Id, cardId = card.Id });
         }
 
+        public async Task<ServiceResult> PromoteExistingAsync(int tenantId, string userId, PromoteAmbassadorDto dto, CancellationToken ct = default)
+        {
+            if (tenantId <= 0)
+                return new ServiceResult(false, "Tenant not resolved.");
+            if (dto == null || dto.CustomerId <= 0)
+                return new ServiceResult(false, "Customer is required.");
+
+            var customer = await _db.Set<Customer>()
+                .FirstOrDefaultAsync(c => c.Id == dto.CustomerId && c.TenantId == tenantId, ct);
+            if (customer is null)
+                return new ServiceResult(false, "Müştəri tapılmadı.");
+
+            // Proqram resolve: verilən → müştərinin aktiv kart proqramı → tenant-in ilk aktiv proqramı
+            int programId = 0;
+            if (dto.LoyaltyProgramId.HasValue && dto.LoyaltyProgramId.Value > 0)
+            {
+                var p = await _programRepo.GetByIdNameAsync(dto.LoyaltyProgramId.Value, ct);
+                if (p is null || p.TenantId != tenantId)
+                    return new ServiceResult(false, "Program not found for this tenant.");
+                programId = p.Id;
+            }
+            else
+            {
+                var cardProgramId = await _db.Set<LoyaltyCard>()
+                    .Where(c => c.CustomerId == customer.Id && c.TenantId == tenantId && c.IsActive)
+                    .OrderByDescending(c => c.Id)
+                    .Select(c => (int?)c.LoyaltyProgramId)
+                    .FirstOrDefaultAsync(ct);
+
+                if (cardProgramId.HasValue)
+                    programId = cardProgramId.Value;
+                else
+                {
+                    var active = await _programRepo.GetActive(ct);
+                    var first = (active ?? new List<LoyaltyProgram>()).FirstOrDefault(p => p.TenantId == tenantId);
+                    if (first is null)
+                        return new ServiceResult(false, "Tenant-də aktiv proqram yoxdur.");
+                    programId = first.Id;
+                }
+            }
+
+            // Mövcud Create axını promote + kart + xal + POS + SMS məntiqini onsuz da edir (telefonla tapır)
+            var createDto = new CreateAmbassadorDto
+            {
+                LoyaltyProgramId = programId,
+                FirstName = customer.FirstName ?? "",
+                LastName = customer.LastName,
+                PhoneNumber = customer.PhoneNumber,
+                Email = customer.Email,
+                CardNumber = customer.CardNumber,
+                InitialPoints = dto.InitialPoints
+            };
+
+            return await CreateAmbassadorAsync(tenantId, userId, createDto, ct);
+        }
+
         public async Task<ServiceResult> AddPointsAsync(int tenantId, CreditPointsDto dto, CancellationToken ct = default)
         {
             if (dto == null || dto.LoyaltyCardId <= 0)

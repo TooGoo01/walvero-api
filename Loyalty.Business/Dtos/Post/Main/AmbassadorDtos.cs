@@ -34,6 +34,19 @@ namespace Loyalty.Business.Dtos.Post.Main
     }
 
     /// <summary>
+    /// Mövcud müştərini ambassador et (+ opsional ilkin balans). Proqram göndərilməsə
+    /// backend resolve edir (müştərinin kart proqramı → tenant-in ilk aktiv proqramı).
+    /// </summary>
+    public sealed class PromoteAmbassadorDto
+    {
+        [Required]
+        public int CustomerId { get; set; }
+        public int? LoyaltyProgramId { get; set; }
+        /// <summary>Ambassador edilən anda karta yazılacaq ilkin balans/xal (opsional).</summary>
+        public decimal? InitialPoints { get; set; }
+    }
+
+    /// <summary>
     /// Mövcud karta manual xal (balans) əlavə etmək — ambassador-a. Wallet push + POS forward tetiklenir.
     /// </summary>
     public sealed class CreditPointsDto

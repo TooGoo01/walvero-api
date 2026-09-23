@@ -15,6 +15,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> Get(int id);
         Task<ServiceResult> GetAll();
         Task<ServiceResult> GetActive();
+        /// <summary>Yalnız verilən tenant-ın aktiv proqramları (tenant admin üçün).</summary>
+        Task<ServiceResult> GetActiveByTenantAsync(int tenantId);
         Task<ServiceResult> GetLast();
         Task<ServiceResult> Update(AddLoyaltyProgramDto dto, int id);
         Task<ServiceResult> Delete(int id);
