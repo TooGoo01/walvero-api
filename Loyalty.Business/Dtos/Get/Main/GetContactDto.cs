@@ -8,5 +8,6 @@
 
         public string Subject { get; set; }
         public string Message { get; set; }
+        public System.DateTime RegDate { get; set; }
     }
 }
