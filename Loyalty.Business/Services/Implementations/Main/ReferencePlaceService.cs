@@ -151,6 +151,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             e.Phone = d.Phone?.Trim();
             e.MenuUrl = d.MenuUrl?.Trim();
             e.MenuJson = string.IsNullOrWhiteSpace(d.MenuJson) ? null : d.MenuJson.Trim();
+            e.Verified = d.Verified;
+            e.LogoUrl = d.LogoUrl?.Trim();
         }
 
         /// <summary>MenuJson doludursa valid JSON olmalıdır; xəta mesajı və ya null qaytarır.</summary>
@@ -181,7 +183,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             Phone = p.Phone,
             MenuUrl = p.MenuUrl,
             MenuJson = p.MenuJson,
+            LogoUrl = p.LogoUrl,
             IsActive = p.IsActive,
+            Verified = p.Verified,
         };
 
         private static string Normalize(string s)

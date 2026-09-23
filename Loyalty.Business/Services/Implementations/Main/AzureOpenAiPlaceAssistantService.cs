@@ -364,14 +364,34 @@ namespace Loyalty.Business.Services.Implementations.Main
                             ?? Array.Empty<string>();
                         var area = GetString(args["area"]);
                         var refs = await _referencePlace.SearchAsync(kws, area, 8, ct);
-                        // DİQQƏT: collectedPlaces-ə ƏLAVƏ OLUNMUR — bunlar app-da yoxdur (kart yox).
-                        // MenuJson özü göndərilmir (token bloat) — yalnız hasMenu flag;
-                        // model lazım olsa get_reference_place_menu çağırır.
+
+                        // Reference place-lər də app-a kart kimi gedir (logo + verified check + "Walvero-da deyil").
+                        // BranchId = -Id (mənfi pseudo-id) — real branch dedupe-u ilə toqquşmasın.
+                        foreach (var r in refs)
+                            if (!collectedPlaces.Any(x => x.NotInApp && x.Name == r.Name))
+                                collectedPlaces.Add(new PlaceResultDto
+                                {
+                                    TenantId = 0,
+                                    BranchId = -r.Id,
+                                    Name = r.Name,
+                                    CategoryName = r.Category,
+                                    Address = r.Address,
+                                    Phone = r.Phone,
+                                    LogoUrl = r.LogoUrl,
+                                    Verified = r.Verified,
+                                    NotInApp = true,
+                                    Menu = new PlaceMenuDto { InApp = false, ExternalMenuUrl = r.MenuUrl }
+                                });
+
+                        // Model tool JSON-una logoUrl ƏLAVƏ OLUNMUR (token noise) — logo yalnız
+                        // Places kanalı ilə app-a gedir. MenuJson özü də göndərilmir — yalnız
+                        // hasMenu flag; model lazım olsa get_reference_place_menu çağırır.
                         return Serialize(refs.Select(r => new
                         {
                             r.Name, r.Category, r.Area, r.City, r.Address,
                             r.Description, r.Phone, r.MenuUrl,
                             hasMenu = !string.IsNullOrWhiteSpace(r.MenuJson),
+                            verified = r.Verified, // Walvero tərəfindən yoxlanılıb — məlumat etibarlıdır
                             notInApp = true
                         }));
                     }

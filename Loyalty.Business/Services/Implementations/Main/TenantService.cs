@@ -511,6 +511,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 category.HideInApp = dto.HideInApp;
                 category.IsHasMenu = dto.IsHasMenu;
                 category.EnableAmbassadors = dto.EnableAmbassadors;
+                category.MonthlyNotificationLimit = dto.MonthlyNotificationLimit;
                 category.Latitude = dto.Latitude;
                 category.Longitude = dto.Longitude;
                 if (dto.Keywords != null) category.Keywords = dto.Keywords;

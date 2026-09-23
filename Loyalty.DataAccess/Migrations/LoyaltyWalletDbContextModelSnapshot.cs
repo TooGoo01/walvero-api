@@ -61,6 +61,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("Keywords")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("LogoUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("MenuJson")
                         .HasColumnType("nvarchar(max)");
 
@@ -82,6 +85,9 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<int>("RegUserId")
                         .HasColumnType("int");
+
+                    b.Property<bool>("Verified")
+                        .HasColumnType("bit");
 
                     b.HasKey("Id");
 
@@ -3102,6 +3108,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("MenuUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("MonthlyNotificationLimit")
+                        .HasColumnType("int");
+
                     b.Property<bool>("NearbyBroadcast")
                         .HasColumnType("bit");
 
@@ -3578,6 +3587,54 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasIndex("timeZoneId");
 
                     b.ToTable("TenantLocations", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantNotificationLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("BranchId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("RecipientCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TenantNotificationLogs");
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TimeZone", b =>

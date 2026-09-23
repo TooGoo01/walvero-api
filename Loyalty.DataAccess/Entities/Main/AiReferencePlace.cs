@@ -26,5 +26,11 @@ namespace Loyalty.DataAccess.Entities.Main
         /// MenuUrl user-ə göstərilən linkdir, bu isə AI bilik bazasıdır.
         /// </summary>
         public string? MenuJson { get; set; }
+
+        /// <summary>Walvero tərəfindən sınanıb təsdiqlənib (məlumatların doğruluğu yoxlanılıb).</summary>
+        public bool Verified { get; set; } = false;
+
+        /// <summary>Məkanın loqosu (AppSetting/UploadImage ilə yüklənən URL) — AI cavab kartında göstərilir.</summary>
+        public string? LogoUrl { get; set; }
     }
 }

@@ -86,6 +86,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<LinkClickEvent> LinkClickEvents { get; set; }
         public DbSet<AiReferencePlace> AiReferencePlaces { get; set; }
         public DbSet<MenuPopup> MenuPopups { get; set; }
+        public DbSet<TenantNotificationLog> TenantNotificationLogs { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

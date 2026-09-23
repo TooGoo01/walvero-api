@@ -76,6 +76,10 @@ namespace Loyalty.DataAccess.Entities.Main
         // ambassador müştəri yarada + xal verə bilir. Default bağlı.
         public bool EnableAmbassadors { get; set; } = false;
 
+        // Tenant admin-in ayda göndərə biləcəyi bildiriş sayı (göndəriş aksiyası).
+        // null = limitsiz; 0 = göndərə bilməz. Super admin təyin edir.
+        public int? MonthlyNotificationLimit { get; set; }
+
         // AI köməkçi (place-discovery) axtarış üçün admin təyin etdiyi açar sözlər: cuisine ("burger"),
         // xüsusiyyət ("qəlyan","24 saat"), ərazi adları. Vergüllə ayrılmış; contains-match. Filiallara da inherit.
         public string? Keywords { get; set; }

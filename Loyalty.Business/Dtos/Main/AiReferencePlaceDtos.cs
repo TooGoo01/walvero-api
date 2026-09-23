@@ -15,7 +15,9 @@ namespace Loyalty.Business.Dtos.Main
         public string? Phone { get; set; }
         public string? MenuUrl { get; set; }
         public string? MenuJson { get; set; }
+        public string? LogoUrl { get; set; }
         public bool IsActive { get; set; }
+        public bool Verified { get; set; }
     }
 
     public class CreateAiReferencePlaceDto
@@ -34,6 +36,10 @@ namespace Loyalty.Business.Dtos.Main
         /// <summary>Strukturlu menyu JSON — AI menyu suallarına cavab üçün (opsional).</summary>
         public string? MenuJson { get; set; }
         public bool IsActive { get; set; } = true;
+        /// <summary>Walvero tərəfindən sınanıb təsdiqlənib.</summary>
+        public bool Verified { get; set; } = false;
+        /// <summary>Loqo URL-i (AppSetting/UploadImage ilə yüklənir).</summary>
+        [MaxLength(500)] public string? LogoUrl { get; set; }
     }
 
     public class UpdateAiReferencePlaceDto : CreateAiReferencePlaceDto

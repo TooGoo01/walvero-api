@@ -51,6 +51,11 @@ namespace Loyalty.Business.Dtos.Chatbot
         public string? Phone { get; set; }
         public string? LogoUrl { get; set; }
         public string? LocationUrl { get; set; }
+        /// <summary>Walvero-dakı məkanlar avto-verified; reference place-lərdə admin flag-ı.
+        /// App-da logo küncündə mavi check kimi göstərilir.</summary>
+        public bool Verified { get; set; } = true;
+        /// <summary>true → xarici reference place (app-da kartı/menyusu yoxdur, yalnız məlumat).</summary>
+        public bool NotInApp { get; set; } = false;
         public PlaceMenuDto Menu { get; set; } = new();
     }
 
