@@ -8,11 +8,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Loyalty.WebAPI.Controllers
 {
+    // DİQQƏT: class-level authorize YALNIZ authenticated tələb edir (policy YOX).
+    // Policy method-də verilir — çünki class+method authorize AND-lənir (stack), override YOX.
+    // Əvvəl class-da SuperAdminOnly idi → tenant-admin endpoint-ləri (MyQuota/SendToMyTenant) 403 alırdı.
     [Route("api/[controller]/[action]")]
     [ApiController]
-    [Authorize(
-        AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
-        Policy = "SuperAdminOnly")]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     public class NotificationController : ControllerBase
     {
         private readonly INotificationService _notificationService;
@@ -36,6 +37,7 @@ namespace Loyalty.WebAPI.Controllers
         public sealed record SendToUserRequest(int UserId, string Title, string Body, bool ToApp = true, bool ToWallet = false);
 
         [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         public async Task<IActionResult> SendToUser([FromBody] SendToUserRequest request, CancellationToken ct)
         {
             if (!request.ToApp && !request.ToWallet)
@@ -77,6 +79,7 @@ namespace Loyalty.WebAPI.Controllers
         public sealed record SendToCustomerRequest(int CustomerId, string Title, string Body, bool ToApp = true, bool ToWallet = false);
 
         [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         public async Task<IActionResult> SendToCustomer([FromBody] SendToCustomerRequest request, CancellationToken ct)
         {
             if (!request.ToApp && !request.ToWallet)
@@ -143,6 +146,7 @@ namespace Loyalty.WebAPI.Controllers
         public sealed record SendToAllRequest(string Title, string Body, bool ToApp = true, bool ToWallet = false);
 
         [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         public async Task<IActionResult> SendToAll([FromBody] SendToAllRequest request, CancellationToken ct)
         {
             if (!request.ToApp && !request.ToWallet)
@@ -202,6 +206,7 @@ namespace Loyalty.WebAPI.Controllers
         public sealed record SendToTenantRequest(int TenantId, string Title, string Body, bool ToApp = true, bool ToWallet = false);
 
         [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
         public async Task<IActionResult> SendToTenant([FromBody] SendToTenantRequest request, CancellationToken ct)
         {
             if (!request.ToApp && !request.ToWallet)
@@ -385,34 +390,43 @@ namespace Loyalty.WebAPI.Controllers
                     await _db.Notifications.AddRangeAsync(notifications, ct);
                     await _db.SaveChangesAsync(ct);
 
-                    if (scope == "tenant")
+                    // Push (FCM) uğursuzluğu bütün əməliyyatı 500-ə salmasın — in-app bildiriş onsuz da yazılıb.
+                    try
                     {
-                        await _notificationService.SendToTenantUsersAsync(tenantId.Value, request.Title, request.Body);
+                        if (scope == "tenant")
+                        {
+                            await _notificationService.SendToTenantUsersAsync(tenantId.Value, request.Title, request.Body);
+                        }
+                        else
+                        {
+                            foreach (var uid in userIds)
+                                await _notificationService.SendToUserAsync(uid, request.Title, request.Body);
+                        }
                     }
-                    else
-                    {
-                        foreach (var uid in userIds)
-                            await _notificationService.SendToUserAsync(uid, request.Title, request.Body);
-                    }
+                    catch { /* push çatmaya bilər; in-app bildiriş yazılıb */ }
                     appDelivered = userIds.Count;
                 }
             }
 
             if (request.ToWallet)
             {
-                if (scope == "tenant")
+                try
                 {
-                    var walletResult = await _walletMessaging.SendToTenantAsync(tenantId.Value, request.Title, request.Body, ct);
-                    walletDelivered = walletResult.Data is int n ? n : 0;
-                }
-                else
-                {
-                    foreach (var c in targets)
+                    if (scope == "tenant")
                     {
-                        var wr = await _walletMessaging.SendToCustomerAsync(c.Id, request.Title, request.Body, ct);
-                        walletDelivered += wr.Data is int n ? n : 0;
+                        var walletResult = await _walletMessaging.SendToTenantAsync(tenantId.Value, request.Title, request.Body, ct);
+                        walletDelivered = walletResult.Data is int n ? n : 0;
+                    }
+                    else
+                    {
+                        foreach (var c in targets)
+                        {
+                            var wr = await _walletMessaging.SendToCustomerAsync(c.Id, request.Title, request.Body, ct);
+                            walletDelivered += wr.Data is int n ? n : 0;
+                        }
                     }
                 }
+                catch { /* wallet push uğursuz — kritik deyil */ }
             }
 
             // Kvota logu — 1 göndəriş aksiyası = 1 sətir
