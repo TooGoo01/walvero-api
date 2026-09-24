@@ -22,6 +22,16 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int AndroidCards { get; set; }
         /// <summary>Filial üzrə bölgü (xala görə DESC, top 8).</summary>
         public List<BranchStatDto> BranchBreakdown { get; set; } = new();
+
+        // ── Dashboard v2.1 (müqayisə + müştəri bazası) ──
+        /// <summary>Əvvəlki bərabər dövrün seriyası (eyni groupBy) — overlay müqayisə üçün.</summary>
+        public List<PeriodStatDto> PreviousSeries { get; set; } = new();
+        /// <summary>Tenant üzrə bütün aktiv müştərilər (dövrdən asılı deyil).</summary>
+        public int TotalCustomers { get; set; }
+        /// <summary>Mobil app-la qeydiyyatlı müştərilər (applicationUserId dolu).</summary>
+        public int AppCustomers { get; set; }
+        /// <summary>Wallet kartı olan müştərilər (IsIOS/IsAndroid kartı olan distinct customer).</summary>
+        public int WalletCustomers { get; set; }
     }
 
     public class PeriodStatDto

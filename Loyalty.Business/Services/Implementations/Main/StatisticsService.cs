@@ -52,31 +52,37 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return q;
             }
 
-            // 1) Günlük aggregate (SQL GROUP BY) — seriyaların əsası
-            var dailyRaw = await TxQuery(startDt, endDt)
-                .GroupBy(t => t.LocalOccurredAt.Date)
-                .Select(g => new
-                {
-                    Date = g.Key,
-                    Count = g.Count(),
-                    Earned = g.Sum(t =>
-                        t.Type == TransactionType.Earned || t.Type == TransactionType.Bonus
-                            ? Math.Abs(t.Points) : 0),
-                    Spent = g.Sum(t =>
-                        t.Type == TransactionType.Redeemed ? Math.Abs(t.Points) : 0),
-                })
-                .OrderBy(x => x.Date)
-                .ToListAsync();
+            // Günlük tx aggregate (SQL GROUP BY) — cari və əvvəlki pəncərə üçün ortaq
+            async Task<List<(DateOnly Date, int Count, decimal Earned, decimal Spent)>> TxDailyAsync(DateTime s, DateTime e)
+            {
+                var raw = await TxQuery(s, e)
+                    .GroupBy(t => t.LocalOccurredAt.Date)
+                    .Select(g => new
+                    {
+                        Date = g.Key,
+                        Count = g.Count(),
+                        Earned = g.Sum(t =>
+                            t.Type == TransactionType.Earned || t.Type == TransactionType.Bonus
+                                ? Math.Abs(t.Points) : 0),
+                        Spent = g.Sum(t =>
+                            t.Type == TransactionType.Redeemed ? Math.Abs(t.Points) : 0),
+                    })
+                    .OrderBy(x => x.Date)
+                    .ToListAsync();
+                return raw.Select(x => (DateOnly.FromDateTime(x.Date), x.Count, x.Earned, x.Spent)).ToList();
+            }
 
-            // 2) Yeni müştərilər (günlük)
-            var newCustomersRaw = await _dbContext.Set<Customer>()
-                .Where(c => c.TenantId == tenantId && c.RegDate >= startDt && c.RegDate <= endDt)
-                .GroupBy(c => c.RegDate.Date)
-                .Select(g => new { Date = g.Key, Count = g.Count() })
-                .ToListAsync();
-            var newCustomersMap = newCustomersRaw.ToDictionary(x => DateOnly.FromDateTime(x.Date), x => x.Count);
+            async Task<Dictionary<DateOnly, int>> NewCustomersDailyAsync(DateTime s, DateTime e)
+            {
+                var raw = await _dbContext.Set<Customer>()
+                    .Where(c => c.TenantId == tenantId && c.RegDate >= s && c.RegDate <= e)
+                    .GroupBy(c => c.RegDate.Date)
+                    .Select(g => new { Date = g.Key, Count = g.Count() })
+                    .ToListAsync();
+                return raw.ToDictionary(x => DateOnly.FromDateTime(x.Date), x => x.Count);
+            }
 
-            // 3) Bucket roll-up (day → week/month)
+            // Bucket roll-up (day → week/month)
             DateOnly BucketOf(DateOnly d) => groupBy switch
             {
                 "week" => d.AddDays(-((((int)d.DayOfWeek) + 6) % 7)), // ISO: Bazar ertəsi
@@ -84,45 +90,44 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _ => d,
             };
 
-            var buckets = new SortedDictionary<DateOnly, PeriodStatDto>();
-            foreach (var row in dailyRaw)
+            List<PeriodStatDto> BuildSeries(
+                List<(DateOnly Date, int Count, decimal Earned, decimal Spent)> daily,
+                Dictionary<DateOnly, int> newCust)
             {
-                var d = DateOnly.FromDateTime(row.Date);
-                var key = BucketOf(d);
-                if (!buckets.TryGetValue(key, out var b))
-                    buckets[key] = b = new PeriodStatDto { PeriodStart = key };
-                b.TransactionCount += row.Count;
-                b.PointsEarned += row.Earned;
-                b.PointsSpent += row.Spent;
-            }
-            foreach (var (d, cnt) in newCustomersMap)
-            {
-                var key = BucketOf(d);
-                if (!buckets.TryGetValue(key, out var b))
-                    buckets[key] = b = new PeriodStatDto { PeriodStart = key };
-                b.NewCustomers += cnt;
+                var buckets = new SortedDictionary<DateOnly, PeriodStatDto>();
+                foreach (var row in daily)
+                {
+                    var key = BucketOf(row.Date);
+                    if (!buckets.TryGetValue(key, out var b))
+                        buckets[key] = b = new PeriodStatDto { PeriodStart = key };
+                    b.TransactionCount += row.Count;
+                    b.PointsEarned += row.Earned;
+                    b.PointsSpent += row.Spent;
+                }
+                foreach (var (d, cnt) in newCust)
+                {
+                    var key = BucketOf(d);
+                    if (!buckets.TryGetValue(key, out var b))
+                        buckets[key] = b = new PeriodStatDto { PeriodStart = key };
+                    b.NewCustomers += cnt;
+                }
+                return buckets.Values.ToList();
             }
 
-            // 4) Əvvəlki bərabər dövr (delta % üçün) — yalnız totallar
+            // 1) Cari pəncərə
+            var dailyRaw = await TxDailyAsync(startDt, endDt);
+            var newCustomersMap = await NewCustomersDailyAsync(startDt, endDt);
+            var series = BuildSeries(dailyRaw, newCustomersMap);
+
+            // 2) Əvvəlki bərabər dövr — həm seriya (overlay müqayisə), həm totallar (delta %)
             var spanDays = endDate.DayNumber - startDate.DayNumber + 1;
             var prevStart = startDate.AddDays(-spanDays).ToDateTime(TimeOnly.MinValue);
             var prevEnd = startDate.AddDays(-1).ToDateTime(TimeOnly.MaxValue);
 
-            var prevAgg = await TxQuery(prevStart, prevEnd)
-                .GroupBy(_ => 1)
-                .Select(g => new
-                {
-                    Count = g.Count(),
-                    Earned = g.Sum(t =>
-                        t.Type == TransactionType.Earned || t.Type == TransactionType.Bonus
-                            ? Math.Abs(t.Points) : 0),
-                    Spent = g.Sum(t =>
-                        t.Type == TransactionType.Redeemed ? Math.Abs(t.Points) : 0),
-                })
-                .FirstOrDefaultAsync();
-
-            var prevNewCustomers = await _dbContext.Set<Customer>()
-                .CountAsync(c => c.TenantId == tenantId && c.RegDate >= prevStart && c.RegDate <= prevEnd);
+            var prevDaily = await TxDailyAsync(prevStart, prevEnd);
+            var prevNewCustMap = await NewCustomersDailyAsync(prevStart, prevEnd);
+            var previousSeries = BuildSeries(prevDaily, prevNewCustMap);
+            var prevNewCustomers = prevNewCustMap.Values.Sum();
 
             // 5) Kart statistikası (dövrdən asılı deyil — cari vəziyyət)
             var cardQuery = _dbContext.Set<LoyaltyCard>()
@@ -136,6 +141,17 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var uniqueCustomers = await cardQuery
                 .Where(c => c.CustomerId > 0)
+                .Select(c => c.CustomerId)
+                .Distinct()
+                .CountAsync();
+
+            // 5b) Müştəri bazası (dövrdən asılı deyil)
+            var totalCustomers = await _dbContext.Set<Customer>()
+                .CountAsync(c => c.TenantId == tenantId && c.IsActive);
+            var appCustomers = await _dbContext.Set<Customer>()
+                .CountAsync(c => c.TenantId == tenantId && c.IsActive && c.applicationUserId != null);
+            var walletCustomers = await cardQuery
+                .Where(c => (c.IsIOS || c.IsAndroid) && c.CustomerId > 0)
                 .Select(c => c.CustomerId)
                 .Distinct()
                 .CountAsync();
@@ -179,32 +195,34 @@ namespace Loyalty.Business.Services.Implementations.Main
                 })
                 .ToListAsync();
 
-            var series = buckets.Values.ToList();
-
             var dto = new DashboardStatisticsDto
             {
                 TotalTransactions = dailyRaw.Sum(x => x.Count),
                 TotalPointsEarned = dailyRaw.Sum(x => x.Earned),
                 TotalPointsSpent = dailyRaw.Sum(x => x.Spent),
                 UniqueCustomers = uniqueCustomers,
-                NewCustomers = newCustomersRaw.Sum(x => x.Count),
+                NewCustomers = newCustomersMap.Values.Sum(),
                 ActiveCards = activeCards,
                 IosCards = iosCards,
                 AndroidCards = androidCards,
+                TotalCustomers = totalCustomers,
+                AppCustomers = appCustomers,
+                WalletCustomers = walletCustomers,
                 Series = series,
+                PreviousSeries = previousSeries,
                 // Geri uyğunluq: günlük seriya köhnə sahədə də qalır
                 DailyStats = dailyRaw.Select(x => new DailyStatDto
                 {
-                    Date = DateOnly.FromDateTime(x.Date),
+                    Date = x.Date,
                     TransactionCount = x.Count,
                     PointsEarned = x.Earned,
                     PointsSpent = x.Spent,
                 }).ToList(),
                 Previous = new PeriodTotalsDto
                 {
-                    TotalTransactions = prevAgg?.Count ?? 0,
-                    TotalPointsEarned = prevAgg?.Earned ?? 0,
-                    TotalPointsSpent = prevAgg?.Spent ?? 0,
+                    TotalTransactions = prevDaily.Sum(x => x.Count),
+                    TotalPointsEarned = prevDaily.Sum(x => x.Earned),
+                    TotalPointsSpent = prevDaily.Sum(x => x.Spent),
                     NewCustomers = prevNewCustomers,
                 },
                 BranchBreakdown = branchAgg.Select(x => new BranchStatDto
