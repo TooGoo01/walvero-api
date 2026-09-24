@@ -31,8 +31,16 @@ namespace Loyalty.WebAPI.Controllers
             _statisticsService = statisticsService;
         }
 
+        /// <summary>
+        /// Dashboard v2: SQL-side aggregatlar (yalnız Applied tx-lər). groupBy: day|week|month —
+        /// Series bucket ölçüsü. Previous (delta %), yeni müştəri, kart platforma bölgüsü,
+        /// filial breakdown daxildir. Köhnə dailyStats sahəsi geri uyğunluq üçün qalır.
+        /// </summary>
         [HttpGet]
-        public async Task<IActionResult> Dashboard([FromQuery] string? startDate, [FromQuery] string? endDate)
+        public async Task<IActionResult> Dashboard(
+            [FromQuery] string? startDate,
+            [FromQuery] string? endDate,
+            [FromQuery] string? groupBy)
         {
             var tenantId = _tenantProvider.CurrentTenantId ?? 0;
             if (tenantId <= 0)
@@ -46,67 +54,14 @@ namespace Loyalty.WebAPI.Controllers
                 ? ed
                 : today;
 
-            var result = await _transactionService.GetByTenantIdAndDate(tenantId, start, end);
+            var g = (groupBy ?? "day").Trim().ToLowerInvariant();
+            if (g != "week" && g != "month") g = "day";
 
-            if (!result.Success || result.Data is not List<GetTransactionDto> txList)
+            var result = await _statisticsService.GetDashboardAsync(tenantId, start, end, null, g);
+            if (!result.Success || result.Data is null)
                 return Ok(new ServiceResult(false, result.Message ?? "No data"));
 
-            var totalPointsEarned = 0;
-            var totalPointsSpent = 0;
-
-            var dailyMap = new SortedDictionary<string, (int count, int earned, int spent)>();
-
-            // Yalnız tam tətbiq olunmuş tx-lər KPI-ya daxil olur. PendingOcr / FlaggedForReview /
-            // Pending / Rejected / Expired / Reversed kart balansına yazılmayıb — "Points Given"
-            // statistikasında onları saymaq səhv informasiya verir.
-            var appliedTxs = txList.Where(t => t.Status == RedeemStatus.Applied).ToList();
-            var totalAppliedCount = appliedTxs.Count;
-
-            foreach (var tx in appliedTxs)
-            {
-                var points = tx.Points;
-                var type = tx.Type;
-                var dateKey = tx.LocalOccurredAt.ToString("yyyy-MM-dd");
-
-                if (type == TransactionType.Earned || type == TransactionType.Bonus)
-                    totalPointsEarned += points;
-                else if (type == TransactionType.Redeemed)
-                    totalPointsSpent += points;
-
-                if (!dailyMap.ContainsKey(dateKey))
-                    dailyMap[dateKey] = (0, 0, 0);
-
-                var d = dailyMap[dateKey];
-                dailyMap[dateKey] = (
-                    d.count + 1,
-                    d.earned + (type == TransactionType.Earned || type == TransactionType.Bonus ? points : 0),
-                    d.spent + (type == TransactionType.Redeemed ? points : 0)
-                );
-            }
-
-            var dailyStats = dailyMap.Select(kvp => new
-            {
-                date = kvp.Key,
-                transactionCount = kvp.Value.count,
-                pointsEarned = kvp.Value.earned,
-                pointsSpent = kvp.Value.spent
-            }).ToList();
-
-            // Ümumi müştəri = tenant-ın aktiv kartlı unikal müştəriləri. Əvvəlki kod tarix
-            // aralığında Applied tx-i olan KART sayını göstərirdi — həm kartı müştəri kimi
-            // sayırdı, həm də əməliyyatsız müştəriləri itirirdi.
-            var uniqueCustomers = await _statisticsService.GetUniqueCustomerCountAsync(tenantId);
-
-            var dashboard = new
-            {
-                totalTransactions = totalAppliedCount,
-                totalPointsEarned,
-                totalPointsSpent,
-                uniqueCustomers,
-                dailyStats
-            };
-
-            return Ok(new ServiceResult(true, dashboard));
+            return Ok(new ServiceResult(true, result.Data));
         }
     }
 }
