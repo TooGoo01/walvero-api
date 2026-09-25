@@ -32,6 +32,19 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int AppCustomers { get; set; }
         /// <summary>Wallet kartı olan müştərilər (IsIOS/IsAndroid kartı olan distinct customer).</summary>
         public int WalletCustomers { get; set; }
+
+        // ── Dashboard v2.2 (istifadə göstəriciləri) ──
+        // Ziyarət = bir kartın bir gündəki Applied tranzaksiyaları (kart × gün).
+        /// <summary>Son 30 gündə ən azı bir tranzaksiyası olan kartlar (endDate-ə qədər).</summary>
+        public int ActiveCards30d { get; set; }
+        /// <summary>Ondan əvvəlki 30 gün üçün eyni göstərici (delta üçün).</summary>
+        public int ActiveCards30dPrev { get; set; }
+        /// <summary>Seçilən dövrdə gələn (tranzaksiyası olan) kartlar.</summary>
+        public int EngagedCards { get; set; }
+        /// <summary>Seçilən dövrdə ziyarətlərin cəmi (kart × gün).</summary>
+        public int TotalVisits { get; set; }
+        /// <summary>Seçilən dövrdə ≥2 ziyarəti olan kartlar.</summary>
+        public int RepeatCards { get; set; }
     }
 
     public class PeriodStatDto
@@ -49,6 +62,9 @@ namespace Loyalty.Business.Dtos.Get.Main
         public decimal TotalPointsEarned { get; set; }
         public decimal TotalPointsSpent { get; set; }
         public int NewCustomers { get; set; }
+        public int EngagedCards { get; set; }
+        public int TotalVisits { get; set; }
+        public int RepeatCards { get; set; }
     }
 
     public class BranchStatDto

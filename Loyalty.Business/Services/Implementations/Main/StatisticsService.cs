@@ -82,6 +82,20 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return raw.ToDictionary(x => DateOnly.FromDateTime(x.Date), x => x.Count);
             }
 
+            // İstifadə göstəriciləri: ziyarət = kart × gün (SQL GROUP BY, yalnız kart id-ləri yüklənir)
+            async Task<(int Engaged, int Visits, int Repeat)> VisitStatsAsync(DateTime s, DateTime e)
+            {
+                var visitCardIds = await TxQuery(s, e)
+                    .GroupBy(t => new { t.LoyaltyCardId, D = t.LocalOccurredAt.Date })
+                    .Select(g => g.Key.LoyaltyCardId)
+                    .ToListAsync();
+                var perCard = visitCardIds.GroupBy(id => id).Select(g => g.Count()).ToList();
+                return (perCard.Count, visitCardIds.Count, perCard.Count(v => v >= 2));
+            }
+
+            Task<int> ActiveCardsInWindowAsync(DateTime s, DateTime e)
+                => TxQuery(s, e).Select(t => t.LoyaltyCardId).Distinct().CountAsync();
+
             // Bucket roll-up (day → week/month)
             DateOnly BucketOf(DateOnly d) => groupBy switch
             {
@@ -128,6 +142,17 @@ namespace Loyalty.Business.Services.Implementations.Main
             var prevNewCustMap = await NewCustomersDailyAsync(prevStart, prevEnd);
             var previousSeries = BuildSeries(prevDaily, prevNewCustMap);
             var prevNewCustomers = prevNewCustMap.Values.Sum();
+
+            // 3) İstifadə göstəriciləri — seçilən dövr + əvvəlki dövr
+            var visits = await VisitStatsAsync(startDt, endDt);
+            var prevVisits = await VisitStatsAsync(prevStart, prevEnd);
+
+            // 4) Son 30 gündə aktiv kart (dövr tab-ından asılı deyil; endDate-ə qədər)
+            var a30Start = endDate.AddDays(-29).ToDateTime(TimeOnly.MinValue);
+            var a30PrevStart = endDate.AddDays(-59).ToDateTime(TimeOnly.MinValue);
+            var a30PrevEnd = endDate.AddDays(-30).ToDateTime(TimeOnly.MaxValue);
+            var activeCards30d = await ActiveCardsInWindowAsync(a30Start, endDt);
+            var activeCards30dPrev = await ActiveCardsInWindowAsync(a30PrevStart, a30PrevEnd);
 
             // 5) Kart statistikası (dövrdən asılı deyil — cari vəziyyət)
             var cardQuery = _dbContext.Set<LoyaltyCard>()
@@ -208,6 +233,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 TotalCustomers = totalCustomers,
                 AppCustomers = appCustomers,
                 WalletCustomers = walletCustomers,
+                ActiveCards30d = activeCards30d,
+                ActiveCards30dPrev = activeCards30dPrev,
+                EngagedCards = visits.Engaged,
+                TotalVisits = visits.Visits,
+                RepeatCards = visits.Repeat,
                 Series = series,
                 PreviousSeries = previousSeries,
                 // Geri uyğunluq: günlük seriya köhnə sahədə də qalır
@@ -224,6 +254,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     TotalPointsEarned = prevDaily.Sum(x => x.Earned),
                     TotalPointsSpent = prevDaily.Sum(x => x.Spent),
                     NewCustomers = prevNewCustomers,
+                    EngagedCards = prevVisits.Engaged,
+                    TotalVisits = prevVisits.Visits,
+                    RepeatCards = prevVisits.Repeat,
                 },
                 BranchBreakdown = branchAgg.Select(x => new BranchStatDto
                 {
