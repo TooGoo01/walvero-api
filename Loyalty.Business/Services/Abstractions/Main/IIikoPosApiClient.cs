@@ -38,6 +38,18 @@ namespace Loyalty.Business.Services.Abstractions.Main
             string accessToken, Guid organizationId, Guid customerId, Guid walletId, decimal amount, CancellationToken ct = default);
 
         /// <summary>
+        /// iiko müştərisinin wallet balansını azaldır (chargeoff).
+        /// </summary>
+        Task<bool> ChargeOffWalletAsync(
+            string accessToken, Guid organizationId, Guid customerId, Guid walletId, decimal amount, CancellationToken ct = default);
+
+        /// <summary>
+        /// customer/info — HTTP status ilə; "Customer not found" (400) ilə auth/org xətasını ayırmaq üçün.
+        /// </summary>
+        Task<IikoApiResult<IikoCustomerInfoResponse>> FindCustomerAsync(
+            string accessToken, Guid organizationId, IikoCustomerLookup lookup, string value, CancellationToken ct = default);
+
+        /// <summary>
         /// iiko təşkilatlarının siyahısını alır.
         /// </summary>
         Task<IikoOrganization[]?> GetOrganizationsAsync(string accessToken, CancellationToken ct = default);
@@ -85,9 +97,13 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public Guid Id { get; set; }
         public string? Name { get; set; }
         public string? Surname { get; set; }
+        public string? MiddleName { get; set; }
         public string? Phone { get; set; }
         public string? Email { get; set; }
+        public bool? IsDeleted { get; set; }
+        public bool? Anonymized { get; set; }
         public List<IikoCustomerCard>? Cards { get; set; }
+        public List<IikoCustomerCategory>? Categories { get; set; }
         public List<IikoWalletBalance>? WalletBalances { get; set; }
     }
 
@@ -96,13 +112,51 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public Guid Id { get; set; }
         public string? Track { get; set; }
         public string? Number { get; set; }
+        public string? ValidToDate { get; set; }
+    }
+
+    public class IikoCustomerCategory
+    {
+        public Guid Id { get; set; }
+        public string? Name { get; set; }
+        public bool? IsActive { get; set; }
     }
 
     public class IikoWalletBalance
     {
         public Guid Id { get; set; }
         public string? Name { get; set; }
+        public int? Type { get; set; }
         public decimal Balance { get; set; }
+    }
+
+    public enum IikoCustomerLookup
+    {
+        Id,
+        Phone,
+        CardTrack,
+        CardNumber,
+        Email
+    }
+
+    /// <summary>iiko çağırışının HTTP nəticəsi — Data null olsa da səbəb (400 not found vs 401 vs şəbəkə) görünür.</summary>
+    public sealed class IikoApiResult<T>
+    {
+        public T? Data { get; init; }
+        public int StatusCode { get; init; }
+        public string? RawBody { get; init; }
+        public string? ErrorDescription { get; init; }
+
+        public bool Success => Data is not null && StatusCode is >= 200 and < 300;
+        public bool IsNotFound => StatusCode == 400
+            && (ErrorDescription ?? RawBody ?? string.Empty).Contains("not found", StringComparison.OrdinalIgnoreCase);
+        public bool IsUnauthorized => StatusCode == 401;
+
+        public static IikoApiResult<T> Ok(T? data, int statusCode, string? rawBody)
+            => new() { Data = data, StatusCode = statusCode, RawBody = rawBody };
+
+        public static IikoApiResult<T> Failure(int statusCode, string? rawBody, string? errorDescription)
+            => new() { StatusCode = statusCode, RawBody = rawBody, ErrorDescription = errorDescription };
     }
 
     public class IikoOrganization
@@ -132,6 +186,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public Guid Id { get; set; }
         public string? Name { get; set; }
         public bool IsActive { get; set; }
+        public Guid? WalletId { get; set; }
     }
 
     public class IikoNomenclatureResponse

@@ -531,20 +531,28 @@ namespace Loyalty.Business.Services.Implementations.Main
         /// <summary>Bir iiko org-da müştərinin wallet balansını currentPoints-ə uyğunlaşdır (diff topup).</summary>
         private async Task TopUpIikoBalanceAsync(string accessToken, Guid orgId, PosCustomerMapping mapping, string cardTrack, decimal currentPoints, int customerId, CancellationToken ct)
         {
-            var customerInfo = await _iikoClient.GetCustomerInfoAsync(accessToken, orgId, cardTrack: cardTrack, ct: ct);
-            if (!Guid.TryParse(mapping.ExternalCustomerId, out var iikoCustomerId))
-                iikoCustomerId = customerInfo?.Id ?? Guid.Empty;
+            // Mapping-dəki iiko id ilə axtar (kart track dəyişmiş ola bilər), tapılmasa cardTrack ilə.
+            IikoCustomerInfoResponse? customerInfo = null;
+            var hasMappedId = Guid.TryParse(mapping.ExternalCustomerId, out var mappedId);
+            if (hasMappedId)
+                customerInfo = (await _iikoClient.FindCustomerAsync(accessToken, orgId, IikoCustomerLookup.Id, mappedId.ToString(), ct)).Data;
+            customerInfo ??= await _iikoClient.GetCustomerInfoAsync(accessToken, orgId, cardTrack: cardTrack, ct: ct);
+
+            var iikoCustomerId = hasMappedId ? mappedId : (customerInfo?.Id ?? Guid.Empty);
 
             if (customerInfo?.WalletBalances != null && customerInfo.WalletBalances.Count > 0)
             {
                 var wallet = customerInfo.WalletBalances.First();
-                var diff = currentPoints - wallet.Balance;
+                var diff = Math.Round(currentPoints - wallet.Balance, 2);
                 if (diff != 0)
                 {
-                    var topUpOk = await _iikoClient.TopUpWalletAsync(accessToken, orgId, iikoCustomerId, wallet.Id, diff, ct);
+                    // iiko-da mənfi topup yoxdur — azalma chargeoff ilə gedir
+                    var ok = diff > 0
+                        ? await _iikoClient.TopUpWalletAsync(accessToken, orgId, iikoCustomerId, wallet.Id, diff, ct)
+                        : await _iikoClient.ChargeOffWalletAsync(accessToken, orgId, iikoCustomerId, wallet.Id, -diff, ct);
                     _logger.LogInformation(
                         "iiko balance sync: CustomerId={CustomerId}, orgId={OrgId}, WalletId={WalletId}, Diff={Diff}, NewBalance={NewBalance}, Success={Success}",
-                        customerId, orgId, wallet.Id, diff, currentPoints, topUpOk);
+                        customerId, orgId, wallet.Id, diff, currentPoints, ok);
                 }
             }
         }

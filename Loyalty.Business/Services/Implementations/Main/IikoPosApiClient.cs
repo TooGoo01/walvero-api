@@ -132,6 +132,43 @@ namespace Loyalty.Business.Services.Implementations.Main
             return await PostRawAsync(accessToken, "/api/1/loyalty/iiko/customer/wallet/topup", payload, ct);
         }
 
+        public async Task<bool> ChargeOffWalletAsync(
+            string accessToken, Guid organizationId, Guid customerId, Guid walletId, decimal amount, CancellationToken ct = default)
+        {
+            var payload = new
+            {
+                organizationId,
+                customerId,
+                walletId,
+                sum = amount
+            };
+
+            return await PostRawAsync(accessToken, "/api/1/loyalty/iiko/customer/wallet/chargeoff", payload, ct);
+        }
+
+        public async Task<IikoApiResult<IikoCustomerInfoResponse>> FindCustomerAsync(
+            string accessToken, Guid organizationId, IikoCustomerLookup lookup, string value, CancellationToken ct = default)
+        {
+            var type = lookup switch
+            {
+                IikoCustomerLookup.Id => "id",
+                IikoCustomerLookup.Phone => "phone",
+                IikoCustomerLookup.CardNumber => "cardNumber",
+                IikoCustomerLookup.Email => "email",
+                _ => "cardTrack"
+            };
+
+            // Dictionary: camelCase policy dict açarlarına şamil olunmur, dəyər sahəsinin adı type ilə eynidir.
+            var payload = new Dictionary<string, object>
+            {
+                ["organizationId"] = organizationId,
+                ["type"] = type,
+                [type] = value
+            };
+
+            return await PostWithStatusAsync<IikoCustomerInfoResponse>(accessToken, "/api/1/loyalty/iiko/customer/info", payload, ct);
+        }
+
         public async Task<IikoOrganization[]?> GetOrganizationsAsync(string accessToken, CancellationToken ct = default)
         {
             var response = await PostAsync<IikoOrganizationsResponse>(
@@ -197,6 +234,59 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             return await response.Content.ReadFromJsonAsync<T>(JsonOptions, ct);
+        }
+
+        private async Task<IikoApiResult<T>> PostWithStatusAsync<T>(string? accessToken, string path, object payload, CancellationToken ct)
+        {
+            var url = BaseUrl + path;
+            var client = _httpClientFactory.CreateClient();
+            using var request = new HttpRequestMessage(HttpMethod.Post, url);
+
+            if (!string.IsNullOrEmpty(accessToken))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+
+            request.Content = JsonContent.Create(payload, options: JsonOptions);
+
+            try
+            {
+                var response = await client.SendAsync(request, ct);
+                var body = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogDebug("iiko API {Path} → {Status}: {Body}", path, (int)response.StatusCode, body);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("iiko API {Path} returned {Status}: {Body}", path, response.StatusCode, body);
+                    return IikoApiResult<T>.Failure((int)response.StatusCode, body, ExtractErrorDescription(body));
+                }
+
+                var data = string.IsNullOrWhiteSpace(body) ? default : JsonSerializer.Deserialize<T>(body, JsonOptions);
+                return IikoApiResult<T>.Ok(data, (int)response.StatusCode, body);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "iiko API request to {Path} failed", path);
+                return IikoApiResult<T>.Failure(0, null, ex.Message);
+            }
+        }
+
+        private static string? ExtractErrorDescription(string? body)
+        {
+            if (string.IsNullOrWhiteSpace(body)) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.ValueKind != JsonValueKind.Object) return body;
+                foreach (var key in new[] { "errorDescription", "error", "message", "title" })
+                {
+                    if (doc.RootElement.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.String)
+                        return el.GetString();
+                }
+                return body;
+            }
+            catch
+            {
+                return body;
+            }
         }
 
         private async Task<bool> PostRawAsync(string? accessToken, string path, object payload, CancellationToken ct)

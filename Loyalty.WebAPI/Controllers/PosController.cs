@@ -21,6 +21,7 @@ namespace Loyalty.WebAPI.Controllers
         private readonly ICustomerSyncService _customerSyncService;
         private readonly ITenantProvider _tenantProvider;
         private readonly ITenantStatusGuard _tenantStatusGuard;
+        private readonly IPosCustomerIikoService _posCustomerIiko;
         private readonly ILogger<PosController> _logger;
 
         public PosController(
@@ -29,8 +30,10 @@ namespace Loyalty.WebAPI.Controllers
             ICustomerSyncService customerSyncService,
             ITenantProvider tenantProvider,
             ITenantStatusGuard tenantStatusGuard,
+            IPosCustomerIikoService posCustomerIiko,
             ILogger<PosController> logger)
         {
+            _posCustomerIiko = posCustomerIiko;
             _transactionReverseService = transactionReverseService;
             _posSessionService = posSessionService;
             _customerSyncService = customerSyncService;
@@ -136,6 +139,48 @@ namespace Loyalty.WebAPI.Controllers
             var result = await _customerSyncService.SyncCustomerToPosAsync(tid.Value, customerId, ct);
             if (!result.Success) return BadRequest("Sync failed.");
             return Ok(new { success = true, walveroId = result.WalveroId, barcode = result.Barcode });
+        }
+
+        /// <summary>Müştərinin iiko vəziyyəti (hər venue/org üzrə): tapılırmı, wallet balansı, bizim balans, fərq.</summary>
+        [HttpGet("customers/{customerId:int}/iiko-status")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> GetCustomerIikoStatus(int customerId, [FromQuery] int? cardId, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            if (!tid.HasValue || tid <= 0)
+                return BadRequest(new ServiceResult(false, "TenantId required."));
+            var result = await _posCustomerIiko.GetStatusAsync(tid.Value, customerId, cardId, ct);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+
+        /// <summary>Walvero → iiko: iiko wallet-i bizim kart balansına bərabərləşdir (topup/chargeoff).</summary>
+        [HttpPost("customers/{customerId:int}/iiko-push-balance")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrSuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> PushCustomerBalanceToIiko(int customerId, [FromBody] IikoPushBalanceDto dto, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            if (!tid.HasValue || tid <= 0)
+                return BadRequest(new ServiceResult(false, "TenantId required."));
+            var blocked = await BlockIfTenantInactiveAsync(tid, ct);
+            if (blocked != null) return blocked;
+            var result = await _posCustomerIiko.PushBalanceAsync(tid.Value, customerId, dto ?? new IikoPushBalanceDto(), ct);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+
+        /// <summary>iiko → Walvero: bizim kartı seçilmiş org-un wallet balansına bərabərləşdir (Adjusted tx + pass push).</summary>
+        [HttpPost("customers/{customerId:int}/iiko-pull-balance")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrSuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> PullCustomerBalanceFromIiko(int customerId, [FromBody] IikoPullBalanceDto dto, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            if (!tid.HasValue || tid <= 0)
+                return BadRequest(new ServiceResult(false, "TenantId required."));
+            var blocked = await BlockIfTenantInactiveAsync(tid, ct);
+            if (blocked != null) return blocked;
+            var result = await _posCustomerIiko.PullBalanceAsync(tid.Value, customerId, dto, ct);
+            return result.Success ? Ok(result) : BadRequest(result);
         }
     }
 }
