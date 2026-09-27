@@ -83,6 +83,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             var isProgress = TemplateOf(ctx, ctx.DefaultCard) == CardTemplateType.ProgressBased;
             var errors = new Dictionary<(int, int?), string>();
             var pushed = 0;
+            // iiko wallet org-lar arası paylaşıla bilər (eyni müştəri id + eyni wallet) — bir dəfə düzəlt
+            var touchedWallets = new HashSet<(Guid, Guid)>();
 
             foreach (var v in status.Venues)
             {
@@ -101,6 +103,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
 
                 if (v.SelectedWalletId == null) { errors[(v.IntegrationId, v.VenueId)] = "iiko wallet tapılmadı."; continue; }
+                if (!touchedWallets.Add((v.IikoCustomerId.Value, v.SelectedWalletId.Value))) continue;
 
                 var diff = v.Diff ?? 0m;
                 if (isProgress) diff = Math.Truncate(diff);
