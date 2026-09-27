@@ -56,7 +56,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return CustomerSyncResult.Fail();
 
             var apiToken = _protector.Decrypt(integration.ApiTokenEncrypted);
-            if (string.IsNullOrEmpty(apiToken) || string.IsNullOrEmpty(integration.ExternalVenueId))
+            if (string.IsNullOrEmpty(apiToken))
+                return CustomerSyncResult.Fail();
+
+            // iiko per-filial tenant-larda org id-lər venue-lardadır, inteqrasiyanın öz ExternalVenueId-si boş ola bilər;
+            // iiko yolu venue/legacy seçimini özü edir. Monyo üçün ExternalVenueId məcburidir.
+            var isIiko = integration.IntegrationType?.Source == "iiko_pos";
+            if (!isIiko && string.IsNullOrEmpty(integration.ExternalVenueId))
                 return CustomerSyncResult.Fail();
 
             var customer = await _customerRepo.GetByIdAsync(customerId, ct);
