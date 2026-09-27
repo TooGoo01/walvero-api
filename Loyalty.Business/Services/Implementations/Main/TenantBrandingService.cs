@@ -120,6 +120,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ? Math.Clamp(dto.CategoryDescriptionFontSize.Value, 10, 40)
                 : null;
 
+            if (dto.UpdateAnnouncement)
+            {
+                branding.AnnouncementAz = string.IsNullOrWhiteSpace(dto.AnnouncementAz) ? null : dto.AnnouncementAz.Trim();
+                branding.AnnouncementEn = string.IsNullOrWhiteSpace(dto.AnnouncementEn) ? null : dto.AnnouncementEn.Trim();
+                branding.AnnouncementRu = string.IsNullOrWhiteSpace(dto.AnnouncementRu) ? null : dto.AnnouncementRu.Trim();
+                branding.AnnouncementFontSize = dto.AnnouncementFontSize is > 0
+                    ? Math.Clamp(dto.AnnouncementFontSize.Value, 10, 40)
+                    : null;
+            }
+
             // 6) Yadda saxla
             if (branding.Id == 0) await _unitOfWork.Repository<TenantBranding>().AddAsync(branding);
             else _repo.Update(branding);
@@ -140,7 +150,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Website = branding.Website,
                 DefaultMenuView = branding.DefaultMenuView,
                 CategoryDescriptionColor = branding.CategoryDescriptionColor,
-                CategoryDescriptionFontSize = branding.CategoryDescriptionFontSize
+                CategoryDescriptionFontSize = branding.CategoryDescriptionFontSize,
+                AnnouncementAz = branding.AnnouncementAz,
+                AnnouncementEn = branding.AnnouncementEn,
+                AnnouncementRu = branding.AnnouncementRu,
+                AnnouncementFontSize = branding.AnnouncementFontSize
             };
             return new ServiceResult(true,br);
         }

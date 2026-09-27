@@ -135,7 +135,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                         Website = tenant.Branding.Website,
                         DefaultMenuView = tenant.Branding.DefaultMenuView,
                         CategoryDescriptionColor = tenant.Branding.CategoryDescriptionColor,
-                        CategoryDescriptionFontSize = tenant.Branding.CategoryDescriptionFontSize
+                        CategoryDescriptionFontSize = tenant.Branding.CategoryDescriptionFontSize,
+                        AnnouncementAz = tenant.Branding.AnnouncementAz,
+                        AnnouncementEn = tenant.Branding.AnnouncementEn,
+                        AnnouncementRu = tenant.Branding.AnnouncementRu,
+                        AnnouncementFontSize = tenant.Branding.AnnouncementFontSize
                     }
                     : null
             };
@@ -235,7 +239,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                         Website = tenant.Branding.Website,
                         DefaultMenuView = tenant.Branding.DefaultMenuView,
                         CategoryDescriptionColor = tenant.Branding.CategoryDescriptionColor,
-                        CategoryDescriptionFontSize = tenant.Branding.CategoryDescriptionFontSize
+                        CategoryDescriptionFontSize = tenant.Branding.CategoryDescriptionFontSize,
+                        AnnouncementAz = tenant.Branding.AnnouncementAz,
+                        AnnouncementEn = tenant.Branding.AnnouncementEn,
+                        AnnouncementRu = tenant.Branding.AnnouncementRu,
+                        AnnouncementFontSize = tenant.Branding.AnnouncementFontSize
                     }
                     : null,
                 Location = tenant.TenantLocation != null

@@ -3244,6 +3244,18 @@ namespace Loyalty.DataAccess.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("AnnouncementAz")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AnnouncementEn")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("AnnouncementFontSize")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AnnouncementRu")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("BackgroundColor")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");

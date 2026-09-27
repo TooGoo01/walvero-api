@@ -33,6 +33,12 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? CategoryDescriptionColor { get; set; }    // hex #RRGGBB, null = default; kateqoriya override edə bilər
         public int? CategoryDescriptionFontSize { get; set; }    // px 10-40, null = default
 
+        // Menyu elanı — tenant default; filialın öz elanı varsa o üstündür
+        public string? AnnouncementAz { get; set; }
+        public string? AnnouncementEn { get; set; }
+        public string? AnnouncementRu { get; set; }
+        public int? AnnouncementFontSize { get; set; }           // px 10-40, null = default
+
         // Navigation Property
         public Tenant Tenant { get; set; } = null!;
     }

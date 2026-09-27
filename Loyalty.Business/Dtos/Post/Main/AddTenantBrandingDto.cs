@@ -23,5 +23,13 @@ namespace Loyalty.Business.Dtos.Post.Main
             public string? DefaultMenuView { get; set; }
             public string? CategoryDescriptionColor { get; set; }
             public int? CategoryDescriptionFontSize { get; set; }
+
+            // Form binding "" → null edir; elan yalnız bu flag true olanda yazılır ki,
+            // elan sahələrini göndərməyən klientlər mövcud elanı silməsin.
+            public bool UpdateAnnouncement { get; set; }
+            public string? AnnouncementAz { get; set; }
+            public string? AnnouncementEn { get; set; }
+            public string? AnnouncementRu { get; set; }
+            public int? AnnouncementFontSize { get; set; }
         }
 }
