@@ -54,6 +54,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         // POS sync-i ayrı DI scope-da işlətmək üçün — enrollment DbContext-ini
         // zəhərləməsin (iiko multi-venue sync uğursuz olsa da kart əlavəsi keçir).
         private readonly IServiceScopeFactory _scopeFactory;
+        private readonly IWelcomeBonusService _welcomeBonus;
         public CustomerEnrollmentService(
             ITenantProvider tp,
             ICustomerRepository customerRepo,
@@ -77,7 +78,8 @@ UserManager<ApplicationUser> userManager,
             LoyaltyWalletDbContext dbContext,
             ITenantStatusGuard tenantStatusGuard,
             ITenantSuspensionGuard tenantSuspensionGuard,
-            IServiceScopeFactory scopeFactory)
+            IServiceScopeFactory scopeFactory,
+            IWelcomeBonusService welcomeBonus)
         {
             _tp = tp; _customerRepo = customerRepo; _programRepo = programRepo;
             _cardRepo = cardRepo; _cardSvc = cardSvc; _credSvc = credSvc;
@@ -163,6 +165,8 @@ UserManager<ApplicationUser> userManager,
             var program = await _programRepo.GetByIdNameAsync(dto.LoyaltyProgramId, ct);
             if (program is null || program.TenantId != tenantId)
                 return new ServiceResult(false, "Program not found for this tenant.");
+
+            decimal signupGift = 0m;
 
             // 2) User və Customer tap / yarat
             var user = await _userManager.FindByIdAsync(userId);
@@ -291,6 +295,11 @@ UserManager<ApplicationUser> userManager,
                     await _uow.Repository<LoyaltyCard>().AddAsync(card);
                     _uow.Commit(); // Bu SaveChangesAsync çağırmalıdır - BarcodeValue avtomatik set olunacaq
                     hasPendingCardUpdate = false;
+
+                    signupGift = await _welcomeBonus.TryGrantSignupGiftAsync(card, program,
+                        program.CardTemplate?.EffectiveType ?? CardTemplateType.PointsBased,
+                        program.CardTemplate?.TotalSteps ?? 10, ct);
+                    if (signupGift > 0) _uow.Commit();
                 }
             }
             else
@@ -308,6 +317,8 @@ UserManager<ApplicationUser> userManager,
 
             // Auto-sync customer to POS systems (ayrı scope — context zəhərlənməsin)
             await SyncPosSafeAsync(tenantId, customer.Id, ct);
+            if (signupGift > 0)
+                await _welcomeBonus.SyncPosBalanceSafeAsync(tenantId, customer.Id, card.CurrentPoints, ct);
 
             // 4) Son update — kart dəyişiklikləri varsa commit et
             if (hasPendingCardUpdate)
@@ -567,6 +578,10 @@ UserManager<ApplicationUser> userManager,
             }
             var snapshot = CardTemplateSnapshotFactory.From(program, program.CardTemplate, branding, ToAbs);
 
+            // Hədiyyə pass yaranmazdan əvvəl ki, balans pass-a düşsün
+            var signupGift = await _welcomeBonus.TryGrantSignupGiftAsync(card, program, snapshot.TemplateType, snapshot.TotalSteps, ct);
+            if (signupGift > 0) _uow.Commit();
+
             // Tenant company name for wallet header (separate query — avoids cycle issues from Include).
             snapshot.TenantCompanyName = await _dbContext.Set<Tenant>()
                 .AsNoTracking()
@@ -661,6 +676,8 @@ UserManager<ApplicationUser> userManager,
             }
             _uow.Repository<LoyaltyCard>().Update(card);
             _uow.Commit();
+            if (signupGift > 0)
+                await _welcomeBonus.SyncPosBalanceSafeAsync(tenantId, customer.Id, card.CurrentPoints, ct);
             // Apple (opsional)
 
 

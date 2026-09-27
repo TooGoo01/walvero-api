@@ -20,6 +20,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         public List<IconDto> Icons { get; set; } = new();
 
         public int TotalSteps { get; set; } = 10;
+        public bool RewardAsPoints { get; set; } = false;   // Hədiyyə yerinə xal rejimi (yalnız ProgressBased)
         public string StepLabel { get; set; } = "Coffee";
         public string RewardDescription { get; set; } = string.Empty;
         public string? FreeRewardLabel { get; set; }  // "Pulsuz içki", "Burger" və s.

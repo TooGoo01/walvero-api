@@ -1,4 +1,6 @@
+using Hangfire;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.Business.Services.Implementations.Main;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
@@ -20,6 +22,7 @@ namespace Loyalty.WebAPI.Controllers
         private readonly IWalletWebhookService _webhookService;
         private readonly ITenantStatusGuard _tenantStatusGuard;
         private readonly IIikoWebhookFailureService _failureService;
+        private readonly IBackgroundJobClient _jobClient;
         private readonly ILogger<IikoWebhookController> _logger;
 
         public IikoWebhookController(
@@ -27,12 +30,14 @@ namespace Loyalty.WebAPI.Controllers
             IWalletWebhookService webhookService,
             ITenantStatusGuard tenantStatusGuard,
             IIikoWebhookFailureService failureService,
+            IBackgroundJobClient jobClient,
             ILogger<IikoWebhookController> logger)
         {
             _resolver = resolver;
             _webhookService = webhookService;
             _tenantStatusGuard = tenantStatusGuard;
             _failureService = failureService;
+            _jobClient = jobClient;
             _logger = logger;
         }
 
@@ -132,12 +137,15 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
-        /// iiko OrderClosed webhook — token tələb etmir.
+        /// iiko OrderClosed / OrderReturned webhook — token tələb etmir.
         /// Tenant payload-dakı TerminalsGroup.Id-dən resolve olunur.
+        /// Emal Hangfire-ə enqueue olunur, HTTP cavab dərhal qayıdır
+        /// (iiko plugin ~5s timeout → sinxron emalda 499 + itirilmiş sifariş).
         /// </summary>
         [HttpPost("iiko_transaction")]
         public async Task<IActionResult> IikoTransaction([FromBody] JsonElement rawBody, CancellationToken ct)
         {
+            IikoOrderEventRequest? internalReq = null;
             try
             {
                 // ƏSL gələn JSON — format DTO ilə uyğun gəlməyəndə bunu görmək lazımdır
@@ -157,10 +165,6 @@ namespace Loyalty.WebAPI.Controllers
                     _logger.LogWarning(dex, "iiko_transaction: payload DTO-ya deserialize olunmadı");
                 }
 
-                _logger.LogInformation(
-                    "iiko_transaction RAW: {RawJson}",
-                    JsonSerializer.Serialize(request));
-
                 var terminalGroupId = request?.TerminalsGroup?.Id;
                 if (request == null || string.IsNullOrWhiteSpace(terminalGroupId))
                     return Ok(new { success = false, message = "TerminalsGroup.Id is required" });
@@ -168,7 +172,7 @@ namespace Loyalty.WebAPI.Controllers
                 // internalReq-i ctx-dən əvvəl qur — tenant tapılmasa da uğursuzluğu loglaya bilək.
                 var firstCustomer = request.Customer?.FirstOrDefault();
 
-                var internalReq = new IikoOrderEventRequest
+                internalReq = new IikoOrderEventRequest
                 {
                     EventType = string.IsNullOrWhiteSpace(request.EventType) ? "OrderClosed" : request.EventType!,
                     OrderId = request.OrderId ?? string.Empty,
@@ -219,7 +223,8 @@ namespace Loyalty.WebAPI.Controllers
                         "iiko_transaction: tenant not found. terminalGroupId={TerminalGroupId} orderId={OrderId}",
                         terminalGroupId, request.OrderId);
                     // İnteqrasiya sonradan qurula bilər → retry növbəsinə yaz.
-                    await _failureService.RecordFailureAsync(internalReq, null, "Tenant integration not found", ct);
+                    // CancellationToken.None: client kəsilsə belə qeyd yazılmalıdır.
+                    await _failureService.RecordFailureAsync(internalReq, null, "Tenant integration not found", CancellationToken.None);
                     return Ok(new { success = false, message = "Tenant integration not found" });
                 }
 
@@ -230,22 +235,36 @@ namespace Loyalty.WebAPI.Controllers
                     return Ok(new { success = false, message = Business.Services.Implementations.Main.TenantStatusGuard.InactiveMessage });
                 }
 
-                var result = await _webhookService.ProcessIikoOrderEventAsync(ctx, internalReq, ct);
+                // Hangfire-ə enqueue et — emal PosBatchOperationJob-da gedir.
+                // Uğursuzluq (customer not found və s.) və exception job daxilində
+                // IikoWebhookFailures-ə yazılır → 10 dəqiqəlik retry növbəsi.
+                string jobId;
+                try
+                {
+                    jobId = _jobClient.Enqueue<PosBatchOperationJob>(j => j.ProcessAsync(ctx, internalReq, CancellationToken.None));
+                }
+                catch (Exception enqueueEx)
+                {
+                    // Hangfire storage əlçatmazdırsa sifarişi itirmə — retry növbəsinə yaz.
+                    _logger.LogError(enqueueEx, "iiko_transaction ENQUEUE_FAIL. orderId={OrderId}", request.OrderId);
+                    await _failureService.RecordFailureAsync(internalReq, ctx.TenantIntegrationId,
+                        "Hangfire enqueue failed: " + enqueueEx.Message, CancellationToken.None);
+                    return Ok(new { success = false, message = "Queued for retry" });
+                }
 
                 _logger.LogInformation(
-                    "iiko_transaction processed: orderId={OrderId} terminalGroupId={TerminalGroupId} success={Success} message={Message}",
-                    request.OrderId, terminalGroupId, result.Success, result.Message);
+                    "iiko_transaction ENQUEUED. jobId={JobId} eventType={EventType} orderId={OrderId} orderNumber={OrderNumber} tenantId={TenantId} totalSum={TotalSum} card={Card}",
+                    jobId, internalReq.EventType, request.OrderId, request.OrderNumber, ctx.TenantId, internalReq.TotalSum, internalReq.CustomerCardNumber);
 
-                // Uğursuz (customer not found və s.) → retry növbəsinə yaz.
-                if (!result.Success)
-                    await _failureService.RecordFailureAsync(internalReq, ctx.TenantIntegrationId, result.Message, ct);
-
-                return Ok(new { success = result.Success, message = result.Message });
+                return Ok(new { success = true, message = "Accepted", jobId });
             }
             catch (Exception ex)
             {
                 // Webhook best practice: 200 qaytar ki, iiko sonsuz retry etməsin.
-                _logger.LogError(ex, "iiko_transaction unhandled error");
+                _logger.LogError(ex, "iiko_transaction unhandled error. orderId={OrderId}", internalReq?.OrderId);
+                // Payload artıq parse olunubsa sifarişi itirmə — retry növbəsinə yaz.
+                if (internalReq != null)
+                    await _failureService.RecordFailureAsync(internalReq, null, "Unhandled: " + ex.Message, CancellationToken.None);
                 return Ok(new { success = false, message = "Internal error" });
             }
         }

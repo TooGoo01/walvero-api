@@ -195,6 +195,30 @@ builder.Services
                     context.Token = accessToken;
                 }
 
+                // 🔹 Hangfire dashboard: brauzer Bearer header göndərmir.
+                // İlk açılış /hangfire?access_token=<JWT> → HttpOnly cookie yazılır,
+                // dashboard-un sonrakı səhifə/AJAX sorğuları cookie-dən oxunur.
+                if (path.StartsWithSegments("/hangfire"))
+                {
+                    if (!string.IsNullOrEmpty(accessToken))
+                    {
+                        context.Token = accessToken;
+                        context.Response.Cookies.Append("hf_token", accessToken.ToString(), new CookieOptions
+                        {
+                            HttpOnly = true,
+                            Secure = true,
+                            SameSite = SameSiteMode.Strict,
+                            Path = "/hangfire",
+                            MaxAge = TimeSpan.FromHours(1)
+                        });
+                    }
+                    else if (context.Request.Cookies.TryGetValue("hf_token", out var hfToken) &&
+                             !string.IsNullOrEmpty(hfToken))
+                    {
+                        context.Token = hfToken;
+                    }
+                }
+
                 return Task.CompletedTask;
             }
         };

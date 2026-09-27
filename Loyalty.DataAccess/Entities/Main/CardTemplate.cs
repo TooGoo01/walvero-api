@@ -23,6 +23,23 @@ namespace Loyalty.DataAccess.Entities.Main
         public ICollection<Icon> Icons { get; set; }
         public bool OneRedeem { get; set; } = false;
 
+        /// <summary>
+        /// Hədiyyə (ProgressBased) template üçün "xal rejimi": hər uyğun məhsul +1 xal (xərclənən),
+        /// hədiyyə dövrü (CompletedCycles) yaranmır. Davranış PointsBased kimidir, yalnız earn
+        /// məhsul sayına əsaslanır (earn rule StepsPerUnit), məbləğ faizinə yox. Bax: EffectiveType.
+        /// </summary>
+        public bool RewardAsPoints { get; set; } = false;
+
+        /// <summary>
+        /// Davranış tipi: ProgressBased + RewardAsPoints → PointsBased kimi işlə.
+        /// Balans/redeem/wallet-pass/display məntiqi bunu istifadə edir; TemplateType admin CRUD üçündür.
+        /// </summary>
+        [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+        public CardTemplateType EffectiveType =>
+            TemplateType == CardTemplateType.ProgressBased && RewardAsPoints
+                ? CardTemplateType.PointsBased
+                : TemplateType;
+
         // Progress Settings
         public int TotalSteps { get; set; } = 10;                     // məs: 10 qəhvə
         public string StepLabel { get; set; } = "Coffee";              // "Coffee", "Visit", "Purchase"

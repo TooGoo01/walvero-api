@@ -387,5 +387,58 @@ namespace Loyalty.Business.Services.Implementations.Main
             _unitOfWork.Commit();
             return new ServiceResult(true, new { programId, dto.BasePercentCash, dto.BasePercentCard, count = dto.HappyHoursWindows?.Count ?? 0 });
         }
+
+        public async Task<ServiceResult> UpdateWelcomeBonusAsync(int programId, UpdateWelcomeBonusDto dto, int? ownershipTenantId, CancellationToken ct = default)
+        {
+            if (dto is null)
+                return new ServiceResult(false, "Model is null.");
+
+            var program = await _repo.GetByIdTrackedAsync(programId, ct);
+            if (program is null)
+                return new ServiceResult(false, "Loyalty program not found.");
+            if (ownershipTenantId.HasValue && program.TenantId != ownershipTenantId.Value)
+                return new ServiceResult(false, "Bu proqram sizin tenant-a aid deyil.");
+
+            CardTemplateType? templateType = null;
+            if (program.CardTemplateId.HasValue)
+            {
+                var tpl = await _unitOfWork.Repository<CardTemplate>().GetByIdAsync(program.CardTemplateId.Value, ct);
+                templateType = tpl?.TemplateType;
+            }
+
+            if (dto.FirstPurchaseBonusEnabled)
+            {
+                if (dto.FirstPurchaseBonusType == WelcomeBonusType.Percent && (dto.FirstPurchaseBonusValue <= 0 || dto.FirstPurchaseBonusValue > 100))
+                    return new ServiceResult(false, "Faiz 0-dan böyük, 100-dən kiçik və ya bərabər olmalıdır.");
+                if (dto.FirstPurchaseBonusType == WelcomeBonusType.Fixed && dto.FirstPurchaseBonusValue <= 0)
+                    return new ServiceResult(false, "Sabit bonus 0-dan böyük olmalıdır.");
+                if (dto.FirstPurchaseBonusMaxPoints is <= 0)
+                    return new ServiceResult(false, "Maksimum bonus 0-dan böyük olmalıdır.");
+            }
+
+            if (dto.SignupGiftEnabled)
+            {
+                if (dto.SignupGiftValue < 1 || dto.SignupGiftValue > 1000)
+                    return new ServiceResult(false, "Hədiyyə dəyəri 1..1000 aralığında olmalıdır.");
+                if (templateType == CardTemplateType.ProgressBased && dto.SignupGiftType == SignupGiftType.Points)
+                    return new ServiceResult(false, "ProgressBased kart üçün hədiyyə tipi Stamp və ya Pulsuz məhsul olmalıdır.");
+                if (templateType is CardTemplateType.PointsBased or CardTemplateType.TierBased && dto.SignupGiftType != SignupGiftType.Points)
+                    return new ServiceResult(false, "Xal kartı üçün hədiyyə tipi Xal olmalıdır.");
+            }
+
+            program.FirstPurchaseBonusEnabled = dto.FirstPurchaseBonusEnabled;
+            program.FirstPurchaseBonusType = dto.FirstPurchaseBonusType;
+            program.FirstPurchaseBonusValue = dto.FirstPurchaseBonusValue;
+            program.FirstPurchaseBonusMaxPoints = dto.FirstPurchaseBonusType == WelcomeBonusType.Percent ? dto.FirstPurchaseBonusMaxPoints : null;
+            program.SignupGiftEnabled = dto.SignupGiftEnabled;
+            program.SignupGiftType = dto.SignupGiftType;
+            program.SignupGiftValue = dto.SignupGiftValue;
+            program.EditDate = DateTime.UtcNow;
+
+            _unitOfWork.Repository<LoyaltyProgram>().Update(program);
+            _unitOfWork.Commit();
+
+            return new ServiceResult(true, _mapper.Map<GetLoyaltyProgramDto>(program));
+        }
     }
 }

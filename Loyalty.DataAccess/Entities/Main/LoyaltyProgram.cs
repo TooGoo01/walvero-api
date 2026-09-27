@@ -38,6 +38,17 @@ namespace Loyalty.DataAccess.Entities.Main
         public int? BasePercentCash { get; set; }
         public int? BasePercentCard { get; set; }
 
+        // Xoş gəldin bonusu — kartın ilk Applied qazancında (1 dəfə)
+        public bool FirstPurchaseBonusEnabled { get; set; } = false;
+        public WelcomeBonusType FirstPurchaseBonusType { get; set; } = WelcomeBonusType.Percent;
+        public decimal FirstPurchaseBonusValue { get; set; } = 0;
+        public decimal? FirstPurchaseBonusMaxPoints { get; set; }     // yalnız Percent üçün tavan
+
+        // Kart yaradılanda hədiyyə (1 dəfə)
+        public bool SignupGiftEnabled { get; set; } = false;
+        public SignupGiftType SignupGiftType { get; set; } = SignupGiftType.Points;
+        public int SignupGiftValue { get; set; } = 0;
+
         // Navigation Properties
         public Tenant Tenant { get; set; } = null!;
         public ICollection<LoyaltyCard> LoyaltyCards { get; set; } = new List<LoyaltyCard>();

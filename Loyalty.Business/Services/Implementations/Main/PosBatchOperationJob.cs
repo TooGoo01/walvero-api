@@ -33,6 +33,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             using var scope = _scopeFactory.CreateScope();
             var service = scope.ServiceProvider.GetRequiredService<IWalletWebhookService>();
+            var failureService = scope.ServiceProvider.GetRequiredService<IIikoWebhookFailureService>();
 
             using var logScope = _logger.BeginScope(new Dictionary<string, object>
             {
@@ -68,6 +69,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     _logger.LogWarning(
                         "iiko order event job FAILED_LOGIC. eventType={EventType} orderId={OrderId} elapsedMs={ElapsedMs} message={Message}",
                         req.EventType, req.OrderId, sw.ElapsedMilliseconds, result.Message);
+
+                    // Customer not found və s. → IikoWebhookFailures (10 dəq retry, müştəri sonradan sync olunanda keçsin).
+                    await failureService.RecordFailureAsync(req, ctx.TenantIntegrationId, result.Message, CancellationToken.None);
                 }
             }
             catch (Exception ex)
@@ -76,6 +80,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _logger.LogError(ex,
                     "iiko order event job EXCEPTION. eventType={EventType} orderId={OrderId} elapsedMs={ElapsedMs}",
                     req.EventType, req.OrderId, sw.ElapsedMilliseconds);
+
+                // Hangfire 3 dəfə retry edəcək; hər halda failure cədvəlinə də yaz (idempotency key ikiqat emalı bloklar).
+                await failureService.RecordFailureAsync(req, ctx.TenantIntegrationId, "Exception: " + ex.Message, CancellationToken.None);
                 throw;
             }
         }

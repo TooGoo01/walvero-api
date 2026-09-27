@@ -170,7 +170,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             bool suspended = tenant.IsServiceSuspended;
 
             string? stripImageUrl = ToAbsoluteUrl(cardTemplate?.StripImageUrl, baseUrl);
-            if (cardTemplate != null && cardTemplate.TemplateType == CardTemplateType.ProgressBased && card != null)
+            if (cardTemplate != null && cardTemplate.EffectiveType == CardTemplateType.ProgressBased && card != null)
             {
                 var snapshot = CardTemplateSnapshotFactory.From(
                     program ?? new LoyaltyProgram { Id = 0, TenantId = 0 },
@@ -240,7 +240,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // App-specific images (.webp) — fallback to wallet PNG if not set
                 AppLogoUrl = ToAbsoluteUrl(cardTemplate?.AppLogoUrl, baseUrl)
                     ?? ToAbsoluteUrl(cardTemplate?.GoogleLogoUrl, baseUrl),
-                AppStripUrl = (cardTemplate?.TemplateType == CardTemplateType.ProgressBased)
+                AppStripUrl = (cardTemplate?.EffectiveType == CardTemplateType.ProgressBased)
                     ? stripImageUrl  // ProgressBased: həmişə PNG strip (icon progress)
                     : (ToAbsoluteUrl(cardTemplate?.AppStripUrl, baseUrl)
                         ?? ToAbsoluteUrl(cardTemplate?.StripImageUrl, baseUrl)),
@@ -284,7 +284,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             string? freeRewardText = null;
 
             // ProgressBased card specific logic
-            if (!suspended && cardTemplate != null && cardTemplate.TemplateType == CardTemplateType.ProgressBased)
+            if (!suspended && cardTemplate != null && cardTemplate.EffectiveType == CardTemplateType.ProgressBased)
             {
                 int totalSteps = Math.Max(1, cardTemplate.TotalSteps);
                 int currentSteps = Math.Clamp(card.CurrentSteps, 0, totalSteps);

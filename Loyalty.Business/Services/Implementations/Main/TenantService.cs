@@ -299,7 +299,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                                         GoogleLogoUrl = lp.CardTemplate.GoogleLogoUrl,
                                         AppLogoUrl = lp.CardTemplate.AppLogoUrl,
                                         AppStripUrl = lp.CardTemplate.AppStripUrl,
-                                        TemplateType = (int)lp.CardTemplate.TemplateType,
+                                        // Xal rejimi (ProgressBased + RewardAsPoints) app-da PointsBased kimi görünür
+                                        TemplateType = lp.CardTemplate.TemplateType == CardTemplateType.ProgressBased && lp.CardTemplate.RewardAsPoints
+                                            ? (int)CardTemplateType.PointsBased
+                                            : (int)lp.CardTemplate.TemplateType,
                                         TotalSteps = lp.CardTemplate.TotalSteps,
                                         StepLabel = lp.CardTemplate.StepLabel,
                                         FreeRewardLabel = lp.CardTemplate.FreeRewardLabel,

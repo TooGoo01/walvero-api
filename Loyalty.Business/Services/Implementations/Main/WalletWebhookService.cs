@@ -27,6 +27,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ITimeZoneService _timeZoneService;
         private readonly ILogger<WalletWebhookService> _logger;
         private readonly IUnitOfWork _uow;
+        private readonly IWelcomeBonusService _welcomeBonus;
 
         public WalletWebhookService(
             ILoyaltyCardRepository loyaltyCardRepo,
@@ -43,8 +44,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             ITenantBrandingRepository brandingRepo,
             ITimeZoneService timeZoneService,
             ILogger<WalletWebhookService> logger,
-            IUnitOfWork uow)
+            IUnitOfWork uow,
+            IWelcomeBonusService welcomeBonus)
         {
+            _welcomeBonus = welcomeBonus;
             _loyaltyCardRepo = loyaltyCardRepo;
             _loyaltyProgramRepo = loyaltyProgramRepo;
             _rewardRepo = rewardRepo;
@@ -256,7 +259,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (program != null && program.CardTemplateId.HasValue)
             {
                 var tpl = await _cardTemplateRepo.GetByIdAsync(program.CardTemplateId.Value, ct);
-                if (tpl != null && tpl.TemplateType == CardTemplateType.ProgressBased)
+                if (tpl != null && tpl.EffectiveType == CardTemplateType.ProgressBased)
                 {
                     // ProgressBased: hər reward = TotalSteps point, pending request yaradılır (steps integer)
                     int totalSteps = Math.Max(1, tpl.TotalSteps);
@@ -547,16 +550,25 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     var prog = await _loyaltyProgramRepo.GetByIdAsync(programId.Value, ct);
                     var isProgressBased = false;
+                    var rewardAsPoints = false;
                     int maxSteps = 10;
 
                     if (prog?.CardTemplateId != null)
                     {
                         var tpl = await _cardTemplateRepo.GetByIdAsync(prog.CardTemplateId.Value, ct);
-                        if (tpl != null && tpl.TemplateType == CardTemplateType.ProgressBased)
+                        if (tpl != null && tpl.EffectiveType == CardTemplateType.ProgressBased)
                         {
                             isProgressBased = true;
                             maxSteps = Math.Max(1, tpl.TotalSteps);
                         }
+                        rewardAsPoints = tpl?.RewardAsPoints == true;
+                    }
+
+                    // Xal rejimi: earn rule-lar StepsPerUnit ilə qurulub (1 məhsul = 1 addım) → addımları xal say.
+                    if (rewardAsPoints && totalPoints == 0m && totalSteps > 0)
+                    {
+                        totalPoints = totalSteps;
+                        totalSteps = 0;
                     }
 
                     if (isProgressBased)
@@ -603,7 +615,20 @@ namespace Loyalty.Business.Services.Implementations.Main
                         TimeZoneIdUsed = "UTC"
                     };
                     _uow.Repository<Transaction>().Add(tx);
+
+                    decimal welcomeBonus = 0m;
+                    if (prog != null)
+                    {
+                        welcomeBonus = await _welcomeBonus.TryGrantFirstPurchaseAsync(c, prog,
+                            isProgressBased ? CardTemplateType.ProgressBased : CardTemplateType.PointsBased, maxSteps,
+                            request.Total, context.BranchId, request.Id, ct);
+                        if (welcomeBonus > 0) c.LifetimePoints += welcomeBonus;
+                    }
                     await _uow.CommitAsync(ct);
+
+                    EnqueueWalletPush(c.Id, prog, earnedValue + welcomeBonus);
+                    if (welcomeBonus > 0)
+                        await _welcomeBonus.SyncPosBalanceSafeAsync(context.TenantId, c.CustomerId, c.CurrentPoints, ct);
                 }
             }
 
@@ -649,12 +674,36 @@ namespace Loyalty.Business.Services.Implementations.Main
             var program = await _loyaltyProgramRepo.GetByIdNameAsync(context.LoyaltyProgramId!.Value);
 
             var template = program?.CardTemplate;
-            var templateType = template?.TemplateType ?? CardTemplateType.PointsBased;
+            var templateType = template?.EffectiveType ?? CardTemplateType.PointsBased;
             var totalSteps = template?.TotalSteps ?? 10;
 
             // iiko-nun authoritative `balance` field-i istifadə olunur (absolute state, drift yox).
             // `sum` (delta) yalnız Transaction log-da, LifetimePoints earn tracking və UI mesajı üçün saxlanır.
             var absBalance = Math.Max(0m, request.Balance);
+
+            // Echo guard: bizim POS balans sync-imiz (welcome bonus / ambassador topup) iiko-dan eyni balansla
+            // geri gəlir — dublikat Earned yaratma, yalnız idempotency marker saxla.
+            if (delta > 0 && Math.Abs(absBalance - card.CurrentPoints) < 0.005m)
+            {
+                _uow.Repository<Transaction>().Add(new Transaction
+                {
+                    LoyaltyCardId = card.Id,
+                    Type = TransactionType.Adjusted,
+                    Status = RedeemStatus.Applied,
+                    Points = 0,
+                    BalanceAfter = card.CurrentPoints,
+                    OrderId = idempotencyKey,
+                    ReferenceNumber = request.TransactionId,
+                    Description = "iiko balance echo (already applied locally)",
+                    BranchId = context.BranchId,
+                    RegDate = DateTime.UtcNow,
+                    IsActive = true,
+                    LocalOccurredAt = DateTimeOffset.UtcNow,
+                    TimeZoneIdUsed = "UTC"
+                });
+                await _uow.CommitAsync(ct);
+                return new IikoTransactionResponse { Success = true, Message = "Echo of local balance sync (skipped)" };
+            }
 
             if (templateType == CardTemplateType.ProgressBased)
             {
@@ -695,10 +744,21 @@ namespace Loyalty.Business.Services.Implementations.Main
             };
 
             _uow.Repository<Transaction>().Add(tx);
+
+            // Payload-da sifariş məbləği yoxdur → yalnız Fixed tipli bonus işləyir
+            decimal welcomeBonus = 0m;
+            if (delta > 0 && program != null)
+            {
+                welcomeBonus = await _welcomeBonus.TryGrantFirstPurchaseAsync(card, program, templateType, totalSteps,
+                    null, context.BranchId, idempotencyKey + ":welcome", ct);
+                if (welcomeBonus > 0) card.LifetimePoints += welcomeBonus;
+            }
             await _uow.CommitAsync(ct);
 
             // Wallet pass push — Hangfire background (webhook cavabı gözlətməsin → 499 qarşısı)
-            EnqueueWalletPush(card.Id, program, delta);
+            EnqueueWalletPush(card.Id, program, delta + welcomeBonus);
+            if (welcomeBonus > 0)
+                await _welcomeBonus.SyncPosBalanceSafeAsync(context.TenantId, card.CustomerId, card.CurrentPoints, ct);
 
             return new IikoTransactionResponse
             {
@@ -766,7 +826,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var program = await _loyaltyProgramRepo.GetByIdNameAsync(context.LoyaltyProgramId.Value);
             var template = program?.CardTemplate;
-            var templateType = template?.TemplateType ?? CardTemplateType.PointsBased;
+            // ProgressBased + RewardAsPoints → PointsBased davranışı (xal rejimi)
+            var templateType = template?.EffectiveType ?? CardTemplateType.PointsBased;
             var totalStepsPerCycle = template?.TotalSteps ?? 10;
 
             bool isReturn = string.Equals(eventType, "OrderReturned", StringComparison.OrdinalIgnoreCase);
@@ -1001,6 +1062,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                     }
                 }
 
+                // Xal rejimi (hədiyyə template + RewardAsPoints): earn rule-lar StepsPerUnit ilə qurulub
+                // (1 məhsul = 1 addım). PointsPerUnit boşdursa addımları xal kimi say → CurrentPoints += N.
+                if (template?.RewardAsPoints == true && totalEarnPoints == 0m && totalEarnSteps > 0)
+                {
+                    totalEarnPoints = totalEarnSteps;
+                    totalEarnSteps = 0;
+                }
+
                 if (!anyEarnRuleMatched && program != null)
                 {
                     int? tierPercent = null;
@@ -1034,6 +1103,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new IikoTransactionResponse { Success = false, Message = "Loyalty card vanished mid-flight" };
 
             decimal earnedValue = 0m;
+            decimal welcomeBonus = 0m;
             if (totalEarnPoints > 0 || totalEarnSteps > 0)
             {
                 if (templateType == CardTemplateType.ProgressBased)
@@ -1076,6 +1146,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                     TimeZoneIdUsed = "UTC"
                 };
                 _uow.Repository<Transaction>().Add(earnTx);
+
+                if (program != null)
+                {
+                    welcomeBonus = await _welcomeBonus.TryGrantFirstPurchaseAsync(c, program, templateType, totalStepsPerCycle,
+                        earnBase, context.BranchId, idempotencyKey + ":welcome", ct);
+                    if (welcomeBonus > 0) c.LifetimePoints += welcomeBonus;
+                }
             }
 
             // ProgressBased-də manat→step blind conversion mənasız. Reward konsum yalnız Discounts.DiscountByItem yolu ilə.
@@ -1205,8 +1282,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             await _uow.CommitAsync(ct);
 
             decimal effectiveWalletRedeem = walletRedeemApplied ? walletRedeemSum : 0m;
-            decimal netDelta = earnedValue - effectiveWalletRedeem - discountRedeemPoints;
+            decimal netDelta = earnedValue + welcomeBonus - effectiveWalletRedeem - discountRedeemPoints;
             EnqueueWalletPush(c.Id, program, netDelta);
+            if (welcomeBonus > 0)
+                await _welcomeBonus.SyncPosBalanceSafeAsync(context.TenantId, c.CustomerId, c.CurrentPoints, ct);
 
             string msg = templateType switch
             {

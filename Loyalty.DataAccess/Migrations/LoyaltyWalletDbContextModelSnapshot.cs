@@ -586,6 +586,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int>("RegUserId")
                         .HasColumnType("int");
 
+                    b.Property<bool>("RewardAsPoints")
+                        .HasColumnType("bit");
+
                     b.Property<string>("RewardDescription")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -1490,6 +1493,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("FirstPurchaseBonusGrantedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -1517,6 +1523,9 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<int>("RegUserId")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("SignupGiftGrantedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -1574,6 +1583,20 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int?>("EditUserId")
                         .HasColumnType("int");
 
+                    b.Property<bool>("FirstPurchaseBonusEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("FirstPurchaseBonusMaxPoints")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("FirstPurchaseBonusType")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("FirstPurchaseBonusValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -1607,6 +1630,15 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("SignupGiftEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("SignupGiftType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SignupGiftValue")
                         .HasColumnType("int");
 
                     b.Property<int>("TenantId")
@@ -3737,7 +3769,8 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("OrderId")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<string>("PhysicalReceiptId")
                         .HasMaxLength(64)
@@ -3798,6 +3831,10 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasIndex("LocalOccurredAt");
 
                     b.HasIndex("LoyaltyCardId");
+
+                    b.HasIndex("OrderId")
+                        .HasDatabaseName("IX_Transactions_OrderId")
+                        .HasFilter("[OrderId] IS NOT NULL");
 
                     b.HasIndex("PhysicalReceiptId")
                         .HasFilter("[PhysicalReceiptId] IS NOT NULL");

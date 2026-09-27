@@ -31,6 +31,15 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int? BasePercentCard { get; set; }
         public List<HappyHoursWindowDto> HappyHoursWindows { get; set; } = new();
 
+        // Welcome bonus
+        public bool FirstPurchaseBonusEnabled { get; set; }
+        public WelcomeBonusType FirstPurchaseBonusType { get; set; }
+        public decimal FirstPurchaseBonusValue { get; set; }
+        public decimal? FirstPurchaseBonusMaxPoints { get; set; }
+        public bool SignupGiftEnabled { get; set; }
+        public SignupGiftType SignupGiftType { get; set; }
+        public int SignupGiftValue { get; set; }
+
         public GetCardTemplateDto? CardTemplate { get; set; }
     }
 }

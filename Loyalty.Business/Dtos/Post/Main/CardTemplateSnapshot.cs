@@ -58,6 +58,8 @@ namespace Loyalty.Business.Dtos.Post.Main
         public int? PlatinumPercentCash { get; set; }
         public bool OneRedeem { get; set; } = false;
         public bool PayMentType { get; set; } = false;
+        /// <summary>Hədiyyə template xal rejimində (TemplateType artıq PointsBased kimi gəlir).</summary>
+        public bool RewardAsPoints { get; set; } = false;
         
         // ---- Currency ----
         public string Currency { get; set; } = "AZN";

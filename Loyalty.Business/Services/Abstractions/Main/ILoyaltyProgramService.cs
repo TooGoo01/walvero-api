@@ -21,5 +21,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> Update(AddLoyaltyProgramDto dto, int id);
         Task<ServiceResult> Delete(int id);
         Task<ServiceResult> UpdateHappyHoursAsync(int programId, UpdateHappyHoursDto dto, CancellationToken ct = default);
+        /// <summary>ownershipTenantId null = Super Admin (yoxlama yoxdur); əks halda proqram həmin tenant-a aid olmalıdır.</summary>
+        Task<ServiceResult> UpdateWelcomeBonusAsync(int programId, UpdateWelcomeBonusDto dto, int? ownershipTenantId, CancellationToken ct = default);
     }
 }

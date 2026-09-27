@@ -20,6 +20,7 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         {
             return await GetAsQueryable()
                 .AsNoTracking()
+                .Include(x => x.CardTemplate)
                 .Where(x => x.IsActive == true)
                 .ToListAsync(ct);
         }

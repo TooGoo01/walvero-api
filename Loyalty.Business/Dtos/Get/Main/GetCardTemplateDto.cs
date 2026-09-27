@@ -18,6 +18,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public bool OneRedeem { get; set; } = false;
         public List<IconDto> Icons { get; set; } = new();
         public int TotalSteps { get; set; }
+        public bool RewardAsPoints { get; set; }              // Hədiyyə yerinə xal rejimi (yalnız ProgressBased)
         public string StepLabel { get; set; } = "";
         public string RewardDescription { get; set; } = "";
         public string? FreeRewardLabel { get; set; }  // "Pulsuz içki", "Burger" və s. (nullable, default: "Pulsuz içki")

@@ -49,6 +49,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly Hangfire.IBackgroundJobClient _jobClient;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ITenantStatusGuard _tenantStatusGuard;
+        private readonly IWelcomeBonusService _welcomeBonus;
         public RedeemService(
             ILoyaltyCardRepository cardSvc,
             ILoyaltyProgramRepository programSvc,
@@ -70,8 +71,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             ITenantProvider tenantProvider,
             Hangfire.IBackgroundJobClient jobClient,
             IServiceScopeFactory scopeFactory,
-            ITenantStatusGuard tenantStatusGuard)
+            ITenantStatusGuard tenantStatusGuard,
+            IWelcomeBonusService welcomeBonus)
         {
+            _welcomeBonus = welcomeBonus;
             _cardSvc = cardSvc;
             _programSvc = programSvc;
             _brandingSvc = brandingSvc;
@@ -741,7 +744,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 tx.OcrExtractedAmount = ocrAmount;
                 uow.Repository<LoyaltyCard>().Update(card);
                 uow.Repository<Transaction>().Add(tx);
+                var welcomeBonus = delta > 0
+                    ? await _welcomeBonus.TryGrantFirstPurchaseAsync(card, program, snapshot.TemplateType, snapshot.TotalSteps,
+                        request.OriginalAmount, operatorBranchId, request.OrderId, CancellationToken.None)
+                    : 0m;
                 uow.Commit();
+                if (welcomeBonus > 0)
+                    await _welcomeBonus.SyncPosBalanceSafeAsync(card.TenantId, card.CustomerId, card.CurrentPoints, CancellationToken.None);
 
                 _logger.LogInformation("Delta applied. CardId={CardId}, Points {Before}->{After}, Steps {StepsBefore}->{StepsAfter}, CompletedCycles {CyclesBefore}->{CyclesAfter}, Delta={Delta}",
                     card.Id, beforePoints, card.CurrentPoints, beforeSteps, card.CurrentSteps, beforeCompletedCycles, card.CompletedCycles, delta);
@@ -833,7 +842,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentPoints,
                         card.CurrentSteps,
                         card.CompletedCycles,
-                        (int)delta,
+                        (int)(delta + welcomeBonus),
                         CancellationToken.None,
                         lotteryTickets,
                         lotteryWinPrize,
@@ -864,7 +873,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         card.CurrentPoints,
                         card.CurrentSteps,
                         card.CompletedCycles,
-                        (int)delta,
+                        (int)(delta + welcomeBonus),
                         CancellationToken.None,
                         lotteryTickets,
                         lotteryWinPrize,

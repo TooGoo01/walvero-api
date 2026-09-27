@@ -133,5 +133,26 @@ namespace Loyalty.WebAPI.Controllers
                 return Ok(result);
             return BadRequest(result);
         }
+
+        /// <summary>Xoş gəldin bonusu ayarları. Super Admin hər proqramı, Tenant Admin yalnız öz tenant-ının proqramını dəyişə bilər.</summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrSuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> UpdateWelcomeBonus(int id, [FromBody] UpdateWelcomeBonusDto dto, CancellationToken ct)
+        {
+            int? ownership = null;
+            if (!User.IsInRole("Super Admin"))
+            {
+                ownership = _tenantProvider.CurrentTenantId;
+                if (!ownership.HasValue)
+                    return BadRequest(new ServiceResult(false, "Tenant not found."));
+            }
+
+            var result = await _loyaltyProgramService.UpdateWelcomeBonusAsync(id, dto, ownership, ct);
+            if (result.Success)
+                return Ok(result);
+            return BadRequest(result);
+        }
     }
 }

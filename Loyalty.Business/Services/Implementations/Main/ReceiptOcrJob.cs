@@ -65,6 +65,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             var userNotify = sp.GetRequiredService<IUserNotificationService>();
             var programSvc = sp.GetRequiredService<ILoyaltyProgramRepository>();
             var brandingSvc = sp.GetRequiredService<ITenantBrandingRepository>();
+            var welcomeBonusSvc = sp.GetRequiredService<IWelcomeBonusService>();
+            decimal welcomeBonus = 0m;
 
             var tx = await db.Transactions
                 .Include(t => t.LoyaltyCard).ThenInclude(c => c.Customer)
@@ -223,7 +225,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 try
                 {
-                    await ApplyToBalanceAsync(db, tx, programSvc, brandingSvc, ct);
+                    welcomeBonus = await ApplyToBalanceAsync(db, tx, programSvc, brandingSvc, welcomeBonusSvc, ct);
                     tx.Status = RedeemStatus.Applied;
                     _logger.LogInformation("ReceiptOcrJob: Tx {Id} OCR OK, balance applied. Extracted={Amt}",
                         transactionId, ocr.ExtractedAmount);
@@ -267,6 +269,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             await db.SaveChangesAsync(ct);
+
+            if (welcomeBonus > 0)
+            {
+                await welcomeBonusSvc.SyncPosBalanceSafeAsync(tenantId, tx.LoyaltyCard.CustomerId, tx.LoyaltyCard.CurrentPoints, ct);
+                Hangfire.BackgroundJob.Enqueue<IWalletPushJob>(j => j.RunAsync(tx.LoyaltyCardId, tx.LoyaltyCard.LoyaltyProgramId, welcomeBonus));
+            }
         }
 
         private static void FlagTx(Transaction tx, string reason)
@@ -389,11 +397,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
         }
 
-        private static async Task ApplyToBalanceAsync(
+        private static async Task<decimal> ApplyToBalanceAsync(
             LoyaltyWalletDbContext db,
             Transaction tx,
             ILoyaltyProgramRepository programSvc,
             ITenantBrandingRepository brandingSvc,
+            IWelcomeBonusService welcomeBonusSvc,
             CancellationToken ct)
         {
             var card = await db.Set<LoyaltyCard>()
@@ -413,6 +422,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             BalanceMath.ApplyDelta(card, snapshot, delta);
             card.EditDate = DateTime.UtcNow;
             tx.BalanceAfter = card.CurrentPoints;
+
+            if (delta <= 0) return 0m;
+            return await welcomeBonusSvc.TryGrantFirstPurchaseAsync(card, program, snapshot.TemplateType, snapshot.TotalSteps,
+                tx.OcrExtractedAmount ?? tx.Amount, tx.BranchId, tx.OrderId, ct);
         }
 
         private static string? ExtractBlobFileName(string? url)

@@ -37,7 +37,8 @@ namespace Loyalty.Business.Helpers
 
                 // Template meta
                 TemplateName = ct.TemplateName ?? string.Empty,
-                TemplateType = ct.TemplateType,
+                // ProgressBased + RewardAsPoints → PointsBased davranışı (balans, redeem, pass, display)
+                TemplateType = ct.EffectiveType,
                 IconLayout = ct.IconLayout,
 
                 // Progress based
@@ -72,6 +73,7 @@ namespace Loyalty.Business.Helpers
                 GoldPercentCash = ct.GoldPercentCash ?? 0,
                 OneRedeem = ct.OneRedeem,
                 PayMentType = ct.PayMentType,
+                RewardAsPoints = ct.RewardAsPoints,
                 // Currency (Para birimi)
                 Currency = string.IsNullOrWhiteSpace(ct.Currency) ? "AZN" : ct.Currency,
                 // Colors (CardTemplate üstünlük, boşdursa Branding → default)

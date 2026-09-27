@@ -95,6 +95,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             entity.TemplateName = dto.TemplateName.Trim();
             entity.TemplateType = dto.TemplateType;
             entity.TotalSteps = Math.Max(1, dto.TotalSteps);
+            entity.RewardAsPoints = dto.TemplateType == CardTemplateType.ProgressBased && dto.RewardAsPoints;
             entity.StepLabel = dto.StepLabel?.Trim() ?? "Step";
             entity.RewardDescription = dto.RewardDescription?.Trim() ?? "";
             entity.FreeRewardLabel = dto.FreeRewardLabel?.Trim();  // nullable, default "Pulsuz içki" istifadəçi tərəfində
@@ -357,6 +358,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Order = x.Order
                 }).ToList() ?? new List<IconDto>(),
                 TotalSteps = e.TotalSteps,
+                RewardAsPoints = e.RewardAsPoints,
                 StepLabel = e.StepLabel,
                 RewardDescription = e.RewardDescription,
                 BronzeIconUrl = e.BronzeIconUrl,

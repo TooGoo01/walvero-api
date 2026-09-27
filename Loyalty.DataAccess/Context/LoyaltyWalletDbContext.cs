@@ -293,6 +293,10 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(lp => lp.ProgramType).HasConversion<int>();
                 entity.Property(lp => lp.PointsPerCurrency).HasColumnType("decimal(18,4)");
                 entity.Property(lp => lp.CurrencyPerPoint).HasColumnType("decimal(18,4)");
+                entity.Property(lp => lp.FirstPurchaseBonusType).HasConversion<int>();
+                entity.Property(lp => lp.FirstPurchaseBonusValue).HasPrecision(18, 2);
+                entity.Property(lp => lp.FirstPurchaseBonusMaxPoints).HasPrecision(18, 2);
+                entity.Property(lp => lp.SignupGiftType).HasConversion<int>();
 
                 entity.HasOne(lp => lp.CardTemplate)
                     .WithOne(ct => ct.LoyaltyProgram)
@@ -545,6 +549,13 @@ namespace Loyalty.DataAccess.Context
                 entity.HasIndex(t => t.RegDate);
                 entity.HasIndex(t => t.LoyaltyCardId);
                 entity.HasIndex(t => t.LocalOccurredAt);
+
+                // iiko/POS idempotency açarı: `OrderId == key` və `StartsWith` sorğuları üçün.
+                // nvarchar(max) index olunmur → 450 (SQL Server index key limiti). Filtered: OCR tx-lərdə null.
+                entity.Property(t => t.OrderId).HasMaxLength(450);
+                entity.HasIndex(t => t.OrderId)
+                    .HasDatabaseName("IX_Transactions_OrderId")
+                    .HasFilter("[OrderId] IS NOT NULL");
 
                 entity.Property(t => t.PhysicalReceiptId).HasMaxLength(64);
                 entity.Property(t => t.QrDocId).HasMaxLength(128);

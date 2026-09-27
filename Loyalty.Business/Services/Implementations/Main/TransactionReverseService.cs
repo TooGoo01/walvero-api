@@ -25,6 +25,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IWalletRouter _walletRouter;
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly ILogger<TransactionReverseService> _logger;
+        private readonly IWelcomeBonusService _welcomeBonus;
 
         public TransactionReverseService(
             IUnitOfWork unitOfWork,
@@ -34,8 +35,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             ITenantBrandingRepository tenantBrandingRepository,
             IWalletRouter walletRouter,
             LoyaltyWalletDbContext dbContext,
-            ILogger<TransactionReverseService> logger)
+            ILogger<TransactionReverseService> logger,
+            IWelcomeBonusService welcomeBonus)
         {
+            _welcomeBonus = welcomeBonus;
             _unitOfWork = unitOfWork;
             _transactionRepository = transactionRepository;
             _loyaltyCardRepository = loyaltyCardRepository;
@@ -203,7 +206,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     BalanceAfter = card.CurrentPoints,
                     Amount = reversedAmount,
                     ReferenceNumber = card.BarcodeValue,
-                    OrderId = dto.OrderId,
+                    OrderId = dto.OrderId is { Length: > 450 } ? dto.OrderId[..450] : dto.OrderId, // sütun nvarchar(450)
                     LocalOccurredAt = DateTimeOffset.UtcNow,
                     TimeZoneIdUsed = originalTransaction.TimeZoneIdUsed,
                     Description = $"Transaction reversed: {dto.Reason}. Original: {originalTransaction.Description}"
@@ -689,7 +692,23 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 _unitOfWork.Repository<LoyaltyCard>().Update(card);
                 _unitOfWork.Repository<Transaction>().Update(tx);
+
+                decimal welcomeBonus = 0m;
+                if (signedDelta > 0)
+                {
+                    var program = await _loyaltyProgramRepository.GetByIdNameAsync(card.LoyaltyProgramId, ct);
+                    if (program != null)
+                        welcomeBonus = await _welcomeBonus.TryGrantFirstPurchaseAsync(card, program,
+                            program.CardTemplate?.TemplateType ?? CardTemplateType.PointsBased,
+                            program.CardTemplate?.TotalSteps ?? 10, tx.Amount, tx.BranchId, tx.OrderId, ct);
+                }
                 _unitOfWork.Commit();
+
+                if (welcomeBonus > 0)
+                {
+                    await _welcomeBonus.SyncPosBalanceSafeAsync(card.TenantId, card.CustomerId, card.CurrentPoints, ct);
+                    Hangfire.BackgroundJob.Enqueue<IWalletPushJob>(j => j.RunAsync(card.Id, card.LoyaltyProgramId, welcomeBonus));
+                }
 
                 _logger.LogInformation("Flagged tx approved. TxId={TxId}, CardId={CardId}, Delta={Delta}",
                     tx.Id, card.Id, signedDelta);

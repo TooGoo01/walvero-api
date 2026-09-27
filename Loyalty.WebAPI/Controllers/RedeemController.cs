@@ -88,7 +88,8 @@ namespace Loyalty.WebAPI.Controllers
             {
                 Success = true,
                 ProgramName = program.ProgramName,
-                TemplateType = tpl.TemplateType,
+                // Xal rejimi → POS UI PointsBased (xal daxil et / xalla ödə), hədiyyə UI-si yox
+                TemplateType = EffectiveType(tpl),
                 ShowBalanceOnUi = true
             };
 
@@ -102,6 +103,12 @@ namespace Loyalty.WebAPI.Controllers
 
             return Ok(dto);
         }
+        /// <summary>ProgressBased + RewardAsPoints → PointsBased davranışı (CardTemplate.EffectiveType-in DTO ekvivalenti).</summary>
+        private static CardTemplateType EffectiveType(GetCardTemplateDto tpl) =>
+            tpl.TemplateType == CardTemplateType.ProgressBased && tpl.RewardAsPoints
+                ? CardTemplateType.PointsBased
+                : tpl.TemplateType;
+
         public static (string tierName, int? percent,int? percentCash, string? iconUrl) TierResolver(
   decimal points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null)
         {
@@ -583,6 +590,10 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             else
                 percent = hhCard ?? tierPercent;
 
+            // Xal rejimi (hədiyyə template + RewardAsPoints): delta = məhsul sayı (1 məhsul = 1 xal), faiz tətbiq olunmur.
+            if (tpl.TemplateType == CardTemplateType.ProgressBased && tpl.RewardAsPoints)
+                percent = null;
+
             // OCR doğrulaması üçün kassirin daxil etdiyi orijinal məbləği saxla (percent çevrilməsindən əvvəl).
             // Pay rejimi-də delta artıq mənfi, abs() faktiki çek məbləğidir.
             decimal originalAmount = Math.Abs(delta);
@@ -615,7 +626,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 EkassaImage = ekassaImage,
                 Code = code,
                 Delta = delta,
-                OrderId = orderIdIn,
+                OrderId = orderIdIn is { Length: > 450 } ? orderIdIn[..450] : orderIdIn, // sütun nvarchar(450)
                 TenantId = tenantId.Value,
                 SpendCount = spendCountIn, // Add SpendCount for "Xərclə" mode
                 ReceiptImage = receiptImage,

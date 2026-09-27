@@ -26,6 +26,10 @@ namespace Loyalty.DataAccess.Entities.Main
         public int CurrentSteps { get; set; } = 0;        // neçə qəhvə alınıb (məs: 7/10)
         public int CompletedCycles { get; set; } = 0;
 
+        // Welcome bonus idempotency
+        public DateTime? FirstPurchaseBonusGrantedAt { get; set; }
+        public DateTime? SignupGiftGrantedAt { get; set; }
+
         public bool IsAndroid { get; set; } = false;
         public bool IsIOS { get; set; } = false;
         public string? AppleSerial { get; set; }
