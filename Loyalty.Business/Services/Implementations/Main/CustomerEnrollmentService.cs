@@ -96,6 +96,7 @@ UserManager<ApplicationUser> userManager,
             _tenantStatusGuard = tenantStatusGuard;
             _tenantSuspensionGuard = tenantSuspensionGuard;
             _scopeFactory = scopeFactory;
+            _welcomeBonus = welcomeBonus;
         }
 
 
