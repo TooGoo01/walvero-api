@@ -148,8 +148,11 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ErrorDescription { get; init; }
 
         public bool Success => Data is not null && StatusCode is >= 200 and < 300;
-        public bool IsNotFound => StatusCode == 400
-            && (ErrorDescription ?? RawBody ?? string.Empty).Contains("not found", StringComparison.OrdinalIgnoreCase);
+        /// <summary>
+        /// iiko lookup uğursuzluğunu 400 ilə qaytarır, mətn dəyişir ("Customer not found",
+        /// "There is no user with card with card track X", ...) — 400 = tapılmadı.
+        /// </summary>
+        public bool IsNotFound => StatusCode == 400;
         public bool IsUnauthorized => StatusCode == 401;
 
         public static IikoApiResult<T> Ok(T? data, int statusCode, string? rawBody)

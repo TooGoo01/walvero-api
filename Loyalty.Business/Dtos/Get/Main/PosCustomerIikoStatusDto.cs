@@ -33,6 +33,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public bool Found { get; set; }
         /// <summary>id | barcode | walveroId | phone</summary>
         public string? FoundBy { get; set; }
+        /// <summary>Tapılmayanda iiko-nun son cavab mətni (məs. "There is no user with card track …").</summary>
+        public string? LookupNote { get; set; }
         public Guid? IikoCustomerId { get; set; }
         public string? IikoName { get; set; }
         public string? IikoPhone { get; set; }

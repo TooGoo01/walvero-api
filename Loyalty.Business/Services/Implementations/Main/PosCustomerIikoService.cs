@@ -283,7 +283,9 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var mapping = venue != null
                 ? await _mappingRepo.GetByVenueAndCustomerAsync(venue.Id, ctx.Customer.Id, ct)
-                : await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, ctx.Customer.Id, ct);
+                : null;
+            // Legacy (venue-siz) mapping — iiko müştəri id-si org-lar arası paylaşıldığı üçün id ilə axtarışa yarayır
+            mapping ??= await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, ctx.Customer.Id, ct);
             status.MappingExists = mapping != null;
             status.ExternalCustomerId = mapping?.ExternalCustomerId;
 
@@ -300,6 +302,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!string.IsNullOrEmpty(ctx.Phone))
                 lookups.Add(("phone", IikoCustomerLookup.Phone, ctx.Phone!));
 
+            string? lastNotFound = null;
             foreach (var (by, type, value) in lookups)
             {
                 var r = await _iiko.FindCustomerAsync(token, orgId, type, value, ct);
@@ -308,10 +311,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Fill(status, r.Data, by);
                     break;
                 }
-                if (r.IsNotFound) continue;
+                if (r.IsNotFound) { lastNotFound = r.ErrorDescription; continue; }
                 status.Error = r.ErrorDescription ?? $"iiko HTTP {r.StatusCode}";
                 break;
             }
+            if (!status.Found && status.Error == null)
+                status.LookupNote = lastNotFound;
 
             if (status.Found)
                 await SelectWalletAsync(ctx, integration, venue, orgId, token, status, ct);
