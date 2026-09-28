@@ -27,7 +27,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<decimal> TryGrantFirstPurchaseAsync(
             LoyaltyCard card, LoyaltyProgram program, CardTemplateType templateType, int totalSteps,
-            decimal? orderAmount, int? branchId, string? orderRef, CancellationToken ct = default)
+            decimal? orderAmount, decimal regularEarnPoints, int? branchId, string? orderRef, CancellationToken ct = default)
         {
             if (!program.FirstPurchaseBonusEnabled || card.FirstPurchaseBonusGrantedAt != null)
                 return 0m;
@@ -50,21 +50,53 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return 0m;
             }
 
-            var bonus = isPercent
-                ? Math.Round(orderAmount!.Value * program.FirstPurchaseBonusValue / 100m, 2)
-                : program.FirstPurchaseBonusValue;
-            if (isPercent && program.FirstPurchaseBonusMaxPoints is > 0)
-                bonus = Math.Min(bonus, program.FirstPurchaseBonusMaxPoints.Value);
-            if (templateType == CardTemplateType.ProgressBased)
-                bonus = Math.Floor(bonus);
+            var bonus = CalculateFirstPurchaseBonus(
+                program.FirstPurchaseBonusType, program.FirstPurchaseBonusValue, program.FirstPurchaseBonusMaxPoints,
+                templateType, orderAmount, regularEarnPoints);
 
             card.FirstPurchaseBonusGrantedAt = DateTime.UtcNow;
-            if (bonus <= 0) return 0m;
+            if (bonus <= 0)
+            {
+                _logger.LogInformation("Welcome bonus not granted: regular earn already >= target. CardId={CardId}, Regular={Regular}, Amount={Amount}",
+                    card.Id, regularEarnPoints, orderAmount);
+                return 0m;
+            }
 
             Apply(card, templateType, totalSteps, bonus);
             AddBonusTx(card, bonus, orderAmount, branchId, orderRef, FirstPurchaseDescription);
 
-            _logger.LogInformation("Welcome bonus granted. CardId={CardId}, Bonus={Bonus}, Amount={Amount}", card.Id, bonus, orderAmount);
+            _logger.LogInformation("Welcome bonus granted. CardId={CardId}, Bonus={Bonus}, Regular={Regular}, Amount={Amount}",
+                card.Id, bonus, regularEarnPoints, orderAmount);
+            return bonus;
+        }
+
+        /// <summary>
+        /// İlk sifariş bonusunun xalis dəyəri (pure, test üçün).
+        /// Percent + PointsBased: hədəf = sifarişin X%-i; bonus = hədəf − adi cashback ("cəmi X%").
+        /// Percent + ProgressBased: floor(sifarişin X%-i) addım, çıxılma yoxdur (adi qazanc ştampdır).
+        /// Fixed: dəyər olduğu kimi, əlavə olaraq. MaxPoints tavanı yalnız Percent-də, əlavə (top-up) hissəsinə.
+        /// </summary>
+        public static decimal CalculateFirstPurchaseBonus(
+            WelcomeBonusType type, decimal value, decimal? maxPoints,
+            CardTemplateType templateType, decimal? orderAmount, decimal regularEarnPoints)
+        {
+            decimal bonus;
+            if (type == WelcomeBonusType.Percent)
+            {
+                if (orderAmount is null || orderAmount <= 0) return 0m;
+                var target = Math.Round(orderAmount.Value * value / 100m, 2);
+                bonus = templateType == CardTemplateType.ProgressBased
+                    ? Math.Floor(target)
+                    : Math.Round(target - Math.Max(0m, regularEarnPoints), 2);
+                if (maxPoints is > 0)
+                    bonus = Math.Min(bonus, maxPoints.Value);
+            }
+            else
+            {
+                bonus = value;
+                if (templateType == CardTemplateType.ProgressBased)
+                    bonus = Math.Floor(bonus);
+            }
             return bonus;
         }
 

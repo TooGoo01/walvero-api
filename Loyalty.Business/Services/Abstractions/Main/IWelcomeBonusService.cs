@@ -10,9 +10,14 @@ namespace Loyalty.Business.Services.Abstractions.Main
     /// </summary>
     public interface IWelcomeBonusService
     {
+        /// <param name="regularEarnPoints">
+        /// Eyni earn əməliyyatında karta artıq tətbiq olunmuş adi cashback xalı.
+        /// Percent + PointsBased-də bonus = sifarişin X%-i − bu dəyər ("ilk sifarişdə cəmi X%").
+        /// ProgressBased (ştamp) və Fixed tipdə nəzərə alınmır.
+        /// </param>
         Task<decimal> TryGrantFirstPurchaseAsync(
             LoyaltyCard card, LoyaltyProgram program, CardTemplateType templateType, int totalSteps,
-            decimal? orderAmount, int? branchId, string? orderRef, CancellationToken ct = default);
+            decimal? orderAmount, decimal regularEarnPoints, int? branchId, string? orderRef, CancellationToken ct = default);
 
         Task<decimal> TryGrantSignupGiftAsync(
             LoyaltyCard card, LoyaltyProgram program, CardTemplateType templateType, int totalSteps,

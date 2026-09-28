@@ -622,7 +622,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     {
                         welcomeBonus = await _welcomeBonus.TryGrantFirstPurchaseAsync(c, prog,
                             isProgressBased ? CardTemplateType.ProgressBased : CardTemplateType.PointsBased, maxSteps,
-                            request.Total, context.BranchId, request.Id, ct);
+                            request.Total, totalPoints, context.BranchId, request.Id, ct);
                         if (welcomeBonus > 0) c.LifetimePoints += welcomeBonus;
                     }
                     await _uow.CommitAsync(ct);
@@ -751,7 +751,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (delta > 0 && program != null)
             {
                 welcomeBonus = await _welcomeBonus.TryGrantFirstPurchaseAsync(card, program, templateType, totalSteps,
-                    null, context.BranchId, idempotencyKey + ":welcome", ct);
+                    null, delta, context.BranchId, idempotencyKey + ":welcome", ct);
                 if (welcomeBonus > 0) card.LifetimePoints += welcomeBonus;
             }
             await _uow.CommitAsync(ct);
@@ -1185,7 +1185,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (program != null)
                 {
                     welcomeBonus = await _welcomeBonus.TryGrantFirstPurchaseAsync(c, program, templateType, totalStepsPerCycle,
-                        earnBase, context.BranchId, idempotencyKey + ":welcome", ct);
+                        earnBase, totalEarnPoints, context.BranchId, idempotencyKey + ":welcome", ct);
                     if (welcomeBonus > 0) c.LifetimePoints += welcomeBonus;
                 }
             }

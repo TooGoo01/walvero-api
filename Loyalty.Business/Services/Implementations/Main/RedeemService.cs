@@ -746,7 +746,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 uow.Repository<Transaction>().Add(tx);
                 var welcomeBonus = delta > 0
                     ? await _welcomeBonus.TryGrantFirstPurchaseAsync(card, program, snapshot.TemplateType, snapshot.TotalSteps,
-                        request.OriginalAmount, operatorBranchId, request.OrderId, CancellationToken.None)
+                        request.OriginalAmount, delta, operatorBranchId, request.OrderId, CancellationToken.None)
                     : 0m;
                 uow.Commit();
                 if (welcomeBonus > 0)

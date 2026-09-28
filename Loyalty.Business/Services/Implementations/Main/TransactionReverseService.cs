@@ -700,7 +700,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     if (program != null)
                         welcomeBonus = await _welcomeBonus.TryGrantFirstPurchaseAsync(card, program,
                             program.CardTemplate?.TemplateType ?? CardTemplateType.PointsBased,
-                            program.CardTemplate?.TotalSteps ?? 10, tx.Amount, tx.BranchId, tx.OrderId, ct);
+                            program.CardTemplate?.TotalSteps ?? 10, tx.Amount, signedDelta, tx.BranchId, tx.OrderId, ct);
                 }
                 _unitOfWork.Commit();
 

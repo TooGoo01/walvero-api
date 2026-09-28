@@ -424,8 +424,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             tx.BalanceAfter = card.CurrentPoints;
 
             if (delta <= 0) return 0m;
+            // Baza = kassirin daxil etdiyi məbləğ (delta ondan törəyib); OCR məbləği yalnız fallback
             return await welcomeBonusSvc.TryGrantFirstPurchaseAsync(card, program, snapshot.TemplateType, snapshot.TotalSteps,
-                tx.OcrExtractedAmount ?? tx.Amount, tx.BranchId, tx.OrderId, ct);
+                tx.Amount ?? tx.OcrExtractedAmount, delta, tx.BranchId, tx.OrderId, ct);
         }
 
         private static string? ExtractBlobFileName(string? url)
