@@ -192,6 +192,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             var response = await PostAsync<IikoLoyaltyProgramsResponse>(
                 accessToken, "/api/1/loyalty/iiko/program", new { organizationId }, ct);
 
+            // Ümumi "returned BadRequest" logunda org id yoxdur — "Transport_WrongCrmId / Organization N not found"
+            // (org iikoCard-a bağlı deyil) hallarında hansı org olduğunu görmək üçün.
+            if (response == null)
+                _logger.LogWarning("iiko loyalty programs unavailable for organizationId={OrgId}", organizationId);
+
             return response?.Programs;
         }
 

@@ -353,6 +353,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                     programs = await _iiko.GetLoyaltyProgramsAsync(token, orgId, ct);
                     ctx.ProgramsByOrg[orgId] = programs;
                 }
+                if (programs == null)
+                {
+                    // iiko "Transport_WrongCrmId / Organization not found": org iikoCard (loyalty) ilə bağlı deyil.
+                    // Wallet seçimi ilk wallet-ə düşür — admin bunu görsün.
+                    var note = $"iiko loyalty proqramları alınmadı (org {orgId} iikoCard-a bağlı deyil?) — ilk wallet seçildi";
+                    status.LookupNote = string.IsNullOrEmpty(status.LookupNote) ? note : status.LookupNote + " | " + note;
+                }
                 var walletId = programs?.FirstOrDefault(p => p.Id == programId)?.WalletId;
                 if (walletId.HasValue)
                     selected = status.Wallets.FirstOrDefault(w => w.Id == walletId.Value);

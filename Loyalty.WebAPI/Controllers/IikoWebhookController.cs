@@ -216,45 +216,26 @@ namespace Loyalty.WebAPI.Controllers
                     }).ToList()
                 };
 
-                var ctx = await _resolver.ResolveByTerminalGroupIdAsync(terminalGroupId, IikoSource, ct);
-                if (ctx == null)
-                {
-                    _logger.LogWarning(
-                        "iiko_transaction: tenant not found. terminalGroupId={TerminalGroupId} orderId={OrderId}",
-                        terminalGroupId, request.OrderId);
-                    // İnteqrasiya sonradan qurula bilər → retry növbəsinə yaz.
-                    // CancellationToken.None: client kəsilsə belə qeyd yazılmalıdır.
-                    await _failureService.RecordFailureAsync(internalReq, null, "Tenant integration not found", CancellationToken.None);
-                    return Ok(new { success = false, message = "Tenant integration not found" });
-                }
-
-                // Deaktiv tenant-da POS auto-earn qadağandır (abunə dayandırılıb) — retry-ə yazmırıq.
-                if (!await _tenantStatusGuard.IsActiveAsync(ctx.TenantId, ct))
-                {
-                    _logger.LogWarning("iiko_transaction blocked — tenant inactive. TenantId={TenantId}", ctx.TenantId);
-                    return Ok(new { success = false, message = Business.Services.Implementations.Main.TenantStatusGuard.InactiveMessage });
-                }
-
-                // Hangfire-ə enqueue et — emal PosBatchOperationJob-da gedir.
-                // Uğursuzluq (customer not found və s.) və exception job daxilində
-                // IikoWebhookFailures-ə yazılır → 10 dəqiqəlik retry növbəsi.
+                // Ack-first: cavabdan əvvəl heç bir DB sorğusu yoxdur (iiko plugin 5s timeout, DNS hissəsi
+                // artıq büdcənin çoxunu yeyir). Tenant resolve + status guard + emal PosBatchOperationJob-da
+                // gedir; tenant/customer not found və exception job daxilində IikoWebhookFailures-ə yazılır.
                 string jobId;
                 try
                 {
-                    jobId = _jobClient.Enqueue<PosBatchOperationJob>(j => j.ProcessAsync(ctx, internalReq, CancellationToken.None));
+                    jobId = _jobClient.Enqueue<PosBatchOperationJob>(j => j.ProcessByTerminalGroupAsync(internalReq, CancellationToken.None));
                 }
                 catch (Exception enqueueEx)
                 {
                     // Hangfire storage əlçatmazdırsa sifarişi itirmə — retry növbəsinə yaz.
                     _logger.LogError(enqueueEx, "iiko_transaction ENQUEUE_FAIL. orderId={OrderId}", request.OrderId);
-                    await _failureService.RecordFailureAsync(internalReq, ctx.TenantIntegrationId,
+                    await _failureService.RecordFailureAsync(internalReq, null,
                         "Hangfire enqueue failed: " + enqueueEx.Message, CancellationToken.None);
                     return Ok(new { success = false, message = "Queued for retry" });
                 }
 
                 _logger.LogInformation(
-                    "iiko_transaction ENQUEUED. jobId={JobId} eventType={EventType} orderId={OrderId} orderNumber={OrderNumber} tenantId={TenantId} totalSum={TotalSum} card={Card}",
-                    jobId, internalReq.EventType, request.OrderId, request.OrderNumber, ctx.TenantId, internalReq.TotalSum, internalReq.CustomerCardNumber);
+                    "iiko_transaction ENQUEUED. jobId={JobId} eventType={EventType} orderId={OrderId} orderNumber={OrderNumber} terminalGroupId={TerminalGroupId} totalSum={TotalSum} card={Card}",
+                    jobId, internalReq.EventType, request.OrderId, request.OrderNumber, terminalGroupId, internalReq.TotalSum, internalReq.CustomerCardNumber);
 
                 return Ok(new { success = true, message = "Accepted", jobId });
             }

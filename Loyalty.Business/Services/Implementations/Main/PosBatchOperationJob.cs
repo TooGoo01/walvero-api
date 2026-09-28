@@ -13,6 +13,8 @@ namespace Loyalty.Business.Services.Implementations.Main
     /// </summary>
     public sealed class PosBatchOperationJob
     {
+        private const string IikoSource = "iiko_pos";
+
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<PosBatchOperationJob> _logger;
 
@@ -22,6 +24,53 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             _scopeFactory = scopeFactory;
             _logger = logger;
+        }
+
+        /// <summary>
+        /// Ack-first giriş (iiko_transaction): controller cavabdan əvvəl heç bir DB sorğusu etmir —
+        /// iiko plugin-in 5s timeout-una görə. Tenant resolve + status guard burada, background-da gedir.
+        /// </summary>
+        [Queue("default")]
+        [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
+        public async Task ProcessByTerminalGroupAsync(IikoOrderEventRequest req, CancellationToken ct = default)
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var resolver = scope.ServiceProvider.GetRequiredService<ITenantIntegrationResolver>();
+            var statusGuard = scope.ServiceProvider.GetRequiredService<ITenantStatusGuard>();
+            var failureService = scope.ServiceProvider.GetRequiredService<IIikoWebhookFailureService>();
+
+            WalletWebhookResolvedContext? ctx;
+            try
+            {
+                ctx = await resolver.ResolveByTerminalGroupIdAsync(req.TerminalGroupId ?? string.Empty, IikoSource, ct);
+                if (ctx == null)
+                {
+                    _logger.LogWarning(
+                        "iiko order event: tenant not found. terminalGroupId={TerminalGroupId} orderId={OrderId}",
+                        req.TerminalGroupId, req.OrderId);
+                    // İnteqrasiya sonradan qurula bilər → retry növbəsinə yaz.
+                    await failureService.RecordFailureAsync(req, null, "Tenant integration not found", CancellationToken.None);
+                    return;
+                }
+
+                // Deaktiv tenant-da POS auto-earn qadağandır (abunə dayandırılıb) — retry-ə yazmırıq.
+                if (!await statusGuard.IsActiveAsync(ctx.TenantId, ct))
+                {
+                    _logger.LogWarning(
+                        "iiko order event blocked — tenant inactive. TenantId={TenantId} orderId={OrderId}",
+                        ctx.TenantId, req.OrderId);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "iiko order event RESOLVE_EXCEPTION. terminalGroupId={TerminalGroupId} orderId={OrderId}",
+                    req.TerminalGroupId, req.OrderId);
+                await failureService.RecordFailureAsync(req, null, "Resolve exception: " + ex.Message, CancellationToken.None);
+                throw; // Hangfire retry
+            }
+
+            await ProcessAsync(ctx, req, ct);
         }
 
         [Queue("default")]
