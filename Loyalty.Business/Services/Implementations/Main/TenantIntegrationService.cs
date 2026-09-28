@@ -1,6 +1,9 @@
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 using Loyalty.Infrastructure.Utilities.Security.Encryption;
@@ -16,6 +19,76 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ISensitiveDataProtector _protector;
         private readonly IIikoPosApiClient _iikoClient;
         private readonly IUnitOfWork _uow;
+        private readonly LoyaltyWalletDbContext _db;
+        private readonly ILogger<TenantIntegrationService> _logger;
+
+        public async Task<ServiceResult<RestampBranchesResultDto>> RestampIikoTransactionBranchesAsync(int integrationId, RestampBranchesDto dto, CancellationToken ct = default)
+        {
+            if (dto?.Map == null || dto.Map.Count == 0)
+                return ServiceResult<RestampBranchesResultDto>.Fail("Map boşdur.");
+            if (dto.Map.Select(m => m.FromBranchId).Distinct().Count() != dto.Map.Count)
+                return ServiceResult<RestampBranchesResultDto>.Fail("FromBranchId təkrarlanır.");
+
+            var integration = await _repo.GetByIdAsync(integrationId, ct);
+            if (integration == null)
+                return ServiceResult<RestampBranchesResultDto>.Fail("İnteqrasiya tapılmadı.");
+
+            var branchIds = dto.Map.SelectMany(m => new[] { m.FromBranchId, m.ToBranchId }).Distinct().ToList();
+            var ownBranches = await _db.Set<Branch>()
+                .Where(b => b.TenantId == integration.TenantId && branchIds.Contains(b.Id))
+                .Select(b => b.Id).ToListAsync(ct);
+            if (ownBranches.Count != branchIds.Count)
+                return ServiceResult<RestampBranchesResultDto>.Fail("Filial bu tenant-a aid deyil.");
+
+            var before = dto.Before;
+            if (before == null)
+            {
+                before = await _db.Set<TenantIntegrationVenue>()
+                    .Where(v => v.TenantIntegrationId == integrationId)
+                    .Select(v => (DateTime?)(v.EditDate ?? v.RegDate))
+                    .MinAsync(ct);
+            }
+            if (before == null)
+                return ServiceResult<RestampBranchesResultDto>.Fail("Kəsim anı müəyyən edilmədi.");
+
+            var map = dto.Map.ToDictionary(m => m.FromBranchId, m => m.ToBranchId);
+            var fromIds = map.Keys.ToList();
+            var cutoff = before.Value;
+
+            // Yalnız iiko mənşəli tx-lər — kassir/scanner tx-ləri operator filialı ilə möhürlənib, toxunulmur
+            var txs = await _db.Set<Transaction>()
+                .Where(t => t.BranchId != null && fromIds.Contains(t.BranchId.Value)
+                            && t.RegDate < cutoff
+                            && t.LoyaltyCard.TenantId == integration.TenantId
+                            && ((t.Description != null && t.Description.StartsWith("iiko"))
+                                || (t.OrderId != null && t.OrderId.StartsWith("iiko:"))))
+                .ToListAsync(ct);
+
+            var result = new RestampBranchesResultDto
+            {
+                Before = cutoff,
+                DryRun = dto.DryRun,
+                Counts = dto.Map.ToDictionary(
+                    m => $"{m.FromBranchId}->{m.ToBranchId}",
+                    m => txs.Count(t => t.BranchId == m.FromBranchId))
+            };
+            if (dto.DryRun) return ServiceResult<RestampBranchesResultDto>.Ok(result);
+
+            var now = DateTime.UtcNow;
+            foreach (var t in txs)
+            {
+                t.BranchId = map[t.BranchId!.Value];
+                t.EditDate = now;
+            }
+            await _db.SaveChangesAsync(ct);
+            result.Updated = txs.Count;
+
+            _logger.LogWarning(
+                "iiko tx branch restamp: TenantId={TenantId}, IntegrationId={IntegrationId}, Before={Before}, Counts={Counts}, Updated={Updated}",
+                integration.TenantId, integrationId, cutoff, string.Join(",", result.Counts.Select(kv => $"{kv.Key}:{kv.Value}")), result.Updated);
+
+            return ServiceResult<RestampBranchesResultDto>.Ok(result);
+        }
 
         public TenantIntegrationService(
             ITenantIntegrationRepository repo,
@@ -24,8 +97,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             IWalletTokenGenerator tokenGenerator,
             ISensitiveDataProtector protector,
             IIikoPosApiClient iikoClient,
-            IUnitOfWork uow)
+            IUnitOfWork uow,
+            LoyaltyWalletDbContext db,
+            ILogger<TenantIntegrationService> logger)
         {
+            _db = db;
+            _logger = logger;
             _repo = repo;
             _venueRepo = venueRepo;
             _typeRepo = typeRepo;

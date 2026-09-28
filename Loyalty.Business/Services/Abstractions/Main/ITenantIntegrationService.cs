@@ -20,6 +20,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult<List<IikoOrgOptionDto>>> GetIikoOrganizationsAsync(int integrationId, int? tenantId, CancellationToken ct = default);
         /// <summary>ExternalProgramId boş venue-ları iiko-dan avtomatik doldurur. Doldurulan venue sayını qaytarır.</summary>
         Task<ServiceResult<int>> AutoFillVenueProgramsAsync(int integrationId, int? tenantId, CancellationToken ct = default);
+        Task<ServiceResult<RestampBranchesResultDto>> RestampIikoTransactionBranchesAsync(int integrationId, RestampBranchesDto dto, CancellationToken ct = default);
     }
 
     public class TenantIntegrationCreateDto
@@ -100,6 +101,29 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ExternalProgramId { get; set; }
         public string? DisplayName { get; set; }
         public bool IsActive { get; set; }
+    }
+
+    /// <summary>Tarixi iiko tranzaksiyalarının BranchId-sini xəritə ilə dəyiş (venue filial səhvi düzəlişi).</summary>
+    public class RestampBranchesDto
+    {
+        public List<BranchRemapItem> Map { get; set; } = new();
+        /// <summary>Bu andan əvvəl yaranan tx-lər; null → integration venue-larının ən erkən EditDate-i.</summary>
+        public DateTime? Before { get; set; }
+        public bool DryRun { get; set; } = true;
+    }
+
+    public class BranchRemapItem
+    {
+        public int FromBranchId { get; set; }
+        public int ToBranchId { get; set; }
+    }
+
+    public class RestampBranchesResultDto
+    {
+        public DateTime Before { get; set; }
+        public bool DryRun { get; set; }
+        public Dictionary<string, int> Counts { get; set; } = new();
+        public int Updated { get; set; }
     }
 
     public class TenantIntegrationVenueUpsertDto

@@ -191,6 +191,15 @@ namespace Loyalty.WebAPI.Controllers
             return Ok();
         }
 
+        /// <summary>Birdəfəlik düzəliş: venue filialı səhv olduğu dövrdə yazılmış iiko tx-lərinin BranchId-sini xəritə ilə dəyiş. DryRun default.</summary>
+        [HttpPost("{id}/restamp-transaction-branches")]
+        [Authorize(Policy = "SuperAdminOnly")]
+        public async Task<IActionResult> RestampTransactionBranches(int id, [FromBody] RestampBranchesDto dto, CancellationToken ct)
+        {
+            var result = await _service.RestampIikoTransactionBranchesAsync(id, dto, ct);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+
         [HttpGet("{id}/iiko/organizations")]
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> GetIikoOrganizations(int id, [FromQuery] int? tenantId, CancellationToken ct)
