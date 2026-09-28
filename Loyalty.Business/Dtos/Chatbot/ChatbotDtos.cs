@@ -108,9 +108,9 @@ namespace Loyalty.Business.Dtos.Chatbot
         public string TenantName { get; set; } = string.Empty;
         public string? BranchName { get; set; }
         public string Type { get; set; } = string.Empty;      // Earned/Redeemed/Bonus/...
-        public int Points { get; set; }
+        public decimal Points { get; set; }
         public decimal? Amount { get; set; }
-        public int BalanceAfter { get; set; }
+        public decimal BalanceAfter { get; set; }
         public System.DateTimeOffset OccurredAt { get; set; }
     }
 }

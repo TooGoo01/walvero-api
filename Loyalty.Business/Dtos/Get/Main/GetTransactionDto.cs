@@ -15,7 +15,7 @@ namespace Loyalty.Business.Dtos.Get.Main
 
         public TransactionType Type { get; set; }
         public RedeemStatus Status { get; set; }
-        public int Points { get; set; }
+        public decimal Points { get; set; }
         public decimal? Amount { get; set; }
 
         public string? Description { get; set; }
@@ -24,7 +24,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? OrderId { get; set; }
         public DateTimeOffset LocalOccurredAt { get; set; }
         public string TimeZoneIdUsed { get; set; } = "UTC";
-        public int BalanceAfter { get; set; }
+        public decimal BalanceAfter { get; set; }
         public string? CustomerName { get; set; }
         public string? CardNumber { get; set; }
         public DateTime? CreatedAt { get; set; }

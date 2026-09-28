@@ -4,8 +4,8 @@ using Loyalty.DataAccess.Enums;
 namespace Loyalty.Business.Dtos.Get.Main
 {
     /// <summary>
-    /// /api/Customer/List endpoint-i üçün DTO. GetCustomerDto-nun klonu, lakin nested LoyaltyCards
-    /// köhnə scanner build-i ilə uyğunluq üçün integer points qaytaran GetLoyaltyCardListItemDto istifadə edir.
+    /// /api/Customer/List endpoint-i üçün DTO. GetCustomerDto-nun klonu, nested LoyaltyCards
+    /// GetLoyaltyCardListItemDto istifadə edir (points decimal).
     /// </summary>
     public class GetCustomerListItemDto
     {

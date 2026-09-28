@@ -126,10 +126,8 @@ namespace Loyalty.Business.Mappings
                 })
                 .ReverseMap();
 
-            // Backward-compat DTO for /api/Customer/List — points serialized as int
+            // /api/Customer/List kart DTO-su — points decimal (cashback balansı onluqludur)
             CreateMap<LoyaltyCard, GetLoyaltyCardListItemDto>()
-                .ForMember(d => d.CurrentPoints, opt => opt.MapFrom(s => (int)s.CurrentPoints))
-                .ForMember(d => d.LifetimePoints, opt => opt.MapFrom(s => (int)s.LifetimePoints))
                 .AfterMap((src, dest) =>
                 {
                     var tpl = src.LoyaltyProgram?.CardTemplate;

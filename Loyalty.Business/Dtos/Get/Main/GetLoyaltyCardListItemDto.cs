@@ -14,8 +14,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string CardNumber { get; set; } = string.Empty;
         public string? BarcodeValue { get; set; }
 
-        public int CurrentPoints { get; set; }
-        public int LifetimePoints { get; set; }
+        public decimal CurrentPoints { get; set; }
+        public decimal LifetimePoints { get; set; }
         public int CurrentSteps { get; set; }
         public int CompletedCycles { get; set; }
         public int AvailableRewardCount { get; set; }
