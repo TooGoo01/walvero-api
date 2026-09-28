@@ -1,4 +1,5 @@
 using Hangfire;
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.Business.Services.Implementations.Main;
 using Microsoft.AspNetCore.Authorization;
@@ -229,7 +230,7 @@ namespace Loyalty.WebAPI.Controllers
                     // Hangfire storage əlçatmazdırsa sifarişi itirmə — retry növbəsinə yaz.
                     _logger.LogError(enqueueEx, "iiko_transaction ENQUEUE_FAIL. orderId={OrderId}", request.OrderId);
                     await _failureService.RecordFailureAsync(internalReq, null,
-                        "Hangfire enqueue failed: " + enqueueEx.Message, CancellationToken.None);
+                        "Hangfire enqueue failed: " + enqueueEx.Message, IikoFailureKind.Transient, CancellationToken.None);
                     return Ok(new { success = false, message = "Queued for retry" });
                 }
 
@@ -245,7 +246,8 @@ namespace Loyalty.WebAPI.Controllers
                 _logger.LogError(ex, "iiko_transaction unhandled error. orderId={OrderId}", internalReq?.OrderId);
                 // Payload artıq parse olunubsa sifarişi itirmə — retry növbəsinə yaz.
                 if (internalReq != null)
-                    await _failureService.RecordFailureAsync(internalReq, null, "Unhandled: " + ex.Message, CancellationToken.None);
+                    await _failureService.RecordFailureAsync(internalReq, null, "Unhandled: " + ex.Message,
+                        TransientErrorClassifier.IsTransient(ex) ? IikoFailureKind.Transient : IikoFailureKind.Permanent, CancellationToken.None);
                 return Ok(new { success = false, message = "Internal error" });
             }
         }

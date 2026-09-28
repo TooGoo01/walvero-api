@@ -1,4 +1,5 @@
 using Hangfire;
+using Hangfire.Storage;
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Models.TenantIntegration;
 using Loyalty.Business.Services.Abstractions.Main;
@@ -772,11 +773,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             };
         }
 
+        private static IikoTransactionResponse IikoFail(IikoFailureKind kind, string message) =>
+            new() { Success = false, Message = message, FailureKind = kind };
+
         public async Task<IikoTransactionResponse> ProcessIikoOrderEventAsync(
             WalletWebhookResolvedContext context, IikoOrderEventRequest request, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(request.OrderId))
-                return new IikoTransactionResponse { Success = false, Message = "OrderId is required" };
+                return IikoFail(IikoFailureKind.Permanent, "OrderId is required");
 
             var eventType = request.EventType?.Trim();
             if (!string.Equals(eventType, "OrderClosed", StringComparison.OrdinalIgnoreCase) &&
@@ -786,8 +790,39 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new IikoTransactionResponse { Success = true, Message = $"EventType '{eventType}' ignored" };
             }
 
+            // Per-order lock: eyni sifariş paralel emal olunmasın (Hangfire 2 worker + retry job + plugin təkrar göndərişi).
+            // İdempotency yoxlaması (marker tx) read-then-write olduğundan lock olmadan ikiqat xal mümkündür.
+            // Hangfire.SqlServer bunu sp_getapplock ilə edir; storage konfiq olunmayıbsa (test) lock atlanır.
+            JobStorage? storage = null;
+            try { storage = JobStorage.Current; }
+            catch (InvalidOperationException) { /* Hangfire konfiq olunmayıb */ }
+
+            if (storage == null)
+                return await ProcessIikoOrderEventCoreAsync(context, request, eventType!, ct);
+
+            using var conn = storage.GetConnection();
+            IDisposable orderLock;
+            try
+            {
+                orderLock = conn.AcquireDistributedLock($"iiko-order:{request.OrderId.Trim()}", TimeSpan.FromSeconds(30));
+            }
+            catch (DistributedLockTimeoutException)
+            {
+                _logger.LogWarning("iiko order event: lock timeout — başqa worker emal edir. OrderId={OrderId}", request.OrderId);
+                return IikoFail(IikoFailureKind.Transient, "Order is being processed by another worker");
+            }
+
+            using (orderLock)
+            {
+                return await ProcessIikoOrderEventCoreAsync(context, request, eventType!, ct);
+            }
+        }
+
+        private async Task<IikoTransactionResponse> ProcessIikoOrderEventCoreAsync(
+            WalletWebhookResolvedContext context, IikoOrderEventRequest request, string eventType, CancellationToken ct)
+        {
             if (context.LoyaltyProgramId == null)
-                return new IikoTransactionResponse { Success = false, Message = "LoyaltyProgramId not configured" };
+                return IikoFail(IikoFailureKind.Retriable, "LoyaltyProgramId not configured");
 
             int? customerId = null;
             if (!string.IsNullOrWhiteSpace(request.ExternalCustomerId))
@@ -817,12 +852,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                 customerId = byWalvero?.Id;
             }
             if (customerId == null)
-                return new IikoTransactionResponse { Success = false, Message = $"Customer not found (extId={request.ExternalCustomerId}, phone={request.CustomerPhone}, card={request.CustomerCardNumber})" };
+                return IikoFail(IikoFailureKind.Retriable, $"Customer not found (extId={request.ExternalCustomerId}, phone={request.CustomerPhone}, card={request.CustomerCardNumber})");
 
             var card = await _loyaltyCardRepo.GetLastActiveByCustomerAsync(
                 context.TenantId, context.LoyaltyProgramId.Value, customerId.Value, ct);
             if (card == null)
-                return new IikoTransactionResponse { Success = false, Message = "Active loyalty card not found" };
+                return IikoFail(IikoFailureKind.Retriable, "Active loyalty card not found");
 
             var program = await _loyaltyProgramRepo.GetByIdNameAsync(context.LoyaltyProgramId.Value);
             var template = program?.CardTemplate;
@@ -868,7 +903,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var c = await _uow.Repository<LoyaltyCard>().GetByIdAsync(card.Id, ct);
             if (c == null)
-                return new IikoTransactionResponse { Success = false, Message = "Loyalty card vanished mid-flight" };
+                return IikoFail(IikoFailureKind.Transient, "Loyalty card vanished mid-flight");
 
             decimal totalReverseDelta = 0m;
 
@@ -1100,7 +1135,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var c = await _uow.Repository<LoyaltyCard>().GetByIdAsync(card.Id, ct);
             if (c == null)
-                return new IikoTransactionResponse { Success = false, Message = "Loyalty card vanished mid-flight" };
+                return IikoFail(IikoFailureKind.Transient, "Loyalty card vanished mid-flight");
 
             decimal earnedValue = 0m;
             decimal welcomeBonus = 0m;

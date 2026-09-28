@@ -1146,7 +1146,11 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("EventType")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<int>("FailureKind")
+                        .HasColumnType("int");
 
                     b.Property<string>("FailureReason")
                         .HasColumnType("nvarchar(max)");
@@ -1157,8 +1161,12 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<DateTime?>("LastAttemptAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("OrderId")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<string>("RawBody")
                         .IsRequired()
@@ -1177,11 +1185,16 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("TerminalGroupId")
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.HasKey("Id");
 
-                    b.ToTable("IikoWebhookFailures");
+                    b.HasIndex("OrderId", "EventType");
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.ToTable("IikoWebhookFailures", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.IntegrationType", b =>

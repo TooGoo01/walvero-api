@@ -123,10 +123,26 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ChangedOn { get; set; }
     }
 
+    /// <summary>
+    /// iiko sifariş emalının uğursuzluq növü — retry siyasətini müəyyən edir.
+    /// Transient: DB timeout / deadlock / lock — tez və qısa retry.
+    /// Retriable: müştəri/konfiq hələ yoxdur — yavaş retry, 7 günə qədər.
+    /// Permanent: yanlış payload / deterministik xəta — retry mənasızdır (Rejected).
+    /// </summary>
+    public enum IikoFailureKind
+    {
+        None = 0,
+        Transient = 1,
+        Retriable = 2,
+        Permanent = 3
+    }
+
     public class IikoTransactionResponse
     {
         public bool Success { get; set; }
         public string? Message { get; set; }
+        /// <summary>Success=false olanda uğursuzluq növü (Success=true → None).</summary>
+        public IikoFailureKind FailureKind { get; set; } = IikoFailureKind.None;
     }
 
     /// <summary>

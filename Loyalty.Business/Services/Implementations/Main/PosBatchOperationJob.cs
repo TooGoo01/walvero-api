@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Hangfire;
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Models.TenantIntegration;
 using Loyalty.Business.Services.Abstractions.Main;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +11,8 @@ namespace Loyalty.Business.Services.Implementations.Main
     /// <summary>
     /// iiko POS OrderClosed / OrderReturned eventini background-da işləyir.
     /// Hangfire dequeue → IWalletWebhookService.ProcessIikoOrderEventAsync.
+    /// Uğursuzluq siyasəti: keçici exception → Hangfire retry (3×, 10s/60s/300s) + IikoWebhookFailures (Transient);
+    /// daimi exception → yalnız IikoWebhookFailures (Rejected), job Succeeded bitir — mənasız retry yoxdur.
     /// </summary>
     public sealed class PosBatchOperationJob
     {
@@ -31,7 +34,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         /// iiko plugin-in 5s timeout-una görə. Tenant resolve + status guard burada, background-da gedir.
         /// </summary>
         [Queue("default")]
-        [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
+        [AutomaticRetry(Attempts = 3, DelaysInSeconds = new[] { 10, 60, 300 }, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
         public async Task ProcessByTerminalGroupAsync(IikoOrderEventRequest req, CancellationToken ct = default)
         {
             using var scope = _scopeFactory.CreateScope();
@@ -48,8 +51,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     _logger.LogWarning(
                         "iiko order event: tenant not found. terminalGroupId={TerminalGroupId} orderId={OrderId}",
                         req.TerminalGroupId, req.OrderId);
-                    // İnteqrasiya sonradan qurula bilər → retry növbəsinə yaz.
-                    await failureService.RecordFailureAsync(req, null, "Tenant integration not found", CancellationToken.None);
+                    // İnteqrasiya/venue sonradan qurula bilər → yavaş retry (Retriable).
+                    await failureService.RecordFailureAsync(req, null, "Tenant integration not found", IikoFailureKind.Retriable, CancellationToken.None);
                     return;
                 }
 
@@ -64,17 +67,20 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "iiko order event RESOLVE_EXCEPTION. terminalGroupId={TerminalGroupId} orderId={OrderId}",
-                    req.TerminalGroupId, req.OrderId);
-                await failureService.RecordFailureAsync(req, null, "Resolve exception: " + ex.Message, CancellationToken.None);
-                throw; // Hangfire retry
+                var transient = TransientErrorClassifier.IsTransient(ex);
+                _logger.LogError(ex, "iiko order event RESOLVE_EXCEPTION. terminalGroupId={TerminalGroupId} orderId={OrderId} transient={Transient}",
+                    req.TerminalGroupId, req.OrderId, transient);
+                await failureService.RecordFailureAsync(req, null, "Resolve exception: " + ex.Message,
+                    transient ? IikoFailureKind.Transient : IikoFailureKind.Permanent, CancellationToken.None);
+                if (transient) throw; // Hangfire retry
+                return;               // daimi xəta — retry mənasızdır
             }
 
             await ProcessAsync(ctx, req, ct);
         }
 
         [Queue("default")]
-        [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
+        [AutomaticRetry(Attempts = 3, DelaysInSeconds = new[] { 10, 60, 300 }, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
         public async Task ProcessAsync(
             WalletWebhookResolvedContext ctx,
             IikoOrderEventRequest req,
@@ -115,24 +121,29 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
                 else
                 {
+                    var kind = result.FailureKind == IikoFailureKind.None ? IikoFailureKind.Retriable : result.FailureKind;
                     _logger.LogWarning(
-                        "iiko order event job FAILED_LOGIC. eventType={EventType} orderId={OrderId} elapsedMs={ElapsedMs} message={Message}",
-                        req.EventType, req.OrderId, sw.ElapsedMilliseconds, result.Message);
+                        "iiko order event job FAILED_LOGIC. eventType={EventType} orderId={OrderId} elapsedMs={ElapsedMs} kind={Kind} message={Message}",
+                        req.EventType, req.OrderId, sw.ElapsedMilliseconds, kind, result.Message);
 
-                    // Customer not found və s. → IikoWebhookFailures (10 dəq retry, müştəri sonradan sync olunanda keçsin).
-                    await failureService.RecordFailureAsync(req, ctx.TenantIntegrationId, result.Message, CancellationToken.None);
+                    // Customer not found (Retriable, günlərlə yavaş retry), lock timeout (Transient), OrderId boş (Permanent → Rejected).
+                    await failureService.RecordFailureAsync(req, ctx.TenantIntegrationId, result.Message, kind, CancellationToken.None);
                 }
             }
             catch (Exception ex)
             {
                 sw.Stop();
+                var transient = TransientErrorClassifier.IsTransient(ex);
                 _logger.LogError(ex,
-                    "iiko order event job EXCEPTION. eventType={EventType} orderId={OrderId} elapsedMs={ElapsedMs}",
-                    req.EventType, req.OrderId, sw.ElapsedMilliseconds);
+                    "iiko order event job EXCEPTION. eventType={EventType} orderId={OrderId} elapsedMs={ElapsedMs} transient={Transient}",
+                    req.EventType, req.OrderId, sw.ElapsedMilliseconds, transient);
 
-                // Hangfire 3 dəfə retry edəcək; hər halda failure cədvəlinə də yaz (idempotency key ikiqat emalı bloklar).
-                await failureService.RecordFailureAsync(req, ctx.TenantIntegrationId, "Exception: " + ex.Message, CancellationToken.None);
-                throw;
+                await failureService.RecordFailureAsync(req, ctx.TenantIntegrationId, "Exception: " + ex.Message,
+                    transient ? IikoFailureKind.Transient : IikoFailureKind.Permanent, CancellationToken.None);
+
+                // Keçici (DB timeout/deadlock/şəbəkə) → Hangfire retry; per-order lock + idempotency ikiqat emalı bloklayır.
+                // Daimi (NullReference, məlumat xətası) → retry mənasızdır, job burada bitir.
+                if (transient) throw;
             }
         }
     }

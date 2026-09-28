@@ -564,6 +564,19 @@ namespace Loyalty.DataAccess.Context
                     .HasFilter("[PhysicalReceiptId] IS NOT NULL");
             });
 
+            modelBuilder.Entity<IikoWebhookFailure>(entity =>
+            {
+                entity.ToTable("IikoWebhookFailures");
+                // GUID-lər — index üçün uzunluq lazımdır (nvarchar(max) index olunmur)
+                entity.Property(x => x.OrderId).HasMaxLength(64);
+                entity.Property(x => x.EventType).HasMaxLength(32);
+                entity.Property(x => x.TerminalGroupId).HasMaxLength(64);
+                // Retry sorğusu: Status = Pending AND NextAttemptAt <= now
+                entity.HasIndex(x => new { x.Status, x.NextAttemptAt });
+                // Upsert: OrderId + EventType
+                entity.HasIndex(x => new { x.OrderId, x.EventType });
+            });
+
             modelBuilder.Entity<EkassaJsonAudit>(entity =>
             {
                 entity.ToTable("EkassaJsonAudits");
