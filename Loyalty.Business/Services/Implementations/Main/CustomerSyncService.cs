@@ -199,6 +199,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Id = existingMapping != null && Guid.TryParse(existingMapping.ExternalCustomerId, out var exId) ? exId : (Guid?)null,
                 Name = customer.FirstName,
                 Surname = customer.LastName,
+                Phone = Helpers.PhoneNormalizer.ToE164(customer.PhoneNumber),
+                Email = string.IsNullOrWhiteSpace(customer.Email) ? null : customer.Email.Trim(),
                 CardTrack = actualBarcode,
                 CardNumber = actualBarcode,
                 Birthday = customer.DateOfBirth?.ToString("yyyy-MM-dd HH:mm:ss.fff")

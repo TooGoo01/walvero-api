@@ -1,6 +1,7 @@
 using Hangfire;
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Context;
@@ -60,22 +61,23 @@ namespace Loyalty.Business.Services.Implementations.Main
             public LoyaltyCard? DefaultCard;
             public long? WalveroId;
             public string? Phone;
+            public string? LookupCardTrack;
             public List<TenantIntegration> Integrations = new();
             public Dictionary<int, string?> Tokens = new();
             public Dictionary<int, CardTemplateType> TemplateTypes = new();
             public Dictionary<Guid, List<IikoLoyaltyProgram>?> ProgramsByOrg = new();
         }
 
-        public async Task<ServiceResult<PosCustomerIikoStatusDto>> GetStatusAsync(int tenantId, int customerId, int? cardId, CancellationToken ct = default)
+        public async Task<ServiceResult<PosCustomerIikoStatusDto>> GetStatusAsync(int tenantId, int customerId, int? cardId, string? lookupCardTrack = null, CancellationToken ct = default)
         {
-            var (ctx, error) = await LoadAsync(tenantId, customerId, cardId, ct);
+            var (ctx, error) = await LoadAsync(tenantId, customerId, cardId, lookupCardTrack, ct);
             if (ctx == null) return ServiceResult<PosCustomerIikoStatusDto>.Fail(error!);
             return ServiceResult<PosCustomerIikoStatusDto>.Ok(await BuildStatusAsync(ctx, ct));
         }
 
         public async Task<ServiceResult<PosCustomerIikoStatusDto>> PushBalanceAsync(int tenantId, int customerId, IikoPushBalanceDto dto, CancellationToken ct = default)
         {
-            var (ctx, error) = await LoadAsync(tenantId, customerId, dto.CardId, ct);
+            var (ctx, error) = await LoadAsync(tenantId, customerId, dto.CardId, dto.LookupCardTrack, ct);
             if (ctx == null) return ServiceResult<PosCustomerIikoStatusDto>.Fail(error!);
             if (ctx.DefaultCard == null) return ServiceResult<PosCustomerIikoStatusDto>.Fail("Aktiv kart yoxdur.");
 
@@ -131,7 +133,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult<PosCustomerIikoStatusDto>> PullBalanceAsync(int tenantId, int customerId, IikoPullBalanceDto dto, CancellationToken ct = default)
         {
-            var (ctx, error) = await LoadAsync(tenantId, customerId, dto.CardId, ct);
+            var (ctx, error) = await LoadAsync(tenantId, customerId, dto.CardId, null, ct);
             if (ctx == null) return ServiceResult<PosCustomerIikoStatusDto>.Fail(error!);
             if (ctx.DefaultCard == null) return ServiceResult<PosCustomerIikoStatusDto>.Fail("Aktiv kart yoxdur.");
 
@@ -188,20 +190,25 @@ namespace Loyalty.Business.Services.Implementations.Main
                 "iiko admin pull: CustomerId={CustomerId}, CardId={CardId}, orgId={OrgId}, Delta={Delta}, NewBalance={Balance}",
                 customerId, card.Id, v.OrganizationId, delta, card.CurrentPoints);
 
-            var (ctx2, _) = await LoadAsync(tenantId, customerId, dto.CardId, ct);
+            var (ctx2, _) = await LoadAsync(tenantId, customerId, dto.CardId, null, ct);
             var fresh = ctx2 != null ? await BuildStatusAsync(ctx2, ct) : status;
             return ServiceResult<PosCustomerIikoStatusDto>.Ok(fresh, $"Kart balansı {delta:+0.##;-0.##} dəyişdi.");
         }
 
         // ── internals ──
 
-        private async Task<(Ctx? Ctx, string? Error)> LoadAsync(int tenantId, int customerId, int? cardId, CancellationToken ct)
+        private async Task<(Ctx? Ctx, string? Error)> LoadAsync(int tenantId, int customerId, int? cardId, string? lookupCardTrack, CancellationToken ct)
         {
             var customer = await _uow.Repository<Customer>().GetByIdAsync(customerId, ct);
             if (customer == null || customer.TenantId != tenantId)
                 return (null, "Müştəri tapılmadı.");
 
-            var ctx = new Ctx { Customer = customer, Phone = NormalizePhone(customer.PhoneNumber) };
+            var ctx = new Ctx
+            {
+                Customer = customer,
+                Phone = PhoneNormalizer.ToE164(customer.PhoneNumber),
+                LookupCardTrack = string.IsNullOrWhiteSpace(lookupCardTrack) ? null : lookupCardTrack.Trim()
+            };
             ctx.Cards = (await _cardRepo.ListByCustomerAsync(tenantId, customerId, ct))?.ToList() ?? new List<LoyaltyCard>();
 
             var active = ctx.Cards.Where(c => c.IsActive).OrderByDescending(c => c.Id).ToList();
@@ -299,6 +306,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 lookups.Add(("barcode", IikoCustomerLookup.CardTrack, ctx.DefaultCard!.BarcodeValue!));
             if (ctx.WalveroId.HasValue)
                 lookups.Add(("walveroId", IikoCustomerLookup.CardTrack, ctx.WalveroId.Value.ToString()));
+            if (!string.IsNullOrEmpty(ctx.LookupCardTrack))
+                lookups.Add(("cardTrack", IikoCustomerLookup.CardTrack, ctx.LookupCardTrack!));
             if (!string.IsNullOrEmpty(ctx.Phone))
                 lookups.Add(("phone", IikoCustomerLookup.Phone, ctx.Phone!));
 
@@ -410,17 +419,5 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         private static CardTemplateType TemplateOf(Ctx ctx, LoyaltyCard card)
             => ctx.TemplateTypes.TryGetValue(card.LoyaltyProgramId, out var t) ? t : CardTemplateType.PointsBased;
-
-        /// <summary>iiko telefonu E.164 gözləyir: "0501234567" / "994501234567" / "501234567" → "+994501234567".</summary>
-        private static string? NormalizePhone(string? raw)
-        {
-            if (string.IsNullOrWhiteSpace(raw)) return null;
-            var digits = new string(raw.Where(char.IsDigit).ToArray());
-            if (digits.Length == 0) return null;
-            if (digits.StartsWith("994") && digits.Length == 12) return "+" + digits;
-            if (digits.StartsWith("0") && digits.Length == 10) return "+994" + digits[1..];
-            if (digits.Length == 9) return "+994" + digits;
-            return "+" + digits;
-        }
     }
 }

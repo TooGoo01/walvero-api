@@ -6,6 +6,8 @@ namespace Loyalty.Business.Dtos.Post.Main
         public int? IntegrationId { get; set; }
         public int? VenueId { get; set; }
         public int? CardId { get; set; }
+        /// <summary>Əlavə iiko kart-track axtarışı (köhnə sistemin fiziki kartı, məs. PrimeHill "105201").</summary>
+        public string? LookupCardTrack { get; set; }
     }
 
     /// <summary>iiko → Walvero. VenueId null = legacy tək-org inteqrasiya.</summary>

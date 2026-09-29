@@ -22,6 +22,7 @@ namespace Loyalty.WebAPI.Controllers
         private readonly ITenantProvider _tenantProvider;
         private readonly ITenantStatusGuard _tenantStatusGuard;
         private readonly IPosCustomerIikoService _posCustomerIiko;
+        private readonly IPosCustomerImportService _posCustomerImport;
         private readonly ILogger<PosController> _logger;
 
         public PosController(
@@ -31,9 +32,11 @@ namespace Loyalty.WebAPI.Controllers
             ITenantProvider tenantProvider,
             ITenantStatusGuard tenantStatusGuard,
             IPosCustomerIikoService posCustomerIiko,
+            IPosCustomerImportService posCustomerImport,
             ILogger<PosController> logger)
         {
             _posCustomerIiko = posCustomerIiko;
+            _posCustomerImport = posCustomerImport;
             _transactionReverseService = transactionReverseService;
             _posSessionService = posSessionService;
             _customerSyncService = customerSyncService;
@@ -144,12 +147,31 @@ namespace Loyalty.WebAPI.Controllers
         /// <summary>Müştərinin iiko vəziyyəti (hər venue/org üzrə): tapılırmı, wallet balansı, bizim balans, fərq.</summary>
         [HttpGet("customers/{customerId:int}/iiko-status")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> GetCustomerIikoStatus(int customerId, [FromQuery] int? cardId, [FromQuery] int? tenantId, CancellationToken ct)
+        public async Task<IActionResult> GetCustomerIikoStatus(int customerId, [FromQuery] int? cardId, [FromQuery] int? tenantId, [FromQuery] string? lookupCardTrack, CancellationToken ct)
         {
             var tid = tenantId ?? _tenantProvider.CurrentTenantId;
             if (!tid.HasValue || tid <= 0)
                 return BadRequest(new ServiceResult(false, "TenantId required."));
-            var result = await _posCustomerIiko.GetStatusAsync(tid.Value, customerId, cardId, ct);
+            var result = await _posCustomerIiko.GetStatusAsync(tid.Value, customerId, cardId, lookupCardTrack, ct);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+
+        /// <summary>
+        /// Kənar sistemdən (məs. PrimeHill) bir müştərinin köçürülməsi: müştəri + kart (Walvero nömrəsi) + açılış balansı (Adjusted).
+        /// Idempotent (OrderRef). iiko sinxronu ayrıca: iiko-status / iiko-push-balance / sync-customers.
+        /// </summary>
+        [HttpPost("import-customer")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrSuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> ImportCustomer([FromBody] ImportCustomerDto dto, [FromQuery] int? tenantId, [FromQuery] bool dryRun, CancellationToken ct)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            if (!tid.HasValue || tid <= 0)
+                return BadRequest(new ServiceResult(false, "TenantId required."));
+            var blocked = await BlockIfTenantInactiveAsync(tid, ct);
+            if (blocked != null) return blocked;
+            var result = await _posCustomerImport.ImportAsync(tid.Value, dto, dryRun, ct);
             return result.Success ? Ok(result) : BadRequest(result);
         }
 

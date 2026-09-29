@@ -391,6 +391,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 Name = customer.FirstName?.Trim() ?? "",
                 Surname = customer.LastName?.Trim(),
+                Phone = Helpers.PhoneNormalizer.ToE164(customer.PhoneNumber),
+                Email = string.IsNullOrWhiteSpace(customer.Email) ? null : customer.Email.Trim(),
                 CardTrack = primaryCard,
                 CardNumber = primaryCard,
                 Birthday = customer.DateOfBirth?.ToString("yyyy-MM-dd HH:mm:ss.fff")

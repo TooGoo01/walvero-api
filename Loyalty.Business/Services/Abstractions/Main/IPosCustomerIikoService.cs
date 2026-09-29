@@ -10,7 +10,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
     /// </summary>
     public interface IPosCustomerIikoService
     {
-        Task<ServiceResult<PosCustomerIikoStatusDto>> GetStatusAsync(int tenantId, int customerId, int? cardId, CancellationToken ct = default);
+        /// <param name="lookupCardTrack">Əlavə iiko kart-track axtarışı (məs. köhnə sistemin fiziki kartı) — bizim barkod/walveroId-dən sonra, telefondan əvvəl.</param>
+        Task<ServiceResult<PosCustomerIikoStatusDto>> GetStatusAsync(int tenantId, int customerId, int? cardId, string? lookupCardTrack = null, CancellationToken ct = default);
         Task<ServiceResult<PosCustomerIikoStatusDto>> PushBalanceAsync(int tenantId, int customerId, IikoPushBalanceDto dto, CancellationToken ct = default);
         Task<ServiceResult<PosCustomerIikoStatusDto>> PullBalanceAsync(int tenantId, int customerId, IikoPullBalanceDto dto, CancellationToken ct = default);
     }
