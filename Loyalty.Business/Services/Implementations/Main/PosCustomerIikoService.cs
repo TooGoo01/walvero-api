@@ -87,6 +87,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             var pushed = 0;
             // iiko wallet org-lar arası paylaşıla bilər (eyni müştəri id + eyni wallet) — bir dəfə düzəlt
             var touchedWallets = new HashSet<(Guid, Guid)>();
+            var cardAddedTo = new HashSet<Guid>();
 
             foreach (var v in status.Venues)
             {
@@ -102,6 +103,18 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     var mapErr = await EnsureMappingAsync(v.IntegrationId, v.VenueId, v.IikoCustomerId.Value, customerId, ct);
                     if (mapErr != null) { errors[(v.IntegrationId, v.VenueId)] = mapErr; continue; }
+                }
+
+                // Köhnə sistemin fiziki kartı (lookupCardTrack) iiko müştərisində yoxdursa əlavə et — kassada skan işləsin.
+                // iiko müştərisi org-lar arası paylaşılır → hər iiko id üçün bir dəfə; uğursuzluq (artıq var / başqasında) yalnız log.
+                if (!string.IsNullOrEmpty(ctx.LookupCardTrack)
+                    && !v.IikoCardTracks.Contains(ctx.LookupCardTrack, StringComparer.OrdinalIgnoreCase)
+                    && cardAddedTo.Add(v.IikoCustomerId.Value))
+                {
+                    var addOk = await _iiko.AddCustomerCardAsync(token, orgId, v.IikoCustomerId.Value, ctx.LookupCardTrack!, ctx.LookupCardTrack!, ct);
+                    _logger.LogInformation(
+                        "iiko admin push: card track add. CustomerId={CustomerId}, iikoId={IikoId}, Track={Track}, Success={Success}",
+                        customerId, v.IikoCustomerId, ctx.LookupCardTrack, addOk);
                 }
 
                 if (v.SelectedWalletId == null) { errors[(v.IntegrationId, v.VenueId)] = "iiko wallet tapılmadı."; continue; }
