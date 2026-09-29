@@ -307,6 +307,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             var (cardsInfo, walveroId, primaryCard) = await GatherIikoCardInfoAsync(integration.TenantId, customer, ct);
+            var ensuredTracksFor = new HashSet<Guid>();
 
             foreach (var venue in venues)
             {
@@ -330,6 +331,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                             await _uow.CommitAsync(ct);
                         }
                     }
+                    // Mapping əvvəldən var (admin import / push ilə yaranıb) — müştəri sonradan app-a qeydiyyatdan keçibsə
+                    // WalveroId və kart barkodu iiko-da olmaya bilər → çatışmayanları əlavə et (iiko müştərisi org-lar arası ortaqdır, 1 dəfə).
+                    if (Guid.TryParse(existing.ExternalCustomerId, out var mappedId) && ensuredTracksFor.Add(mappedId))
+                        await EnsureIikoCardTracksAsync(accessToken, orgId, mappedId, customer.Id, new[] { primaryCard, walveroId?.ToString() }, ct);
                     continue;
                 }
 
@@ -349,6 +354,29 @@ namespace Loyalty.Business.Services.Implementations.Main
                 await _mappingRepo.AddAsync(mapping);
                 await _uow.CommitAsync(ct);
                 _logger.LogInformation("iiko venue sync OK: IntegrationId={Id}, VenueRowId={VenueId}, CustomerId={CustomerId}, iikoId={IikoId}", integration.Id, venue.Id, customer.Id, externalId);
+            }
+        }
+
+        /// <summary>iiko müştərisində çatışmayan kart-track-ləri əlavə et (best-effort; mövcud olanlar keçilir).</summary>
+        private async Task EnsureIikoCardTracksAsync(string accessToken, Guid orgId, Guid iikoCustomerId, int customerId, IEnumerable<string?> tracks, CancellationToken ct)
+        {
+            var wanted = tracks.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (wanted.Count == 0) return;
+            try
+            {
+                var info = await _iikoClient.FindCustomerAsync(accessToken, orgId, IikoCustomerLookup.Id, iikoCustomerId.ToString(), ct);
+                var have = info.Data?.Cards?.Select(c => c.Track ?? c.Number ?? string.Empty).Where(s => s.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase)
+                           ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var track in wanted.Where(t => !have.Contains(t)))
+                {
+                    var ok = await _iikoClient.AddCustomerCardAsync(accessToken, orgId, iikoCustomerId, track, track, ct);
+                    _logger.LogInformation("iiko sync: card track add (mapped customer). CustomerId={CustomerId}, iikoId={IikoId}, Track={Track}, Success={Success}",
+                        customerId, iikoCustomerId, track, ok);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "iiko sync: card track ensure failed. CustomerId={CustomerId}, iikoId={IikoId}", customerId, iikoCustomerId);
             }
         }
 
