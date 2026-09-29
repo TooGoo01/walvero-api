@@ -105,16 +105,23 @@ namespace Loyalty.Business.Services.Implementations.Main
                     if (mapErr != null) { errors[(v.IntegrationId, v.VenueId)] = mapErr; continue; }
                 }
 
-                // Köhnə sistemin fiziki kartı (lookupCardTrack) iiko müştərisində yoxdursa əlavə et — kassada skan işləsin.
+                // iiko müştərisində çatışmayan kart-track-ləri əlavə et — kassada skan işləsin:
+                //   bizim kart barkodu (789…), app WalveroId (varsa), köhnə sistemin fiziki kartı (lookupCardTrack).
                 // iiko müştərisi org-lar arası paylaşılır → hər iiko id üçün bir dəfə; uğursuzluq (artıq var / başqasında) yalnız log.
-                if (!string.IsNullOrEmpty(ctx.LookupCardTrack)
-                    && !v.IikoCardTracks.Contains(ctx.LookupCardTrack, StringComparer.OrdinalIgnoreCase)
-                    && cardAddedTo.Add(v.IikoCustomerId.Value))
+                if (cardAddedTo.Add(v.IikoCustomerId.Value))
                 {
-                    var addOk = await _iiko.AddCustomerCardAsync(token, orgId, v.IikoCustomerId.Value, ctx.LookupCardTrack!, ctx.LookupCardTrack!, ct);
-                    _logger.LogInformation(
-                        "iiko admin push: card track add. CustomerId={CustomerId}, iikoId={IikoId}, Track={Track}, Success={Success}",
-                        customerId, v.IikoCustomerId, ctx.LookupCardTrack, addOk);
+                    var tracks = new[] { ctx.DefaultCard?.BarcodeValue, ctx.WalveroId?.ToString(), ctx.LookupCardTrack }
+                        .Where(t => !string.IsNullOrWhiteSpace(t))
+                        .Select(t => t!.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Where(t => !v.IikoCardTracks.Contains(t, StringComparer.OrdinalIgnoreCase));
+                    foreach (var track in tracks)
+                    {
+                        var addOk = await _iiko.AddCustomerCardAsync(token, orgId, v.IikoCustomerId.Value, track, track, ct);
+                        _logger.LogInformation(
+                            "iiko admin push: card track add. CustomerId={CustomerId}, iikoId={IikoId}, Track={Track}, Success={Success}",
+                            customerId, v.IikoCustomerId, track, addOk);
+                    }
                 }
 
                 if (v.SelectedWalletId == null) { errors[(v.IntegrationId, v.VenueId)] = "iiko wallet tapılmadı."; continue; }
