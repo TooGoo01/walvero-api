@@ -19,17 +19,20 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly LoyaltyWalletDbContext _db;
         private readonly IUnitOfWork _uow;
         private readonly IServiceScopeFactory _scopeFactory;
+        private readonly ITimeZoneService _timeZoneService;
         private readonly ILogger<PointsExpiryService> _logger;
 
         public PointsExpiryService(
             LoyaltyWalletDbContext db,
             IUnitOfWork uow,
             IServiceScopeFactory scopeFactory,
+            ITimeZoneService timeZoneService,
             ILogger<PointsExpiryService> logger)
         {
             _db = db;
             _uow = uow;
             _scopeFactory = scopeFactory;
+            _timeZoneService = timeZoneService;
             _logger = logger;
         }
 
@@ -91,6 +94,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                 card.EditUserId = SystemUserId;
                 _uow.Repository<LoyaltyCard>().Update(card);
 
+                // Təsvirdə tenant-ın yerli vaxtı; alınmasa UTC
+                string when;
+                try
+                {
+                    var (local, _) = await _timeZoneService.GetTenantLocalTimeAsync(card.TenantId, DateTime.SpecifyKind(expiresAt, DateTimeKind.Utc), ct);
+                    when = local.ToString("dd.MM.yyyy HH:mm");
+                }
+                catch { when = expiresAt.ToString("dd.MM.yyyy HH:mm") + " UTC"; }
+
                 await _uow.Repository<Transaction>().AddAsync(new Transaction
                 {
                     LoyaltyCardId = card.Id,
@@ -98,7 +110,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Status = RedeemStatus.Applied,
                     Points = -old,
                     BalanceAfter = 0,
-                    Description = $"Xalın istifadə müddəti bitdi ({expiresAt:dd.MM.yyyy HH:mm} UTC)",
+                    Description = $"Xalın istifadə müddəti bitdi ({when})",
                     OrderId = $"expire:{card.Id}:{expiresAt:yyyyMMddHHmm}",
                     RegUserId = SystemUserId,
                     RegDate = now,

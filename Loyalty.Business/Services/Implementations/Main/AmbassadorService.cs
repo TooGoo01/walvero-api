@@ -29,6 +29,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly LoyaltyWalletDbContext _db;
         private readonly IPointsExpiryService _pointsExpiry;
+        private readonly ITimeZoneService _timeZoneService;
         private readonly ILogger<AmbassadorService> _logger;
 
         public AmbassadorService(
@@ -41,8 +42,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             IServiceScopeFactory scopeFactory,
             LoyaltyWalletDbContext db,
             IPointsExpiryService pointsExpiry,
+            ITimeZoneService timeZoneService,
             ILogger<AmbassadorService> logger)
         {
+            _timeZoneService = timeZoneService;
             _customerRepo = customerRepo;
             _programRepo = programRepo;
             _cardRepo = cardRepo;
@@ -276,7 +279,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             var description = string.IsNullOrWhiteSpace(dto.Description) ? "Manual xal" : dto.Description!.Trim();
             await CreditPointsInternalAsync(card, program, card.CustomerId, dto.Points, description, dto.ExpiresAt, ct);
 
-            return new ServiceResult(true, new { cardId = card.Id, balance = card.CurrentPoints, expiresAt = card.ExpiresAt });
+            return new ServiceResult(true, new { cardId = card.Id, balance = card.CurrentPoints, expiresAt = PointsExpiry.AsUtc(card.ExpiresAt) });
         }
 
         public async Task<ServiceResult> SetPointsExpiryAsync(int tenantId, SetPointsExpiryDto dto, CancellationToken ct = default)
@@ -303,7 +306,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 expired = await _pointsExpiry.ExpireCardAsync(card.Id, ct); // keçmiş tarix → dərhal sıfırla + iiko
 
             _logger.LogInformation("Ambassador points expiry set. CardId={CardId}, ExpiresAt={ExpiresAt}, ExpiredNow={Expired}", card.Id, card.ExpiresAt, expired);
-            return new ServiceResult(true, new { cardId = card.Id, expiresAt = card.ExpiresAt, balance = card.CurrentPoints, expiredPoints = expired });
+            return new ServiceResult(true, new { cardId = card.Id, expiresAt = PointsExpiry.AsUtc(card.ExpiresAt), balance = card.CurrentPoints, expiredPoints = expired });
         }
 
         /// <summary>
@@ -316,7 +319,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             var now = DateTime.UtcNow;
             card.ExpiresAt = PointsExpiry.ResolveOnCredit(card.ExpiresAt, expiresAt, now);
             if (card.ExpiresAt.HasValue)
-                description = $"{description} (bitmə {card.ExpiresAt.Value:dd.MM.yyyy HH:mm} UTC)";
+            {
+                // Təsvirdə tenant-ın yerli vaxtı (məs. Bakı UTC+4)
+                var (local, _) = await _timeZoneService.GetTenantLocalTimeAsync(card.TenantId, card.ExpiresAt.Value, ct);
+                description = $"{description} (bitmə {local:dd.MM.yyyy HH:mm})";
+            }
 
             card.CurrentPoints += points;
             if (points > 0) card.LifetimePoints += points;

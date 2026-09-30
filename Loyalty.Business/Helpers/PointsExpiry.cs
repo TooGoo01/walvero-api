@@ -11,6 +11,13 @@ namespace Loyalty.Business.Helpers
         public static bool IsExpired(DateTime? expiresAt, DateTime? now = null)
             => expiresAt.HasValue && expiresAt.Value <= (now ?? DateTime.UtcNow);
 
+        /// <summary>
+        /// DB-dən oxunan dəyər Kind=Unspecified gəlir → JSON-da "Z" olmur → browser yerli vaxt kimi oxuyar.
+        /// DTO-ya verməzdən əvvəl UTC kimi işarələ ki, serializasiya "…Z" ilə getsin.
+        /// </summary>
+        public static DateTime? AsUtc(DateTime? value)
+            => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : null;
+
         public static bool IsPointsExpired(this LoyaltyCard card, DateTime? now = null)
             => IsExpired(card.ExpiresAt, now);
 

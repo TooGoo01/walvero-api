@@ -305,7 +305,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ? TenantSuspensionMask.EffectiveMessage(card.Tenant!.SuspensionMessage)
                     : $"{customer?.FirstName} {customer?.LastName}".Trim(),
                 CurrentPoints = suspended || card.IsPointsExpired() ? 0 : card.CurrentPoints,
-                PointsExpiresAt = card.ExpiresAt,
+                PointsExpiresAt = PointsExpiry.AsUtc(card.ExpiresAt),
                 IsPointsExpired = card.IsPointsExpired(),
 
                 // ProgressBased card fields

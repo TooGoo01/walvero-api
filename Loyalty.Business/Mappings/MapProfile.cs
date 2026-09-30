@@ -105,7 +105,7 @@ namespace Loyalty.Business.Mappings
             CreateMap<LoyaltyCard, GetLoyaltyCardDto>()
                 .AfterMap((src, dest) =>
                 {
-                    dest.PointsExpiresAt = src.ExpiresAt;
+                    dest.PointsExpiresAt = Helpers.PointsExpiry.AsUtc(src.ExpiresAt);
                     dest.IsPointsExpired = Helpers.PointsExpiry.IsExpired(src.ExpiresAt);
                     var tpl = src.LoyaltyProgram?.CardTemplate;
                     if (tpl != null)
@@ -132,7 +132,7 @@ namespace Loyalty.Business.Mappings
             CreateMap<LoyaltyCard, GetLoyaltyCardListItemDto>()
                 .AfterMap((src, dest) =>
                 {
-                    dest.PointsExpiresAt = src.ExpiresAt;
+                    dest.PointsExpiresAt = Helpers.PointsExpiry.AsUtc(src.ExpiresAt);
                     dest.IsPointsExpired = Helpers.PointsExpiry.IsExpired(src.ExpiresAt);
                     var tpl = src.LoyaltyProgram?.CardTemplate;
                     if (tpl != null)
