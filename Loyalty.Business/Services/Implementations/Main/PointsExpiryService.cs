@@ -1,0 +1,156 @@
+using Hangfire;
+using Loyalty.Business.Helpers;
+using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Context;
+using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Enums;
+using Loyalty.DataAccess.UnitOfWorks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
+namespace Loyalty.Business.Services.Implementations.Main
+{
+    public sealed class PointsExpiryService : IPointsExpiryService
+    {
+        private const int BatchSize = 200;
+        private const int SystemUserId = 1;
+
+        private readonly LoyaltyWalletDbContext _db;
+        private readonly IUnitOfWork _uow;
+        private readonly IServiceScopeFactory _scopeFactory;
+        private readonly ILogger<PointsExpiryService> _logger;
+
+        public PointsExpiryService(
+            LoyaltyWalletDbContext db,
+            IUnitOfWork uow,
+            IServiceScopeFactory scopeFactory,
+            ILogger<PointsExpiryService> logger)
+        {
+            _db = db;
+            _uow = uow;
+            _scopeFactory = scopeFactory;
+            _logger = logger;
+        }
+
+        // Hangfire: bütün batch bir işdir — kart-kart emal, öz try/catch; auto-retry lazım deyil (növbəti run götürür).
+        [AutomaticRetry(Attempts = 0)]
+        [Queue("default")]
+        public async Task RunAsync(CancellationToken ct = default)
+        {
+            var now = DateTime.UtcNow;
+            var due = await _db.Set<LoyaltyCard>()
+                .Where(c => c.IsActive && c.ExpiresAt != null && c.ExpiresAt <= now)
+                .OrderBy(c => c.Id)
+                .Take(BatchSize)
+                .ToListAsync(ct);
+            if (due.Count == 0) return;
+
+            _logger.LogInformation("Points expiry: {Count} due", due.Count);
+
+            var zeroed = 0; var synced = 0;
+            foreach (var card in due)
+            {
+                try
+                {
+                    var (points, ok) = await ExpireCoreAsync(card, ct);
+                    if (points != 0) zeroed++;
+                    if (ok) synced++;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Points expiry failed. CardId={CardId}", card.Id);
+                    _db.Entry(card).State = EntityState.Detached;
+                }
+            }
+
+            _logger.LogInformation("Points expiry done: due={Due}, zeroed={Zeroed}, synced={Synced}", due.Count, zeroed, synced);
+        }
+
+        public async Task<decimal> ExpireCardAsync(int cardId, CancellationToken ct = default)
+        {
+            var card = await _db.Set<LoyaltyCard>().FirstOrDefaultAsync(c => c.Id == cardId, ct);
+            if (card == null || !card.IsPointsExpired()) return 0m;
+            var (points, _) = await ExpireCoreAsync(card, ct);
+            return points;
+        }
+
+        /// <summary>Balansı sıfırla (varsa) + iiko sync; sync uğurludursa ExpiresAt təmizlənir. Qaytarır (sıfırlanan xal, sync ok).</summary>
+        private async Task<(decimal Points, bool Synced)> ExpireCoreAsync(LoyaltyCard card, CancellationToken ct)
+        {
+            var now = DateTime.UtcNow;
+            var expiresAt = card.ExpiresAt ?? now;
+            decimal old = 0m;
+
+            if (card.CurrentPoints > 0 || card.CurrentSteps > 0)
+            {
+                old = card.CurrentPoints;
+                card.CurrentPoints = 0;
+                card.CurrentSteps = 0;
+                card.EditDate = now;
+                card.EditUserId = SystemUserId;
+                _uow.Repository<LoyaltyCard>().Update(card);
+
+                await _uow.Repository<Transaction>().AddAsync(new Transaction
+                {
+                    LoyaltyCardId = card.Id,
+                    Type = TransactionType.Expired,
+                    Status = RedeemStatus.Applied,
+                    Points = -old,
+                    BalanceAfter = 0,
+                    Description = $"Xalın istifadə müddəti bitdi ({expiresAt:dd.MM.yyyy HH:mm} UTC)",
+                    OrderId = $"expire:{card.Id}:{expiresAt:yyyyMMddHHmm}",
+                    RegUserId = SystemUserId,
+                    RegDate = now,
+                    IsActive = true,
+                    LocalOccurredAt = DateTimeOffset.UtcNow,
+                    TimeZoneIdUsed = "UTC"
+                });
+                await _uow.CommitAsync(ct);
+
+                _logger.LogInformation("Points expired. CardId={CardId}, CustomerId={CustomerId}, Points={Points}, ExpiresAt={ExpiresAt}",
+                    card.Id, card.CustomerId, old, expiresAt);
+
+                try
+                {
+                    BackgroundJob.Enqueue<IWalletPushJob>(j => j.RunAsync(card.Id, card.LoyaltyProgramId, -old));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Points expiry: wallet push enqueue failed. CardId={CardId}", card.Id);
+                }
+            }
+
+            // iiko wallet → 0 (chargeoff). Uğurlu olanda tarix silinir; yoxsa növbəti run təkrar sync edir.
+            var synced = await SyncPosSafeAsync(card.TenantId, card.CustomerId, ct);
+            if (synced)
+            {
+                card.ExpiresAt = null;
+                card.EditDate = DateTime.UtcNow;
+                _uow.Repository<LoyaltyCard>().Update(card);
+                await _uow.CommitAsync(ct);
+            }
+            else
+            {
+                _logger.LogWarning("Points expiry: POS sync not confirmed, ExpiresAt kept for retry. CardId={CardId}", card.Id);
+            }
+
+            return (old, synced);
+        }
+
+        private async Task<bool> SyncPosSafeAsync(int tenantId, int customerId, CancellationToken ct)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var sync = scope.ServiceProvider.GetRequiredService<IPosSyncService>();
+                return await sync.SyncBalanceToPosAsync(tenantId, customerId, 0m, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Points expiry: POS balance sync failed. CustomerId={CustomerId}, TenantId={TenantId}", customerId, tenantId);
+                return false;
+            }
+        }
+    }
+}

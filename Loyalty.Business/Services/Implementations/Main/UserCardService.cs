@@ -141,7 +141,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ProgramName = program.ProgramName,
                 ProgramDescription = snapshot.ProgramDescription,
                 RewardDescription = snapshot.RewardDescription,
-                CurrentPoints = suspended ? 0 : card.CurrentPoints,
+                CurrentPoints = suspended || Helpers.PointsExpiry.IsExpired(card.ExpiresAt) ? 0 : card.CurrentPoints,
                 categoryId = tenant.categoryId,
                 Design = design,
                 progressText = progressText,

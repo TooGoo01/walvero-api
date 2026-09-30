@@ -31,6 +31,9 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         /// <summary>Yaradılan anda karta yazılacaq ilkin xal (opsional).</summary>
         public decimal? InitialPoints { get; set; }
+
+        /// <summary>Balansın son istifadə tarixi (UTC). Boş = müddətsiz. Keçəndə balans sıfırlanır.</summary>
+        public DateTime? ExpiresAt { get; set; }
     }
 
     /// <summary>
@@ -44,6 +47,8 @@ namespace Loyalty.Business.Dtos.Post.Main
         public int? LoyaltyProgramId { get; set; }
         /// <summary>Ambassador edilən anda karta yazılacaq ilkin balans/xal (opsional).</summary>
         public decimal? InitialPoints { get; set; }
+        /// <summary>Balansın son istifadə tarixi (UTC). Boş = müddətsiz.</summary>
+        public DateTime? ExpiresAt { get; set; }
     }
 
     /// <summary>
@@ -59,5 +64,19 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         [StringLength(200)]
         public string? Description { get; set; }
+
+        /// <summary>
+        /// Balansın son istifadə tarixi (UTC). Verilibsə kartın tarixini əvəz edir; verilməyibsə mövcud tarix qalır
+        /// (keçmişdirsə təmizlənir ki, yeni xal dərhal sıfırlanmasın).
+        /// </summary>
+        public DateTime? ExpiresAt { get; set; }
+    }
+
+    /// <summary>Kart balansının son istifadə tarixini dəyiş / sil (xal vermədən). null = müddətsiz. Keçmiş tarix → dərhal sıfırlama.</summary>
+    public sealed class SetPointsExpiryDto
+    {
+        [Required]
+        public int LoyaltyCardId { get; set; }
+        public DateTime? ExpiresAt { get; set; }
     }
 }

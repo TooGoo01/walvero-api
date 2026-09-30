@@ -91,6 +91,9 @@ namespace Loyalty.Business.Dtos.Get.Main
     {
         public string CustomerFullName { get; set; } = string.Empty;
         public decimal CurrentPoints { get; set; }
+        /// <summary>Balansın son istifadə tarixi (UTC). null = müddətsiz.</summary>
+        public DateTime? PointsExpiresAt { get; set; }
+        public bool IsPointsExpired { get; set; }
 
         // ProgressBased card fields
         public string? progressText { get; set; }  // e.g., "5/10" (null for non-ProgressBased)

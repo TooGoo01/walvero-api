@@ -185,8 +185,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             if (cardInProgram != null)
             {
-                // ProgressBased üçün cashback_balans göstərilmir
-                if (program.ProgramType != LoyaltyProgramType.ProgressBased)
+                // ProgressBased üçün cashback_balans göstərilmir; son istifadə tarixi keçmiş balans POS-a 0 kimi gedir
+                if (program.ProgramType != LoyaltyProgramType.ProgressBased && !Helpers.PointsExpiry.IsExpired(cardInProgram.ExpiresAt))
                     cashbackBalans = (double)((cardInProgram.CurrentPoints) * program.CurrencyPerPoint);
 
                 // Yalnız ProgressBased (stamp) proqramlarda loyalty kampaniyalarını qaytar
@@ -704,6 +704,33 @@ namespace Loyalty.Business.Services.Implementations.Main
                 });
                 await _uow.CommitAsync(ct);
                 return new IikoTransactionResponse { Success = true, Message = "Echo of local balance sync (skipped)" };
+            }
+
+            // Son istifadə tarixi keçmiş kart: iiko-nun balansı qəbul edilmir (bitmiş balans geri dirilməsin) —
+            // yalnız marker yazılır və iiko wallet yenidən 0-a çəkilir. Job iiko 0 təsdiqindən sonra ExpiresAt-i silir.
+            if (Helpers.PointsExpiry.IsExpired(card.ExpiresAt) && absBalance > 0)
+            {
+                _logger.LogWarning("iiko transaction on expired card ignored. CardId={CardId}, ExpiresAt={ExpiresAt}, iikoBalance={Balance}",
+                    card.Id, card.ExpiresAt, absBalance);
+                _uow.Repository<Transaction>().Add(new Transaction
+                {
+                    LoyaltyCardId = card.Id,
+                    Type = TransactionType.Adjusted,
+                    Status = RedeemStatus.Applied,
+                    Points = 0,
+                    BalanceAfter = card.CurrentPoints,
+                    OrderId = idempotencyKey,
+                    ReferenceNumber = request.TransactionId,
+                    Description = "iiko balance ignored (points expired)",
+                    BranchId = context.BranchId,
+                    RegDate = DateTime.UtcNow,
+                    IsActive = true,
+                    LocalOccurredAt = DateTimeOffset.UtcNow,
+                    TimeZoneIdUsed = "UTC"
+                });
+                await _uow.CommitAsync(ct);
+                await _welcomeBonus.SyncPosBalanceSafeAsync(context.TenantId, card.CustomerId, 0m, ct);
+                return new IikoTransactionResponse { Success = true, Message = "Points expired — iiko balance re-synced to 0" };
             }
 
             if (templateType == CardTemplateType.ProgressBased)

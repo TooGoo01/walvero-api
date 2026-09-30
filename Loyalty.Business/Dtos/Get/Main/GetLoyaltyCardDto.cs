@@ -28,6 +28,10 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? FreeRewardLabel { get; set; }         // "Pulsuz içki", "Burger" və s. (default: "Pulsuz içki")
         public string? Currency { get; set; }  // Currency from CardTemplate (e.g., "AZN", "USD", "EUR")
 
+        /// <summary>Balansın son istifadə tarixi (UTC, ambassador). null = müddətsiz.</summary>
+        public DateTime? PointsExpiresAt { get; set; }
+        public bool IsPointsExpired { get; set; }
+
         // Tier %-ləri CardTemplate-dən kopyalanır (frontend tier-card bunları oxuyur)
         public int? BronzeThreshold { get; set; }
         public int? SilverThreshold { get; set; }

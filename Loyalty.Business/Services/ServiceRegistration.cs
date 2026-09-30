@@ -186,6 +186,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IPlaceAssistantService, AzureOpenAiPlaceAssistantService>();
             services.AddScoped<IWalletPushJob, WalletPushJob>();
             services.AddScoped<IIikoWebhookFailureService, IikoWebhookFailureService>();
+            services.AddScoped<IPointsExpiryService, PointsExpiryService>();
             services.AddHttpClient(AzureOpenAiPlaceAssistantService.HttpClientName, c =>
             {
                 c.Timeout = TimeSpan.FromSeconds(60);

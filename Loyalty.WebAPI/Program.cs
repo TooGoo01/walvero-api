@@ -543,6 +543,12 @@ Hangfire.RecurringJob.AddOrUpdate<Loyalty.Business.Services.Abstractions.Main.II
     s => s.RetryPendingAsync(CancellationToken.None),
     "*/2 * * * *");
 
+// Recurring: son istifadə tarixi keçmiş kart balanslarını sıfırla (ambassador xalı) + iiko wallet chargeoff.
+Hangfire.RecurringJob.AddOrUpdate<Loyalty.Business.Services.Abstractions.Main.IPointsExpiryService>(
+    "points-expiry",
+    s => s.RunAsync(CancellationToken.None),
+    "*/5 * * * *");
+
 // 🔹 Minimal hostingda ayrı `UseRouting/UseEndpoints` ehtiyac yoxdur
 app.MapControllers();
 app.MapHub<LoyaltyHub>("/hubs/loyalty");

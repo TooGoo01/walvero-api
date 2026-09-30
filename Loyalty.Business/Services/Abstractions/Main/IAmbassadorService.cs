@@ -13,5 +13,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// <summary>Mövcud müştərini ambassador et (+ opsional ilkin balans). Proqramı auto-resolve edir.</summary>
         Task<ServiceResult> PromoteExistingAsync(int tenantId, string userId, PromoteAmbassadorDto dto, CancellationToken ct = default);
         Task<ServiceResult> AddPointsAsync(int tenantId, CreditPointsDto dto, CancellationToken ct = default);
+        /// <summary>Kart balansının son istifadə tarixini dəyiş/sil. Keçmiş tarix → dərhal sıfırlama + iiko sync.</summary>
+        Task<ServiceResult> SetPointsExpiryAsync(int tenantId, SetPointsExpiryDto dto, CancellationToken ct = default);
     }
 }

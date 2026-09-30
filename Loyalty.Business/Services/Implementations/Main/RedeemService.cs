@@ -323,6 +323,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                     return Fail("Kart tapılmadı.");
                 }
 
+                // Son istifadə tarixi keçmiş balans xərclənə bilməz (job sıfırlamamış olsa belə)
+                if (request.Delta < 0 && Helpers.PointsExpiry.IsExpired(card.ExpiresAt))
+                {
+                    _logger.LogWarning("Redeem blocked — points expired. CardId={CardId}, ExpiresAt={ExpiresAt}", card.Id, card.ExpiresAt);
+                    return Fail("Balansın istifadə müddəti bitib.");
+                }
+
                 var appUserId = card.Customer?.applicationUser?.Id;
 
                 // 2) Program + Branding + Policy
@@ -1086,6 +1093,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
 
                 var snapshot = CardTemplateSnapshotFactory.From(program, program.CardTemplate, branding, ToAbs);
+
+                if (rr.PointsDelta < 0 && Helpers.PointsExpiry.IsExpired(card.ExpiresAt))
+                {
+                    _logger.LogWarning("Confirm redeem blocked — points expired. CardId={CardId}, ExpiresAt={ExpiresAt}", card.Id, card.ExpiresAt);
+                    return Fail("Balansın istifadə müddəti bitib.");
+                }
 
                 var beforePoints = card.CurrentPoints;
                 var beforeSteps = card.CurrentSteps;

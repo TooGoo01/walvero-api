@@ -97,5 +97,29 @@ namespace Loyalty.WebAPI.Controllers
                 return StatusCode(500, new ServiceResult(false, $"Server error: {ex.Message}"));
             }
         }
+
+        /// <summary>Kart balansının son istifadə tarixini dəyiş / sil (null = müddətsiz). Keçmiş tarix → dərhal sıfırlama + iiko sync.</summary>
+        [HttpPost]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> SetExpiry([FromBody] SetPointsExpiryDto model, CancellationToken ct)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(new ServiceResult(false, "Invalid request data"));
+
+            var tenantId = _tenantProvider.CurrentTenantId;
+            if (!tenantId.HasValue)
+                return BadRequest(new ServiceResult(false, "Tenant not found."));
+
+            try
+            {
+                var result = await _ambassadorService.SetPointsExpiryAsync(tenantId.Value, model, ct);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ServiceResult(false, $"Server error: {ex.Message}"));
+            }
+        }
     }
 }

@@ -42,6 +42,7 @@ namespace Loyalty.DataAccess.Entities.Main
         // Status
         public CardStatus Status { get; set; } = CardStatus.Active;
         public DateTime? ActivatedAt { get; set; }
+        /// <summary>Xal bitmə tarixi (UTC, ambassador). Dolu və keçmişdirsə balans bitib (istifadə bloklanır); PointsExpiryService sıfırlayıb iiko sync-dən sonra null edir. null = müddətsiz.</summary>
         public DateTime? ExpiresAt { get; set; }
 
         // Navigation Properties

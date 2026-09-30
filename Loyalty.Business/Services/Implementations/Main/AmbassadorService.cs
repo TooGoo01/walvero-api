@@ -1,5 +1,6 @@
 using Hangfire;
 using Loyalty.Business.Dtos.Post.Main;
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.Business.Services.Abstractions.Sequences;
@@ -27,6 +28,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IUnitOfWork _uow;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly LoyaltyWalletDbContext _db;
+        private readonly IPointsExpiryService _pointsExpiry;
         private readonly ILogger<AmbassadorService> _logger;
 
         public AmbassadorService(
@@ -38,6 +40,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             IUnitOfWork uow,
             IServiceScopeFactory scopeFactory,
             LoyaltyWalletDbContext db,
+            IPointsExpiryService pointsExpiry,
             ILogger<AmbassadorService> logger)
         {
             _customerRepo = customerRepo;
@@ -48,6 +51,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _uow = uow;
             _scopeFactory = scopeFactory;
             _db = db;
+            _pointsExpiry = pointsExpiry;
             _logger = logger;
         }
 
@@ -57,6 +61,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new ServiceResult(false, "Tenant not resolved.");
             if (dto == null || string.IsNullOrWhiteSpace(dto.PhoneNumber))
                 return new ServiceResult(false, "Phone number is required.");
+            if (dto.ExpiresAt.HasValue && dto.ExpiresAt.Value.ToUniversalTime() <= DateTime.UtcNow)
+                return new ServiceResult(false, "Son istifadə tarixi gələcəkdə olmalıdır.");
 
             // 1) Tenant-də ambassador aktivdirmi?
             var tenant = await _db.Set<Tenant>().FirstOrDefaultAsync(t => t.Id == tenantId, ct);
@@ -176,9 +182,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             // 5) POS-a müştəri sync (iiko customer create + program enroll) — isolated scope, best-effort
             await RunPosCustomerSyncSafeAsync(tenantId, customer.Id, ct);
 
-            // 6) İlkin xal (varsa)
+            // 6) İlkin xal (varsa) + bitmə tarixi
             if (dto.InitialPoints.HasValue && dto.InitialPoints.Value != 0)
-                await CreditPointsInternalAsync(card, program, customer.Id, dto.InitialPoints.Value, "Ambassador ilkin xal", ct);
+                await CreditPointsInternalAsync(card, program, customer.Id, dto.InitialPoints.Value, "Ambassador ilkin xal", dto.ExpiresAt, ct);
+            else if (dto.ExpiresAt.HasValue)
+            {
+                card.ExpiresAt = PointsExpiry.ResolveOnCredit(card.ExpiresAt, dto.ExpiresAt, DateTime.UtcNow);
+                card.EditDate = DateTime.UtcNow;
+                _uow.Repository<LoyaltyCard>().Update(card);
+                await _uow.CommitAsync(ct);
+            }
 
             // 7) Ambassador-a məlumat SMS-i (best-effort)
             TrySendAmbassadorSms(phone, tenant.CompanyName);
@@ -236,7 +249,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 PhoneNumber = customer.PhoneNumber,
                 Email = customer.Email,
                 CardNumber = customer.CardNumber,
-                InitialPoints = dto.InitialPoints
+                InitialPoints = dto.InitialPoints,
+                ExpiresAt = dto.ExpiresAt
             };
 
             return await CreateAmbassadorAsync(tenantId, userId, createDto, ct);
@@ -256,22 +270,57 @@ namespace Loyalty.Business.Services.Implementations.Main
             var program = await _programRepo.GetByIdNameAsync(card.LoyaltyProgramId, ct);
             if (program is null)
                 return new ServiceResult(false, "Program missing.");
+            if (dto.ExpiresAt.HasValue && dto.ExpiresAt.Value.ToUniversalTime() <= DateTime.UtcNow)
+                return new ServiceResult(false, "Son istifadə tarixi gələcəkdə olmalıdır.");
 
             var description = string.IsNullOrWhiteSpace(dto.Description) ? "Manual xal" : dto.Description!.Trim();
-            await CreditPointsInternalAsync(card, program, card.CustomerId, dto.Points, description, ct);
+            await CreditPointsInternalAsync(card, program, card.CustomerId, dto.Points, description, dto.ExpiresAt, ct);
 
-            return new ServiceResult(true, new { cardId = card.Id, balance = card.CurrentPoints });
+            return new ServiceResult(true, new { cardId = card.Id, balance = card.CurrentPoints, expiresAt = card.ExpiresAt });
+        }
+
+        public async Task<ServiceResult> SetPointsExpiryAsync(int tenantId, SetPointsExpiryDto dto, CancellationToken ct = default)
+        {
+            if (dto == null || dto.LoyaltyCardId <= 0)
+                return new ServiceResult(false, "Card is required.");
+
+            var card = await _cardRepo.GetById(dto.LoyaltyCardId, ct);
+            if (card is null)
+                return new ServiceResult(false, "Card not found.");
+            if (card.TenantId != tenantId)
+                return new ServiceResult(false, "Card does not belong to your tenant.");
+
+            var now = DateTime.UtcNow;
+            card.ExpiresAt = dto.ExpiresAt.HasValue
+                ? DateTime.SpecifyKind(dto.ExpiresAt.Value.ToUniversalTime(), DateTimeKind.Utc)
+                : null;
+            card.EditDate = now;
+            _uow.Repository<LoyaltyCard>().Update(card);
+            await _uow.CommitAsync(ct);
+
+            decimal expired = 0m;
+            if (card.IsPointsExpired(now))
+                expired = await _pointsExpiry.ExpireCardAsync(card.Id, ct); // keçmiş tarix → dərhal sıfırla + iiko
+
+            _logger.LogInformation("Ambassador points expiry set. CardId={CardId}, ExpiresAt={ExpiresAt}, ExpiredNow={Expired}", card.Id, card.ExpiresAt, expired);
+            return new ServiceResult(true, new { cardId = card.Id, expiresAt = card.ExpiresAt, balance = card.CurrentPoints, expiredPoints = expired });
         }
 
         /// <summary>
         /// Karta xal kredit et → Transaction + wallet pass push (background) + POS wallet forward (isolated).
+        /// expiresAt: verilibsə kartın bitmə tarixini əvəz edir; verilməyibsə keçmiş tarix təmizlənir (bax PointsExpiry.ResolveOnCredit).
         /// </summary>
         private async Task CreditPointsInternalAsync(
-            LoyaltyCard card, LoyaltyProgram program, int customerId, decimal points, string description, CancellationToken ct)
+            LoyaltyCard card, LoyaltyProgram program, int customerId, decimal points, string description, DateTime? expiresAt, CancellationToken ct)
         {
+            var now = DateTime.UtcNow;
+            card.ExpiresAt = PointsExpiry.ResolveOnCredit(card.ExpiresAt, expiresAt, now);
+            if (card.ExpiresAt.HasValue)
+                description = $"{description} (bitmə {card.ExpiresAt.Value:dd.MM.yyyy HH:mm} UTC)";
+
             card.CurrentPoints += points;
             if (points > 0) card.LifetimePoints += points;
-            card.EditDate = DateTime.UtcNow;
+            card.EditDate = now;
             _uow.Repository<LoyaltyCard>().Update(card);
 
             var tx = new Transaction

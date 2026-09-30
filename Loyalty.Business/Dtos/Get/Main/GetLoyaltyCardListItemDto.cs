@@ -23,6 +23,10 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? FreeRewardLabel { get; set; }
         public string? Currency { get; set; }
 
+        /// <summary>Balansın son istifadə tarixi (UTC, ambassador). null = müddətsiz.</summary>
+        public DateTime? PointsExpiresAt { get; set; }
+        public bool IsPointsExpired { get; set; }
+
         // Tier %-ləri CardTemplate-dən kopyalanır (frontend tier-card bunları oxuyur)
         public int? BronzeThreshold { get; set; }
         public int? SilverThreshold { get; set; }
