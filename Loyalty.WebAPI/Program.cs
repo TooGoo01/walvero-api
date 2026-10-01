@@ -326,11 +326,20 @@ builder.Services.AddHangfire(cfg => cfg
             UseRecommendedIsolationLevel = true,
             DisableGlobalLocks = true
         }));
-builder.Services.AddHangfireServer(opts =>
+// Kart dizayneri flag-ları (bax CardDesignFeatureFlags): real Google class PATCH yalnız açıq konfiqlə.
+Loyalty.Business.Helpers.CardDesignFeatureFlags.GoogleClassUpdateEnabled =
+    builder.Configuration.GetValue("CardDesign:GoogleClassUpdateEnabled", false);
+
+// Hangfire:ServerEnabled=false → bu instansiya job İCRA ETMİR (yalnız enqueue edir).
+// Lokal/dev instansiya prod DB-yə qoşulanda prod job-larını (wallet push, OCR) götürməsin deyə.
+if (builder.Configuration.GetValue("Hangfire:ServerEnabled", true))
 {
-    opts.WorkerCount = 2; // OCR CPU-bound — kicik tutmaq
-    opts.Queues = new[] { "ocr", "default" };
-});
+    builder.Services.AddHangfireServer(opts =>
+    {
+        opts.WorkerCount = 2; // OCR CPU-bound — kicik tutmaq
+        opts.Queues = new[] { "ocr", "default" };
+    });
+}
 
 // HttpClientFactory
 builder.Services.AddHttpClient();

@@ -95,6 +95,12 @@ namespace Loyalty.DataAccess.Entities.Main
 
         public string Currency { get; set; } = "AZN"; // Default currency
 
+        /// <summary>
+        /// Kart dizayneri ayarları (versiyalı JSON, bax Business CardDesignSettings): pass başlığı, logo mətni,
+        /// etiketlər, arxa üz mətnləri, sayt linki. null/boş = bugünkü default mətnlər.
+        /// </summary>
+        public string? DesignJson { get; set; }
+
         // Layout
         public IconLayout IconLayout { get; set; } = IconLayout.Grid; // Grid, Horizontal, Vertical
 

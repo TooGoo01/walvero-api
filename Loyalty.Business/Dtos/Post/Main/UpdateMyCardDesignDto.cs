@@ -1,4 +1,5 @@
-using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Http;
+using System.ComponentModel.DataAnnotations;
 
 namespace Loyalty.Business.Dtos.Post.Main
 {
@@ -44,5 +45,26 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? SilverColor { get; set; }
         public string? GoldColor { get; set; }
         public string? PlatinumColor { get; set; }
+
+        // Şəkli silmək (strip/hero UpOrLink boş gələndə köhnəni saxlayır → açıq flag)
+        public bool ClearStripImage { get; set; }
+        public bool ClearHeroImage { get; set; }
+        public bool ClearBackgroundImage { get; set; }
+
+        // Kart dizayneri mətnləri (bax CardDesignSettings). null = toxunma, "" = default-a qayıt, "-" = gizlət (About/Website)
+        [MaxLength(60)] public string? Title { get; set; }
+        [MaxLength(30)] public string? LogoText { get; set; }
+        [MaxLength(100)] public string? Description { get; set; }
+        [MaxLength(60)] public string? IssuerName { get; set; }
+        [MaxLength(30)] public string? BalanceLabel { get; set; }
+        [MaxLength(30)] public string? CustomerLabel { get; set; }
+        [MaxLength(30)] public string? CashbackLabel { get; set; }
+        [MaxLength(60)] public string? AboutTitle { get; set; }
+        [MaxLength(1000)] public string? AboutText { get; set; }
+        [MaxLength(300)] public string? WebsiteUrl { get; set; }
+        [MaxLength(40)] public string? WebsiteLabel { get; set; }
+
+        /// <summary>Faza 2 "Sahələr": JSON (bax CardLayoutUpdateDto). null = toxunma.</summary>
+        [MaxLength(8000)] public string? LayoutJson { get; set; }
     }
 }

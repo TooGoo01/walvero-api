@@ -495,6 +495,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("nvarchar(50)")
                         .HasDefaultValue("AZN");
 
+                    b.Property<string>("DesignJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime?>("EditDate")
                         .HasColumnType("datetime2");
 

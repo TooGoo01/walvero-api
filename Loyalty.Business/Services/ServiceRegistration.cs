@@ -48,6 +48,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IMailService, MailService>();
             services.AddScoped<IWalletCredentialService, WalletCredentialService>();
             services.AddScoped<ICardTemplateService, CardTemplateService>();
+            services.AddScoped<ICardDesignPreviewService, CardDesignPreviewService>();
             services.AddScoped<ICardTemplateIconService, CardTemplateIconService>();
             services.AddScoped<ICustomerEnrollmentService, CustomerEnrollmentService>();
             services.AddScoped<IAmbassadorService, AmbassadorService>();

@@ -3,6 +3,7 @@ using Google.Apis.Services;
 using Google.Apis.Walletobjects.v1;
 using Google.Apis.Walletobjects.v1.Data;
 using Loyalty.Business.Dtos.Post.Main;
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Enums;
@@ -29,14 +30,19 @@ public sealed class GoogleWalletService : IGoogleWalletService
     private readonly ILoyaltyCardRepository? _cardRepo;
     private readonly Loyalty.DataAccess.Repositories.Abstractions.Main.IBranchRepository? _branchRepo;
     private readonly bool _isInitialized;
-    // Placeholder fallback (public, HTTPS, 3:1 ~ 1032x336/1860x620 və s.)
-    private const string FALLBACK_BANNER_URL = "https://yourcdn.example.com/fallback-1032x336.png";
+    private readonly ITenantSuspensionGuard? _suspensionGuard;
+    private readonly ITimeZoneService? _timeZoneService;
+    // Banner yoxdursa image module göndərilmir (əvvəlki placeholder domain mövcud deyildi → qırıq şəkil)
 
-    public GoogleWalletService(GoogleWalletRuntimeConfig cfg, ILogger<GoogleWalletService>? log = null, ILoyaltyCardRepository? cardRepo = null, Loyalty.DataAccess.Repositories.Abstractions.Main.IBranchRepository? branchRepo = null)
+    public GoogleWalletService(GoogleWalletRuntimeConfig cfg, ILogger<GoogleWalletService>? log = null, ILoyaltyCardRepository? cardRepo = null,
+        Loyalty.DataAccess.Repositories.Abstractions.Main.IBranchRepository? branchRepo = null,
+        ITenantSuspensionGuard? suspensionGuard = null, ITimeZoneService? timeZoneService = null)
     {
         _log = log;
         _cardRepo = cardRepo;
         _branchRepo = branchRepo;
+        _suspensionGuard = suspensionGuard;
+        _timeZoneService = timeZoneService;
         _isInitialized = false;
 
         try
@@ -107,9 +113,112 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
     // Wallet collapsed/list view top line = tenant company name; fall back to program/template name.
     private static string ResolveIssuerName(CardTemplateSnapshot tpl) =>
-        !string.IsNullOrWhiteSpace(tpl.TenantCompanyName) ? tpl.TenantCompanyName!
+        !string.IsNullOrWhiteSpace(tpl.Design?.IssuerName) ? tpl.Design!.IssuerName!.Trim()
+        : !string.IsNullOrWhiteSpace(tpl.TenantCompanyName) ? tpl.TenantCompanyName!
         : !string.IsNullOrWhiteSpace(tpl.ProgramName) ? tpl.ProgramName
         : tpl.TemplateName;
+
+    // Kart başlığı (class programName): dizayner Title → TemplateName (köhnə davranış) → ProgramName
+    private static string ClassProgramName(CardTemplateSnapshot tpl) =>
+        !string.IsNullOrWhiteSpace(tpl.Design?.Title) ? tpl.Design!.Title!.Trim()
+        : !string.IsNullOrWhiteSpace(tpl.TemplateName) ? tpl.TemplateName
+        : tpl.ProgramName;
+
+    private static string NormalizeHexColor(string? v) =>
+        string.IsNullOrWhiteSpace(v) ? "#FFFFFF" : (v.StartsWith("#") ? v.Trim() : "#" + v.Trim());
+
+    private static string ClassBackgroundHex(CardTemplateSnapshot tpl) =>
+        NormalizeHexColor(tpl.TemplateType == CardTemplateType.TierBased && string.IsNullOrWhiteSpace(tpl.BackgroundColor) ? "#556734" : tpl.BackgroundColor);
+
+    private static LinksModuleData? BuildLinks(CardTemplateSnapshot tpl)
+    {
+        var d = tpl.Design ?? new CardDesignSettings();
+        if (!d.ShowWebsite || !Uri.TryCreate(d.EffectiveWebsiteUrl, UriKind.Absolute, out _)) return null;
+        return new LinksModuleData
+        {
+            Uris = new List<Google.Apis.Walletobjects.v1.Data.Uri>
+            {
+                new Google.Apis.Walletobjects.v1.Data.Uri { Id = "website", UriValue = d.EffectiveWebsiteUrl, Description = d.EffectiveWebsiteLabel }
+            }
+        };
+    }
+
+    private static ImageModuleData BuildBanner(string url, bool isProgressBased) => new ImageModuleData
+    {
+        MainImage = new Image
+        {
+            SourceUri = new ImageUri { Uri = url, Description = isProgressBased ? "Progress Icons Grid" : "Banner" },
+            ContentDescription = new LocalizedString { DefaultValue = new TranslatedString { Language = "en-US", Value = "\u200B" } }
+        }
+    };
+
+    /// about modulu (features ilə birləşib) — upsert/sil
+    private static void ApplyAboutModule(List<TextModuleData> textList, CardTemplateSnapshot tpl)
+    {
+        var d = tpl.Design ?? new CardDesignSettings();
+        textList.RemoveAll(t => t.Id == "features");
+        if (!d.ShowAbout) { textList.RemoveAll(t => t.Id == "about"); return; }
+        var about = textList.FirstOrDefault(t => t.Id == "about");
+        if (about == null) { about = new TextModuleData { Id = "about" }; textList.Add(about); }
+        about.Header = d.EffectiveAboutTitle;
+        about.Body = d.EffectiveAboutText;
+    }
+
+    // =================== 1b) CLASS DESIGN UPDATE (admin saxlama / refresh) ===================
+    public async Task<ServiceResult> UpdateClassDesignAsync(CardTemplateSnapshot tpl, CancellationToken ct = default)
+    {
+        if (!_isInitialized || _svc == null)
+            return new ServiceResult(false, "Google Wallet service not initialized");
+
+        LoyaltyClass? existing = null;
+        try
+        {
+            existing = await _svc.Loyaltyclass.Get(ClassId).ExecuteAsync(ct);
+        }
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound)
+        {
+            existing = null;
+        }
+
+        if (existing == null)
+        {
+            await EnsureClassAsync(tpl, ResolveIssuerName(tpl), ct);
+            return new ServiceResult(true, "Google class yaradıldı.");
+        }
+
+        // Faza 2: başlıq/issuer/rəng/logo + sətir şablonu (classTemplateInfo) — Faza 0 sınağı: classTemplateInfo PATCH işləyir
+        var desired = BuildDesiredClass(tpl, ResolveIssuerName(tpl), ClassId, designLayout: true);
+        var programName = desired.ProgramName;
+        var issuerName = desired.IssuerName;
+        var bg = desired.HexBackgroundColor;
+        var logoUri = desired.ProgramLogo?.SourceUri?.Uri;
+
+        var same = string.Equals(existing.ProgramName, programName)
+                   && string.Equals(existing.IssuerName, issuerName)
+                   && string.Equals(existing.HexBackgroundColor, bg, StringComparison.OrdinalIgnoreCase)
+                   && string.Equals(existing.ProgramLogo?.SourceUri?.Uri, logoUri)
+                   && string.Equals(TemplateInfoJson(existing.ClassTemplateInfo), TemplateInfoJson(desired.ClassTemplateInfo), StringComparison.Ordinal);
+        if (same)
+            return new ServiceResult(true, "Google class artıq eynidir.");
+
+        // Faza 0 sınağı (2026-10-01, issuer 3388…118): approved class-a PATCH reviewStatus-suz → 400 "Invalid review status APPROVED.
+        // Use UNDER_REVIEW instead."; reviewStatus=UNDER_REVIEW ilə → 200 və class approved qalır (production issuer avtomatik təsdiq).
+        var patch = desired;
+        patch.ReviewStatus = "UNDER_REVIEW";
+
+        try
+        {
+            await _svc.Loyaltyclass.Patch(patch, ClassId).ExecuteAsync(ct);
+            _log?.LogInformation("[GW-CLASS] design PATCHED. ClassId={ClassId} programName={ProgramName} issuer={Issuer} bg={Bg} logo={Logo} reviewStatus(before)={Review}",
+                ClassId, programName, issuerName, bg, logoUri, existing.ReviewStatus);
+            return new ServiceResult(true, "Google class yeniləndi.");
+        }
+        catch (Google.GoogleApiException ex)
+        {
+            _log?.LogWarning(ex, "[GW-CLASS] design PATCH failed. ClassId={ClassId}", ClassId);
+            return new ServiceResult(false, $"Google class PATCH xətası: {ex.Message}");
+        }
+    }
 
     // =================== 1) CLASS ===================
     public async Task EnsureClassAsync(CardTemplateSnapshot tpl, string programName, CancellationToken ct = default)
@@ -132,55 +241,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
             existing = null;
         }
 
-        LoyaltyClass BuildDesired()
-        {
-            string NormalizeHex(string? v) =>
-                string.IsNullOrWhiteSpace(v) ? "#FFFFFF" :
-                (v.StartsWith("#") ? v.Trim() : "#" + v.Trim());
-
-            var bg = NormalizeHex(
-                tpl.TemplateType == CardTemplateType.TierBased && string.IsNullOrWhiteSpace(tpl.BackgroundColor)
-                    ? "#556734"
-                    : tpl.BackgroundColor
-            );
-
-            // Class səviyyəsində HeroImage-istifadə ETMİRİK (layout bizdə olsun)
-            Image? hero = null;
-
-            var blank = "\u200B";
-            var cls = new LoyaltyClass
-            {
-                Id = ClassId,
-                ProgramName = tpl.TemplateName,        // "Pubzade"
-                IssuerName = programName,
-                HexBackgroundColor = bg,
-                ProgramLogo = IsHttps(tpl.GoogleLogoUrl)
-                    ? new Image
-                    {
-                        SourceUri = new ImageUri { Uri = tpl.GoogleLogoUrl, Description = "Logo" },
-                        ContentDescription = new LocalizedString
-                        {
-                            DefaultValue = new TranslatedString { Language = "en-US", Value = programName }
-                        }
-                    }
-                    : null,
-                //WideProgramLogo = IsHttps(tpl.GoogleLogoUrl)
-                //    ? new Image
-                //    {
-                //        SourceUri = new ImageUri { Uri = tpl.GoogleLogoUrl, Description = "Logo" },
-                //        ContentDescription = new LocalizedString
-                //        {
-                //            DefaultValue = new TranslatedString { Language = "en-US", Value = programName }
-                //        }
-                //    }
-                //    : null,
-                HeroImage = hero, // sabit null
-
-                ClassTemplateInfo = BuildClassTemplateInfo(tpl)
-            };
-
-            return cls;
-        }
+        LoyaltyClass BuildDesired() => BuildDesiredClass(tpl, programName, ClassId, DesignLayoutEnabled(isPreview: false));
 
         if (existing is null)
         {
@@ -214,7 +275,12 @@ public sealed class GoogleWalletService : IGoogleWalletService
          int lotteryTickets = 0,
          string? lotteryWinPrize = null,
          System.DateTime? lotteryDrawDate = null,
-         int? completedCyclesOverride = null)
+         int? completedCyclesOverride = null,
+         string? objectIdOverride = null,
+         string? classIdOverride = null,
+         bool updateIfExists = false,
+         decimal? lifetimePointsOverride = null,
+         string? pointsExpiryOverride = null)
     {
         if (!_isInitialized || _svc == null)
         {
@@ -226,7 +292,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
         {
             await EnsureClassAsync(tpl, programName: ResolveIssuerName(tpl), ct);
 
-            var objectId = ObjectIdForCard(_issuerId, tpl.TenantId, tpl.LoyaltyProgramId, loyaltyCardId);
+            var objectId = objectIdOverride ?? ObjectIdForCard(_issuerId, tpl.TenantId, tpl.LoyaltyProgramId, loyaltyCardId);
 
             bool objectExists = false;
             try
@@ -234,9 +300,13 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 var existing = await _svc.Loyaltyobject.Get(objectId).ExecuteAsync(ct);
                 objectExists = true;
 
-                // Object exists but balance may be stale - update it via RedeemByCardIdAsync
-                _log?.LogInformation("GW object already exists, updating balance. ObjectId={ObjectId}, currentPoints={CurrentPoints}", objectId, currentPoints);
-                return await RedeemByCardIdAsync(loyaltyCardId, tpl, currentPoints, currentSteps, 0, accountName, ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate, completedCyclesOverride);
+                if (!updateIfExists)
+                {
+                    // Object exists but balance may be stale - update it via RedeemByCardIdAsync
+                    _log?.LogInformation("GW object already exists, updating balance. ObjectId={ObjectId}, currentPoints={CurrentPoints}", objectId, currentPoints);
+                    return await RedeemByCardIdAsync(loyaltyCardId, tpl, currentPoints, currentSteps, 0, accountName, ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate, completedCyclesOverride);
+                }
+                // updateIfExists (preview): aşağıda tam obyekt qurulub Update olunur
             }
             catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound)
             {
@@ -246,25 +316,19 @@ public sealed class GoogleWalletService : IGoogleWalletService
             var state = BuildDisplayState(tpl, currentPoints, currentSteps);
             var barcode = string.IsNullOrWhiteSpace(barcodeValue) ? loyaltyCardId.ToString() : barcodeValue;
 
-            // ProgressBased vs TierBased/PointsBased logic
+            // Faza 2: sahə modulları kataloqdan — admin layout yalnız preview-də və ya CardDesign:GoogleClassUpdateEnabled açıqkən;
+            // əks halda default yerləşmə (= bugünkü görünüş) → mövcud class sətirləri ilə uyğun.
             bool isProgressBased = tpl.TemplateType == CardTemplateType.ProgressBased;
+            bool isPreview = objectIdOverride != null;
+            var (fields, bannerPos, barcodeType, _) = LayoutFor(tpl, DesignLayoutEnabled(isPreview));
 
             string? bannerUrl = null;
             List<TextModuleData> textModules = new();
-            List<ImageModuleData> imageModules = new();
+            int completedCycles = 0;
 
             if (isProgressBased)
             {
-                // ProgressBased Google Wallet Layout:
-                // 1. Large "Reward Card" title
-                // 2. Free reward label + big number (use CompletedCycles from card)
-                // 3. Barcode (centered)
-                // 4. Reward description (centered)
-                // 5. Progress icons grid at bottom (as image module)
-
-                // Get CompletedCycles from card if available, otherwise calculate from steps
                 // completedCyclesOverride: suspension mask zamanı DB dəyəri əvəzinə 0 ötürülür
-                int completedCycles = 0;
                 if (completedCyclesOverride.HasValue)
                 {
                     completedCycles = completedCyclesOverride.Value;
@@ -274,14 +338,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     try
                     {
                         var card = await _cardRepo.GetByIdAsync(loyaltyCardId, ct);
-                        if (card != null)
-                        {
-                            completedCycles = card.CompletedCycles;
-                        }
-                        else
-                        {
-                            completedCycles = CalculateFreeDrinkCount(currentSteps, tpl.TotalSteps);
-                        }
+                        completedCycles = card != null ? card.CompletedCycles : CalculateFreeDrinkCount(currentSteps, tpl.TotalSteps);
                     }
                     catch
                     {
@@ -290,87 +347,35 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 }
                 else
                 {
-                    // Fallback: calculate from steps
                     completedCycles = CalculateFreeDrinkCount(currentSteps, tpl.TotalSteps);
                 }
 
-                string freeDrinkValue = completedCycles == 0 ? "0" : completedCycles.ToString();
-
-                // Get FreeRewardLabel from template (default: "bonus" instead of "Pulsuz içki")
-                string freeRewardLabel = string.IsNullOrWhiteSpace(tpl.FreeRewardLabel)
-                    ? "bonus"
-                    : tpl.FreeRewardLabel;
-
-                // 1) Large "Reward Card" title
-                textModules.Add(new TextModuleData { Id = "rewardCard", Header = "", Body = accountName });
-
-                // 2) Free reward label + big number (use FreeRewardLabel from template)
-                textModules.Add(new TextModuleData { Id = "pulsuzIcki", Header = freeRewardLabel, Body = freeDrinkValue });
-
-                // 3) Reward description (centered, below barcode)
-                if (!string.IsNullOrWhiteSpace(tpl.RewardDescription))
-                {
-                    textModules.Add(new TextModuleData { Id = "rewardDesc", Header = "", Body = tpl.RewardDescription });
-                }
-
-                // 4) Progress icons grid at bottom (as main image)
-                // Use progress icon for the grid visual
+                // Progress icons grid (banner): cari addım ikonu → hero → strip → logo
                 bannerUrl = PickProgressIconBySteps(tpl.IconUrls, currentSteps, tpl.TotalSteps);
                 if (!IsHttps(bannerUrl) && IsHttps(tpl.HeroImageUrl)) bannerUrl = tpl.HeroImageUrl;
                 if (!IsHttps(bannerUrl) && IsHttps(tpl.StripImageUrl)) bannerUrl = tpl.StripImageUrl;
                 if (!IsHttps(bannerUrl) && IsHttps(tpl.GoogleLogoUrl)) bannerUrl = tpl.GoogleLogoUrl;
-                if (!IsHttps(bannerUrl)) bannerUrl = FALLBACK_BANNER_URL;
             }
             else
             {
-                // TierBased/PointsBased: Keep existing logic
-                var percent = GetCashbackPercent(currentPoints, tpl);
-                var percentCash = GetCashbackPercentCash(currentPoints, tpl);
-
-                string cashback;
-                string cashbackText;
-                if (tpl.PayMentType)
-                {
-                    cashback = $"Cashback:{percent}%";
-                    cashbackText = $" Nağd ödənişdə {percentCash}%";
-                }
-                else
-                {
-                    cashback = "Cashback";
-                    cashbackText = $"{percent}%";
-                }
-
-                // Banner URL fallback (hero -> tier icon -> logo -> placeholder)
+                // Banner URL fallback (hero -> tier icon -> logo); banner yoxdursa null qalır → şəkil göndərilmir
                 bannerUrl = IsHttps(tpl.HeroImageUrl) ? tpl.HeroImageUrl : null;
                 if (!IsHttps(bannerUrl) && IsHttps(state.CurrentIconUrl)) bannerUrl = state.CurrentIconUrl;
                 if (!IsHttps(bannerUrl) && IsHttps(tpl.GoogleLogoUrl)) bannerUrl = tpl.GoogleLogoUrl;
-                if (!IsHttps(bannerUrl)) bannerUrl = FALLBACK_BANNER_URL;
-
-                textModules.Add(new TextModuleData { Id = "customer", Header = "Customer", Body = accountName ?? $"Card #{loyaltyCardId}" });
-                var currency = string.IsNullOrWhiteSpace(tpl.Currency) ? "AZN" : tpl.Currency;
-                textModules.Add(new TextModuleData { Id = "balance", Header = "BALANCE", Body = currentPoints.ToString() + " " + currency });
-                textModules.Add(new TextModuleData { Id = "cashback", Header = cashback, Body = cashbackText });
             }
+
+            var extras = await LoadExtrasAsync(loyaltyCardId, tpl, fields, lifetimePointsOverride, pointsExpiryOverride, ct);
+            var values = CardFieldCatalog.BuildValues(tpl, accountName ?? $"Card #{loyaltyCardId}", barcode,
+                currentPoints, currentSteps, completedCycles, extras.Lifetime, extras.ExpiryText, CardPlatform.Google);
+            ApplyFieldModules(textModules, tpl, fields, values, currentPoints);
+            var imageModules = bannerPos == GoogleBannerPosition.Top && IsHttps(bannerUrl)
+                ? new List<ImageModuleData> { BuildBanner(bannerUrl!, isProgressBased) } : null;
+            var heroImage = bannerPos == GoogleBannerPosition.Bottom && IsHttps(bannerUrl) ? BuildHero(bannerUrl!) : null;
 
             _log?.LogInformation("GW Create: bannerUrl={Url} hero={Hero} icon={Icon} logo={Logo} isProgress={IsProgress}",
                 bannerUrl, tpl.HeroImageUrl, state.CurrentIconUrl, tpl.GoogleLogoUrl, isProgressBased);
-            textModules.Add(new TextModuleData
-            {
-                Id = "about",
-                Header = "Walvero Loyallıq",
-                Body = "Loyallıq modulu müştəri bağlılığını artırmaq və təkrar alış-verişləri təşviq etmək üçün hazırlanmışdır..."
-            });
-
-            textModules.Add(new TextModuleData
-            {
-                Id = "features",
-                Header = "Əsas üstünlüklər",
-                Body =
-                    "• Fərdiləşdirilmiş mükafatlar\n" +
-                    "• Avtomatlaşdırılmış izləmə\n" +
-                    "• Müştəri iştirakının artırılması\n" +
-                    "• Strateji analizlər"
-            });
+            // about (kart dizayneri; "-" = gizli)
+            ApplyAboutModule(textModules, tpl);
 
             // Lottery: show on card even if tickets=0 (so customer sees the feature exists)
             LoyaltyPoints? secondaryLoyaltyPoints = null;
@@ -399,9 +404,9 @@ public sealed class GoogleWalletService : IGoogleWalletService
             var obj = new LoyaltyObject
             {
                 Id = objectId,
-                ClassId = ClassId,
+                ClassId = classIdOverride ?? ClassId,
                 State = "ACTIVE",
-                AccountId = loyaltyCardId.ToString(),
+                AccountId = objectIdOverride != null ? "preview" : loyaltyCardId.ToString(),
                 AccountName = accountName ?? string.Empty,
 
                 // Only set LoyaltyPoints for non-ProgressBased
@@ -413,36 +418,13 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 SecondaryLoyaltyPoints = secondaryLoyaltyPoints,
 
                 TextModulesData = textModules,
-                LinksModuleData = new LinksModuleData
-                {
-                    Uris = new List<Google.Apis.Walletobjects.v1.Data.Uri>
-        {
-            new Google.Apis.Walletobjects.v1.Data.Uri
-            {
-                Id = "website",
-                UriValue = "https://www.walvero.com",
-                Description = "Learn More"
-            }
-        }
-                },
+                LinksModuleData = BuildLinks(tpl),
 
-                Barcode = new Barcode { Type = "CODE_128", Value = barcode, AlternateText = barcode },
+                Barcode = new Barcode { Type = CardFieldCatalog.GoogleBarcodeType(barcodeType), Value = barcode, AlternateText = barcode },
 
-                // Image modules: banner/grid for ProgressBased, banner for TierBased
-                ImageModulesData = new List<ImageModuleData>
-                {
-                    new ImageModuleData
-                    {
-                        MainImage = new Image
-                        {
-                            SourceUri = new ImageUri { Uri = bannerUrl, Description = isProgressBased ? "Progress Icons Grid" : "Banner" },
-                            ContentDescription = new LocalizedString
-                            {
-                                DefaultValue = new TranslatedString { Language = "en-US", Value = "\u200B" }
-                            }
-                        }
-                    }
-                },
+                // Banner: Top → image modulu (1-ci sətir), Bottom → heroImage (native, altda), None → yox
+                ImageModulesData = imageModules,
+                HeroImage = heroImage,
             };
 
             // Inject branch locations for proximity triggers
@@ -470,7 +452,11 @@ public sealed class GoogleWalletService : IGoogleWalletService
             }
 
             _log?.LogInformation("Creating GW object with lottery: IsLotteryEnabled={IsLotteryEnabled}, Tickets={Tickets}", tpl.IsLotteryEnabled, lotteryTickets);
-            var created = await _svc.Loyaltyobject.Insert(obj).ExecuteAsync(ct);
+            LoyaltyObject created;
+            if (objectExists && updateIfExists)
+                created = await _svc.Loyaltyobject.Update(obj, objectId).ExecuteAsync(ct);
+            else
+                created = await _svc.Loyaltyobject.Insert(obj).ExecuteAsync(ct);
             return new ServiceResult(true, created);
         }
         catch (Exception ex)
@@ -617,6 +603,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
             var nextPoints = currentPoints;
             bool isProgressBased = tpl.TemplateType == CardTemplateType.ProgressBased;
+            // Faza 2: admin layout yalnız flag açıqkən (class sətirləri ilə sinxron), əks halda default = bugünkü
+            var (fields, bannerPos, barcodeType, _) = LayoutFor(tpl, DesignLayoutEnabled(false));
 
             var existingBalance = existing?.LoyaltyPoints?.Balance?.Int__;
             _log?.LogWarning("GW PATCH: CardId={CardId}, existingGoogleBalance={ExistBal}, newBalance={NewBal}, delta={Delta}, isProgress={IsProgress}, objectId={ObjId}",
@@ -625,18 +613,11 @@ public sealed class GoogleWalletService : IGoogleWalletService
             var textList = existing.TextModulesData?.ToList() ?? new List<TextModuleData>();
 
             string? bannerUrl = null;
+            int completedCycles = 0;
 
             if (isProgressBased)
             {
-                // ProgressBased Google Wallet Layout (same as Create):
-                // 1. Large "Reward Card" title
-                // 2. Free reward label + big number (use CompletedCycles from card)
-                // 3. Reward description
-                // 4. Progress icons grid at bottom
-
-                // Get CompletedCycles from card if available, otherwise calculate from steps
                 // completedCyclesOverride: suspension mask zamanı DB dəyəri əvəzinə 0 ötürülür
-                int completedCycles = 0;
                 if (completedCyclesOverride.HasValue)
                 {
                     completedCycles = completedCyclesOverride.Value;
@@ -646,14 +627,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     try
                     {
                         var card = await _cardRepo.GetById(loyaltyCardId, ct);
-                        if (card != null)
-                        {
-                            completedCycles = card.CompletedCycles;
-                        }
-                        else
-                        {
-                            completedCycles = CalculateFreeDrinkCount(currentSteps, tpl.TotalSteps);
-                        }
+                        completedCycles = card != null ? card.CompletedCycles : CalculateFreeDrinkCount(currentSteps, tpl.TotalSteps);
                     }
                     catch
                     {
@@ -662,108 +636,18 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 }
                 else
                 {
-                    // Fallback: calculate from steps
                     completedCycles = CalculateFreeDrinkCount(currentSteps, tpl.TotalSteps);
                 }
-                string freeDrinkValue = completedCycles == 0 ? "0" : completedCycles.ToString();
 
-                // Get FreeRewardLabel from template (default: "bonus" instead of "Pulsuz içki")
-                string freeRewardLabel = string.IsNullOrWhiteSpace(tpl.FreeRewardLabel)
-                    ? "bonus"
-                    : tpl.FreeRewardLabel;
-
-                // 1) Customer name (was: hard-coded "Reward Card" placeholder).
-                var rewardCard = textList.FirstOrDefault(t => t.Id == "rewardCard");
-                if (rewardCard == null)
-                {
-                    rewardCard = new TextModuleData { Id = "rewardCard" };
-                    textList.Add(rewardCard);
-                }
-                rewardCard.Header = "";
-                rewardCard.Body = accountName;
-
-                // 2) Free reward label + big number (use FreeRewardLabel from template)
-                var pulsuzIcki = textList.FirstOrDefault(t => t.Id == "pulsuzIcki");
-                if (pulsuzIcki == null)
-                {
-                    pulsuzIcki = new TextModuleData { Id = "pulsuzIcki" };
-                    textList.Add(pulsuzIcki);
-                }
-                pulsuzIcki.Header = freeRewardLabel;
-                pulsuzIcki.Body = freeDrinkValue;
-
-                // 3) Reward description
-                if (!string.IsNullOrWhiteSpace(tpl.RewardDescription))
-                {
-                    var rewardDesc = textList.FirstOrDefault(t => t.Id == "rewardDesc");
-                    if (rewardDesc == null)
-                    {
-                        rewardDesc = new TextModuleData { Id = "rewardDesc" };
-                        textList.Add(rewardDesc);
-                    }
-                    rewardDesc.Header = "";
-                    rewardDesc.Body = tpl.RewardDescription;
-                }
-
-                // 4) Progress icons grid at bottom
+                // Progress icons grid (banner)
                 bannerUrl = PickProgressIconBySteps(tpl.IconUrls, currentSteps, tpl.TotalSteps);
                 if (!IsHttps(bannerUrl) && IsHttps(tpl.HeroImageUrl)) bannerUrl = tpl.HeroImageUrl;
                 if (!IsHttps(bannerUrl) && IsHttps(tpl.StripImageUrl)) bannerUrl = tpl.StripImageUrl;
                 if (!IsHttps(bannerUrl) && IsHttps(tpl.GoogleLogoUrl)) bannerUrl = tpl.GoogleLogoUrl;
-                if (!IsHttps(bannerUrl)) bannerUrl = FALLBACK_BANNER_URL;
             }
             else
             {
-                // TierBased/PointsBased: Keep existing logic
-                var percent = GetCashbackPercent(currentPoints, tpl);
-                var percentCash = GetCashbackPercentCash(currentPoints, tpl);
-
-                string cashback;
-                string cashbackText;
-                if (tpl.PayMentType)
-                {
-                    cashback = $"Cashback:{percent}%";
-                    cashbackText = $" Nağd ödənişdə {percentCash}%";
-                }
-                else
-                {
-                    cashback = "Cashback";
-                    cashbackText = $"{percent}%";
-                }
-
-                // customer — always update so renamed customers reflect on the pass.
-                var customer = textList.FirstOrDefault(t => t.Id == "customer");
-                if (customer == null)
-                {
-                    customer = new TextModuleData { Id = "customer" };
-                    textList.Add(customer);
-                }
-                customer.Header = "Customer";
-                customer.Body = accountName;
-
-                // balance
-                var balance = textList.FirstOrDefault(t => t.Id == "balance");
-                if (balance == null)
-                {
-                    balance = new TextModuleData { Id = "balance" };
-                    textList.Add(balance);
-                }
-                balance.Header = "BALANCE";
-                var currency = string.IsNullOrWhiteSpace(tpl.Currency) ? "AZN" : tpl.Currency;
-                balance.Body = nextPoints.ToString() + " " + currency;
-
-                // cashback
-                var cashbackId = textList.FirstOrDefault(t => t.Id == "cashback");
-                if (cashbackId == null)
-                {
-                    cashbackId = new TextModuleData { Id = "cashback" };
-                    textList.Add(cashbackId);
-                }
-                cashbackId.Header = cashback;
-                cashbackId.Body = cashbackText;
-
-                // FIX B: Do NOT use PickTierIconByPoints for ProgressBased (already handled above)
-                // Redeem zamanı da banner fallback (hero -> tier icon -> logo -> placeholder)
+                // Redeem zamanı da banner fallback (hero -> tier icon -> logo)
                 bannerUrl = IsHttps(tpl.HeroImageUrl) ? tpl.HeroImageUrl : null;
                 if (!IsHttps(bannerUrl))
                 {
@@ -771,8 +655,13 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     if (IsHttps(fallbackIcon)) bannerUrl = fallbackIcon;
                 }
                 if (!IsHttps(bannerUrl) && IsHttps(tpl.GoogleLogoUrl)) bannerUrl = tpl.GoogleLogoUrl;
-                if (!IsHttps(bannerUrl)) bannerUrl = FALLBACK_BANNER_URL;
             }
+
+            // Sahə modulları: görünən → upsert (ad dəyişən müştəri də yenilənir), gizli → silinir
+            var extras = await LoadExtrasAsync(loyaltyCardId, tpl, fields, null, null, ct);
+            var values = CardFieldCatalog.BuildValues(tpl, accountName, existing.Barcode?.Value ?? loyaltyCardId.ToString(),
+                nextPoints, currentSteps, completedCycles, extras.Lifetime, extras.ExpiryText, CardPlatform.Google);
+            ApplyFieldModules(textList, tpl, fields, values, nextPoints);
 
             // Lottery: show on card face via SecondaryLoyaltyPoints + TextModule
             LoyaltyPoints? secondaryLoyaltyPoints = null;
@@ -809,20 +698,13 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 textList.RemoveAll(t => t.Id == "lottery");
             }
 
-            var imageModules = new List<ImageModuleData>
-            {
-                new ImageModuleData
-                {
-                    MainImage = new Image
-                    {
-                        SourceUri = new ImageUri { Uri = bannerUrl, Description = isProgressBased ? "Progress Icons Grid" : "Banner" },
-                        ContentDescription = new LocalizedString
-                        {
-                            DefaultValue = new TranslatedString { Language = "en-US", Value = "\u200B" }
-                        }
-                    }
-                }
-            };
+            // about (kart dizayneri) — mövcud obyektdə də yenilənsin
+            ApplyAboutModule(textList, tpl);
+
+            var imageModules = bannerPos == GoogleBannerPosition.Top && IsHttps(bannerUrl)
+                ? new List<ImageModuleData> { BuildBanner(bannerUrl!, isProgressBased) }
+                : new List<ImageModuleData>(); // boş siyahı → PATCH mövcud image modulunu silir
+            var heroImage = bannerPos == GoogleBannerPosition.Bottom && IsHttps(bannerUrl) ? BuildHero(bannerUrl!) : null;
 
             var patch = new LoyaltyObject
             {
@@ -836,13 +718,51 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 SecondaryLoyaltyPoints = secondaryLoyaltyPoints,
                 TextModulesData = textList,
                 ImageModulesData = imageModules,
+                HeroImage = heroImage,
+                LinksModuleData = BuildLinks(tpl),
                 // Account fields shown in collapsed/list view of Google Wallet.
                 AccountId = loyaltyCardId.ToString(),
                 AccountName = accountName
             };
 
-            var patched = await _svc.Loyaltyobject.Patch(patch, objectId)
-                .ExecuteAsync(ct);
+            // Faza 2: barkod tipi (dəyər dəyişmir) — Faza 0 sınağı: obyekt PATCH ilə tip dərhal dəyişir (QR/PDF417/Aztec/Code128)
+            // GET tipi camelCase qaytarır ("qrCode", "code128", "pdf417", "aztec") → alt xətt-siz/kiçik hərflə müqayisə
+            var desiredBarcodeType = CardFieldCatalog.GoogleBarcodeType(barcodeType);
+            static string NormBarcode(string? t) => (t ?? "").Replace("_", "").ToLowerInvariant();
+            if (!string.IsNullOrWhiteSpace(existing.Barcode?.Value)
+                && NormBarcode(existing.Barcode!.Type) != NormBarcode(desiredBarcodeType))
+            {
+                patch.Barcode = new Barcode { Type = desiredBarcodeType, Value = existing.Barcode.Value, AlternateText = existing.Barcode.AlternateText ?? existing.Barcode.Value };
+            }
+
+            LoyaltyObject patched;
+            if (existing.HeroImage != null && heroImage == null)
+            {
+                // PATCH null sahəni silmir → heroImage-i silmək üçün tam Update (PUT) təzə obyektlə (preview/Walvero pass ilə eyni yol)
+                var full = new LoyaltyObject
+                {
+                    Id = objectId,
+                    ClassId = existing.ClassId ?? ClassId,
+                    State = existing.State ?? "ACTIVE",
+                    AccountId = patch.AccountId,
+                    AccountName = patch.AccountName,
+                    LoyaltyPoints = patch.LoyaltyPoints ?? existing.LoyaltyPoints,
+                    SecondaryLoyaltyPoints = patch.SecondaryLoyaltyPoints,
+                    TextModulesData = textList,
+                    ImageModulesData = imageModules,
+                    LinksModuleData = patch.LinksModuleData,
+                    Barcode = patch.Barcode ?? existing.Barcode,
+                    Locations = existing.Locations,
+                    Messages = existing.Messages,
+                    HeroImage = null
+                };
+                patched = await _svc.Loyaltyobject.Update(full, objectId).ExecuteAsync(ct);
+                _log?.LogInformation("[GW] hero removed via full Update. ObjectId={ObjectId}", objectId);
+            }
+            else
+            {
+                patched = await _svc.Loyaltyobject.Patch(patch, objectId).ExecuteAsync(ct);
+            }
 
             _log?.LogInformation("Google Wallet object PATCHED (redeem): {ObjectId} (banner={Banner}) isProgress={IsProgress} lotteryTickets={LotteryTickets}",
                 objectId, bannerUrl, isProgressBased, lotteryTickets);
@@ -886,7 +806,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
             // Banner URL fallback
             string? bannerUrl = IsHttps(tpl.HeroImageUrl) ? tpl.HeroImageUrl : null;
             if (!IsHttps(bannerUrl) && IsHttps(tpl.GoogleLogoUrl)) bannerUrl = tpl.GoogleLogoUrl;
-            if (!IsHttps(bannerUrl)) bannerUrl = FALLBACK_BANNER_URL;
+            // banner yoxdursa image module göndərilmir
 
             // Build Walvero object WITHOUT points/balance
             var obj = new LoyaltyObject
@@ -917,20 +837,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                     AlternateText = barcodeValue
                 },
 
-                ImageModulesData = new List<ImageModuleData>
-                {
-                    new ImageModuleData
-                    {
-                        MainImage = new Image
-                        {
-                            SourceUri = new ImageUri { Uri = bannerUrl, Description = "Banner" },
-                            ContentDescription = new LocalizedString
-                            {
-                                DefaultValue = new TranslatedString { Language = "en-US", Value = "\u200B" }
-                            }
-                        }
-                    }
-                },
+                ImageModulesData = IsHttps(bannerUrl) ? new List<ImageModuleData> { BuildBanner(bannerUrl!, false) } : null,
             };
 
             // Check if object already exists
@@ -1041,12 +948,77 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 }
             }
 
+            var url = BuildSaveLink(objectId, ClassId, loyaltyCardId.ToString(), accountName, currentPoints, currency);
+            return new ServiceResult(true, url);
+        }
+        catch (Exception ex)
+        {
+            _log?.LogError(ex, "GenerateSaveLinkByCardIdAsync failed");
+            return new ServiceResult(false, ex.Message);
+        }
+    }
+
+    /// <summary>Class strukturu (preview class da eyni koddan qurulur — classId parametrlə).</summary>
+    private LoyaltyClass BuildDesiredClass(CardTemplateSnapshot tpl, string programName, string classId, bool designLayout)
+    {
+            string NormalizeHex(string? v) =>
+                string.IsNullOrWhiteSpace(v) ? "#FFFFFF" :
+                (v.StartsWith("#") ? v.Trim() : "#" + v.Trim());
+
+            var bg = NormalizeHex(
+                tpl.TemplateType == CardTemplateType.TierBased && string.IsNullOrWhiteSpace(tpl.BackgroundColor)
+                    ? "#556734"
+                    : tpl.BackgroundColor
+            );
+
+            // Class səviyyəsində HeroImage-istifadə ETMİRİK (layout bizdə olsun)
+            Image? hero = null;
+
+            var blank = "\u200B";
+            var cls = new LoyaltyClass
+            {
+                Id = classId,
+                ProgramName = ClassProgramName(tpl),
+                IssuerName = !string.IsNullOrWhiteSpace(tpl.Design?.IssuerName) ? tpl.Design!.IssuerName!.Trim() : programName,
+                HexBackgroundColor = bg,
+                ProgramLogo = IsHttps(tpl.GoogleLogoUrl)
+                    ? new Image
+                    {
+                        SourceUri = new ImageUri { Uri = tpl.GoogleLogoUrl, Description = "Logo" },
+                        ContentDescription = new LocalizedString
+                        {
+                            DefaultValue = new TranslatedString { Language = "en-US", Value = programName }
+                        }
+                    }
+                    : null,
+                //WideProgramLogo = IsHttps(tpl.GoogleLogoUrl)
+                //    ? new Image
+                //    {
+                //        SourceUri = new ImageUri { Uri = tpl.GoogleLogoUrl, Description = "Logo" },
+                //        ContentDescription = new LocalizedString
+                //        {
+                //            DefaultValue = new TranslatedString { Language = "en-US", Value = programName }
+                //        }
+                //    }
+                //    : null,
+                HeroImage = hero, // sabit null
+
+                ClassTemplateInfo = BuildClassTemplateInfo(tpl, designLayout)
+            };
+
+            return cls;
+    }
+
+    /// <summary>"Save to Google Wallet" linki (JWT) — card/preview obyektləri üçün ortaq.</summary>
+    private string BuildSaveLink(string objectId, string classId, string accountId, string accountName, int currentPoints, string currency)
+    {
+        var loyaltyCardId = accountId;
             var loyaltyObject = new JObject
             {
                 ["id"] = objectId,
-                ["classId"] = ClassId,
+                ["classId"] = classId,
                 ["state"] = "ACTIVE",
-                ["accountId"] = loyaltyCardId.ToString(),
+                ["accountId"] = accountId,
                 ["accountName"] = accountName,
                 ["loyaltyPoints"] = new JObject
                 {
@@ -1069,16 +1041,99 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
             var jwt = SignJwt(claims, _privateKeyPem, _privateKeyId);
             var url = $"https://pay.google.com/gp/v/save/{jwt}";
-            return new ServiceResult(true, url);
+        return url;
+    }
+
+    // =================== 5) PREVIEW (publish-siz test) + CLASS STATUS ===================
+    /// <summary>
+    /// Ayrıca PREVIEW class ({ClassId}-preview, real class-a toxunulmur) + preview obyekt → Save-to-Wallet linki.
+    /// Admin Android-də real görünüşü yoxlayır. Hər çağırış class-ı cari dizayna PATCH edir (reviewStatus=UNDER_REVIEW qaydası).
+    /// </summary>
+    public async Task<ServiceResult> PreviewAsync(
+        CardTemplateSnapshot tpl, string previewKey, string accountName, string barcodeValue,
+        decimal points, int steps, int cycles, CancellationToken ct = default,
+        decimal lifetimePoints = 0, string? pointsExpiryText = null)
+    {
+        if (!_isInitialized || _svc == null)
+            return new ServiceResult(false, "Google Wallet service not initialized");
+
+        var previewClassId = ClassId + "-preview";
+        var desired = BuildDesiredClass(tpl, ResolveIssuerName(tpl), previewClassId, designLayout: true);
+        desired.ReviewStatus = "UNDER_REVIEW";
+        string classMsg;
+        try
+        {
+            LoyaltyClass? existing = null;
+            try { existing = await _svc.Loyaltyclass.Get(previewClassId).ExecuteAsync(ct); }
+            catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound) { existing = null; }
+
+            if (existing == null)
+            {
+                var created = await _svc.Loyaltyclass.Insert(desired).ExecuteAsync(ct);
+                classMsg = $"preview class yaradıldı ({created.ReviewStatus})";
+            }
+            else
+            {
+                var patched = await _svc.Loyaltyclass.Patch(desired, previewClassId).ExecuteAsync(ct);
+                classMsg = $"preview class yeniləndi ({patched.ReviewStatus})";
+            }
+        }
+        catch (Google.GoogleApiException ex)
+        {
+            _log?.LogWarning(ex, "[GW-PREVIEW] class failed. ClassId={ClassId}", previewClassId);
+            return new ServiceResult(false, $"Google preview class xətası: {ex.Message}");
+        }
+
+        var objectId = $"{_issuerId}.{tpl.TenantId}.{tpl.LoyaltyProgramId}.preview-{previewKey}";
+        var objRes = await CreateOrGetObjectByCardIdAsync(0, tpl, accountName, barcodeValue, points, steps, ct, 0, null, null, cycles,
+            objectIdOverride: objectId, classIdOverride: previewClassId, updateIfExists: true,
+            lifetimePointsOverride: lifetimePoints, pointsExpiryOverride: pointsExpiryText);
+        if (!objRes.Success)
+            return new ServiceResult(false, $"Google preview obyekt xətası: {objRes.Message}");
+
+        var label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency;
+        var url = BuildSaveLink(objectId, previewClassId, "preview", accountName, (int)Math.Round(points), label);
+        _log?.LogInformation("[GW-PREVIEW] ok. ClassId={ClassId} ObjectId={ObjectId} {Msg}", previewClassId, objectId, classMsg);
+        return new ServiceResult(true, new { url, classId = previewClassId, objectId, classStatus = classMsg }, classMsg);
+    }
+
+    /// <summary>Real class-ın vəziyyəti (read-only): reviewStatus, başlıq, issuer, rəng, logo, sətir sayı.</summary>
+    public async Task<ServiceResult> GetClassStatusAsync(CancellationToken ct = default)
+    {
+        if (!_isInitialized || _svc == null)
+            return new ServiceResult(false, "Google Wallet service not initialized");
+        try
+        {
+            var cls = await _svc.Loyaltyclass.Get(ClassId).ExecuteAsync(ct);
+            var rowInfos = cls.ClassTemplateInfo?.CardTemplateOverride?.CardRowTemplateInfos ?? new List<CardRowTemplateInfo>();
+            static string P(TemplateItem? it) => it?.FirstValue?.Fields?.FirstOrDefault()?.FieldPath ?? "?";
+            var rows = rowInfos.Select(r =>
+                r.OneItem != null ? P(r.OneItem.Item)
+                : r.TwoItems != null ? $"{P(r.TwoItems.StartItem)} | {P(r.TwoItems.EndItem)}"
+                : r.ThreeItems != null ? $"{P(r.ThreeItems.StartItem)} | {P(r.ThreeItems.MiddleItem)} | {P(r.ThreeItems.EndItem)}"
+                : "?").ToList();
+            return new ServiceResult(true, new
+            {
+                exists = true, classId = ClassId, reviewStatus = cls.ReviewStatus, programName = cls.ProgramName, issuerName = cls.IssuerName,
+                hexBackgroundColor = cls.HexBackgroundColor, programLogo = cls.ProgramLogo?.SourceUri?.Uri, rowCount = rows.Count, rows
+            });
+        }
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound)
+        {
+            return new ServiceResult(true, new { exists = false, classId = ClassId });
         }
         catch (Exception ex)
         {
-            _log?.LogError(ex, "GenerateSaveLinkByCardIdAsync failed");
             return new ServiceResult(false, ex.Message);
         }
     }
 
     // =================== HELPERS ===================
+
+    /// <summary>classTemplateInfo müqayisəsi üçün (null-lar atılır).</summary>
+    private static string TemplateInfoJson(ClassTemplateInfo? info) => info == null ? "" :
+        Newtonsoft.Json.JsonConvert.SerializeObject(info, new Newtonsoft.Json.JsonSerializerSettings { NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore });
+
 
     private static bool IsHttps(string? url)
     {
@@ -1226,231 +1281,137 @@ public sealed class GoogleWalletService : IGoogleWalletService
     }
 
 
-    private static ClassTemplateInfo BuildClassTemplateInfo(CardTemplateSnapshot tpl)
+    /// <summary>
+    /// Class sətirləri (Faza 2, data-driven): CardFieldCatalog.GoogleRows — Header+Primary → 1, Secondary → 2, Auxiliary → 3 (hər biri ≤3 element),
+    /// banner Top → image modulu 1-ci sətirdə; barkod native (sətir tutmur); Back/yerləşməyən modullar detallarda. Heç sahə yoxdursa barkod sətri.
+    /// designLayout=false → default yerləşmə (flag bağlı, runtime insert).
+    /// </summary>
+    private static ClassTemplateInfo BuildClassTemplateInfo(CardTemplateSnapshot tpl, bool designLayout)
     {
-        bool isProgressBased = tpl.TemplateType == CardTemplateType.ProgressBased;
+        var (fields, banner, _, legacy) = LayoutFor(tpl, designLayout);
+        // Sahələr toxunulmayıbsa → bugünkü sətirlər (prod class-larla eyni); dəyişilibsə → törəmə qayda
+        var rows = legacy ? CardFieldCatalog.LegacyGoogleRows(tpl.TemplateType) : CardFieldCatalog.GoogleRows(fields, banner, out _);
 
-        if (isProgressBased)
+        string PathOf(string id) => id == CardFieldCatalog.GoogleImageRow
+            ? "object.imageModulesData[0].mainImage"
+            : id == CardFieldCatalog.GoogleBarcodeRow
+                ? "object.barcode"
+                : $"object.textModulesData['{CardFieldCatalog.GoogleModuleId(id, tpl.TemplateType)}']";
+        static TemplateItem ItemOf(string path) => new TemplateItem
         {
-            // ProgressBased Google Wallet Layout:
-            // 1. Logo + program name (handled by ProgramLogo and IssuerName in class)
-            // 2. Large "Reward Card" title
-            // 3. "Pulsuz içki" label + big number (left side)
-            // 4. Barcode (centered)
-            // 5. Reward description (centered)
-            // 6. Progress icons grid at bottom
-            return new ClassTemplateInfo
+            FirstValue = new FieldSelector { Fields = new List<FieldReference> { new FieldReference { FieldPath = path } } }
+        };
+
+        var rowInfos = new List<CardRowTemplateInfo>();
+        foreach (var r in rows)
+        {
+            rowInfos.Add(r.Count switch
             {
-                CardTemplateOverride = new CardTemplateOverride
+                1 => new CardRowTemplateInfo { OneItem = new CardRowOneItem { Item = ItemOf(PathOf(r[0])) } },
+                2 => new CardRowTemplateInfo { TwoItems = new CardRowTwoItems { StartItem = ItemOf(PathOf(r[0])), EndItem = ItemOf(PathOf(r[1])) } },
+                _ => new CardRowTemplateInfo { ThreeItems = new CardRowThreeItems { StartItem = ItemOf(PathOf(r[0])), MiddleItem = ItemOf(PathOf(r[1])), EndItem = ItemOf(PathOf(r[2])) } },
+            });
+        }
+        if (rowInfos.Count == 0)
+            rowInfos.Add(new CardRowTemplateInfo { OneItem = new CardRowOneItem { Item = ItemOf("object.barcode") } });
+
+        // Siyahı (collapsed) görünüşünün 1-ci sətri: müştəri adı görünürsə o, yoxsa ilk görünən sahə
+        var visible = fields.Where(f => f.Slot != CardFieldSlot.Hidden).ToList();
+        var listField = visible.FirstOrDefault(f => f.Id == CardFieldCatalog.CustomerName)
+                        ?? visible.FirstOrDefault(f => f.Slot != CardFieldSlot.Back)
+                        ?? visible.FirstOrDefault();
+
+        var info = new ClassTemplateInfo
+        {
+            CardTemplateOverride = new CardTemplateOverride { CardRowTemplateInfos = rowInfos }
+        };
+        if (listField != null)
+            info.ListTemplateOverride = new ListTemplateOverride
+            {
+                FirstRowOption = new FirstRowOption
                 {
-                    CardRowTemplateInfos = new List<CardRowTemplateInfo>
-                    {
-                        // 1) Large "Reward Card" title
-                        new CardRowTemplateInfo
-                        {
-                            OneItem = new CardRowOneItem
-                            {
-                                Item = new TemplateItem
-                                {
-                                    FirstValue = new FieldSelector
-                                    {
-                                        Fields = new List<FieldReference>
-                                        {
-                                            new FieldReference { FieldPath = "object.textModulesData['rewardCard']" }
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        // 2) "Pulsuz içki" label + big number (left side)
-                        new CardRowTemplateInfo
-                        {
-                            OneItem = new CardRowOneItem
-                            {
-                                Item = new TemplateItem
-                                {
-                                    FirstValue = new FieldSelector
-                                    {
-                                        Fields = new List<FieldReference>
-                                        {
-                                            new FieldReference { FieldPath = "object.textModulesData['pulsuzIcki']" }
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        // 3) Barcode (centered)
-                        new CardRowTemplateInfo
-                        {
-                            OneItem = new CardRowOneItem
-                            {
-                                Item = new TemplateItem
-                                {
-                                    FirstValue = new FieldSelector
-                                    {
-                                        Fields = new List<FieldReference>
-                                        {
-                                            new FieldReference { FieldPath = "object.barcode" }
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        // 4) Reward description (centered)
-                        new CardRowTemplateInfo
-                        {
-                            OneItem = new CardRowOneItem
-                            {
-                                Item = new TemplateItem
-                                {
-                                    FirstValue = new FieldSelector
-                                    {
-                                        Fields = new List<FieldReference>
-                                        {
-                                            new FieldReference { FieldPath = "object.textModulesData['rewardDesc']" }
-                        }
-                    }
-                                }
-                            }
-                        },
-                        // 5) Progress icons grid at bottom
-                        new CardRowTemplateInfo
-                        {
-                            OneItem = new CardRowOneItem
-                            {
-                                Item = new TemplateItem
-                                {
-                                    FirstValue = new FieldSelector
-                                    {
-                                        Fields = new List<FieldReference>
-                                        {
-                                            new FieldReference { FieldPath = "object.imageModulesData[0].mainImage" }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                ListTemplateOverride = new ListTemplateOverride
-                {
-                    FirstRowOption = new FirstRowOption
-                    {
-                        FieldOption = new FieldSelector
-                        {
-                            Fields = new List<FieldReference>
-                            {
-                                new FieldReference { FieldPath = "object.textModulesData['rewardCard']" }
-                            }
-                        }
-                    }
+                    FieldOption = new FieldSelector { Fields = new List<FieldReference> { new FieldReference { FieldPath = PathOf(listField.Id) } } }
                 }
             };
-        }
-        else
+        return info;
+    }
+
+    // =================== FAZA 2 — sahə layout köməkçiləri ===================
+    /// <summary>Admin layout-u Google-a yalnız preview-də və ya CardDesign:GoogleClassUpdateEnabled açıqkən gedir (class ↔ obyekt sinxron qalsın).</summary>
+    private static bool DesignLayoutEnabled(bool isPreview) => isPreview || CardDesignFeatureFlags.GoogleClassUpdateEnabled;
+
+    /// <summary>
+    /// Google layout mənbəyi. Legacy = true → bugünkü sətirlər/modullar (image modulu Top): flag bağlıdır VƏ YA admin "Sahələr"-i dəyişməyib
+    /// (Fields boş + GoogleBanner null). Barkod tipi flag/preview ilə dizayndan, əks halda Code128.
+    /// </summary>
+    private static (List<CardFieldSetting> Fields, GoogleBannerPosition Banner, BarcodeType Barcode, bool Legacy) LayoutFor(CardTemplateSnapshot tpl, bool designLayout)
+    {
+        var d = tpl.Design ?? new CardDesignSettings();
+        if (!designLayout)
+            return (CardFieldCatalog.DefaultFields(tpl.TemplateType), GoogleBannerPosition.Top, BarcodeType.Code128, true);
+        if (CardFieldCatalog.IsLegacyGoogleLayout(d))
+            return (CardFieldCatalog.DefaultFields(tpl.TemplateType), GoogleBannerPosition.Top, d.EffectiveBarcode, true);
+        return (d.EffectiveFields(tpl.TemplateType), d.EffectiveGoogleBanner(tpl.TemplateType), d.EffectiveBarcode, false);
+    }
+
+    /// <summary>Sahə modulları: görünən sahə → upsert (id kataloqdan), gizli/boş → silinir, legacy id-lər silinir.</summary>
+    private static void ApplyFieldModules(List<TextModuleData> list, CardTemplateSnapshot tpl, List<CardFieldSetting> fields,
+        Dictionary<string, CardFieldValue> values, decimal displayPoints)
+    {
+        foreach (var id in CardFieldCatalog.AllIds)
         {
-            // TierBased/PointsBased: Keep existing template
-            return new ClassTemplateInfo
+            var moduleId = CardFieldCatalog.GoogleModuleId(id, tpl.TemplateType);
+            var f = fields.FirstOrDefault(x => x.Id == id);
+            if (f == null || f.Slot == CardFieldSlot.Hidden || !values.TryGetValue(id, out var v) || string.IsNullOrWhiteSpace(v.Value))
             {
-                CardTemplateOverride = new CardTemplateOverride
-                {
-                    CardRowTemplateInfos = new List<CardRowTemplateInfo>
-                        {
-                            // 1) Banner — OBYEKT-dən oxunur
-                            new CardRowTemplateInfo
-                            {
-                                OneItem = new CardRowOneItem
-                                {
-                                    Item = new TemplateItem
-                                    {
-                                        FirstValue = new FieldSelector
-                                        {
-                                            Fields = new List<FieldReference>
-                                            {
-                                                new FieldReference { FieldPath = "object.imageModulesData[0].mainImage" }
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                            // 2) customer + balance
-                            new CardRowTemplateInfo
-                            {
-                                TwoItems = new CardRowTwoItems
-                                {
-                                    StartItem = new TemplateItem
-                                    {
-                                        FirstValue = new FieldSelector
-                                        {
-                                            Fields = new List<FieldReference>
-                                            {
-                                                new FieldReference { FieldPath = "object.textModulesData['customer']" }
-                                            }
-                                        }
-                                    },
-                                    EndItem = new TemplateItem
-                                    {
-                                        FirstValue = new FieldSelector
-                                        {
-                                            Fields = new List<FieldReference>
-                                            {
-                                                new FieldReference { FieldPath = "object.textModulesData['balance']" }
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                            // 3) cashback
-                            new CardRowTemplateInfo
-                            {
-                                TwoItems = new CardRowTwoItems
-                                {
-                                    StartItem = new TemplateItem
-                                    {
-                                        FirstValue = new FieldSelector
-                                        {
-                                            Fields = new List<FieldReference>
-                                            {
-                                                new FieldReference { FieldPath = "object.textModulesData['cashback']" }
-                                            }
-                                        }
-                                    }
-                                }
-                            },
-                            // 4) barcode
-                            new CardRowTemplateInfo
-                            {
-                                OneItem = new CardRowOneItem
-                                {
-                                    Item = new TemplateItem
-                                    {
-                                        FirstValue = new FieldSelector
-                                        {
-                                            Fields = new List<FieldReference>
-                                            {
-                                                new FieldReference { FieldPath = "object.barcode" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                },
-                ListTemplateOverride = new ListTemplateOverride
-                {
-                    FirstRowOption = new FirstRowOption
-                    {
-                        FieldOption = new FieldSelector
-                        {
-                            Fields = new List<FieldReference>
-                                {
-                                    new FieldReference { FieldPath = "object.textModulesData['customer']" }
-                                }
-                        }
-                    }
-                }
-            };
+                list.RemoveAll(t => t.Id == moduleId);
+                continue;
+            }
+            var m = list.FirstOrDefault(t => t.Id == moduleId);
+            if (m == null) { m = new TextModuleData { Id = moduleId }; list.Add(m); }
+            m.Header = CardFieldCatalog.EffectiveLabel(f, v, tpl, displayPoints) ?? "";
+            m.Body = v.Value;
         }
+        foreach (var legacy in CardFieldCatalog.LegacyModuleIds)
+            list.RemoveAll(t => t.Id == legacy);
+    }
+
+    private static Image BuildHero(string url) => new Image
+    {
+        SourceUri = new ImageUri { Uri = url, Description = "Banner" },
+        ContentDescription = new LocalizedString { DefaultValue = new TranslatedString { Language = "en-US", Value = "\u200B" } }
+    };
+
+    /// <summary>Ümumi xal / bitmə tarixi — yalnız sahə görünəndə DB-dən (suspensiyada maskalanır); preview override ilə.</summary>
+    private async Task<(decimal Lifetime, string? ExpiryText)> LoadExtrasAsync(int loyaltyCardId, CardTemplateSnapshot tpl, List<CardFieldSetting> fields,
+        decimal? lifetimeOverride, string? expiryOverride, CancellationToken ct)
+    {
+        var needLifetime = CardFieldCatalog.IsVisible(fields, CardFieldCatalog.LifetimePoints);
+        var needExpiry = CardFieldCatalog.IsVisible(fields, CardFieldCatalog.PointsExpiry);
+        if (!needLifetime && !needExpiry) return (0, null);
+        if (lifetimeOverride.HasValue || expiryOverride != null || loyaltyCardId <= 0) return (lifetimeOverride ?? 0, expiryOverride);
+
+        decimal lifetime = 0; System.DateTime? expiresAt = null;
+        if (_cardRepo != null)
+        {
+            try
+            {
+                var card = await _cardRepo.GetByIdAsync(loyaltyCardId, ct);
+                if (card != null) { lifetime = card.LifetimePoints; expiresAt = card.ExpiresAt; }
+            }
+            catch (Exception ex) { _log?.LogWarning(ex, "[GW] extras load failed. CardId={CardId}", loyaltyCardId); }
+        }
+        if (_suspensionGuard != null)
+        {
+            try
+            {
+                var susp = await _suspensionGuard.GetAsync(tpl.TenantId, ct);
+                if (susp.IsSuspended) { lifetime = 0; expiresAt = null; }
+            }
+            catch { /* mask best-effort */ }
+        }
+        var text = needExpiry ? await CardFieldCatalog.FormatExpiryAsync(_timeZoneService, tpl.TenantId, expiresAt, ct) : null;
+        return (needLifetime ? lifetime : 0, text);
     }
 
     private static string? PickTierIconByPoints(CardTemplateSnapshot tpl, decimal pts, out string tier)

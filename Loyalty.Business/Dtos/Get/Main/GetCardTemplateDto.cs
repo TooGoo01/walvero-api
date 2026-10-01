@@ -67,6 +67,9 @@ namespace Loyalty.Business.Dtos.Get.Main
         public IconLayout IconLayout { get; set; }
         public bool PayMentType { get; set; } = false;
 
+        /// <summary>Kart dizayneri mətnləri (CardTemplate.DesignJson). Boş sahə = default.</summary>
+        public Loyalty.Business.Dtos.Post.Main.CardDesignSettings Design { get; set; } = new();
+
         // Currency (Para birimi: AZN, Xal, Point və s.)
        
     }

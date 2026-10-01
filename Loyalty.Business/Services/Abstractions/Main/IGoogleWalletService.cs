@@ -24,7 +24,21 @@ namespace Loyalty.Business.Services.Abstractions.Main
             int lotteryTickets = 0,
             string? lotteryWinPrize = null,
             DateTime? lotteryDrawDate = null,
-            int? completedCyclesOverride = null);
+            int? completedCyclesOverride = null,
+            string? objectIdOverride = null,
+            string? classIdOverride = null,
+            bool updateIfExists = false,
+            decimal? lifetimePointsOverride = null,
+            string? pointsExpiryOverride = null);
+
+        /// Publish-siz test: {ClassId}-preview class + preview obyekt → Save-to-Wallet linki (Data: {url, classId, objectId, classStatus})
+        Task<ServiceResult> PreviewAsync(
+            CardTemplateSnapshot tpl, string previewKey, string accountName, string barcodeValue,
+            decimal points, int steps, int cycles, CancellationToken ct = default,
+            decimal lifetimePoints = 0, string? pointsExpiryText = null);
+
+        /// Real class vəziyyəti (read-only)
+        Task<ServiceResult> GetClassStatusAsync(CancellationToken ct = default);
 
         /// “Save to Google Wallet” linki (JWT) yaradır
         Task<ServiceResult> GenerateSaveLinkByCardIdAsync(
@@ -45,6 +59,10 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> GenerateWalveroSaveLinkAsync(
             string objectId,
             CancellationToken ct = default);
+
+        /// Kart dizayneri: mövcud class-ın programName/issuerName/rəng/logo-sunu tpl-ə uyğunlaşdır (reviewStatus toxunulmur).
+        /// Class yoxdursa yaradır. Runtime (redeem) yolunda ÇAĞIRILMIR — yalnız admin saxlama / refresh.
+        Task<ServiceResult> UpdateClassDesignAsync(CardTemplateSnapshot tpl, CancellationToken ct = default);
 
         /// Get IssuerId for constructing object IDs
         string GetIssuerId();

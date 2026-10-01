@@ -28,6 +28,7 @@ public sealed class AppleWalletService : IAppleWalletService
     private readonly ILoyaltyProgramRepository? _programRepo;
     private readonly ITenantBrandingRepository? _brandingRepo;
     private readonly ITenantSuspensionGuard? _suspensionGuard;
+    private readonly ITimeZoneService? _timeZoneService;
     private readonly ILogger<AppleWalletService> _logger;
 
     public AppleWalletService(
@@ -42,8 +43,10 @@ public sealed class AppleWalletService : IAppleWalletService
         IBranchRepository? branchRepo = null,
         ILoyaltyProgramRepository? programRepo = null,
         ITenantBrandingRepository? brandingRepo = null,
-        ITenantSuspensionGuard? suspensionGuard = null)
+        ITenantSuspensionGuard? suspensionGuard = null,
+        ITimeZoneService? timeZoneService = null)
     {
+        _timeZoneService = timeZoneService;
         _builder = builder;
         _signer = signer;
         _env = env;
@@ -96,6 +99,8 @@ public sealed class AppleWalletService : IAppleWalletService
         decimal displayPoints = card.CurrentPoints;
         int displaySteps = card.CurrentSteps;
         int displayCycles = card.CompletedCycles;
+        decimal lifetimePoints = card.LifetimePoints;
+        DateTime? expiresAt = card.ExpiresAt;
         if (_suspensionGuard != null)
         {
             var susp = await _suspensionGuard.GetAsync(tenantId, ct);
@@ -108,8 +113,14 @@ public sealed class AppleWalletService : IAppleWalletService
                 lotteryTickets = 0;
                 lotteryWinPrize = null;
                 lotteryDrawDate = null;
+                lifetimePoints = 0;
+                expiresAt = null;
             }
         }
+        // Faza 2: bitmə tarixi yalnız sahə görünəndə hesablanır (əlavə DB sorğusu)
+        string? pointsExpiryText = null;
+        if (expiresAt.HasValue && CardFieldCatalog.IsVisible(snapshot.Design.EffectiveFields(snapshot.TemplateType), CardFieldCatalog.PointsExpiry))
+            pointsExpiryText = await CardFieldCatalog.FormatExpiryAsync(_timeZoneService, tenantId, expiresAt, ct);
 
         if (!HasValidCreds(creds, out var credsReason))
         {
@@ -133,176 +144,11 @@ public sealed class AppleWalletService : IAppleWalletService
 
             var workDir = Path.Combine(Path.GetTempPath(), $"pkpass-{card.Id}-{Guid.NewGuid():N}");
             Directory.CreateDirectory(workDir);
-            int percent = 0;
-            int percentCash = 0;
-            // PointsBased: single-tier — həmişə Bronze% (tier ladder yoxdur).
-            // TierBased: points-ə görə Bronze→Silver→Gold→Platinum.
-            if (snapshot.TemplateType == CardTemplateType.PointsBased)
-            {
-                percent = snapshot.BronzePercent ?? 0;
-                percentCash = snapshot.BronzePercentCash ?? 0;
-            }
-            else
-            {
-                var pts = displayPoints;
-                if (snapshot.PlatinumThreshold.HasValue && pts >= snapshot.PlatinumThreshold.Value)
-                {
-                    percent = snapshot.PlatinumPercent ?? 0;
-                    percentCash = snapshot.PlatinumPercentCash ?? 0;
-                }
-                else if (snapshot.GoldThreshold.HasValue && pts >= snapshot.GoldThreshold.Value)
-                {
-                    percent = snapshot.GoldPercent ?? 0;
-                    percentCash = snapshot.GoldPercentCash ?? 0;
-                }
-                else if (snapshot.SilverThreshold.HasValue && pts >= snapshot.SilverThreshold.Value)
-                {
-                    percent = snapshot.SilverPercent ?? 0;
-                    percentCash = snapshot.SilverPercentCash ?? 0;
-                }
-                else
-                {
-                    percent = snapshot.BronzePercent ?? 0;
-                    percentCash = snapshot.BronzePercentCash ?? 0;
-                }
-            }
-
             try
             {
-                string cashback;
-                string cashbackText;
-                if (snapshot.PayMentType)
-                {
-                    cashback = $"Cashback:{percent}%";
-                    cashbackText = $" Nağd ödənişdə {percentCash}%";
-                }
-                else
-                {
-                    cashback = "Cashback";
-                    cashbackText = $"{percent}%";
-
-                }
-
-                // ProgressBased vs TierBased/PointsBased logic
-                bool isProgressBased = snapshot.TemplateType == CardTemplateType.ProgressBased;
-
-                string? stripImageUrl = snapshot.StripImageUrl;
-                List<PassField> headerFields = new();
-                List<PassField> primaryFields = new();
-                List<PassField> secondaryFields = new();
-                List<PassField> auxiliaryFields = new();
-                List<PassField> backFields = new();
-
-                if (isProgressBased)
-                {
-                    // ProgressBased Apple Wallet Layout:
-                    // Top: reward description (uppercase rule text) - use headerFields for top rule text
-                    // Middle: progress icons grid (strip image)
-                    // Lower-middle: "Reward Card" (left) and "Pulsuz içki: {N}" (right) - use secondaryFields for side-by-side
-                    // Bottom: barcode (existing)
-
-                    // Use CompletedCycles from card (available reward count)
-                    int completedCycles = displayCycles;
-                    string freeDrinkValue = completedCycles == 0 ? "0" : completedCycles.ToString();
-
-                    // Get FreeRewardLabel from template (default: "bonus" instead of "Pulsuz içki")
-                    string freeRewardLabel = string.IsNullOrWhiteSpace(snapshot.FreeRewardLabel)
-                        ? "bonus"
-                        : snapshot.FreeRewardLabel;
-
-                    string freeDrinkText = completedCycles == 0 ? "0" : $"{completedCycles}";
-
-                    // Top: Reward description as uppercase rule text (headerFields for top placement)
-                    if (!string.IsNullOrWhiteSpace(snapshot.RewardDescription))
-                    {
-                        string rewardDescUpper = snapshot.RewardDescription.ToUpperInvariant();
-                        primaryFields.Add(new PassField("rule", rewardDescUpper, null)); // No label for rule text
-                    }
-
-                    // Lower-middle: "Reward Card" (left) and "{FreeRewardLabel}: {N}" (right) - side-by-side
-                    secondaryFields.Add(new PassField("rewardCard", customerFullName, null));
-                    secondaryFields.Add(new PassField("pulsuzIcki", $"{freeRewardLabel}: {freeDrinkText}", null));
-
-                    // Progress icons grid: Use strip image showing the grid
-                    // Try to get a composite grid image, or use the current step icon
-                    stripImageUrl = PickProgressIconBySteps(snapshot.IconUrls, displaySteps, snapshot.TotalSteps);
-                    if (string.IsNullOrWhiteSpace(stripImageUrl)) stripImageUrl = snapshot.StripImageUrl;
-                    if (string.IsNullOrWhiteSpace(stripImageUrl)) stripImageUrl = snapshot.HeroImageUrl;
-                    // If we have multiple icons, we might need a composite, but for now use the current icon
-                }
-                else
-                {
-                    var currency = string.IsNullOrWhiteSpace(snapshot.Currency) ? "AZN" : snapshot.Currency;
-                    // TierBased/PointsBased: Keep existing logic
-                    headerFields.Add(new PassField("balance", displayPoints.ToString() + " " + currency, "Balance"));
-                    auxiliaryFields.Add(new PassField("cashback", cashbackText, cashback));
-                    secondaryFields.Add(new PassField("name", customerFullName, "Customer"));
-                }
-                if (extraBackFields != null)
-                {
-                    foreach (var extra in extraBackFields)
-                        backFields.Add(extra);
-                }
-
-                backFields.Add(new PassField(
-    "about",
-    "POS ilə inteqrasiya olunan sadiqlik proqramı. Müştəri bağlılığını artırın və təkrar alışları təşviq edin.",
-    "Walvero Loyallıq"
-));
-
-                backFields.Add(new PassField(
-                    "features",
-                    "• Fərdiləşdirilmiş mükafatlar\n• Avtomatlaşdırılmış izləmə (POS)\n• Hədəfli kampaniyalar\n• Analitika və insight-lar",
-                    "Əsas imkanlar"
-                ));
-
-                backFields.Add(new PassField(
-                    "website",
-                    "https://www.walvero.com",
-                    "Veb-sayt"
-                ));
-
-                // Lottery fields (on the front — auxiliaryFields)
-                if (snapshot.IsLotteryEnabled && lotteryTickets > 0)
-                {
-                    auxiliaryFields.Add(new PassField("lottery", lotteryTickets.ToString(), "Lotereya şansları"));
-                }
-                if (snapshot.IsLotteryEnabled && !string.IsNullOrWhiteSpace(lotteryWinPrize))
-                {
-                    auxiliaryFields.Add(new PassField("lotteryWin", lotteryWinPrize, "Lotereya uduşu"));
-                }
-                if (snapshot.IsLotteryEnabled && lotteryDrawDate.HasValue)
-                {
-                    auxiliaryFields.Add(new PassField("lotteryDrawDate", lotteryDrawDate.Value.ToString("dd.MM.yyyy HH:mm"), "Çəkiliş tarixi"));
-                }
-
-                // 1) pass.json + şəkillər (DB creds → Team/PassType)
-                var req = new BuildPassRequest
-                {
-                    TeamIdentifier = creds.TeamIdentifier,
-                    PassTypeIdentifier = creds.PassTypeIdentifier,
-                    SerialNumber = serial,
-                    OrganizationName = snapshot.ProgramName ?? "Walvero",
-                    Description = "Loyalty Card",
-                    LogoText = "",
-                    BackgroundColor = snapshot.BackgroundColor,
-                    BarcodeMessage = barcodeValue,
-                    Barcode = barcodeValue,
-                    CustomerName = customerFullName,
-                    BarcodeFormat = "PKBarcodeFormatCode128",
-                    PrimaryFields = primaryFields,
-                    SecondaryFields = secondaryFields,
-                    HeaderFields = headerFields,
-                    AuxiliaryFields = auxiliaryFields,
-                    BackFields = backFields,
-                    LogoUrl = snapshot.LogoUrl,
-                    HeroImageUrl = snapshot.HeroImageUrl,
-                    WebServiceURL = creds.WebServiceUrl,          // varsa
-                    AuthenticationToken = creds.AuthToken,       // varsa
-                    StripImageUrl = stripImageUrl,
-                    ForegroundColor = snapshot.ForegroundColor,
-                    LabelColor = snapshot.LabelColor,
-                };
+                var req = BuildCardPassRequest(snapshot, creds, serial, customerFullName, barcodeValue,
+                    displayPoints, displaySteps, displayCycles, lotteryTickets, lotteryWinPrize, lotteryDrawDate, extraBackFields,
+                    lifetimePoints, pointsExpiryText);
 
                 _logger.LogInformation(
                     "Apple pass colors — BG: {Bg}, FG: {Fg}, Label: {Lbl} (TenantId={TenantId}, CardId={CardId})",
@@ -333,36 +179,7 @@ public sealed class AppleWalletService : IAppleWalletService
                     }
                 }
 
-                await _builder.BuildAsync(req, workDir, ct);
-
-                // DEBUG: pass.json content-ini log-a yaz
-                var passJsonPath = Path.Combine(workDir, "pass.json");
-                if (File.Exists(passJsonPath))
-                {
-                    var passJsonContent = await File.ReadAllTextAsync(passJsonPath, ct);
-                    _logger.LogInformation("Apple pass.json content: {PassJson} (CardId={CardId})", passJsonContent, card.Id);
-                }
-
-                // 2) manifest.json (SHA-1)
-                var files = Directory.GetFiles(workDir)
-                                     .Where(p => Path.GetFileName(p) != "manifest.json" && Path.GetFileName(p) != "signature")
-                                     .OrderBy(p => p, StringComparer.Ordinal)
-                                     .ToList();
-
-                var manifest = new Dictionary<string, string>(StringComparer.Ordinal);
-                foreach (var f in files)
-                {
-                    var sha1 = SHA1.HashData(await File.ReadAllBytesAsync(f, ct));
-                    manifest[Path.GetFileName(f)] = Convert.ToHexString(sha1).ToLowerInvariant();
-                }
-                var manifestPath = Path.Combine(workDir, "manifest.json");
-                await File.WriteAllTextAsync(manifestPath, JsonSerializer.Serialize(manifest), ct);
-
-                // 3) signature (tam DB creds ilə)
-                var signatureBytes = _signer.Sign(
-                    await File.ReadAllBytesAsync(manifestPath, ct),
-                    creds.CertP12Path, creds.CertPassword, creds.WwdrCertPath);
-                await File.WriteAllBytesAsync(Path.Combine(workDir, "signature"), signatureBytes, ct);
+                await BuildAndSignAsync(req, creds, workDir, card.Id, ct);
 
                 // 4) pkpass (TMP → MOVE atomik)
                 var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmssfff}.pkpass";
@@ -432,6 +249,188 @@ public sealed class AppleWalletService : IAppleWalletService
             _passLocks.TryRemove(card.Id, out _);
         }
     }
+    /// <summary>
+    /// pass.json sahələri + şəkil/rəng/barkod → BuildPassRequest (DB-siz, pure). Faza 0.3: preview də eyni koddan keçir.
+    /// Faza 2: sahələr CardFieldCatalog-dan (admin yuva/sıra/etiket seçimi; default = bugünkü görünüş), barkod formatı Design.Barcode.
+    /// </summary>
+    private BuildPassRequest BuildCardPassRequest(
+        CardTemplateSnapshot snapshot, AppleWalletRuntimeCreds creds, string serial, string customerFullName, string barcodeValue,
+        decimal displayPoints, int displaySteps, int displayCycles,
+        int lotteryTickets, string? lotteryWinPrize, DateTime? lotteryDrawDate, IEnumerable<PassField>? extraBackFields,
+        decimal lifetimePoints = 0, string? pointsExpiryText = null)
+    {
+                var design = snapshot.Design ?? new CardDesignSettings();
+                bool isProgressBased = snapshot.TemplateType == CardTemplateType.ProgressBased;
+
+                string? stripImageUrl = snapshot.StripImageUrl;
+                List<PassField> headerFields = new();
+                List<PassField> primaryFields = new();
+                List<PassField> secondaryFields = new();
+                List<PassField> auxiliaryFields = new();
+                List<PassField> backFields = new();
+                List<PassField> backSlotFields = new();
+
+                // Sahələr: dəyərlər + admin yuvaları (limitlər Effective-də tətbiq olunub)
+                var values = CardFieldCatalog.BuildValues(snapshot, customerFullName, barcodeValue,
+                    displayPoints, displaySteps, displayCycles, lifetimePoints, pointsExpiryText, CardPlatform.Apple);
+                foreach (var f in design.EffectiveFields(snapshot.TemplateType))
+                {
+                    if (f.Slot == CardFieldSlot.Hidden) continue;
+                    if (!values.TryGetValue(f.Id, out var v) || string.IsNullOrWhiteSpace(v.Value)) continue;
+                    var pf = new PassField(CardFieldCatalog.AppleKey(f.Id, snapshot.TemplateType), v.Value,
+                        CardFieldCatalog.EffectiveLabel(f, v, snapshot, displayPoints));
+                    switch (f.Slot)
+                    {
+                        case CardFieldSlot.Header: headerFields.Add(pf); break;
+                        case CardFieldSlot.Primary: primaryFields.Add(pf); break;
+                        case CardFieldSlot.Secondary: secondaryFields.Add(pf); break;
+                        case CardFieldSlot.Auxiliary: auxiliaryFields.Add(pf); break;
+                        case CardFieldSlot.Back: backSlotFields.Add(pf); break;
+                    }
+                }
+
+                if (isProgressBased)
+                {
+                    // Progress icons grid: strip = cari addım ikonu (strip → hero fallback)
+                    stripImageUrl = PickProgressIconBySteps(snapshot.IconUrls, displaySteps, snapshot.TotalSteps);
+                    if (string.IsNullOrWhiteSpace(stripImageUrl)) stripImageUrl = snapshot.StripImageUrl;
+                    if (string.IsNullOrWhiteSpace(stripImageUrl)) stripImageUrl = snapshot.HeroImageUrl;
+                }
+
+                if (extraBackFields != null)
+                {
+                    foreach (var extra in extraBackFields)
+                        backFields.Add(extra);
+                }
+                backFields.AddRange(backSlotFields);
+
+                // Arxa üz — kart dizayneri mətnləri (about/website; "-" = gizli)
+                if (design.ShowAbout)
+                    backFields.Add(new PassField("about", design.EffectiveAboutText, design.EffectiveAboutTitle));
+                if (design.ShowWebsite)
+                    backFields.Add(new PassField("website", design.EffectiveWebsiteUrl, design.EffectiveWebsiteLabel));
+
+                // Lottery fields (on the front — auxiliaryFields)
+                if (snapshot.IsLotteryEnabled && lotteryTickets > 0)
+                {
+                    auxiliaryFields.Add(new PassField("lottery", lotteryTickets.ToString(), "Lotereya şansları"));
+                }
+                if (snapshot.IsLotteryEnabled && !string.IsNullOrWhiteSpace(lotteryWinPrize))
+                {
+                    auxiliaryFields.Add(new PassField("lotteryWin", lotteryWinPrize, "Lotereya uduşu"));
+                }
+                if (snapshot.IsLotteryEnabled && lotteryDrawDate.HasValue)
+                {
+                    auxiliaryFields.Add(new PassField("lotteryDrawDate", lotteryDrawDate.Value.ToString("dd.MM.yyyy HH:mm"), "Çəkiliş tarixi"));
+                }
+
+                // 1) pass.json + şəkillər (DB creds → Team/PassType)
+                var req = new BuildPassRequest
+                {
+                    TeamIdentifier = creds.TeamIdentifier,
+                    PassTypeIdentifier = creds.PassTypeIdentifier,
+                    SerialNumber = serial,
+                    OrganizationName = string.IsNullOrWhiteSpace(design.Title) ? (snapshot.ProgramName ?? "Walvero") : design.Title!,
+                    Description = design.EffectiveDescription,
+                    LogoText = design.LogoText ?? "",
+                    BackgroundColor = snapshot.BackgroundColor,
+                    BarcodeMessage = barcodeValue,
+                    Barcode = barcodeValue,
+                    CustomerName = customerFullName,
+                    BarcodeFormat = CardFieldCatalog.AppleBarcodeFormat(design.Barcode),
+                    PrimaryFields = primaryFields,
+                    SecondaryFields = secondaryFields,
+                    HeaderFields = headerFields,
+                    AuxiliaryFields = auxiliaryFields,
+                    BackFields = backFields,
+                    LogoUrl = snapshot.LogoUrl,
+                    HeroImageUrl = snapshot.HeroImageUrl,
+                    WebServiceURL = creds.WebServiceUrl,          // varsa
+                    AuthenticationToken = creds.AuthToken,       // varsa
+                    StripImageUrl = stripImageUrl,
+                    ForegroundColor = snapshot.ForegroundColor,
+                    LabelColor = snapshot.LabelColor,
+                };
+                return req;
+    }
+
+    /// <summary>pass.json + şəkillər (builder), manifest.json (SHA-1), signature — workDir-də. pkpass paketləmə çağıranındır.</summary>
+    private async Task BuildAndSignAsync(BuildPassRequest req, AppleWalletRuntimeCreds creds, string workDir, int logCardId, CancellationToken ct)
+    {
+                await _builder.BuildAsync(req, workDir, ct);
+
+                // DEBUG: pass.json content-ini log-a yaz
+                var passJsonPath = Path.Combine(workDir, "pass.json");
+                if (File.Exists(passJsonPath))
+                {
+                    var passJsonContent = await File.ReadAllTextAsync(passJsonPath, ct);
+                    _logger.LogInformation("Apple pass.json content: {PassJson} (CardId={CardId})", passJsonContent, logCardId);
+                }
+
+                // 2) manifest.json (SHA-1)
+                var files = Directory.GetFiles(workDir)
+                                     .Where(p => Path.GetFileName(p) != "manifest.json" && Path.GetFileName(p) != "signature")
+                                     .OrderBy(p => p, StringComparer.Ordinal)
+                                     .ToList();
+
+                var manifest = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var f in files)
+                {
+                    var sha1 = SHA1.HashData(await File.ReadAllBytesAsync(f, ct));
+                    manifest[Path.GetFileName(f)] = Convert.ToHexString(sha1).ToLowerInvariant();
+                }
+                var manifestPath = Path.Combine(workDir, "manifest.json");
+                await File.WriteAllTextAsync(manifestPath, JsonSerializer.Serialize(manifest), ct);
+
+                // 3) signature (tam DB creds ilə)
+                var signatureBytes = _signer.Sign(
+                    await File.ReadAllBytesAsync(manifestPath, ct),
+                    creds.CertP12Path, creds.CertPassword, creds.WwdrCertPath);
+                await File.WriteAllBytesAsync(Path.Combine(workDir, "signature"), signatureBytes, ct);
+    }
+
+    /// <summary>
+    /// Publish-siz TEST pass: real sertifikatla imzalanmış .pkpass bytes qaytarır — DB yazılmır, APNs/webService yoxdur
+    /// (cihaz qeydiyyatı olmur), serial PREVIEW-… (real kartlarla toqquşmur). Admin AirDrop/mail ilə iPhone-a atıb real görünüşü yoxlayır.
+    /// </summary>
+    public async Task<ServiceResult> GeneratePreviewPassAsync(
+        int tenantId, int loyaltyProgramId, AppleWalletRuntimeCreds creds, CardTemplateSnapshot snapshot,
+        string customerFullName, string barcodeValue, decimal points, int steps, int cycles, CancellationToken ct = default,
+        decimal lifetimePoints = 0, string? pointsExpiryText = null)
+    {
+        if (!HasValidCreds(creds, out var credsReason))
+            return new ServiceResult(false, "Apple credentials not found: " + credsReason);
+
+        var serial = $"PREVIEW-{loyaltyProgramId}-{DateTime.UtcNow:yyyyMMddHHmmss}";
+        var workDir = Path.Combine(Path.GetTempPath(), $"pkpass-preview-{loyaltyProgramId}-{Guid.NewGuid():N}");
+        var finalPath = Path.Combine(Path.GetTempPath(), $"preview-{Guid.NewGuid():N}.pkpass");
+        Directory.CreateDirectory(workDir);
+        try
+        {
+            var req = BuildCardPassRequest(snapshot, creds, serial, customerFullName, barcodeValue, points, steps, cycles, 0, null, null, null,
+                lifetimePoints, pointsExpiryText);
+            // Önizləmə: cihaz qeydiyyatı/push olmasın — webServiceURL/authenticationToken göndərilmir
+            req.WebServiceURL = null;
+            req.AuthenticationToken = null;
+
+            await BuildAndSignAsync(req, creds, workDir, 0, ct);
+            await CreatePkpassSafelyAsync(workDir, finalPath, ct);
+            var bytes = await File.ReadAllBytesAsync(finalPath, ct);
+            _logger.LogInformation("[APPLE] preview pass built. TenantId={TenantId}, ProgramId={ProgramId}, Size={Size}", tenantId, loyaltyProgramId, bytes.Length);
+            return new ServiceResult(true, bytes);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[APPLE] preview pass FAILED. TenantId={TenantId}, ProgramId={ProgramId}", tenantId, loyaltyProgramId);
+            return new ServiceResult(false, $"Apple preview failed: {ex.Message}");
+        }
+        finally
+        {
+            try { Directory.Delete(workDir, true); } catch { }
+            try { if (File.Exists(finalPath)) File.Delete(finalPath); } catch { }
+        }
+    }
+
     private int GetCashbackPercent(int points, int bronze, int silver, int gold, int platinium)
     {
         // Points sayına görə cashback faizini təyin edin

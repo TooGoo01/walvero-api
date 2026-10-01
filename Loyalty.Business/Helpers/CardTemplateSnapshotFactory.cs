@@ -92,7 +92,14 @@ namespace Loyalty.Business.Helpers
                 // App-specific images (.webp)
                 AppLogoUrl = toAbsoluteUrl(ct.AppLogoUrl),
                 AppStripUrl = toAbsoluteUrl(ct.AppStripUrl),
+
+                // Kart dizayneri mətnləri (boş sahə = default)
+                Design = CardDesignSettings.Parse(ct.DesignJson),
             };
+
+            // Başlıq boş qalırsa hər platforma öz köhnə fallback-ını işlədir:
+            // Apple → ProgramName (AppleWalletService), Google → TemplateName (GoogleWalletService.ClassProgramName).
+            // Burada doldurulmur ki, Google kart başlığı reqressiya etməsin.
 
             // Icon list (CardTemplate.Icons kolleksiyasından)
             if (ct.Icons != null && ct.Icons.Count > 0)

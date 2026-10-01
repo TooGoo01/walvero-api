@@ -86,6 +86,9 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         // ---- Lotereya ----
         public bool IsLotteryEnabled { get; set; } = false;
+
+        // ---- Kart dizayneri (mətnlər) — CardTemplate.DesignJson-dan; Title/IssuerName factory-də doldurulur ----
+        public CardDesignSettings Design { get; set; } = new();
     }
 
 }

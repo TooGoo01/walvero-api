@@ -8,7 +8,11 @@ using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
+using Loyalty.Business.Helpers;
+using Loyalty.DataAccess.Context;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Webp;
@@ -28,8 +32,13 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILoyaltyProgramRepository _loyaltyProgramRepository;
         private readonly ICardTemplateIconService _cardTemplateIconService;
         private readonly IStorage _storage;
+        private readonly IGoogleWalletServiceFactory? _googleFactory;
+        private readonly ITenantBrandingRepository? _brandingRepo;
+        private readonly LoyaltyWalletDbContext? _db;
+        private readonly ILogger<CardTemplateService>? _logger;
 
-        public CardTemplateService(IStorage storage, ICardTemplateRepository repo, IMapper mapper, IUnitOfWork unitOfWork, ICardTemplateIconService cardTemplateIconService, ILoyaltyProgramRepository loyaltyProgramRepository)
+        public CardTemplateService(IStorage storage, ICardTemplateRepository repo, IMapper mapper, IUnitOfWork unitOfWork, ICardTemplateIconService cardTemplateIconService, ILoyaltyProgramRepository loyaltyProgramRepository,
+            IGoogleWalletServiceFactory? googleFactory = null, ITenantBrandingRepository? brandingRepo = null, LoyaltyWalletDbContext? db = null, ILogger<CardTemplateService>? logger = null)
         {
             _storage = storage;
             _repo = repo;
@@ -37,7 +46,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             _unitOfWork = unitOfWork;
             _cardTemplateIconService = cardTemplateIconService;
             _loyaltyProgramRepository = loyaltyProgramRepository;
+            _googleFactory = googleFactory;
+            _brandingRepo = brandingRepo;
+            _db = db;
+            _logger = logger;
         }
+
+        private static readonly System.Text.RegularExpressions.Regex HexColor = new("^#[0-9A-Fa-f]{6}$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
         public Task<ServiceResult> Add(AddCardTemplateDto Dto)
         {
@@ -184,6 +199,20 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var container = $"tenant-{tenantId}-program-{dto.LoyaltyProgramId}-template";
 
+            // Rəng validasiyası — Apple/Google #RRGGBB tələb edir
+            foreach (var c in new[] { dto.BackgroundColor, dto.ForegroundColor, dto.LabelColor, dto.ProgressBarColor, dto.BronzeColor, dto.SilverColor, dto.GoldColor, dto.PlatinumColor })
+                if (!string.IsNullOrWhiteSpace(c) && !HexColor.IsMatch(c.Trim()))
+                    return new ServiceResult(false, $"Rəng #RRGGBB formatında olmalıdır: '{c}'.");
+            var site = dto.WebsiteUrl?.Trim();
+            if (!string.IsNullOrWhiteSpace(site) && site != CardDesignSettings.Hidden
+                && !(Uri.TryCreate(site, UriKind.Absolute, out var siteUri) && (siteUri.Scheme == Uri.UriSchemeHttp || siteUri.Scheme == Uri.UriSchemeHttps)))
+                return new ServiceResult(false, "Sayt linki http(s):// ilə başlamalıdır.");
+
+            // Şəkli silmə flag-ları (strip/hero UpOrLink boş gələndə köhnəni saxlayır)
+            if (dto.ClearStripImage) { dto.StripImageFile = null; dto.StripImageUrl = null; entity.StripImageUrl = null; }
+            if (dto.ClearHeroImage) { dto.HeroImageFile = null; dto.HeroImageUrl = null; entity.HeroImageUrl = null; }
+            if (dto.ClearBackgroundImage) { dto.BackgroundImageFile = null; dto.BackgroundImageUrl = null; entity.BackgroundImageUrl = null; }
+
             // YALNIZ şəkillər (mövcud upload helper-ləri reuse)
             entity.LogoUrl = await UpOrNullLink(container, "logo", dto.LogoFile, dto.LogoUrl, entity.LogoUrl, ct);
             entity.GoogleLogoUrl = await UpOrNullLink(container, "google-logo", dto.GoogleLogoFile, dto.GoogleLogoUrl, entity.GoogleLogoUrl, ct);
@@ -207,6 +236,25 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!string.IsNullOrWhiteSpace(dto.GoldColor)) entity.GoldColor = dto.GoldColor.Trim();
             if (!string.IsNullOrWhiteSpace(dto.PlatinumColor)) entity.PlatinumColor = dto.PlatinumColor.Trim();
 
+            // Kart dizayneri mətnləri — mövcud JSON-la merge (null = toxunma, "" = default-a qayıt)
+            var design = CardDesignSettings.Parse(entity.DesignJson);
+            design.Apply(dto.Title, dto.LogoText, dto.Description, dto.IssuerName,
+                dto.BalanceLabel, dto.CustomerLabel, dto.CashbackLabel,
+                dto.AboutTitle, dto.AboutText, dto.WebsiteUrl, dto.WebsiteLabel);
+
+            // Faza 2: sahə yuvaları / barkod / Google banner (LayoutJson)
+            var layoutWarnings = new List<string>();
+            if (!string.IsNullOrWhiteSpace(dto.LayoutJson))
+            {
+                var layout = CardLayoutUpdateDto.Parse(dto.LayoutJson, out var layoutError);
+                if (layout == null) return new ServiceResult(false, layoutError ?? "LayoutJson yanlışdır.");
+                design.ApplyLayout(layout);
+                CardFieldCatalog.Effective(design.Fields, entity.EffectiveType, out layoutWarnings);
+                CardFieldCatalog.GoogleRows(design.EffectiveFields(entity.EffectiveType), design.EffectiveGoogleBanner(entity.EffectiveType), out var rowWarnings);
+                layoutWarnings.AddRange(rowWarnings);
+            }
+            entity.DesignJson = design.ToJson();
+
             // DİQQƏT: steps/threshold/percent/reward/TemplateName TOXUNULMUR.
 
             if (entity.Id == 0)
@@ -228,7 +276,42 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _unitOfWork.Commit();
             }
 
-            return new ServiceResult(true, MapToGetDto(entity));
+            // Google Wallet class (başlıq/issuer/rəng/logo) — obyekt PATCH-ləri class-a toxunmur, dizayn yalnız belə çatır. Best-effort.
+            var googleMsg = await TryUpdateGoogleClassAsync(tenantId, program, entity, ct);
+            var msg = string.Join(" ", new[] { googleMsg }.Concat(layoutWarnings).Where(m => !string.IsNullOrWhiteSpace(m)));
+
+            return new ServiceResult(true, MapToGetDto(entity), msg);
+        }
+
+        /// <summary>Google class dizaynını yenilə; nəticə mesajı (UI-da göstərilir), xəta atmır.</summary>
+        private async Task<string?> TryUpdateGoogleClassAsync(int tenantId, LoyaltyProgram program, CardTemplate entity, CancellationToken ct)
+        {
+            if (_googleFactory == null) return null;
+            // Faza 0 (risk): real Google class PATCH-i yalnız flag açılanda (reviewStatus davranışı test tenant-da sınanana qədər bağlı)
+            if (!CardDesignFeatureFlags.GoogleClassUpdateEnabled)
+                return "Google Wallet class yeniləməsi hələ aktiv deyil (dəyişiklik növbəti aktivləşmədə tətbiq olunacaq).";
+            try
+            {
+                var branding = _brandingRepo != null ? await _brandingRepo.GetByTenantIdAsync(tenantId, ct) : null;
+                var companyName = _db != null
+                    ? await _db.Tenants.AsNoTracking().Where(t => t.Id == tenantId).Select(t => t.CompanyName).FirstOrDefaultAsync(ct)
+                    : null;
+                static string ToAbs(string? p) => string.IsNullOrWhiteSpace(p) ? string.Empty
+                    : (p.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? p : "https://appapi.walvero.com/" + p.TrimStart('/', '\\'));
+                var snapshot = CardTemplateSnapshotFactory.From(program, entity, branding, ToAbs);
+                snapshot.TenantCompanyName = companyName;
+
+                var gw = await _googleFactory.CreateForTenantAsync(tenantId, program.Id, ct);
+                var res = await gw.UpdateClassDesignAsync(snapshot, ct);
+                _logger?.LogInformation("Card design save: Google class update. TenantId={TenantId}, ProgramId={ProgramId}, Success={Success}, Message={Message}",
+                    tenantId, program.Id, res.Success, res.Message);
+                return res.Success ? "Google Wallet class yeniləndi." : $"Google Wallet class yenilənmədi: {res.Message}";
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Card design save: Google class update failed. TenantId={TenantId}, ProgramId={ProgramId}", tenantId, program.Id);
+                return "Google Wallet class yenilənmədi (inteqrasiya yoxdur və ya xəta).";
+            }
         }
 
         private async Task<string?> UpOrLink(
@@ -396,6 +479,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 AppStripUrl = e.AppStripUrl,
                 Currency = e.Currency,
                 IconLayout = e.IconLayout,
+                Design = CardDesignSettings.Parse(e.DesignJson),
                 FreeRewardLabel = e.FreeRewardLabel,
 
             };

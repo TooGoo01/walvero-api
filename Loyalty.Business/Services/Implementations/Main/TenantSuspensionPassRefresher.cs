@@ -1,4 +1,4 @@
-using Loyalty.Business.Dtos.Post.Main;
+﻿using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Context;
@@ -23,17 +23,20 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly IWalletRouter _walletRouter;
         private readonly IConfiguration _config;
+        private readonly IGoogleWalletServiceFactory _googleFactory;
         private readonly ILogger<TenantSuspensionPassRefresher> _logger;
 
         public TenantSuspensionPassRefresher(
             LoyaltyWalletDbContext dbContext,
             IWalletRouter walletRouter,
             IConfiguration config,
+            IGoogleWalletServiceFactory googleFactory,
             ILogger<TenantSuspensionPassRefresher> logger)
         {
             _dbContext = dbContext;
             _walletRouter = walletRouter;
             _config = config;
+            _googleFactory = googleFactory;
             _logger = logger;
         }
 
@@ -45,7 +48,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                          && c.IsActive
                          && c.Status == CardStatus.Active
                          && (c.IsAndroid || c.IsIOS))
-                .Include(c => c.LoyaltyProgram).ThenInclude(p => p.CardTemplate)
+                .Include(c => c.LoyaltyProgram).ThenInclude(p => p.CardTemplate).ThenInclude(t => t.Icons)
                 .ToListAsync(ct);
 
             if (cards.Count == 0)
@@ -93,6 +96,24 @@ namespace Loyalty.Business.Services.Implementations.Main
                         program, program.CardTemplate, branding, ToAbs);
                     snapshot.TenantCompanyName = tenantCompanyName;
                     snapshotCache[card.LoyaltyProgramId] = snapshot;
+
+                    // Kart dizayneri: Google class-ı (başlıq/issuer/rəng/logo) proqram başına 1 dəfə yenilə —
+                    // obyekt PATCH-ləri class-a toxunmur, dizayn dəyişikliyi yalnız belə çatır.
+                    if (CardDesignFeatureFlags.GoogleClassUpdateEnabled
+                        && cards.Any(c => c.LoyaltyProgramId == card.LoyaltyProgramId && c.IsAndroid))
+                    {
+                        try
+                        {
+                            var gw = await _googleFactory.CreateForTenantAsync(tenantId, card.LoyaltyProgramId, ct);
+                            var cls = await gw.UpdateClassDesignAsync(snapshot, ct);
+                            _logger.LogInformation("Refresh: Google class design update. ProgramId={ProgramId}, Success={Success}, Message={Message}",
+                                card.LoyaltyProgramId, cls.Success, cls.Message);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Refresh: Google class design update failed. ProgramId={ProgramId}", card.LoyaltyProgramId);
+                        }
+                    }
                 }
 
                 // Ardıcıl işlənir — Google/Apple API-lərinə təbii rate limit.

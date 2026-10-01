@@ -18,13 +18,20 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IAppEnvironment _env;
         private readonly HttpClient _httpClient;
         private readonly ILoyaltyCardRepository? _cardRepo;
-        public GoogleWalletServiceFactory(IAppEnvironment env, ILoyaltyProgramRepository programSvc, IWalletCredentialRepository walletSvc, HttpClient httpClient, ILoyaltyCardRepository? cardRepo)
+        private readonly Microsoft.Extensions.Logging.ILoggerFactory? _loggerFactory;
+        private readonly ITenantSuspensionGuard? _suspensionGuard;
+        private readonly ITimeZoneService? _timeZoneService;
+        public GoogleWalletServiceFactory(IAppEnvironment env, ILoyaltyProgramRepository programSvc, IWalletCredentialRepository walletSvc, HttpClient httpClient, ILoyaltyCardRepository? cardRepo, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null,
+            ITenantSuspensionGuard? suspensionGuard = null, ITimeZoneService? timeZoneService = null)
         {
             _env = env;
             _programSvc = programSvc;
             _walletSvc = walletSvc;
             _httpClient = httpClient;
             _cardRepo = cardRepo;
+            _loggerFactory = loggerFactory;
+            _suspensionGuard = suspensionGuard;
+            _timeZoneService = timeZoneService;
         }
 
 
@@ -100,7 +107,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             };
 
             // 5) Servisi yaradıb qaytar
-            return new GoogleWalletService(cfg,null, _cardRepo);
+            var gwLogger = _loggerFactory != null
+                ? Microsoft.Extensions.Logging.LoggerFactoryExtensions.CreateLogger<GoogleWalletService>(_loggerFactory)
+                : null;
+            return new GoogleWalletService(cfg, gwLogger, _cardRepo, null, _suspensionGuard, _timeZoneService);
         }
 
     }

@@ -26,6 +26,12 @@ namespace Loyalty.Business.Services.Abstractions.Main
         string? lotteryWinPrize = null,
         DateTime? lotteryDrawDate = null);
 
+        /// <summary>Publish-siz test pass: imzalanmış .pkpass bytes (ServiceResult.Data = byte[]); DB/push yoxdur.</summary>
+        Task<ServiceResult> GeneratePreviewPassAsync(
+            int tenantId, int loyaltyProgramId, AppleWalletRuntimeCreds creds, CardTemplateSnapshot snapshot,
+            string customerFullName, string barcodeValue, decimal points, int steps, int cycles, CancellationToken ct = default,
+            decimal lifetimePoints = 0, string? pointsExpiryText = null);
+
         Task<ServiceResult> PushNotificationToCardAsync(
             int loyaltyCardId,
             string title,
