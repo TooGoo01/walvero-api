@@ -558,6 +558,22 @@ Hangfire.RecurringJob.AddOrUpdate<Loyalty.Business.Services.Abstractions.Main.IP
     s => s.RunAsync(CancellationToken.None),
     "*/5 * * * *");
 
+// Bildirişlər v2 — yalnız job icra edən instansiya qeyd edir (lokal instansiya prod storage-a yeni job tipi yazmasın:
+// köhnə versiyalı prod server tanımadığı tipi götürüb xəta verərdi).
+if (builder.Configuration.GetValue("Hangfire:ServerEnabled", true))
+{
+    // Planlı bildirişlər: vaxtı çatanları hər dəqiqə göndər (ScheduledAtUtc indeksli, ucuz sorğu)
+    Hangfire.RecurringJob.AddOrUpdate<Loyalty.Business.Services.Abstractions.Main.INotificationJobs>(
+        "scheduled-notifications",
+        s => s.RunScheduledAsync(null, CancellationToken.None),
+        "* * * * *");
+    // Ad günü: tenant yerli vaxtı göndərmə saatına çatanda (15 dəq dövr, idempotent — BirthdayNotificationLogs unikal)
+    Hangfire.RecurringJob.AddOrUpdate<Loyalty.Business.Services.Abstractions.Main.INotificationJobs>(
+        "birthday-notifications",
+        s => s.RunBirthdaysAsync(null, false, CancellationToken.None),
+        "*/15 * * * *");
+}
+
 // 🔹 Minimal hostingda ayrı `UseRouting/UseEndpoints` ehtiyac yoxdur
 app.MapControllers();
 app.MapHub<LoyaltyHub>("/hubs/loyalty");

@@ -41,6 +41,10 @@ namespace Loyalty.Business.Services.Implementations.Main
         [Queue("default")]
         public async Task RunAsync(CancellationToken ct = default)
         {
+            // Müddətli bonuslar (ad günü hədiyyəsi) — yalnız istifadə olunmamış hissə silinir
+            try { await ExpireBonusGrantsAsync(ct); }
+            catch (Exception ex) { _logger.LogError(ex, "Bonus grant expiry run failed"); }
+
             var now = DateTime.UtcNow;
             var due = await _db.Set<LoyaltyCard>()
                 .Where(c => c.IsActive && c.ExpiresAt != null && c.ExpiresAt <= now)
@@ -148,6 +152,90 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             return (old, synced);
+        }
+
+        /// <summary>
+        /// Vaxtı keçmiş BonusGrant-lar: istifadə olunmamış hissə = clamp(Amount − grant-dan sonrakı xərclər, 0, CurrentPoints)
+        /// ("bonus əvvəl xərclənir") → Expired tx + iiko sync + wallet push. Yalnız xal kartları (möhür hədiyyəsi müddətsizdir).
+        /// </summary>
+        public async Task ExpireBonusGrantsAsync(CancellationToken ct = default)
+        {
+            var now = DateTime.UtcNow;
+            var grants = await _db.Set<BonusGrant>()
+                .Where(g => g.IsActive && g.Status == BonusGrantStatus.Active && g.ExpiresAtUtc != null && g.ExpiresAtUtc <= now)
+                .OrderBy(g => g.Id)
+                .Take(BatchSize)
+                .ToListAsync(ct);
+            foreach (var g in grants)
+            {
+                try
+                {
+                    var card = await _db.Set<LoyaltyCard>().FirstOrDefaultAsync(c => c.Id == g.LoyaltyCardId, ct);
+                    if (card == null) { g.Status = BonusGrantStatus.Closed; g.EditDate = now; await _uow.CommitAsync(ct); continue; }
+
+                    var spent = await _db.Set<Transaction>()
+                        .Where(t => t.LoyaltyCardId == card.Id && t.IsActive && t.Status == RedeemStatus.Applied
+                                    && t.Type == TransactionType.Redeemed && t.RegDate >= g.GrantedAtUtc)
+                        .SumAsync(t => (decimal?)Math.Abs(t.Points), ct) ?? 0m;
+                    var unspent = BonusExpiryMath.Unspent(g.Amount, spent, card.CurrentPoints);
+
+                    g.Status = BonusGrantStatus.Expired;
+                    g.ExpiredAmount = unspent;
+                    g.EditDate = now;
+                    g.EditUserId = SystemUserId;
+
+                    if (unspent > 0)
+                    {
+                        card.CurrentPoints -= unspent;
+                        card.EditDate = now;
+                        card.EditUserId = SystemUserId;
+                        _uow.Repository<LoyaltyCard>().Update(card);
+                        await _uow.Repository<Transaction>().AddAsync(new Transaction
+                        {
+                            LoyaltyCardId = card.Id,
+                            Type = TransactionType.Expired,
+                            Status = RedeemStatus.Applied,
+                            Points = -unspent,
+                            BalanceAfter = card.CurrentPoints,
+                            Description = g.Source == "birthday" ? "Ad günü hədiyyəsinin müddəti bitdi" : "Bonusun müddəti bitdi",
+                            OrderId = $"grant-expire:{g.Id}",
+                            RegUserId = SystemUserId,
+                            RegDate = now,
+                            IsActive = true,
+                            LocalOccurredAt = DateTimeOffset.UtcNow,
+                            TimeZoneIdUsed = "UTC"
+                        });
+                    }
+                    await _uow.CommitAsync(ct);
+                    _logger.LogInformation("Bonus grant expired. GrantId={GrantId} CardId={CardId} Amount={Amount} Spent={Spent} Removed={Removed}",
+                        g.Id, card.Id, g.Amount, spent, unspent);
+
+                    if (unspent > 0)
+                    {
+                        try { BackgroundJob.Enqueue<IWalletPushJob>(j => j.RunAsync(card.Id, card.LoyaltyProgramId, -unspent)); }
+                        catch (Exception ex) { _logger.LogWarning(ex, "Bonus expiry wallet push enqueue failed. CardId={CardId}", card.Id); }
+                        await SyncPosBalanceSafeAsync(card.TenantId, card.CustomerId, card.CurrentPoints, ct);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Bonus grant expiry failed. GrantId={GrantId}", g.Id);
+                }
+            }
+        }
+
+        private async Task SyncPosBalanceSafeAsync(int tenantId, int customerId, decimal points, CancellationToken ct)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var sync = scope.ServiceProvider.GetRequiredService<IPosSyncService>();
+                await sync.SyncBalanceToPosAsync(tenantId, customerId, points, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Bonus expiry POS sync failed. CustomerId={CustomerId}, TenantId={TenantId}", customerId, tenantId);
+            }
         }
 
         private async Task<bool> SyncPosSafeAsync(int tenantId, int customerId, CancellationToken ct)

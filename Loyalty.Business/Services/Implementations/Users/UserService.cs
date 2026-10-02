@@ -1869,7 +1869,12 @@ namespace Loyalty.Business.Services.Implementations.Users
                         customer.LastName = dto.Surname;
                     if (!string.IsNullOrEmpty(dto.Email))
                         customer.Email = dto.Email;
-                    
+                    // Cins / doğum tarixi də restoran profillərinə köçür (bildiriş filtrləri və ad günü bunları oxuyur)
+                    if (dto.Gender.HasValue)
+                        customer.Gender = dto.Gender.Value;
+                    if (dto.DateOfBirth.HasValue)
+                        customer.DateOfBirth = dto.DateOfBirth;
+
                     // Əgər customer.applicationUserId null-dursa, set et
                     if (customer.applicationUserId == null)
                     {

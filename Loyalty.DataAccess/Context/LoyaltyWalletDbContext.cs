@@ -87,10 +87,60 @@ namespace Loyalty.DataAccess.Context
         public DbSet<AiReferencePlace> AiReferencePlaces { get; set; }
         public DbSet<MenuPopup> MenuPopups { get; set; }
         public DbSet<TenantNotificationLog> TenantNotificationLogs { get; set; }
+        public DbSet<ScheduledNotification> ScheduledNotifications { get; set; }
+        public DbSet<TenantBirthdaySetting> TenantBirthdaySettings { get; set; }
+        public DbSet<BirthdayNotificationLog> BirthdayNotificationLogs { get; set; }
+        public DbSet<BonusGrant> BonusGrants { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // ==== Bildirişlər v2 (2026-10-02): planlı, ad günü, müddətli bonus ====
+            modelBuilder.Entity<TenantNotificationLog>(entity =>
+            {
+                entity.Property(x => x.Scope).HasMaxLength(32);
+                entity.Property(x => x.Title).HasMaxLength(200);
+                entity.Property(x => x.Source).HasMaxLength(16).HasDefaultValue(TenantNotificationLog.SourceManual);
+                entity.Property(x => x.Channels).HasMaxLength(32);
+                entity.Property(x => x.AudienceSummary).HasMaxLength(500);
+                // Kvota + tarixçə sorğusu: TenantId + RegDate
+                entity.HasIndex(x => new { x.TenantId, x.RegDate });
+            });
+            modelBuilder.Entity<ScheduledNotification>(entity =>
+            {
+                entity.ToTable("ScheduledNotifications");
+                entity.Property(x => x.Title).HasMaxLength(200);
+                entity.Property(x => x.Body).HasMaxLength(1000);
+                entity.Property(x => x.Error).HasMaxLength(500);
+                // Job: Status = Pending AND ScheduledAtUtc <= now
+                entity.HasIndex(x => new { x.Status, x.ScheduledAtUtc });
+                entity.HasIndex(x => new { x.TenantId, x.ScheduledAtUtc });
+            });
+            modelBuilder.Entity<TenantBirthdaySetting>(entity =>
+            {
+                entity.ToTable("TenantBirthdaySettings");
+                entity.Property(x => x.Title).HasMaxLength(200);
+                entity.Property(x => x.Body).HasMaxLength(1000);
+                entity.Property(x => x.GiftValue).HasColumnType("decimal(18,2)");
+                entity.Property(x => x.LastRunLocalDate).HasColumnType("date");
+                entity.HasIndex(x => x.TenantId).IsUnique();
+            });
+            modelBuilder.Entity<BirthdayNotificationLog>(entity =>
+            {
+                entity.ToTable("BirthdayNotificationLogs");
+                entity.Property(x => x.GiftAmount).HasColumnType("decimal(18,2)");
+                entity.HasIndex(x => new { x.TenantId, x.CustomerId, x.Year }).IsUnique();
+            });
+            modelBuilder.Entity<BonusGrant>(entity =>
+            {
+                entity.ToTable("BonusGrants");
+                entity.Property(x => x.Source).HasMaxLength(32);
+                entity.Property(x => x.Amount).HasColumnType("decimal(18,2)");
+                entity.Property(x => x.ExpiredAmount).HasColumnType("decimal(18,2)");
+                entity.HasIndex(x => new { x.Status, x.ExpiresAtUtc });
+                entity.HasIndex(x => x.LoyaltyCardId);
+            });
             modelBuilder.Entity<TelegramAdminLink>(entity =>
             {
                 entity.ToTable("TelegramAdminLinks");

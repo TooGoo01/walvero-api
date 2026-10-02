@@ -1,3 +1,4 @@
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
@@ -20,17 +21,23 @@ namespace Loyalty.WebAPI.Controllers
         private readonly IWalletMessagingService _walletMessaging;
         private readonly LoyaltyWalletDbContext _db;
         private readonly ITenantProvider _tenantProvider;
+        private readonly ITenantNotificationService _tenantNotifications;
+        private readonly INotificationJobs _notificationJobs;
 
         public NotificationController(
             INotificationService notificationService,
             IWalletMessagingService walletMessaging,
             LoyaltyWalletDbContext db,
-            ITenantProvider tenantProvider)
+            ITenantProvider tenantProvider,
+            ITenantNotificationService tenantNotifications,
+            INotificationJobs notificationJobs)
         {
             _notificationService = notificationService;
             _walletMessaging = walletMessaging;
             _db = db;
             _tenantProvider = tenantProvider;
+            _tenantNotifications = tenantNotifications;
+            _notificationJobs = notificationJobs;
         }
 
         // Xüsusi userə göndər (tenantId lazım deyil)
@@ -261,209 +268,176 @@ namespace Loyalty.WebAPI.Controllers
             });
         }
 
-        // ─────────────── Tenant admin bölməsi (kvota ilə) ───────────────
-
-        /// <summary>Tenant admin: bu ayın bildiriş kvotası (limit null = limitsiz).</summary>
-        [HttpGet]
-        [Authorize(
-            AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
-            Policy = "TenantAdminOrModerator")]
-        public async Task<IActionResult> MyQuota(CancellationToken ct)
-        {
-            var tenantId = _tenantProvider.CurrentTenantId;
-            if (!tenantId.HasValue)
-                return BadRequest(new { success = false, message = "Tenant not found." });
-
-            var limit = await _db.Tenants.AsNoTracking()
-                .Where(t => t.Id == tenantId.Value)
-                .Select(t => t.MonthlyNotificationLimit)
-                .FirstOrDefaultAsync(ct);
-
-            var used = await CountUsedThisMonthAsync(tenantId.Value, ct);
-            return Ok(new
-            {
-                success = true,
-                limit,
-                used,
-                remaining = limit.HasValue ? Math.Max(0, limit.Value - used) : (int?)null
-            });
-        }
-
-        public sealed record SendToMyTenantRequest(
-            string Title, string Body,
-            int? BranchId = null, int? CustomerId = null,
-            bool ToApp = true, bool ToWallet = false);
+        // ─────────────── Tenant admin bölməsi (v2: filtr, planlı, ad günü, tarixçə) ───────────────
 
         /// <summary>
-        /// Tenant admin öz müştərilərinə bildiriş göndərir: hamısı / filial (o filialda
-        /// əməliyyatı olanlar) / fərdi müştəri. Aylıq kvota (super admin təyin edir) enforce olunur.
+        /// Tenant: X-Tenant-Id header yalnız Super Admin üçün etibarlıdır (BranchController.ResolveTenantId nümunəsi) —
+        /// tenant admin header-i dəyişib başqa tenant-a göndərə / onun kvotasını işlədə bilməsin.
+        /// Branch Admin / Branch Moderator / Moderator yalnız öz filialına (branch_id claim) göndərir.
         /// </summary>
-        [HttpPost]
-        [Authorize(
-            AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme,
-            Policy = "TenantAdminOrModerator")]
-        public async Task<IActionResult> SendToMyTenant([FromBody] SendToMyTenantRequest request, CancellationToken ct)
+        private TenantNotificationContext? ResolveContext(out IActionResult? error)
         {
-            if (!request.ToApp && !request.ToWallet)
-                return BadRequest(new { success = false, message = "Ən azı bir kanal (App/Wallet) seçilməlidir." });
-            if (string.IsNullOrWhiteSpace(request.Title) || string.IsNullOrWhiteSpace(request.Body))
-                return BadRequest(new { success = false, message = "Başlıq və mətn boş ola bilməz." });
-
-            var tenantId = _tenantProvider.CurrentTenantId;
-            if (!tenantId.HasValue)
-                return BadRequest(new { success = false, message = "Tenant not found." });
-
-            // Kvota yoxlaması (limit null = limitsiz)
-            var limit = await _db.Tenants.AsNoTracking()
-                .Where(t => t.Id == tenantId.Value)
-                .Select(t => t.MonthlyNotificationLimit)
-                .FirstOrDefaultAsync(ct);
-            var used = await CountUsedThisMonthAsync(tenantId.Value, ct);
-            if (limit.HasValue && used >= limit.Value)
-                return BadRequest(new { success = false, message = $"Aylıq bildiriş limitiniz bitib ({used}/{limit})." });
-
-            // Hədəf müştərilər (yalnız ÖZ tenant-ı — scope enforce)
-            List<Customer> targets;
-            string scope;
-            if (request.CustomerId.HasValue)
-            {
-                scope = "customer";
-                var c = await _db.Customers.AsNoTracking()
-                    .FirstOrDefaultAsync(x => x.Id == request.CustomerId.Value && x.TenantId == tenantId.Value && x.IsActive, ct);
-                if (c == null)
-                    return BadRequest(new { success = false, message = "Müştəri tapılmadı." });
-                targets = new List<Customer> { c };
-            }
-            else if (request.BranchId.HasValue)
-            {
-                scope = "branch";
-                // Filial tenant-a aiddirmi?
-                var branchOk = await _db.Branches.AsNoTracking()
-                    .AnyAsync(b => b.Id == request.BranchId.Value && b.TenantId == tenantId.Value, ct);
-                if (!branchOk)
-                    return BadRequest(new { success = false, message = "Filial tapılmadı." });
-
-                // O filialda ən azı bir əməliyyatı olan müştərilər
-                var customerIds = await _db.Transactions.AsNoTracking()
-                    .Where(t => t.BranchId == request.BranchId.Value)
-                    .Join(_db.LoyaltyCards, t => t.LoyaltyCardId, lc => lc.Id, (t, lc) => lc.CustomerId)
-                    .Distinct()
-                    .ToListAsync(ct);
-
-                targets = await _db.Customers.AsNoTracking()
-                    .Where(c => customerIds.Contains(c.Id) && c.TenantId == tenantId.Value && c.IsActive)
-                    .ToListAsync(ct);
-            }
+            error = null;
+            var isSuper = User.IsInRole("Super Admin");
+            int? tenantId = null;
+            if (isSuper && Request.Headers.TryGetValue("X-Tenant-Id", out var hv) && int.TryParse(hv, out var hid))
+                tenantId = hid;
             else
+                tenantId = TokenTenantId() ?? (isSuper ? _tenantProvider.CurrentTenantId : null);
+            if (!tenantId.HasValue)
             {
-                scope = "tenant";
-                targets = await _db.Customers.AsNoTracking()
-                    .Where(c => c.TenantId == tenantId.Value && c.IsActive)
-                    .ToListAsync(ct);
+                error = BadRequest(new { success = false, message = "Tenant not found." });
+                return null;
             }
 
-            int appDelivered = 0;
-            int walletDelivered = 0;
-
-            if (request.ToApp)
+            int? branchScope = null;
+            var branchScoped = !isSuper && !User.IsInRole("Tenant Admin")
+                               && (User.IsInRole("Branch Admin") || User.IsInRole("Branch Moderator") || User.IsInRole("Moderator"));
+            if (branchScoped)
             {
-                var userIds = targets
-                    .Where(c => c.applicationUserId.HasValue)
-                    .Select(c => c.applicationUserId!.Value)
-                    .Distinct()
-                    .ToList();
-
-                if (userIds.Count > 0)
+                branchScope = int.TryParse(User.FindFirst("branch_id")?.Value, out var b) ? b : null;
+                if (!branchScope.HasValue)
                 {
-                    var notifications = userIds.Select(uid => new Notification
-                    {
-                        UserId = uid,
-                        Title = request.Title,
-                        Body = request.Body,
-                        IsRead = false,
-                        CreatedAt = DateTime.UtcNow,
-                        RegUserId = 1,
-                        RegDate = DateTime.UtcNow,
-                        IsActive = true
-                    }).ToList();
-
-                    await _db.Notifications.AddRangeAsync(notifications, ct);
-                    await _db.SaveChangesAsync(ct);
-
-                    // Push (FCM) uğursuzluğu bütün əməliyyatı 500-ə salmasın — in-app bildiriş onsuz da yazılıb.
-                    try
-                    {
-                        if (scope == "tenant")
-                        {
-                            await _notificationService.SendToTenantUsersAsync(tenantId.Value, request.Title, request.Body);
-                        }
-                        else
-                        {
-                            foreach (var uid in userIds)
-                                await _notificationService.SendToUserAsync(uid, request.Title, request.Body);
-                        }
-                    }
-                    catch { /* push çatmaya bilər; in-app bildiriş yazılıb */ }
-                    appDelivered = userIds.Count;
+                    error = StatusCode(403, new { success = false, message = "Filial təyin olunmayıb — bildiriş göndərmək mümkün deyil." });
+                    return null;
                 }
             }
-
-            if (request.ToWallet)
-            {
-                try
-                {
-                    if (scope == "tenant")
-                    {
-                        var walletResult = await _walletMessaging.SendToTenantAsync(tenantId.Value, request.Title, request.Body, ct);
-                        walletDelivered = walletResult.Data is int n ? n : 0;
-                    }
-                    else
-                    {
-                        foreach (var c in targets)
-                        {
-                            var wr = await _walletMessaging.SendToCustomerAsync(c.Id, request.Title, request.Body, ct);
-                            walletDelivered += wr.Data is int n ? n : 0;
-                        }
-                    }
-                }
-                catch { /* wallet push uğursuz — kritik deyil */ }
-            }
-
-            // Kvota logu — 1 göndəriş aksiyası = 1 sətir
-            _db.TenantNotificationLogs.Add(new TenantNotificationLog
-            {
-                TenantId = tenantId.Value,
-                Scope = scope,
-                BranchId = request.BranchId,
-                CustomerId = request.CustomerId,
-                Title = request.Title,
-                RecipientCount = targets.Count,
-                RegUserId = int.TryParse(_tenantProvider.CurrentUserId, out var uid2) ? uid2 : 1,
-                RegDate = DateTime.UtcNow,
-                IsActive = true
-            });
-            await _db.SaveChangesAsync(ct);
-
-            var newUsed = used + 1;
-            return Ok(new
-            {
-                success = true,
-                message = $"App: {appDelivered} user, Wallet: {walletDelivered} kanal. Kvota: {newUsed}{(limit.HasValue ? $"/{limit}" : "")}",
-                appDelivered,
-                walletDelivered,
-                recipientCount = targets.Count,
-                used = newUsed,
-                limit
-            });
+            var userId = int.TryParse(_tenantProvider.CurrentUserId, out var uid) ? uid : 1;
+            return new TenantNotificationContext(tenantId.Value, userId, branchScope);
         }
 
-        /// <summary>Bu təqvim ayında istifadə olunan göndəriş sayı.</summary>
-        private Task<int> CountUsedThisMonthAsync(int tenantId, CancellationToken ct)
+        /// <summary>Token-dəki tenant claim-i (header nəzərə alınmır).</summary>
+        private int? TokenTenantId()
         {
-            var now = DateTime.UtcNow;
-            var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-            return _db.TenantNotificationLogs.AsNoTracking()
-                .CountAsync(l => l.TenantId == tenantId && l.RegDate >= monthStart, ct);
+            foreach (var name in new[] { "tenant_id", "TenantId" })
+                if (int.TryParse(User.FindFirst(name)?.Value, out var v)) return v;
+            return null;
+        }
+
+        private IActionResult FromResult(Loyalty.Business.Results.ServiceResult r)
+            => r.Success
+                ? Ok(new { success = true, message = r.Message, data = r.Data })
+                : BadRequest(new { success = false, message = r.Message });
+
+        /// <summary>Tenant admin: bu ayın bildiriş kvotası (limit null = limitsiz; ad günü sayılmır; planlı göndərişlər yer tutur).</summary>
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> MyQuota(CancellationToken ct)
+        {
+            var ctx = ResolveContext(out var err);
+            if (ctx == null) return err!;
+            var r = await _tenantNotifications.GetQuotaAsync(ctx.TenantId, ct);
+            if (!r.Success) return BadRequest(new { success = false, message = r.Message });
+            // Köhnə cavab forması saxlanılır: { success, limit, used, remaining }
+            var q = (NotificationQuotaDto)r.Data!;
+            return Ok(new { success = true, limit = q.Limit, used = q.Used, remaining = q.Remaining });
+        }
+
+        /// <summary>Filtrə uyğun müştəri sayı (canlı önizləmə).</summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> PreviewAudience([FromBody] AudienceFilterDto filter, CancellationToken ct)
+        {
+            var ctx = ResolveContext(out var err);
+            if (ctx == null) return err!;
+            return FromResult(await _tenantNotifications.PreviewAudienceAsync(ctx, filter ?? new AudienceFilterDto(), ct));
+        }
+
+        /// <summary>
+        /// Tenant admin öz müştərilərinə bildiriş: hamısı / filial / fərdi / filtrli (cins, yaş, aktivlik, balans, kanal);
+        /// ScheduledAtLocal verilərsə gələcək tarixə planlaşdırılır. Aylıq kvota enforce olunur.
+        /// </summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> SendToMyTenant([FromBody] SendTenantNotificationRequest request, CancellationToken ct)
+        {
+            var ctx = ResolveContext(out var err);
+            if (ctx == null) return err!;
+            return FromResult(await _tenantNotifications.SendOrScheduleAsync(ctx, request, ct));
+        }
+
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> MyScheduled(CancellationToken ct)
+        {
+            var ctx = ResolveContext(out var err);
+            if (ctx == null) return err!;
+            return FromResult(await _tenantNotifications.ListScheduledAsync(ctx, ct));
+        }
+
+        [HttpPut("{id:int}")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> UpdateScheduled(int id, [FromBody] SendTenantNotificationRequest request, CancellationToken ct)
+        {
+            var ctx = ResolveContext(out var err);
+            if (ctx == null) return err!;
+            return FromResult(await _tenantNotifications.UpdateScheduledAsync(ctx, id, request, ct));
+        }
+
+        [HttpPost("{id:int}")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> CancelScheduled(int id, CancellationToken ct)
+        {
+            var ctx = ResolveContext(out var err);
+            if (ctx == null) return err!;
+            return FromResult(await _tenantNotifications.CancelScheduledAsync(ctx, id, ct));
+        }
+
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> MyHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default)
+        {
+            var ctx = ResolveContext(out var err);
+            if (ctx == null) return err!;
+            return FromResult(await _tenantNotifications.HistoryAsync(ctx, page, pageSize, ct));
+        }
+
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> MyBirthdaySettings(CancellationToken ct)
+        {
+            var ctx = ResolveContext(out var err);
+            if (ctx == null) return err!;
+            return FromResult(await _tenantNotifications.GetBirthdaySettingsAsync(ctx.TenantId, ct));
+        }
+
+        [HttpPut]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> SaveMyBirthdaySettings([FromBody] BirthdaySettingsDto dto, CancellationToken ct)
+        {
+            var ctx = ResolveContext(out var err);
+            if (ctx == null) return err!;
+            return FromResult(await _tenantNotifications.SaveBirthdaySettingsAsync(ctx, dto, ct));
+        }
+
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> UpcomingBirthdays([FromQuery] int days = 7, CancellationToken ct = default)
+        {
+            var ctx = ResolveContext(out var err);
+            if (ctx == null) return err!;
+            return FromResult(await _tenantNotifications.UpcomingBirthdaysAsync(ctx.TenantId, days, ct));
+        }
+
+        /// <summary>
+        /// Super admin: job-ları YALNIZ bir tenant üçün indi işlət (lokal / real test). Planlı (vaxtı çatanlar) + ad günü
+        /// (ignoreSendHour=true → göndərmə saatını gözləmir). tenantId məcburidir — bütün tenant-lar üçün işləmir.
+        /// </summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        public async Task<IActionResult> RunJobsNow(
+            [FromQuery] int tenantId, [FromQuery] bool birthdays = false, [FromQuery] bool scheduled = true,
+            [FromQuery] int? birthdayCustomerId = null, [FromQuery] bool expireBonuses = false,
+            [FromServices] IPointsExpiryService? pointsExpiry = null, CancellationToken ct = default)
+        {
+            if (tenantId <= 0) return BadRequest(new { success = false, message = "tenantId tələb olunur." });
+            var log = new List<string>();
+            if (scheduled) { await _notificationJobs.RunScheduledAsync(tenantId, ct); log.Add("planlı: işlədi"); }
+            // birthdayCustomerId: yalnız o müştəri (test) — tenantın digər ad günü sahiblərinə toxunmur
+            if (birthdayCustomerId.HasValue) log.Add("ad günü (tək müştəri): " + await _notificationJobs.RunBirthdayForCustomerAsync(tenantId, birthdayCustomerId.Value, ct));
+            else if (birthdays) { await _notificationJobs.RunBirthdaysAsync(tenantId, true, ct); log.Add("ad günü: işlədi"); }
+            if (expireBonuses && pointsExpiry != null) { await pointsExpiry.ExpireBonusGrantsAsync(ct); log.Add("bonus müddəti: yoxlandı"); }
+            return Ok(new { success = true, message = string.Join(" · ", log) });
         }
     }
 }

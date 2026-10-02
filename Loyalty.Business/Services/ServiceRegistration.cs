@@ -188,6 +188,10 @@ namespace Loyalty.Business.Services
             services.AddScoped<IWalletPushJob, WalletPushJob>();
             services.AddScoped<IIikoWebhookFailureService, IikoWebhookFailureService>();
             services.AddScoped<IPointsExpiryService, PointsExpiryService>();
+            // Bildirişlər v2: tenant admin servisi + Hangfire job-ları (eyni scoped instansiya)
+            services.AddScoped<TenantNotificationService>();
+            services.AddScoped<ITenantNotificationService>(sp => sp.GetRequiredService<TenantNotificationService>());
+            services.AddScoped<INotificationJobs>(sp => sp.GetRequiredService<TenantNotificationService>());
             services.AddHttpClient(AzureOpenAiPlaceAssistantService.HttpClientName, c =>
             {
                 c.Timeout = TimeSpan.FromSeconds(60);
