@@ -159,6 +159,12 @@ namespace Loyalty.Business.Services
             services.AddScoped<ITenantIntegrationResolver, TenantIntegrationResolver>();
             services.AddScoped<ITenantIntegrationService, TenantIntegrationService>();
             services.AddScoped<IPosProductEarnRuleService, PosProductEarnRuleService>();
+            // Bonus istisnaları (super admin) + iiko nomenklatura surəti: CRUD, sifariş resolver-i, Hangfire job (eyni instansiya)
+            services.AddScoped<PosEarnExclusionService>();
+            services.AddScoped<IPosEarnExclusionService>(sp => sp.GetRequiredService<PosEarnExclusionService>());
+            services.AddScoped<IEarnExclusionResolver>(sp => sp.GetRequiredService<PosEarnExclusionService>());
+            services.AddScoped<IPosNomenclatureJobs>(sp => sp.GetRequiredService<PosEarnExclusionService>());
+            services.AddScoped<IPosObservedProductRecorder>(sp => sp.GetRequiredService<PosEarnExclusionService>());
             services.AddScoped<IPosLoyaltyDiscountTypeService, PosLoyaltyDiscountTypeService>();
             services.AddScoped<IRewardCrudService, RewardCrudService>();
             services.AddScoped<IWalletWebhookService, WalletWebhookService>();

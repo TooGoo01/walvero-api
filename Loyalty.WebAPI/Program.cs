@@ -572,6 +572,12 @@ if (builder.Configuration.GetValue("Hangfire:ServerEnabled", true))
         "birthday-notifications",
         s => s.RunBirthdaysAsync(null, false, CancellationToken.None),
         "*/15 * * * *");
+    // Bonus istisnaları: qrup/kateqoriya qaydası olan iiko inteqrasiyalarının nomenklatura surətini yenilə
+    // (qrupa yeni əlavə olunan məhsul avtomatik bloklansın).
+    Hangfire.RecurringJob.AddOrUpdate<Loyalty.Business.Services.Abstractions.Main.IPosNomenclatureJobs>(
+        "iiko-nomenclature-refresh",
+        s => s.RefreshAllAsync(CancellationToken.None),
+        "15 */6 * * *");
 }
 
 // 🔹 Minimal hostingda ayrı `UseRouting/UseEndpoints` ehtiyac yoxdur

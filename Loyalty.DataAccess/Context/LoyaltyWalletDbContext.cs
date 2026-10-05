@@ -91,6 +91,9 @@ namespace Loyalty.DataAccess.Context
         public DbSet<TenantBirthdaySetting> TenantBirthdaySettings { get; set; }
         public DbSet<BirthdayNotificationLog> BirthdayNotificationLogs { get; set; }
         public DbSet<BonusGrant> BonusGrants { get; set; }
+        public DbSet<PosEarnExclusion> PosEarnExclusions { get; set; }
+        public DbSet<PosNomenclatureCache> PosNomenclatureCaches { get; set; }
+        public DbSet<PosObservedProduct> PosObservedProducts { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1157,6 +1160,56 @@ namespace Loyalty.DataAccess.Context
                 entity.HasOne(pr => pr.TenantIntegration)
                     .WithMany()
                     .HasForeignKey(pr => pr.TenantIntegrationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== POS EARN EXCLUSION (bonus qazandırmayan məhsul/qrup/kateqoriya) ====
+            modelBuilder.Entity<PosEarnExclusion>(entity =>
+            {
+                entity.ToTable("PosEarnExclusions");
+                entity.HasKey(x => x.Id);
+                entity.Property(x => x.ExternalId).IsRequired().HasMaxLength(100);
+                entity.Property(x => x.Code).HasMaxLength(100);
+                entity.Property(x => x.Name).HasMaxLength(300);
+                entity.Property(x => x.Note).HasMaxLength(500);
+                entity.HasIndex(x => new { x.TenantIntegrationId, x.Kind, x.ExternalId }).IsUnique();
+
+                entity.HasOne(x => x.TenantIntegration)
+                    .WithMany()
+                    .HasForeignKey(x => x.TenantIntegrationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== POS NOMENCLATURE CACHE (iiko menyu surəti, org başına) ====
+            modelBuilder.Entity<PosNomenclatureCache>(entity =>
+            {
+                entity.ToTable("PosNomenclatureCaches");
+                entity.HasKey(x => x.Id);
+                entity.Property(x => x.OrganizationId).IsRequired().HasMaxLength(100);
+                entity.HasIndex(x => new { x.TenantIntegrationId, x.OrganizationId }).IsUnique();
+
+                entity.HasOne(x => x.TenantIntegration)
+                    .WithMany()
+                    .HasForeignKey(x => x.TenantIntegrationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== POS OBSERVED PRODUCT (sifarişlərdən yığılan məhsul siyahısı) ====
+            modelBuilder.Entity<PosObservedProduct>(entity =>
+            {
+                entity.ToTable("PosObservedProducts");
+                entity.HasKey(x => x.Id);
+                entity.Property(x => x.ProductKey).IsRequired().HasMaxLength(120);
+                entity.Property(x => x.ProductId).HasMaxLength(100);
+                entity.Property(x => x.ProductNumber).HasMaxLength(100);
+                entity.Property(x => x.Name).HasMaxLength(300);
+                entity.Property(x => x.CategoryId).HasMaxLength(100);
+                entity.Property(x => x.CategoryName).HasMaxLength(200);
+                entity.HasIndex(x => new { x.TenantIntegrationId, x.ProductKey }).IsUnique();
+
+                entity.HasOne(x => x.TenantIntegration)
+                    .WithMany()
+                    .HasForeignKey(x => x.TenantIntegrationId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
 

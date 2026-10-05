@@ -190,6 +190,8 @@ namespace Loyalty.WebAPI.Controllers
                         ProductId = i.ProductId ?? string.Empty,
                         ProductName = i.ProductName,
                         ProductNumber = i.ProductNumber,
+                        CategoryId = i.CategoryId,
+                        CategoryName = i.CategoryName,
                         Price = i.Price,
                         Amount = i.Amount,
                         Sum = i.Sum

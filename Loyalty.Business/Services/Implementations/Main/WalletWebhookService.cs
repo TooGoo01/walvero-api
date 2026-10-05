@@ -29,6 +29,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILogger<WalletWebhookService> _logger;
         private readonly IUnitOfWork _uow;
         private readonly IWelcomeBonusService _welcomeBonus;
+        private readonly IEarnExclusionResolver _earnExclusions;
 
         public WalletWebhookService(
             ILoyaltyCardRepository loyaltyCardRepo,
@@ -46,9 +47,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             ITimeZoneService timeZoneService,
             ILogger<WalletWebhookService> logger,
             IUnitOfWork uow,
-            IWelcomeBonusService welcomeBonus)
+            IWelcomeBonusService welcomeBonus,
+            IEarnExclusionResolver earnExclusions)
         {
             _welcomeBonus = welcomeBonus;
+            _earnExclusions = earnExclusions;
             _loyaltyCardRepo = loyaltyCardRepo;
             _loyaltyProgramRepo = loyaltyProgramRepo;
             _rewardRepo = rewardRepo;
@@ -64,6 +67,24 @@ namespace Loyalty.Business.Services.Implementations.Main
             _timeZoneService = timeZoneService;
             _logger = logger;
             _uow = uow;
+        }
+
+        /// <summary>
+        /// Bonus istisna xəritəsi. Xəta olsa (məs. cədvəl hələ yoxdur) sifariş istisnasız emal olunur —
+        /// istisna ikinci dərəcəlidir, sifariş emalını dayandırmamalıdır.
+        /// </summary>
+        private async Task<EarnExclusionMap> LoadExclusionMapAsync(int tenantIntegrationId, CancellationToken ct)
+        {
+            try
+            {
+                return await _earnExclusions.GetMapAsync(tenantIntegrationId, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Earn exclusion map unavailable, order processed without exclusions. TenantIntegrationId={Id}",
+                    tenantIntegrationId);
+                return EarnExclusionMap.Empty;
+            }
         }
 
         /// <summary>
@@ -462,20 +483,29 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var earnRules = await _earnRuleRepo.GetByTenantIntegrationIdAsync(tenantIntegrationId, ct);
             var rulesByProduct = earnRules.ToDictionary(r => r.ExternalProductId.Trim(), StringComparer.OrdinalIgnoreCase);
+            // Super admin istisnaları: Monyo item-lərində qiymət yoxdur → yalnız möhür/məhsul xalı bloku tətbiq olunur.
+            var exclusionMap = await LoadExclusionMapAsync(tenantIntegrationId, ct);
 
             int totalSteps = 0;
             decimal totalPoints = 0m;
+            bool blockedRuleMatched = false;
             foreach (var item in request.Items)
             {
                 var productIdStr = item.Id.ToString().Trim();
                 if (rulesByProduct.TryGetValue(productIdStr, out var rule))
                 {
+                    if (exclusionMap.Blocked(productIdStr, null, null)?.BlockStamps == true)
+                    {
+                        // Qayda var, amma bloklanıb — cashback fallback-ı da açılmasın (rejim dəyişməsin).
+                        blockedRuleMatched = true;
+                        continue;
+                    }
                     totalSteps += rule.StepsPerUnit * item.Count;
                     totalPoints += rule.PointsPerUnit * item.Count;
                 }
             }
 
-            if (totalSteps == 0 && totalPoints == 0)
+            if (totalSteps == 0 && totalPoints == 0 && !blockedRuleMatched)
             {
                 // HappyHoursWindows daxil olmaq üçün Include-lu çağırış
                 var program = await _loyaltyProgramRepo.GetByIdNameAsync(programId.Value, ct);
@@ -1006,6 +1036,22 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ? request.TotalSum
                 : Math.Max(0m, request.TotalSum - walletRedeemSum);
 
+            // === Bonus istisnaları (super admin, PosEarnExclusions) ===
+            // BlockCashback sətirləri məbləğ bonusunun bazasından çıxır (cashback %, xal/₼, xoş gəldin %);
+            // BlockStamps sətirləri earn-rule döngüsündə sayılmır. İstisna yoxdursa cashbackBase == earnBase.
+            var exclusionMap = await LoadExclusionMapAsync(context.TenantIntegrationId, ct);
+            var earnLines = request.Items
+                .Select(i => new EarnLine(i.ProductId, i.ProductNumber, i.CategoryId, i.ProductName, i.Amount, i.Sum))
+                .ToList();
+            var itemDiscounts = (request.Discounts ?? new List<IikoOrderDiscount>())
+                .SelectMany(d => d.DiscountByItem ?? new List<IikoOrderDiscountByItem>())
+                .Select(x => new EarnItemDiscount(x.ProductId, x.DiscountSum))
+                .ToList();
+            var exclusion = EarnExclusionMath.Compute(earnLines, itemDiscounts, request.TotalSum, walletRedeemSum,
+                templateType == CardTemplateType.ProgressBased, exclusionMap);
+            decimal cashbackBase = exclusion.CashbackBase;
+            decimal stampSkippedUnits = 0m;
+
             // === Loyalty discount redemption (Discounts.DiscountByItem) ===
             var loyaltyDiscountIds = (await _loyaltyDiscountTypeRepo.GetByTenantIntegrationIdAsync(context.TenantIntegrationId, ct))
                 .Select(d => d.ExternalDiscountTypeId.Trim())
@@ -1097,32 +1143,35 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var earnRules = await _earnRuleRepo.GetByTenantIntegrationIdAsync(context.TenantIntegrationId, ct);
                 var rulesByProduct = earnRules.ToDictionary(r => r.ExternalProductId.Trim(), StringComparer.OrdinalIgnoreCase);
 
-                foreach (var item in request.Items)
-                {
-                    var pid = (item.ProductId ?? "").Trim();
-                    var pnum = (item.ProductNumber ?? "").Trim();
-                    if (string.IsNullOrEmpty(pid) && string.IsNullOrEmpty(pnum)) continue;
-                    // Redeem açarı ProductNumber (varsa) və ya GUID ola bilər — hər ikisini yoxla.
-                    if ((pid.Length > 0 && redeemedUnitsByProduct.ContainsKey(pid)) ||
-                        (pnum.Length > 0 && redeemedUnitsByProduct.ContainsKey(pnum)))
+                var stampEarn = EarnExclusionMath.ApplyEarnRules(
+                    earnLines,
+                    line =>
                     {
-                        // bu item loyalty discount-da iştirak edib → earn-dən düşür
-                        continue;
-                    }
-                    // Earn rule ProductId (GUID) və ya ProductNumber (iiko nomenklatura kodu) ilə uyğunlaşa bilər.
-                    // iiko loyalty proqramları məhsulları kod (ProductNumber) ilə saxlayır.
-                    PosProductEarnRule? rule = null;
-                    if (pid.Length > 0)
-                        rulesByProduct.TryGetValue(pid, out rule);
-                    if (rule == null && pnum.Length > 0)
-                        rulesByProduct.TryGetValue(pnum, out rule);
-                    if (rule != null)
+                        // Earn rule ProductId (GUID) və ya ProductNumber (iiko nomenklatura kodu) ilə uyğunlaşa bilər.
+                        // iiko loyalty proqramları məhsulları kod (ProductNumber) ilə saxlayır.
+                        var pid = (line.ProductId ?? "").Trim();
+                        var pnum = (line.ProductNumber ?? "").Trim();
+                        PosProductEarnRule? rule = null;
+                        if (pid.Length > 0)
+                            rulesByProduct.TryGetValue(pid, out rule);
+                        if (rule == null && pnum.Length > 0)
+                            rulesByProduct.TryGetValue(pnum, out rule);
+                        return rule == null ? null : new EarnRuleHit(rule.StepsPerUnit, rule.PointsPerUnit);
+                    },
+                    line =>
                     {
-                        anyEarnRuleMatched = true;
-                        totalEarnSteps += rule.StepsPerUnit * (int)item.Amount;
-                        totalEarnPoints += rule.PointsPerUnit * item.Amount;
-                    }
-                }
+                        // Redeem açarı ProductNumber (varsa) və ya GUID ola bilər — hər ikisini yoxla.
+                        // Loyalty discount-da iştirak edən item earn-dən düşür.
+                        var pid = (line.ProductId ?? "").Trim();
+                        var pnum = (line.ProductNumber ?? "").Trim();
+                        return (pid.Length > 0 && redeemedUnitsByProduct.ContainsKey(pid)) ||
+                               (pnum.Length > 0 && redeemedUnitsByProduct.ContainsKey(pnum));
+                    },
+                    exclusionMap);
+                anyEarnRuleMatched = stampEarn.AnyRuleMatched;
+                totalEarnSteps = stampEarn.Steps;
+                totalEarnPoints = stampEarn.Points;
+                stampSkippedUnits = stampEarn.SkippedUnits;
 
                 // Xal rejimi (hədiyyə template + RewardAsPoints): earn rule-lar StepsPerUnit ilə qurulub
                 // (1 məhsul = 1 addım). PointsPerUnit boşdursa addımları xal kimi say → CurrentPoints += N.
@@ -1154,10 +1203,19 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var effPct = hhCard ?? tierPercent;
 
                     if (effPct.HasValue && effPct.Value > 0)
-                        totalEarnPoints = earnBase * effPct.Value / 100m;
+                        totalEarnPoints = cashbackBase * effPct.Value / 100m;
                     else if (program.PointsPerCurrency > 0)
-                        totalEarnPoints = earnBase * program.PointsPerCurrency;
+                        totalEarnPoints = cashbackBase * program.PointsPerCurrency;
                 }
+            }
+
+            if (exclusion.AnyBlocked || stampSkippedUnits > 0m)
+            {
+                _logger.LogInformation(
+                    "iiko OrderClosed: earn exclusions applied. OrderId={OrderId} TenantId={TenantId} EarnBase={EarnBase} CashbackBase={CashbackBase} Excluded={Excluded} StampSkippedUnits={StampSkipped} Lines={Lines}",
+                    request.OrderId, context.TenantId, earnBase, cashbackBase, exclusion.ExcludedNet, stampSkippedUnits,
+                    string.Join("; ", exclusion.BlockedLines.Select(l =>
+                        $"{l.Name ?? l.ProductId} x{l.Amount:0.##} net={l.Net:0.##} [{(l.Block.BlockCashback ? "cashback" : "")}{(l.Block.BlockCashback && l.Block.BlockStamps ? "+" : "")}{(l.Block.BlockStamps ? "stamps" : "")}] {l.Block.SourceKind}:{l.Block.SourceName}")));
             }
 
             var c = await _uow.Repository<LoyaltyCard>().GetByIdAsync(card.Id, ct);
@@ -1198,7 +1256,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Amount = earnBase,
                     OrderId = idempotencyKey + ":earn",
                     ReferenceNumber = request.OrderNumber?.ToString(),
-                    Description = "iiko OrderClosed earn",
+                    Description = "iiko OrderClosed earn" + EarnExclusionMath.DescribeSuffix(exclusion, stampSkippedUnits),
                     BranchId = context.BranchId,
                     RegUserId = 1,
                     RegDate = DateTime.UtcNow,
@@ -1211,8 +1269,9 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 if (program != null)
                 {
+                    // % hissəsi bonus düşməyən məhsullardan hesablanmasın → cashbackBase (istisna yoxdursa = earnBase)
                     welcomeBonus = await _welcomeBonus.TryGrantFirstPurchaseAsync(c, program, templateType, totalStepsPerCycle,
-                        earnBase, totalEarnPoints, context.BranchId, idempotencyKey + ":welcome", ct);
+                        cashbackBase, totalEarnPoints, context.BranchId, idempotencyKey + ":welcome", ct);
                     if (welcomeBonus > 0) c.LifetimePoints += welcomeBonus;
                 }
             }

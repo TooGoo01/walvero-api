@@ -171,6 +171,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string ProductId { get; set; } = string.Empty;
         public string? ProductName { get; set; }
         public string? ProductNumber { get; set; }
+        /// <summary>iiko məhsul kateqoriyası (plugin göndərirsə) — bonus istisnası üçün fallback.</summary>
+        public string? CategoryId { get; set; }
+        public string? CategoryName { get; set; }
         public decimal Price { get; set; }
         public decimal Amount { get; set; }
         public decimal Sum { get; set; }

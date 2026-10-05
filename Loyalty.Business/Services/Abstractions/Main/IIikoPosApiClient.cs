@@ -195,6 +195,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public class IikoNomenclatureResponse
     {
         public List<IikoProductGroup>? Groups { get; set; }
+        public List<IikoProductCategory>? ProductCategories { get; set; }
         public List<IikoProduct>? Products { get; set; }
         public long Revision { get; set; }
     }
@@ -204,6 +205,14 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public Guid Id { get; set; }
         public string? Name { get; set; }
         public Guid? ParentGroup { get; set; }
+        public bool IsDeleted { get; set; }
+    }
+
+    public class IikoProductCategory
+    {
+        public Guid Id { get; set; }
+        public string? Name { get; set; }
+        public bool IsDeleted { get; set; }
     }
 
     public class IikoProduct
@@ -212,6 +221,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? Name { get; set; }
         public string? Code { get; set; }
         public Guid? ParentGroup { get; set; }
+        public Guid? GroupId { get; set; }
+        public Guid? ProductCategoryId { get; set; }
         public string? Type { get; set; }
+        public bool IsDeleted { get; set; }
     }
 }

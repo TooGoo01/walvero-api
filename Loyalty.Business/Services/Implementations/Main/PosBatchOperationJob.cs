@@ -145,6 +145,28 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // Daimi (NullReference, məlumat xətası) → retry mənasızdır, job burada bitir.
                 if (transient) throw;
             }
+
+            if (string.Equals(req.EventType, "OrderClosed", StringComparison.OrdinalIgnoreCase) && req.Items?.Count > 0)
+                await RecordObservedProductsAsync(ctx.TenantIntegrationId, req, ct);
+        }
+
+        /// <summary>
+        /// Sifarişdəki məhsulları super admin "bonus düşməyən məhsullar" seçimi üçün siyahıya yazır.
+        /// Ayrıca scope (sifariş DbContext-indən asılı deyil); xəta sifariş nəticəsinə təsir etmir.
+        /// </summary>
+        private async Task RecordObservedProductsAsync(int tenantIntegrationId, IikoOrderEventRequest req, CancellationToken ct)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var recorder = scope.ServiceProvider.GetRequiredService<IPosObservedProductRecorder>();
+                await recorder.RecordAsync(tenantIntegrationId, req.Items, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Observed products record failed. TenantIntegrationId={Id} orderId={OrderId}",
+                    tenantIntegrationId, req.OrderId);
+            }
         }
     }
 }
