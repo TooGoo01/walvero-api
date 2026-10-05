@@ -458,9 +458,20 @@ contentTypes.Mappings[".pem"] = "application/x-pem-file";
 contentTypes.Mappings[".p12"] = "application/x-pkcs12";
 contentTypes.Mappings[".pfx"] = "application/x-pkcs12";
 contentTypes.Mappings[".pkpass"] = "application/vnd.apple.pkpass";
+// Diaqnostika: .pkpass endirilməsi + brauzer UA. In-app brauzer / Chrome iOS faylı endirir,
+// amma Wallet-ə ötürmür → Register gəlmir; UA-dan səbəb görünür ("pkpass download" traces-də).
+var passDownloadLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("PassDownload");
 app.UseStaticFiles(new StaticFileOptions
 {
-    ContentTypeProvider = contentTypes
+    ContentTypeProvider = contentTypes,
+    OnPrepareResponse = ctx =>
+    {
+        if (!ctx.File.Name.EndsWith(".pkpass", StringComparison.OrdinalIgnoreCase)) return;
+        var req = ctx.Context.Request;
+        passDownloadLogger.LogInformation(
+            "pkpass download: {Path} UserAgent={UserAgent} Referer={Referer}",
+            req.Path.Value, req.Headers.UserAgent.ToString(), req.Headers.Referer.ToString());
+    }
 });
 
 // .well-known (App Links / Universal Links): apple-app-site-association has no

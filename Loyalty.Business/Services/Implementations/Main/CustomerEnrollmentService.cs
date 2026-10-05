@@ -677,6 +677,13 @@ UserManager<ApplicationUser> userManager,
             }
             _uow.Repository<LoyaltyCard>().Update(card);
             _uow.Commit();
+
+            // Diaqnostika: pass Wallet-ə düşməyən hallarda brauzer kontekstini görmək üçün
+            // (in-app brauzer / Chrome iOS .pkpass-ı Wallet-ə ötürmür). App Insights traces-ə düşür.
+            _logger.LogInformation(
+                "Enrollment verify: TenantId={TenantId} CardId={CardId} Platform={Platform} AppleUrl={HasAppleUrl} GoogleUrl={HasGoogleUrl} UserAgent={UserAgent}",
+                tenantId, card.Id, dto.DevicePlatform, appleUrl != null, googleUrl != null, dto.UserAgent);
+
             if (signupGift > 0)
                 await _welcomeBonus.SyncPosBalanceSafeAsync(tenantId, customer.Id, card.CurrentPoints, ct);
             // Apple (opsional)
