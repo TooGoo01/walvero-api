@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Loyalty.Business.Helpers;
+using Loyalty.DataAccess.Enums;
 
 namespace Loyalty.Tests.Helpers;
 
@@ -83,6 +84,91 @@ public class NotificationTargetingTests
     [InlineData(2.5, false, "2,5 ₼")]
     [InlineData(2, true, "2 möhür")]
     public void GiftText(decimal v, bool stamp, string expected) => NotificationTemplate.GiftText(v, stamp).Should().Be(expected);
+
+    // ---------- v3 (2026-10-06): N gün əvvəl + hədiyyə növü ----------
+
+    [Fact]
+    public void BirthdayKeysInRange_YearBoundary_AndFeb29()
+    {
+        // 28 dek + 7 gün → 28..31 dek + 1..4 yan = 8 açar
+        var keys = BirthDateRules.BirthdayKeysInRange(new DateTime(2026, 12, 28), 7);
+        keys.Should().HaveCount(8).And.Contain(new[] { 1228, 1231, 101, 104 }).And.NotContain(105);
+        BirthDateRules.BirthdayKeysInRange(Today, 0).Should().Equal(1002);
+        // 21 fev 2027 + 7 → 28 fev (uzun il deyil) → 29 fev də daxil: 8 gün + 1 = 9 açar
+        BirthDateRules.BirthdayKeysInRange(new DateTime(2027, 2, 21), 7).Should().HaveCount(9).And.Contain(229);
+        // 2028 uzun il: 28 fev-da 29 fev əlavə olunmur
+        BirthDateRules.BirthdayKeysInRange(new DateTime(2028, 2, 21), 7).Should().HaveCount(8).And.NotContain(229);
+    }
+
+    [Fact]
+    public void BirthdayWithin_RangeAndYear()
+    {
+        var today = new DateTime(2026, 12, 28);
+        BirthDateRules.BirthdayWithin(new DateTime(1990, 1, 2), today, 7).Should().Be(new DateTime(2027, 1, 2));   // gələn il
+        BirthDateRules.BirthdayWithin(new DateTime(1990, 1, 4), today, 7).Should().Be(new DateTime(2027, 1, 4));   // tam 7 gün
+        BirthDateRules.BirthdayWithin(new DateTime(1990, 1, 5), today, 7).Should().BeNull();                        // 8 gün
+        BirthDateRules.BirthdayWithin(new DateTime(1990, 12, 28), today, 7).Should().Be(today);                     // bu gün
+        BirthDateRules.BirthdayWithin(new DateTime(1990, 12, 27), today, 7).Should().BeNull();                      // dünən → gələn il, aralıqdan kənar
+        BirthDateRules.BirthdayWithin(new DateTime(1990, 12, 28), today, 0).Should().Be(today);
+        BirthDateRules.BirthdayWithin(new DateTime(1990, 12, 29), today, 0).Should().BeNull();
+        BirthDateRules.BirthdayWithin(new DateTime(2000, 2, 29), new DateTime(2027, 2, 21), 7).Should().Be(new DateTime(2027, 2, 28));
+    }
+
+    [Theory]
+    [InlineData(BirthdayGiftType.Points, CardTemplateType.PointsBased, true)]
+    [InlineData(BirthdayGiftType.Points, CardTemplateType.TierBased, true)]
+    [InlineData(BirthdayGiftType.Points, CardTemplateType.ProgressBased, false)]
+    [InlineData(BirthdayGiftType.Stamps, CardTemplateType.ProgressBased, true)]
+    [InlineData(BirthdayGiftType.Stamps, CardTemplateType.PointsBased, false)]
+    [InlineData(BirthdayGiftType.FreeItem, CardTemplateType.ProgressBased, true)]
+    [InlineData(BirthdayGiftType.FreeItem, CardTemplateType.TierBased, false)]
+    public void GiftMath_IsCompatible(BirthdayGiftType type, CardTemplateType card, bool expected)
+        => BirthdayGiftMath.IsCompatible(type, card).Should().Be(expected);
+
+    [Theory]
+    [InlineData(BirthdayGiftType.Points, 2.5, 10, 2.5)]
+    [InlineData(BirthdayGiftType.Points, 2.567, 10, 2.57)]
+    [InlineData(BirthdayGiftType.Stamps, 2.9, 10, 2)]
+    [InlineData(BirthdayGiftType.FreeItem, 1, 10, 10)]
+    [InlineData(BirthdayGiftType.FreeItem, 2, 8, 16)]
+    [InlineData(BirthdayGiftType.FreeItem, 1, 0, 1)]
+    public void GiftMath_Delta(BirthdayGiftType type, decimal value, int steps, decimal expected)
+        => BirthdayGiftMath.Delta(type, value, steps).Should().Be(expected);
+
+    [Fact]
+    public void GiftMath_Units_AndExpiry()
+    {
+        BirthdayGiftMath.Units(BirthdayGiftType.Points, 2.567m).Should().Be(2.57m);
+        BirthdayGiftMath.Units(BirthdayGiftType.FreeItem, 1.9m).Should().Be(1);
+        var now = new DateTime(2026, 10, 6, 6, 0, 0, DateTimeKind.Utc);
+        BirthdayGiftMath.ExpiryUtc(now, 3, 7).Should().Be(now.AddDays(10));   // ad gününə 3 gün + 7 gün müddət
+        BirthdayGiftMath.ExpiryUtc(now, 0, 7).Should().Be(now.AddDays(7));
+        BirthdayGiftMath.ExpiryUtc(now, -2, 7).Should().Be(now.AddDays(7));
+    }
+
+    [Fact]
+    public void GiftText_ByType_AndCustomLabel()
+    {
+        NotificationTemplate.GiftText(5, BirthdayGiftType.Points, null, null).Should().Be("5 ₼");
+        NotificationTemplate.GiftText(2.5m, BirthdayGiftType.Points, "Pulsuz içki", null).Should().Be("2,5 ₼");
+        NotificationTemplate.GiftText(2, BirthdayGiftType.Stamps, null, null).Should().Be("2 möhür");
+        NotificationTemplate.GiftText(1, BirthdayGiftType.FreeItem, "Kofe", null).Should().Be("1 Kofe");
+        NotificationTemplate.GiftText(1, BirthdayGiftType.FreeItem, null, null).Should().Be("1 Pulsuz içki");
+        NotificationTemplate.GiftText(1, BirthdayGiftType.FreeItem, " ", null).Should().Be("1 Pulsuz içki");
+        NotificationTemplate.GiftText(5, BirthdayGiftType.Points, null, " 1 kofe ").Should().Be("1 kofe");
+        NotificationTemplate.GiftText(5, BirthdayGiftType.Points, null, "   ").Should().Be("5 ₼");
+    }
+
+    [Fact]
+    public void Template_Tarix_AndGiftPlaceholder()
+    {
+        NotificationTemplate.Render("{ad}, {tarix} tarixində ad gününüz var!", "Leyla", null, null, "04.01").Should().Be("Leyla, 04.01 tarixində ad gününüz var!");
+        NotificationTemplate.Render("{TARIX} gün", null, null, null, null).Should().Be("gün");
+        NotificationTemplate.HasGiftPlaceholder("Sizə {hədiyyə} hədiyyə").Should().BeTrue();
+        NotificationTemplate.HasGiftPlaceholder("{HEDIYYE}").Should().BeTrue();
+        NotificationTemplate.HasGiftPlaceholder("Salam {ad}").Should().BeFalse();
+        NotificationTemplate.HasGiftPlaceholder(null).Should().BeFalse();
+    }
 
     [Theory]
     [InlineData(5, 0, 12, 5)]     // heç nə xərclənməyib

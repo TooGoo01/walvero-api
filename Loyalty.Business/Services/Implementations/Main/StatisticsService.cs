@@ -220,8 +220,40 @@ namespace Loyalty.Business.Services.Implementations.Main
                 })
                 .ToListAsync();
 
+            // 8) Bildirişlər — dövrdəki göndərişlər (RegDate UTC) + alıcıların 7 günlük geri dönüşü
+            const int notifWindow = 7;
+            var notifLogs = await _dbContext.Set<TenantNotificationLog>().AsNoTracking()
+                .Where(l => l.TenantId == tenantId && l.IsActive && l.RegDate >= startDt && l.RegDate <= endDt)
+                .OrderByDescending(l => l.RegDate)
+                .Take(500)
+                .Select(l => new { l.Id, l.Source, l.RecipientCount, l.AppSent, l.WalletSent })
+                .ToListAsync();
+            var notifIds = notifLogs.Select(l => l.Id).ToList();
+            var notifWithRows = notifIds.Count == 0
+                ? new HashSet<int>()
+                : (await _dbContext.Set<TenantNotificationRecipient>().AsNoTracking()
+                    .Where(r => notifIds.Contains(r.TenantNotificationLogId))
+                    .Select(r => r.TenantNotificationLogId).Distinct().ToListAsync()).ToHashSet();
+            var notifAttr = await NotificationAttribution.ByLogAsync(_dbContext, notifIds, notifWindow, default);
+            var attributedRecipients = notifLogs.Where(l => notifWithRows.Contains(l.Id)).Sum(l => l.RecipientCount);
+            var notifVisits = notifAttr.Values.Sum(a => a.Visits);
+            var notifications = new NotificationStatsDto
+            {
+                Sends = notifLogs.Count,
+                BirthdaySends = notifLogs.Count(l => l.Source == TenantNotificationLog.SourceBirthday),
+                Recipients = notifLogs.Sum(l => l.RecipientCount),
+                AppSent = notifLogs.Sum(l => l.AppSent ?? 0),
+                WalletSent = notifLogs.Sum(l => l.WalletSent ?? 0),
+                AttributedRecipients = attributedRecipients,
+                Visits = notifVisits,
+                VisitRate = attributedRecipients == 0 ? 0 : Math.Round(notifVisits * 100.0 / attributedRecipients, 1),
+                Revenue = notifAttr.Values.Sum(a => a.Revenue),
+                AttributionDays = notifWindow,
+            };
+
             var dto = new DashboardStatisticsDto
             {
+                Notifications = notifications,
                 TotalTransactions = dailyRaw.Sum(x => x.Count),
                 TotalPointsEarned = dailyRaw.Sum(x => x.Earned),
                 TotalPointsSpent = dailyRaw.Sum(x => x.Spent),

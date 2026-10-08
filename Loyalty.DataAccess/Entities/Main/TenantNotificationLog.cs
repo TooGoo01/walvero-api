@@ -32,7 +32,15 @@ namespace Loyalty.DataAccess.Entities.Main
         public int? ScheduledNotificationId { get; set; }
         /// <summary>İnsan oxuya bilən auditoriya xülasəsi (məs. "Qadın · 18–25 yaş · son 30 gündə gələnlər").</summary>
         public string? AudienceSummary { get; set; }
+        /// <summary>v3 (2026-10-06): ən azı bir FCM cihazına uğurla çatan müştəri sayı (əvvəl: app hesabı olanlar).</summary>
         public int? AppSent { get; set; }
+        /// <summary>v3: ən azı bir Google/Apple kanalı uğurlu olan müştəri sayı (əvvəl: kanal cəmi).</summary>
         public int? WalletSent { get; set; }
+
+        // ---- v3 (2026-10-06): hədəf sayları + TenantNotificationRecipients (alıcı cədvəli) ----
+        /// <summary>App hesabı olan alıcılar.</summary>
+        public int? AppTargets { get; set; }
+        /// <summary>Aktiv kartı olan alıcılar.</summary>
+        public int? WalletTargets { get; set; }
     }
 }

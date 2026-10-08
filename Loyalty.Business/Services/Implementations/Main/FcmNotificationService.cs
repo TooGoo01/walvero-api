@@ -120,9 +120,9 @@ Body: {responseBody}
         }
 
 
-        public async Task SendToDeviceAsync(string deviceToken, string title, string body, object data = null)
+        public async Task<bool> SendToDeviceAsync(string deviceToken, string title, string body, object data = null)
         {
-            await SendMessageAsync(deviceToken, new
+            return await SendMessageAsync(deviceToken, new
             {
                 token = deviceToken,
                 notification = new { title, body },
@@ -153,7 +153,7 @@ Body: {responseBody}
             });
         }
 
-        public async Task SendToUserAsync(int userId, string title, string body, object data = null)
+        public async Task<int> SendToUserAsync(int userId, string title, string body, object data = null)
         {
             var tokens = _db.DeviceTokens
                 .Where(x => x.UserId == userId)
@@ -163,8 +163,10 @@ Body: {responseBody}
             {
                 data = new { info = "none" };
             }
+            var ok = 0;
             foreach (var token in tokens)
-                await SendToDeviceAsync(token, title, body, data);
+                if (await SendToDeviceAsync(token, title, body, data)) ok++;
+            return ok;
         }
 
         public async Task SendToAllDevicesAsync(string title, string body, object data = null)

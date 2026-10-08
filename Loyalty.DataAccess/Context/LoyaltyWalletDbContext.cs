@@ -91,6 +91,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<TenantBirthdaySetting> TenantBirthdaySettings { get; set; }
         public DbSet<BirthdayNotificationLog> BirthdayNotificationLogs { get; set; }
         public DbSet<BonusGrant> BonusGrants { get; set; }
+        public DbSet<TenantNotificationRecipient> TenantNotificationRecipients { get; set; }
         public DbSet<PosEarnExclusion> PosEarnExclusions { get; set; }
         public DbSet<PosNomenclatureCache> PosNomenclatureCaches { get; set; }
         public DbSet<PosObservedProduct> PosObservedProducts { get; set; }
@@ -126,6 +127,8 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(x => x.Title).HasMaxLength(200);
                 entity.Property(x => x.Body).HasMaxLength(1000);
                 entity.Property(x => x.GiftValue).HasColumnType("decimal(18,2)");
+                entity.Property(x => x.GiftType).HasDefaultValue(BirthdayGiftType.Points);
+                entity.Property(x => x.GiftLabel).HasMaxLength(100);
                 entity.Property(x => x.LastRunLocalDate).HasColumnType("date");
                 entity.HasIndex(x => x.TenantId).IsUnique();
             });
@@ -143,6 +146,14 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(x => x.ExpiredAmount).HasColumnType("decimal(18,2)");
                 entity.HasIndex(x => new { x.Status, x.ExpiresAtUtc });
                 entity.HasIndex(x => x.LoyaltyCardId);
+            });
+            // v3 (2026-10-06): alıcı cədvəli — real çatdırılma + geri dönüş attribution
+            modelBuilder.Entity<TenantNotificationRecipient>(entity =>
+            {
+                entity.ToTable("TenantNotificationRecipients");
+                entity.HasIndex(x => x.TenantNotificationLogId);
+                entity.HasIndex(x => new { x.TenantId, x.CustomerId });
+                entity.HasOne<TenantNotificationLog>().WithMany().HasForeignKey(x => x.TenantNotificationLogId).OnDelete(DeleteBehavior.Cascade);
             });
             modelBuilder.Entity<TelegramAdminLink>(entity =>
             {

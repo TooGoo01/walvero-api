@@ -44,8 +44,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             _logger = logger;
         }
 
-        private sealed record Target(int Id, int? UserId, string FirstName);
+        /// <summary>Alıcı; GiftText/DateText — {hədiyyə}/{tarix} (ad günü), CardId — hədiyyə yazılan kart (alıcı sətrinə).</summary>
+        private sealed record Target(int Id, int? UserId, string FirstName, string? GiftText = null, string? DateText = null, int? CardId = null);
         private sealed record TenantInfo(int Id, string CompanyName, bool CanSend, int? Limit, TimeZoneInfo Tz);
+        /// <summary>Real çatdırılma: Targets = kanalın hədəfi olan müştərilər, Sent = ≥1 kanal/cihaz uğurlu olan müştərilər.</summary>
+        private sealed record DeliveryResult(int AppTargets, int AppSent, int WalletTargets, int WalletSent)
+        {
+            public static readonly DeliveryResult Empty = new(0, 0, 0, 0);
+            public DeliveryResult Add(DeliveryResult o) => new(AppTargets + o.AppTargets, AppSent + o.AppSent, WalletTargets + o.WalletTargets, WalletSent + o.WalletSent);
+        }
 
         // =================== Tenant / vaxt ===================
 
@@ -178,7 +185,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             var (start, end) = TenantClock.MonthRangeUtc(tz);
             var sent = await _db.TenantNotificationLogs.AsNoTracking()
-                .CountAsync(l => l.TenantId == tenantId && l.RegDate >= start && l.RegDate < end
+                .CountAsync(l => l.TenantId == tenantId && l.IsActive && l.RegDate >= start && l.RegDate < end
                                  && l.Source != TenantNotificationLog.SourceBirthday, ct);
             // Planlı (hələ göndərilməyən) göndərişlər həmin ayın kvotasında yer tutur
             var pending = await _db.ScheduledNotifications.AsNoTracking()
@@ -314,7 +321,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             var (start, end) = TenantClock.MonthRangeUtc(tz, anyUtcInMonth);
             var sent = await _db.TenantNotificationLogs.AsNoTracking()
-                .CountAsync(l => l.TenantId == tenantId && l.RegDate >= start && l.RegDate < end && l.Source != TenantNotificationLog.SourceBirthday, ct);
+                .CountAsync(l => l.TenantId == tenantId && l.IsActive && l.RegDate >= start && l.RegDate < end && l.Source != TenantNotificationLog.SourceBirthday, ct);
             var pending = await _db.ScheduledNotifications.AsNoTracking()
                 .CountAsync(s => s.TenantId == tenantId && s.IsActive
                                  && (s.Status == ScheduledNotificationStatus.Pending || s.Status == ScheduledNotificationStatus.Sending)
@@ -339,6 +346,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (claimed == 0) return null;
 
             var row = await _db.ScheduledNotifications.FirstAsync(s => s.Id == id, ct);
+            int logId = 0;
             try
             {
                 var tenant = await LoadTenantAsync(row.TenantId, ct);
@@ -347,18 +355,19 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 var filter = AudienceFilterDto.Parse(row.AudienceJson);
                 var today = TenantClock.LocalNow(tenant.Tz).Date;
-                var targets = await BuildAudienceQuery(row.TenantId, filter, row.BranchScopeId, today)
-                    .Select(c => new Target(c.Id, c.applicationUserId, c.FirstName))
-                    .ToListAsync(ct);
-
-                var (app, wallet) = await DeliverAsync(targets, row.Title, row.Body, row.ToApp, row.ToWallet, tenant.CompanyName, _ => null, ct);
+                var targets = (await BuildAudienceQuery(row.TenantId, filter, row.BranchScopeId, today)
+                    .Select(c => new { c.Id, c.applicationUserId, c.FirstName })
+                    .ToListAsync(ct))
+                    .Select(c => new Target(c.Id, c.applicationUserId, c.FirstName)).ToList();
 
                 string? branchName = filter.BranchId.HasValue
                     ? await _db.Branches.AsNoTracking().Where(b => b.Id == filter.BranchId).Select(b => b.Name).FirstOrDefaultAsync(ct) : null;
                 string? customerName = filter.CustomerId.HasValue
                     ? await _db.Customers.AsNoTracking().Where(c => c.Id == filter.CustomerId).Select(c => (c.FirstName + " " + c.LastName).Trim()).FirstOrDefaultAsync(ct) : null;
 
-                _db.TenantNotificationLogs.Add(new TenantNotificationLog
+                // Log göndərişdən ƏVVƏL yazılır — alıcı sətirləri (TenantNotificationRecipients) FK ilə ona bağlanır.
+                // Uğursuzluqda IsActive=false → kvota/tarixçəyə düşmür.
+                var log = new TenantNotificationLog
                 {
                     TenantId = row.TenantId,
                     Scope = filter.CustomerId.HasValue ? "customer" : filter.BranchId.HasValue ? "branch" : IsUnfiltered(filter) ? "tenant" : "filtered",
@@ -371,35 +380,58 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Channels = Channels(row.ToApp, row.ToWallet),
                     ScheduledNotificationId = row.Id,
                     AudienceSummary = Truncate(filter.Summary(branchName, customerName), 500),
-                    AppSent = app,
-                    WalletSent = wallet,
                     RegUserId = row.RegUserId,
                     RegDate = DateTime.UtcNow,
                     IsActive = true
-                });
+                };
+                _db.TenantNotificationLogs.Add(log);
+                await _db.SaveChangesAsync(ct);
+                logId = log.Id;
+
+                var d = await DeliverAsync(log.Id, row.TenantId, targets, row.Title, row.Body, row.ToApp, row.ToWallet, tenant.CompanyName, ct);
+
+                log.AppTargets = d.AppTargets;
+                log.AppSent = d.AppSent;
+                log.WalletTargets = d.WalletTargets;
+                log.WalletSent = d.WalletSent;
                 row.Status = ScheduledNotificationStatus.Sent;
                 row.SentAtUtc = DateTime.UtcNow;
                 row.RecipientCount = targets.Count;
                 row.EditDate = DateTime.UtcNow;
                 await _db.SaveChangesAsync(ct);
 
-                _logger.LogInformation("Tenant notification sent. Id={Id} TenantId={TenantId} Recipients={Count} App={App} Wallet={Wallet} Immediate={Immediate}",
-                    row.Id, row.TenantId, targets.Count, app, wallet, row.IsImmediate);
-                return new Outcome(true, targets.Count, app, wallet, null);
+                _logger.LogInformation("Tenant notification sent. Id={Id} TenantId={TenantId} Recipients={Count} App={App}/{AppTargets} Wallet={Wallet}/{WalletTargets} Immediate={Immediate}",
+                    row.Id, row.TenantId, targets.Count, d.AppSent, d.AppTargets, d.WalletSent, d.WalletTargets, row.IsImmediate);
+                return new Outcome(true, targets.Count, d.AppSent, d.WalletSent, null);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Tenant notification failed. Id={Id} TenantId={TenantId}", row.Id, row.TenantId);
+                if (logId > 0)
+                {
+                    try
+                    {
+                        _db.ChangeTracker.Clear();
+                        await _db.TenantNotificationLogs.Where(l => l.Id == logId)
+                            .ExecuteUpdateAsync(set => set.SetProperty(l => l.IsActive, false), ct);
+                    }
+                    catch (Exception ex2) { _logger.LogWarning(ex2, "Notification log deactivate failed. LogId={LogId}", logId); }
+                }
                 return await FailAsync(row, ex.Message, ct);
             }
         }
 
         private async Task<Outcome> FailAsync(ScheduledNotification row, string error, CancellationToken ct)
         {
-            row.Status = ScheduledNotificationStatus.Failed;
-            row.Error = Truncate(error, 500);
-            row.EditDate = DateTime.UtcNow;
-            await _db.SaveChangesAsync(ct);
+            // Tracker vəziyyətindən asılı olmamaq üçün (uğursuz insert-dən sonra) birbaşa UPDATE
+            _db.ChangeTracker.Clear();
+            var now = DateTime.UtcNow;
+            var err = Truncate(error, 500);
+            await _db.ScheduledNotifications.Where(s => s.Id == row.Id)
+                .ExecuteUpdateAsync(set => set
+                    .SetProperty(s => s.Status, ScheduledNotificationStatus.Failed)
+                    .SetProperty(s => s.Error, err)
+                    .SetProperty(s => s.EditDate, now), ct);
             return new Outcome(false, 0, 0, 0, error);
         }
 
@@ -410,25 +442,36 @@ namespace Loyalty.Business.Services.Implementations.Main
         private static string Channels(bool app, bool wallet) => app && wallet ? "app,wallet" : app ? "app" : "wallet";
         private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max];
 
-        /// <summary>App (Notification sətri + FCM) və wallet (Apple/Google) çatdırılması; {ad}/{restoran}/{hədiyyə} personalizasiyası.</summary>
-        private async Task<(int App, int Wallet)> DeliverAsync(
-            List<Target> targets, string title, string body, bool toApp, bool toWallet, string tenantName,
-            Func<Target, string?> giftText, CancellationToken ct)
+        /// <summary>
+        /// App (Notification sətri + FCM) və wallet (Apple/Google) çatdırılması; {ad}/{restoran}/{hədiyyə}/{tarix} personalizasiyası.
+        /// Real nəticə: AppSent = ≥1 cihaza FCM qəbul edilən müştəri, WalletSent = ≥1 kanal uğurlu müştəri; Targets = kanal seçilibsə hədəf sayı.
+        /// logId verilibsə hər alıcı üçün TenantNotificationRecipient sətri yazılır (geri dönüş attribution-u üçün).
+        /// </summary>
+        private async Task<DeliveryResult> DeliverAsync(
+            int? logId, int tenantId, List<Target> targets, string title, string body, bool toApp, bool toWallet, string tenantName,
+            CancellationToken ct)
         {
-            int app = 0, wallet = 0;
-            if (targets.Count == 0) return (0, 0);
+            if (targets.Count == 0) return DeliveryResult.Empty;
+            var appOk = new HashSet<int>();
+            var walletHasCard = new HashSet<int>();
+            var walletOk = new HashSet<int>();
+            int appTargetCount = 0;
+
+            string T(Target t) => NotificationTemplate.Render(title, t.FirstName, tenantName, t.GiftText, t.DateText);
+            string B(Target t) => NotificationTemplate.Render(body, t.FirstName, tenantName, t.GiftText, t.DateText);
 
             if (toApp)
             {
                 var appTargets = targets.Where(t => t.UserId.HasValue).GroupBy(t => t.UserId!.Value).Select(g => g.First()).ToList();
+                appTargetCount = appTargets.Count;
                 if (appTargets.Count > 0)
                 {
                     var now = DateTime.UtcNow;
                     var rows = appTargets.Select(t => new Notification
                     {
                         UserId = t.UserId!.Value,
-                        Title = NotificationTemplate.Render(title, t.FirstName, tenantName, giftText(t)),
-                        Body = NotificationTemplate.Render(body, t.FirstName, tenantName, giftText(t)),
+                        Title = T(t),
+                        Body = B(t),
                         IsRead = false,
                         CreatedAt = now,
                         RegUserId = SystemUserId,
@@ -442,13 +485,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     {
                         try
                         {
-                            await _push.SendToUserAsync(t.UserId!.Value,
-                                NotificationTemplate.Render(title, t.FirstName, tenantName, giftText(t)),
-                                NotificationTemplate.Render(body, t.FirstName, tenantName, giftText(t)));
+                            if (await _push.SendToUserAsync(t.UserId!.Value, T(t), B(t)) > 0) appOk.Add(t.Id);
                         }
                         catch (Exception ex) { _logger.LogWarning(ex, "FCM push failed. UserId={UserId}", t.UserId); }
                     }
-                    app = appTargets.Count;
                 }
             }
 
@@ -458,15 +498,35 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     try
                     {
-                        var res = await _wallet.SendToCustomerAsync(t.Id,
-                            NotificationTemplate.Render(title, t.FirstName, tenantName, giftText(t)),
-                            NotificationTemplate.Render(body, t.FirstName, tenantName, giftText(t)), ct);
-                        wallet += res.Data is int n ? n : 0;
+                        var r = await _wallet.PushToCustomerAsync(t.Id, T(t), B(t), ct);
+                        if (r.Cards > 0) walletHasCard.Add(t.Id);
+                        if (r.Delivered > 0) walletOk.Add(t.Id);
                     }
                     catch (Exception ex) { _logger.LogWarning(ex, "Wallet message failed. CustomerId={CustomerId}", t.Id); }
                 }
             }
-            return (app, wallet);
+
+            // Alıcı sətirləri — push döngülərindən SONRA (FCM servisi eyni DbContext-də stale token silərkən SaveChanges çağırır)
+            if (logId.HasValue)
+            {
+                var now = DateTime.UtcNow;
+                _db.TenantNotificationRecipients.AddRange(targets.DistinctBy(t => t.Id).Select(t => new TenantNotificationRecipient
+                {
+                    TenantNotificationLogId = logId.Value,
+                    TenantId = tenantId,
+                    CustomerId = t.Id,
+                    LoyaltyCardId = t.CardId,
+                    AppTarget = toApp && t.UserId.HasValue,
+                    AppSent = appOk.Contains(t.Id),
+                    WalletTarget = walletHasCard.Contains(t.Id),
+                    WalletSent = walletOk.Contains(t.Id),
+                    RegUserId = SystemUserId,
+                    RegDate = now,
+                    IsActive = true
+                }));
+                await _db.SaveChangesAsync(ct);
+            }
+            return new DeliveryResult(appTargetCount, appOk.Count, walletHasCard.Count, walletOk.Count);
         }
 
         // =================== Planlı siyahı / redaktə / ləğv / tarixçə ===================
@@ -556,22 +616,42 @@ namespace Loyalty.Business.Services.Implementations.Main
                 : new ServiceResult(true, "Planlı bildiriş ləğv edildi.");
         }
 
-        public async Task<ServiceResult> HistoryAsync(TenantNotificationContext ctx, int page, int pageSize, CancellationToken ct = default)
+        public async Task<ServiceResult> HistoryAsync(TenantNotificationContext ctx, int page, int pageSize, int windowDays = 7, CancellationToken ct = default)
         {
             var tenant = await LoadTenantAsync(ctx.TenantId, ct);
             if (tenant == null) return new ServiceResult(false, "Tenant tapılmadı.");
             page = Math.Max(1, page);
             pageSize = Math.Clamp(pageSize, 5, 100);
-            var q = _db.TenantNotificationLogs.AsNoTracking().Where(l => l.TenantId == ctx.TenantId);
+            windowDays = Math.Clamp(windowDays, 1, 30);
+            var q = _db.TenantNotificationLogs.AsNoTracking().Where(l => l.TenantId == ctx.TenantId && l.IsActive);
             if (ctx.BranchScopeId.HasValue) q = q.Where(l => l.BranchId == ctx.BranchScopeId);
             var total = await q.CountAsync(ct);
             var rows = await q.OrderByDescending(l => l.RegDate).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
-            var items = rows.Select(l => new
+
+            // Geri dönüş: yalnız alıcı sətri olan (v3-dən sonrakı) göndərişlər üçün; köhnələr → hasAttribution=false
+            var ids = rows.Select(l => l.Id).ToList();
+            var withRecipients = (await _db.TenantNotificationRecipients.AsNoTracking()
+                .Where(r => ids.Contains(r.TenantNotificationLogId))
+                .Select(r => r.TenantNotificationLogId).Distinct().ToListAsync(ct)).ToHashSet();
+            var attr = await NotificationAttribution.ByLogAsync(_db, ids, windowDays, ct);
+
+            var items = rows.Select(l =>
             {
-                l.Id, l.Title, l.Body, l.Scope, l.Source, l.Channels, l.RecipientCount, l.AppSent, l.WalletSent, l.AudienceSummary,
-                sentAtLocal = Iso(TenantClock.ToLocal(l.RegDate, tenant.Tz))
+                var has = withRecipients.Contains(l.Id);
+                attr.TryGetValue(l.Id, out var a);
+                return new
+                {
+                    l.Id, l.Title, l.Body, l.Scope, l.Source, l.Channels, l.RecipientCount,
+                    l.AppSent, l.WalletSent, l.AppTargets, l.WalletTargets, l.AudienceSummary,
+                    sentAtLocal = Iso(TenantClock.ToLocal(l.RegDate, tenant.Tz)),
+                    hasAttribution = has,
+                    visits = has ? a.Visits : (int?)null,
+                    visitRate = has && l.RecipientCount > 0 ? Math.Round(a.Visits * 100.0 / l.RecipientCount, 1) : (double?)null,
+                    revenue = has ? a.Revenue : (decimal?)null,
+                    windowDays
+                };
             }).ToList();
-            return new ServiceResult(true, new { items, total, page, pageSize });
+            return new ServiceResult(true, new { items, total, page, pageSize, windowDays });
         }
 
         // =================== Ad günü ayarları ===================
@@ -579,37 +659,69 @@ namespace Loyalty.Business.Services.Implementations.Main
         private const string DefaultBirthdayTitle = "Ad gününüz mübarək, {ad}!";
         private const string DefaultBirthdayBody = "{restoran} komandası sizi ad gününüz münasibətilə təbrik edir. Sizə {hədiyyə} hədiyyə etdik — növbəti ziyarətinizdə istifadə edin!";
         private const string DefaultBirthdayBodyNoGift = "{restoran} komandası sizi ad gününüz münasibətilə təbrik edir. Sizi gözləyirik!";
+        // N gün əvvəl göndəriş üçün defaultlar ({tarix} = ad günü, dd.MM)
+        private const string DefaultBirthdayTitleBefore = "{ad}, ad gününüz yaxınlaşır!";
+        private const string DefaultBirthdayBodyBefore = "{tarix} tarixində ad gününüz var! {restoran} sizə indidən {hədiyyə} hədiyyə edir — gəlin, birlikdə qeyd edək!";
+        private const string DefaultBirthdayBodyBeforeNoGift = "{tarix} tarixində ad gününüz var! {restoran} komandası sizi indidən təbrik edir — sizi gözləyirik!";
+        public const int MaxDaysBefore = 14;
 
-        private async Task<(bool HasStamp, bool HasPoints)> ProgramKindsAsync(int tenantId, CancellationToken ct)
+        private sealed record ProgramKinds(bool HasStamp, bool HasPoints, string FreeRewardLabel)
+        {
+            /// <summary>Seçilə bilən hədiyyə növləri (BirthdayGiftType int dəyərləri).</summary>
+            public List<int> AllowedGiftTypes()
+            {
+                var list = new List<int>();
+                if (HasPoints) list.Add((int)BirthdayGiftType.Points);
+                if (HasStamp) { list.Add((int)BirthdayGiftType.Stamps); list.Add((int)BirthdayGiftType.FreeItem); }
+                return list;
+            }
+            public bool Allows(BirthdayGiftType type) => type == BirthdayGiftType.Points ? HasPoints : HasStamp;
+        }
+
+        private async Task<ProgramKinds> ProgramKindsAsync(int tenantId, CancellationToken ct)
         {
             var templates = await _db.LoyaltyPrograms.AsNoTracking()
                 .Where(p => p.TenantId == tenantId && p.CardTemplate != null)
+                .OrderBy(p => p.Id)
                 .Select(p => p.CardTemplate!)
                 .ToListAsync(ct);
             var hasStamp = templates.Any(t => t.EffectiveType == CardTemplateType.ProgressBased);
             var hasPoints = templates.Any(t => t.EffectiveType != CardTemplateType.ProgressBased);
-            return (hasStamp, hasPoints);
+            var freeLabel = templates.Where(t => t.EffectiveType == CardTemplateType.ProgressBased)
+                .Select(t => t.FreeRewardLabel).FirstOrDefault(l => !string.IsNullOrWhiteSpace(l))?.Trim() ?? "Pulsuz içki";
+            return new ProgramKinds(hasStamp, hasPoints, freeLabel);
         }
 
         public async Task<ServiceResult> GetBirthdaySettingsAsync(int tenantId, CancellationToken ct = default)
         {
             var s = await _db.TenantBirthdaySettings.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId, ct);
-            var (hasStamp, hasPoints) = await ProgramKindsAsync(tenantId, ct);
+            var kinds = await ProgramKindsAsync(tenantId, ct);
             var dto = s == null
-                ? new BirthdaySettingsDto { Enabled = false, SendHourLocal = 10, Title = DefaultBirthdayTitle, Body = DefaultBirthdayBodyNoGift, ToApp = true, ToWallet = true }
+                ? new BirthdaySettingsDto
+                {
+                    Enabled = false, SendHourLocal = 10, DaysBefore = 0, Title = DefaultBirthdayTitle, Body = DefaultBirthdayBodyNoGift, ToApp = true, ToWallet = true,
+                    GiftType = kinds.HasPoints || !kinds.HasStamp ? BirthdayGiftType.Points : BirthdayGiftType.Stamps
+                }
                 : new BirthdaySettingsDto
                 {
-                    Enabled = s.Enabled, SendHourLocal = s.SendHourLocal, Title = s.Title, Body = s.Body, ToApp = s.ToApp, ToWallet = s.ToWallet,
-                    GiftEnabled = s.GiftEnabled, GiftValue = s.GiftValue, GiftExpiryDays = s.GiftExpiryDays
+                    Enabled = s.Enabled, SendHourLocal = s.SendHourLocal, DaysBefore = s.DaysBefore, Title = s.Title, Body = s.Body, ToApp = s.ToApp, ToWallet = s.ToWallet,
+                    GiftEnabled = s.GiftEnabled, GiftType = s.GiftType, GiftValue = s.GiftValue, GiftExpiryDays = s.GiftExpiryDays, GiftLabel = s.GiftLabel
                 };
             return new ServiceResult(true, new
             {
                 settings = dto,
                 exists = s != null,
-                hasStampProgram = hasStamp,
-                hasPointsProgram = hasPoints,
+                hasStampProgram = kinds.HasStamp,
+                hasPointsProgram = kinds.HasPoints,
+                freeRewardLabel = kinds.FreeRewardLabel,
+                allowedGiftTypes = kinds.AllowedGiftTypes(),
+                maxDaysBefore = MaxDaysBefore,
+                defaultTitle = DefaultBirthdayTitle,
+                defaultTitleBefore = DefaultBirthdayTitleBefore,
                 defaultBodyWithGift = DefaultBirthdayBody,
                 defaultBodyNoGift = DefaultBirthdayBodyNoGift,
+                defaultBodyBeforeWithGift = DefaultBirthdayBodyBefore,
+                defaultBodyBeforeNoGift = DefaultBirthdayBodyBeforeNoGift,
                 lastRunLocalDate = s?.LastRunLocalDate?.ToString("yyyy-MM-dd")
             });
         }
@@ -618,11 +730,27 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             if (ctx.BranchScopeId.HasValue) return new ServiceResult(false, "Ad günü ayarlarını yalnız tenant admin dəyişə bilər.");
             if (dto.SendHourLocal is < 0 or > 23) return new ServiceResult(false, "Göndərmə saatı 0–23 olmalıdır.");
+            if (dto.DaysBefore < 0 || dto.DaysBefore > MaxDaysBefore) return new ServiceResult(false, $"Ad günündən əvvəl 0–{MaxDaysBefore} gün ola bilər.");
             if (dto.Enabled && (string.IsNullOrWhiteSpace(dto.Title) || string.IsNullOrWhiteSpace(dto.Body)))
                 return new ServiceResult(false, "Başlıq və mətn boş ola bilməz.");
             if (dto.Enabled && !dto.ToApp && !dto.ToWallet) return new ServiceResult(false, "Ən azı bir kanal seçilməlidir.");
             if ((dto.Title?.Length ?? 0) > 200 || (dto.Body?.Length ?? 0) > 1000) return new ServiceResult(false, "Başlıq ≤ 200, mətn ≤ 1000 simvol.");
-            if (dto.GiftEnabled && (dto.GiftValue <= 0 || dto.GiftValue > 1000)) return new ServiceResult(false, "Hədiyyə dəyəri 0-dan böyük, ən çox 1000 olmalıdır.");
+            if (!Enum.IsDefined(typeof(BirthdayGiftType), dto.GiftType)) return new ServiceResult(false, "Hədiyyə növü düzgün deyil.");
+            var giftLabel = string.IsNullOrWhiteSpace(dto.GiftLabel) ? null : dto.GiftLabel.Trim();
+            if (giftLabel?.Length > 100) return new ServiceResult(false, "Hədiyyə mətni ≤ 100 simvol.");
+            if (dto.GiftEnabled)
+            {
+                var kinds = await ProgramKindsAsync(ctx.TenantId, ct);
+                if (!kinds.Allows(dto.GiftType)) return new ServiceResult(false, "Bu hədiyyə növü üçün uyğun kart proqramı yoxdur.");
+                var isInt = dto.GiftValue == Math.Floor(dto.GiftValue);
+                var valueErr = dto.GiftType switch
+                {
+                    BirthdayGiftType.Points => dto.GiftValue < 0.01m || dto.GiftValue > 1000 ? "Bonus 0,01–1000 ₼ olmalıdır." : null,
+                    BirthdayGiftType.Stamps => dto.GiftValue < 1 || dto.GiftValue > 50 || !isInt ? "Möhür sayı 1–50 tam ədəd olmalıdır." : null,
+                    _ => dto.GiftValue < 1 || dto.GiftValue > 5 || !isInt ? "Pulsuz məhsul sayı 1–5 tam ədəd olmalıdır." : null
+                };
+                if (valueErr != null) return new ServiceResult(false, valueErr);
+            }
             if (dto.GiftExpiryDays is <= 0 or > 365) return new ServiceResult(false, "Hədiyyənin müddəti 1–365 gün olmalıdır.");
 
             var now = DateTime.UtcNow;
@@ -634,13 +762,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
             s.Enabled = dto.Enabled;
             s.SendHourLocal = dto.SendHourLocal;
+            s.DaysBefore = dto.DaysBefore;
             s.Title = (dto.Title ?? "").Trim();
             s.Body = (dto.Body ?? "").Trim();
             s.ToApp = dto.ToApp;
             s.ToWallet = dto.ToWallet;
             s.GiftEnabled = dto.GiftEnabled;
-            s.GiftValue = dto.GiftEnabled ? dto.GiftValue : 0;
-            s.GiftExpiryDays = dto.GiftEnabled ? dto.GiftExpiryDays : null;
+            s.GiftType = dto.GiftType;
+            s.GiftValue = dto.GiftEnabled ? BirthdayGiftMath.Units(dto.GiftType, dto.GiftValue) : 0;
+            s.GiftExpiryDays = dto.GiftEnabled && dto.GiftType == BirthdayGiftType.Points ? dto.GiftExpiryDays : null;
+            s.GiftLabel = giftLabel;
             s.EditDate = now;
             s.EditUserId = ctx.UserId;
             await _db.SaveChangesAsync(ct);
@@ -692,6 +823,81 @@ namespace Loyalty.Business.Services.Implementations.Main
             });
         }
 
+        /// <summary>
+        /// Ad günü kampaniyası nəticələri (son <paramref name="days"/> gün): göndəriş, hədiyyə (növ üzrə), uyğun kart tapılmayan,
+        /// geri dönüş (göndərişdən sonrakı pəncərədə Earned/Redeemed tx-i olan), dövriyyə, müddətli bonus istifadəsi/itkisi (yalnız Points + müddət).
+        /// </summary>
+        public async Task<ServiceResult> BirthdayStatsAsync(int tenantId, int days = 365, int windowDays = 7, CancellationToken ct = default)
+        {
+            days = Math.Clamp(days, 7, 730);
+            windowDays = Math.Clamp(windowDays, 1, 30);
+            double window = windowDays;
+            var since = DateTime.UtcNow.AddDays(-days);
+            var logs = _db.BirthdayNotificationLogs.AsNoTracking().Where(l => l.TenantId == tenantId && l.SentAtUtc >= since);
+
+            var sent = await logs.CountAsync(ct);
+            var byType = await logs.Where(l => l.GiftAmount != null)
+                .GroupBy(l => l.GiftType)
+                .Select(g => new { giftType = g.Key, count = g.Count(), amount = g.Sum(l => l.GiftAmount!.Value) })
+                .ToListAsync(ct);
+            var noCard = await logs.CountAsync(l => l.GiftType != null && l.GiftAmount == null, ct);
+
+            // Geri dönüş: müştərinin tenant-dakı hər hansı kartında pəncərə içində Applied Earned/Redeemed tx
+            var visitedRows = await (
+                from l in logs
+                join c in _db.LoyaltyCards.AsNoTracking() on new { l.CustomerId, l.TenantId } equals new { c.CustomerId, c.TenantId }
+                join t in _db.Transactions.AsNoTracking() on c.Id equals t.LoyaltyCardId
+                where t.IsActive && t.Status == RedeemStatus.Applied
+                      && (t.Type == TransactionType.Earned || t.Type == TransactionType.Redeemed)
+                      && t.RegDate > l.SentAtUtc && t.RegDate <= l.SentAtUtc.AddDays(window)
+                group t by l.Id into g
+                select new { LogId = g.Key, Revenue = g.Sum(x => x.Type == TransactionType.Earned ? (x.Amount ?? 0m) : 0m) })
+                .ToListAsync(ct);
+
+            // Müddətli bonus (BonusGrant, yalnız Points + GiftExpiryDays): istifadə = Expired: Amount − ExpiredAmount; Active: grant-dan sonrakı Redeemed (≤ Amount)
+            var grants = _db.BonusGrants.AsNoTracking()
+                .Where(g => g.TenantId == tenantId && g.Source == "birthday" && g.IsActive && g.GrantedAtUtc >= since);
+            var expired = await grants.Where(g => g.Status == BonusGrantStatus.Expired)
+                .Select(g => new { g.Amount, Exp = g.ExpiredAmount ?? 0m }).ToListAsync(ct);
+            var active = await grants.Where(g => g.Status == BonusGrantStatus.Active)
+                .Select(g => new { g.LoyaltyCardId, g.Amount, g.GrantedAtUtc }).ToListAsync(ct);
+            decimal activeUsed = 0;
+            if (active.Count > 0)
+            {
+                var cardIds = active.Select(g => g.LoyaltyCardId).Distinct().ToList();
+                var minGranted = active.Min(g => g.GrantedAtUtc);
+                var spent = await _db.Transactions.AsNoTracking()
+                    .Where(t => cardIds.Contains(t.LoyaltyCardId) && t.IsActive && t.Status == RedeemStatus.Applied
+                                && t.Type == TransactionType.Redeemed && t.RegDate >= minGranted)
+                    .Select(t => new { t.LoyaltyCardId, t.RegDate, t.Points })
+                    .ToListAsync(ct);
+                foreach (var g in active)
+                {
+                    var used = spent.Where(t => t.LoyaltyCardId == g.LoyaltyCardId && t.RegDate >= g.GrantedAtUtc).Sum(t => Math.Abs(t.Points));
+                    activeUsed += Math.Min(used, g.Amount);
+                }
+            }
+
+            var gifted = byType.Sum(x => x.count);
+            var visited = visitedRows.Count;
+            return new ServiceResult(true, new
+            {
+                days,
+                windowDays,
+                sent,
+                gifted,
+                noCard,
+                byType,
+                visited,
+                visitRate = sent == 0 ? 0 : Math.Round(visited * 100.0 / sent, 1),
+                revenue = visitedRows.Sum(x => x.Revenue),
+                trackedBonus = expired.Sum(e => e.Amount) + active.Sum(g => g.Amount),
+                giftUsed = expired.Sum(e => Math.Max(0, e.Amount - e.Exp)) + activeUsed,
+                giftExpired = expired.Sum(e => e.Exp),
+                giftActive = active.Count
+            });
+        }
+
         // =================== Job-lar ===================
 
         [AutomaticRetry(Attempts = 0)]
@@ -729,37 +935,33 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
         }
 
+        /// <summary>Ad günü namizədi: Birthday = real ad günü (bu il/gələn il), DaysUntil = bu gündən qalan gün (0 = bu gün).</summary>
+        private sealed record BirthdayCandidate(int Id, int? UserId, string FirstName, DateTime Birthday, int DaysUntil);
+
         public async Task<string> RunBirthdayForCustomerAsync(int tenantId, int customerId, CancellationToken ct = default)
         {
             var s = await _db.TenantBirthdaySettings.AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId, ct);
             if (s == null) return "Ad günü ayarı yoxdur — əvvəl saxlayın (söndürülü də olar).";
             var c = await _db.Customers.AsNoTracking()
                 .Where(x => x.Id == customerId && x.TenantId == tenantId && x.IsActive)
-                .Select(x => new { x.Id, x.applicationUserId, x.FirstName })
+                .Select(x => new { x.Id, x.applicationUserId, x.FirstName, x.DateOfBirth })
                 .FirstOrDefaultAsync(ct);
             if (c == null) return "Müştəri tapılmadı.";
             var tenant = await LoadTenantAsync(tenantId, ct);
             if (tenant == null || !tenant.CanSend) return "Tenant aktiv deyil.";
             var today = TenantClock.LocalNow(tenant.Tz).Date;
-            if (await _db.BirthdayNotificationLogs.AsNoTracking().AnyAsync(l => l.TenantId == tenantId && l.CustomerId == c.Id && l.Year == today.Year, ct))
+
+            // Test: ad günü aralıqdadırsa real tarix, yoxsa "bu gün" kimi (Year = bu il — köhnə davranış)
+            var bday = c.DateOfBirth.HasValue ? BirthDateRules.BirthdayWithin(c.DateOfBirth.Value, today, s.DaysBefore) ?? today : today;
+            var cand = new BirthdayCandidate(c.Id, c.applicationUserId, c.FirstName, bday, (bday - today).Days);
+            if (await _db.BirthdayNotificationLogs.AsNoTracking().AnyAsync(l => l.TenantId == tenantId && l.CustomerId == c.Id && l.Year == bday.Year, ct))
                 return "Bu müştəri bu il artıq təbrik olunub (idempotentlik).";
 
-            var log = new BirthdayNotificationLog
-            {
-                TenantId = tenantId, CustomerId = c.Id, Year = today.Year, SentAtUtc = DateTime.UtcNow,
-                RegUserId = SystemUserId, RegDate = DateTime.UtcNow, IsActive = true
-            };
-            _db.BirthdayNotificationLogs.Add(log);
-            try { await _db.SaveChangesAsync(ct); }
-            catch (DbUpdateException) { return "Bu müştəri bu il artıq təbrik olunub (idempotentlik)."; }
-
-            string? giftText = null;
-            if (s.GiftEnabled && s.GiftValue > 0)
-                giftText = await GrantBirthdayGiftAsync(s, c.Id, log, ct);
-            var gt = giftText;
-            var (app, wallet) = await DeliverAsync(new List<Target> { new(c.Id, c.applicationUserId, c.FirstName) },
-                s.Title, s.Body, s.ToApp, s.ToWallet, tenant.CompanyName, _ => gt, ct);
-            return $"Göndərildi: app {app}, wallet {wallet}, hədiyyə: {giftText ?? "yox"}";
+            var summaryId = await CreateBirthdaySummaryLogAsync(s, today, 1, ct);
+            var d = await SendBirthdayAsync(s, tenant, summaryId, cand, ct);
+            await FinalizeBirthdaySummaryLogAsync(summaryId, d == null ? 0 : 1, d ?? DeliveryResult.Empty, ct);
+            if (d == null) return "Bu müştəri bu il artıq təbrik olunub (idempotentlik).";
+            return $"Göndərildi: app {d.AppSent}/{d.AppTargets}, wallet {d.WalletSent}/{d.WalletTargets}, ad günü {bday:dd.MM} ({cand.DaysUntil} gün)";
         }
 
         private async Task ProcessTenantBirthdaysAsync(TenantBirthdaySetting s, bool ignoreSendHour, CancellationToken ct)
@@ -770,88 +972,148 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!ignoreSendHour && localNow.Hour < s.SendHourLocal) return;
             var today = localNow.Date;
 
-            var keys = BirthdateKeys(today);
-            var maxDob = today.AddYears(-BirthDateRules.MinPlausibleAge);
-            var m1 = keys[0].Month; var d1 = keys[0].Day;
-            var m2 = keys.Count > 1 ? keys[1].Month : -1; var d2 = keys.Count > 1 ? keys[1].Day : -1;
+            var todo = await FindBirthdayCandidatesAsync(s, today, ct);
+            if (todo.Count == 0) { await MarkRunAsync(s.Id, today, ct); return; }
 
-            var candidates = await _db.Customers.AsNoTracking()
-                .Where(c => c.TenantId == s.TenantId && c.IsActive && c.DateOfBirth != null && c.DateOfBirth <= maxDob
-                            && ((c.DateOfBirth.Value.Month == m1 && c.DateOfBirth.Value.Day == d1)
-                                || (c.DateOfBirth.Value.Month == m2 && c.DateOfBirth.Value.Day == d2)))
-                .Select(c => new { c.Id, c.applicationUserId, c.FirstName, c.DateOfBirth, c.RegDate })
-                .ToListAsync(ct);
-            candidates = candidates.Where(c => BirthDateRules.IsUsable(c.DateOfBirth, c.RegDate, today) && BirthDateRules.IsBirthday(c.DateOfBirth!.Value, today)).ToList();
-            if (candidates.Count == 0) { await MarkRunAsync(s.Id, today, ct); return; }
-
-            var ids = candidates.Select(c => c.Id).ToList();
-            var done = await _db.BirthdayNotificationLogs.AsNoTracking()
-                .Where(l => l.TenantId == s.TenantId && l.Year == today.Year && ids.Contains(l.CustomerId))
-                .Select(l => l.CustomerId)
-                .ToListAsync(ct);
-            var todo = candidates.Where(c => !done.Contains(c.Id)).ToList();
-
-            int recipients = 0, appTotal = 0, walletTotal = 0;
+            // Xülasə log döngüdən ƏVVƏL — alıcı sətirləri ona bağlanır; sonda sayğaclar yenilənir (0 alıcı → silinir)
+            var summaryId = await CreateBirthdaySummaryLogAsync(s, today, todo.Count, ct);
+            var total = DeliveryResult.Empty;
+            var recipients = 0;
             foreach (var c in todo)
             {
-                // 1) Idempotentlik: log sətri əvvəl (unikal index) — paralel run eyni müştərini iki dəfə götürə bilməz
-                var log = new BirthdayNotificationLog
-                {
-                    TenantId = s.TenantId, CustomerId = c.Id, Year = today.Year, SentAtUtc = DateTime.UtcNow,
-                    RegUserId = SystemUserId, RegDate = DateTime.UtcNow, IsActive = true
-                };
-                _db.BirthdayNotificationLogs.Add(log);
-                try { await _db.SaveChangesAsync(ct); }
-                catch (DbUpdateException) { _db.ChangeTracker.Clear(); continue; }
-
-                // 2) Hədiyyə (istəyə bağlı)
-                string? giftText = null;
-                if (s.GiftEnabled && s.GiftValue > 0)
-                {
-                    try { giftText = await GrantBirthdayGiftAsync(s, c.Id, log, ct); }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Birthday gift failed. TenantId={TenantId} CustomerId={CustomerId}", s.TenantId, c.Id);
-                        _db.ChangeTracker.Clear();
-                    }
-                }
-
-                // 3) Personal bildiriş
                 try
                 {
-                    var target = new Target(c.Id, c.applicationUserId, c.FirstName);
-                    var gt = giftText;
-                    var (app, wallet) = await DeliverAsync(new List<Target> { target }, s.Title, s.Body, s.ToApp, s.ToWallet, tenant.CompanyName, _ => gt, ct);
-                    appTotal += app; walletTotal += wallet; recipients++;
+                    var d = await SendBirthdayAsync(s, tenant, summaryId, c, ct);
+                    if (d == null) continue;
+                    recipients++;
+                    total = total.Add(d);
                 }
-                catch (Exception ex) { _logger.LogWarning(ex, "Birthday notification failed. CustomerId={CustomerId}", c.Id); }
-            }
-
-            if (recipients > 0)
-            {
-                _db.TenantNotificationLogs.Add(new TenantNotificationLog
+                catch (Exception ex)
                 {
-                    TenantId = s.TenantId,
-                    Scope = "birthday",
-                    Title = Truncate(s.Title, 200),
-                    Body = s.Body,
-                    RecipientCount = recipients,
-                    Source = TenantNotificationLog.SourceBirthday,
-                    Channels = Channels(s.ToApp, s.ToWallet),
-                    AudienceSummary = $"Ad günü ({today:dd.MM.yyyy})" + (s.GiftEnabled && s.GiftValue > 0 ? " · hədiyyə ilə" : ""),
-                    AppSent = appTotal,
-                    WalletSent = walletTotal,
-                    RegUserId = SystemUserId,
-                    RegDate = DateTime.UtcNow,
-                    IsActive = true
-                });
-                await _db.SaveChangesAsync(ct);
-                _logger.LogInformation("Birthday notifications sent. TenantId={TenantId} Recipients={Count}", s.TenantId, recipients);
+                    _logger.LogWarning(ex, "Birthday notification failed. TenantId={TenantId} CustomerId={CustomerId}", s.TenantId, c.Id);
+                    _db.ChangeTracker.Clear();
+                }
             }
+            await FinalizeBirthdaySummaryLogAsync(summaryId, recipients, total, ct);
+            if (recipients > 0)
+                _logger.LogInformation("Birthday notifications sent. TenantId={TenantId} Recipients={Count} App={App}/{AppTargets} Wallet={Wallet}/{WalletTargets} DaysBefore={DaysBefore}",
+                    s.TenantId, recipients, total.AppSent, total.AppTargets, total.WalletSent, total.WalletTargets, s.DaysBefore);
             await MarkRunAsync(s.Id, today, ct);
         }
 
-        private static IReadOnlyList<(int Month, int Day)> BirthdateKeys(DateTime today) => BirthDateRules.BirthdayKeys(today);
+        /// <summary>
+        /// [bu gün, bu gün + DaysBefore] aralığında ad günü olan, hələ həmin ad günü (CustomerId, Year) üçün təbrik olunmamış müştərilər.
+        /// Aralıq skanı: ayar 0→N dəyişəndə / job bir gün buraxanda heç kim atlanmır.
+        /// </summary>
+        private async Task<List<BirthdayCandidate>> FindBirthdayCandidatesAsync(TenantBirthdaySetting s, DateTime today, CancellationToken ct)
+        {
+            var keys = BirthDateRules.BirthdayKeysInRange(today, s.DaysBefore).ToList();
+            var maxDob = today.AddYears(-BirthDateRules.MinPlausibleAge);
+            var raw = await _db.Customers.AsNoTracking()
+                .Where(c => c.TenantId == s.TenantId && c.IsActive && c.DateOfBirth != null && c.DateOfBirth <= maxDob
+                            && keys.Contains(c.DateOfBirth.Value.Month * 100 + c.DateOfBirth.Value.Day))
+                .Select(c => new { c.Id, c.applicationUserId, c.FirstName, c.DateOfBirth, c.RegDate })
+                .ToListAsync(ct);
+
+            var list = new List<BirthdayCandidate>();
+            foreach (var c in raw)
+            {
+                if (!BirthDateRules.IsUsable(c.DateOfBirth, c.RegDate, today)) continue;
+                var bday = BirthDateRules.BirthdayWithin(c.DateOfBirth!.Value, today, s.DaysBefore);
+                if (bday == null) continue;
+                list.Add(new BirthdayCandidate(c.Id, c.applicationUserId, c.FirstName, bday.Value, (bday.Value - today).Days));
+            }
+            if (list.Count == 0) return list;
+
+            var ids = list.Select(c => c.Id).ToList();
+            var years = list.Select(c => c.Birthday.Year).Distinct().ToList();
+            var done = await _db.BirthdayNotificationLogs.AsNoTracking()
+                .Where(l => l.TenantId == s.TenantId && years.Contains(l.Year) && ids.Contains(l.CustomerId))
+                .Select(l => new { l.CustomerId, l.Year })
+                .ToListAsync(ct);
+            var doneSet = done.Select(d => (d.CustomerId, d.Year)).ToHashSet();
+            return list.Where(c => !doneSet.Contains((c.Id, c.Birthday.Year))).OrderBy(c => c.DaysUntil).ThenBy(c => c.Id).ToList();
+        }
+
+        /// <summary>Bir müştəriyə ad günü axını: log sətri (idempotent) → hədiyyə → şəxsi bildiriş. null = bu ad günü üçün artıq göndərilib.</summary>
+        private async Task<DeliveryResult?> SendBirthdayAsync(TenantBirthdaySetting s, TenantInfo tenant, int summaryLogId, BirthdayCandidate c, CancellationToken ct)
+        {
+            var now = DateTime.UtcNow;
+            var giftOn = s.GiftEnabled && s.GiftValue > 0;
+
+            // 1) Idempotentlik: log sətri əvvəl (unikal index) — paralel run eyni müştərini iki dəfə götürə bilməz
+            var log = new BirthdayNotificationLog
+            {
+                TenantId = s.TenantId, CustomerId = c.Id, Year = c.Birthday.Year, SentAtUtc = now,
+                GiftType = giftOn ? (int)s.GiftType : null,
+                RegUserId = SystemUserId, RegDate = now, IsActive = true
+            };
+            _db.BirthdayNotificationLogs.Add(log);
+            try { await _db.SaveChangesAsync(ct); }
+            catch (DbUpdateException) { _db.ChangeTracker.Clear(); return null; }
+
+            // 2) Hədiyyə (istəyə bağlı) — uyğun kart yoxdursa mətn null qalır
+            string? giftText = null; int? cardId = null;
+            if (giftOn)
+            {
+                try { (giftText, cardId) = await GrantBirthdayGiftAsync(s, c.Id, log, c.DaysUntil, ct); }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Birthday gift failed. TenantId={TenantId} CustomerId={CustomerId}", s.TenantId, c.Id);
+                    _db.ChangeTracker.Clear();
+                }
+            }
+
+            // 3) Şəxsi bildiriş — hədiyyə verilməyibsə {hədiyyə}-li mətn əvəzinə hədiyyəsiz default (müştəriyə boş vəd olmasın)
+            var before = c.DaysUntil > 0;
+            var title = giftOn && giftText == null && NotificationTemplate.HasGiftPlaceholder(s.Title)
+                ? (before ? DefaultBirthdayTitleBefore : DefaultBirthdayTitle) : s.Title;
+            var body = giftOn && giftText == null && NotificationTemplate.HasGiftPlaceholder(s.Body)
+                ? (before ? DefaultBirthdayBodyBeforeNoGift : DefaultBirthdayBodyNoGift) : s.Body;
+            var target = new Target(c.Id, c.UserId, c.FirstName, giftText, c.Birthday.ToString("dd.MM"), cardId);
+            return await DeliverAsync(summaryLogId, s.TenantId, new List<Target> { target }, title, body, s.ToApp, s.ToWallet, tenant.CompanyName, ct);
+        }
+
+        private async Task<int> CreateBirthdaySummaryLogAsync(TenantBirthdaySetting s, DateTime today, int plannedCount, CancellationToken ct)
+        {
+            var giftOn = s.GiftEnabled && s.GiftValue > 0;
+            var log = new TenantNotificationLog
+            {
+                TenantId = s.TenantId,
+                Scope = "birthday",
+                Title = Truncate(s.Title, 200),
+                Body = s.Body,
+                RecipientCount = plannedCount,
+                Source = TenantNotificationLog.SourceBirthday,
+                Channels = Channels(s.ToApp, s.ToWallet),
+                AudienceSummary = $"Ad günü ({today:dd.MM.yyyy}" + (s.DaysBefore > 0 ? $", {s.DaysBefore} gün əvvəl" : "") + ")"
+                                  + (giftOn ? " · hədiyyə ilə" : ""),
+                RegUserId = SystemUserId,
+                RegDate = DateTime.UtcNow,
+                IsActive = true
+            };
+            _db.TenantNotificationLogs.Add(log);
+            await _db.SaveChangesAsync(ct);
+            _db.Entry(log).State = EntityState.Detached;
+            return log.Id;
+        }
+
+        /// <summary>Sayğaclar birbaşa UPDATE ilə (döngüdə ChangeTracker.Clear ola bilər); 0 alıcı → sətir silinir.</summary>
+        private async Task FinalizeBirthdaySummaryLogAsync(int logId, int recipients, DeliveryResult total, CancellationToken ct)
+        {
+            if (recipients == 0)
+            {
+                await _db.TenantNotificationLogs.Where(l => l.Id == logId).ExecuteDeleteAsync(ct);
+                return;
+            }
+            await _db.TenantNotificationLogs.Where(l => l.Id == logId)
+                .ExecuteUpdateAsync(set => set
+                    .SetProperty(l => l.RecipientCount, recipients)
+                    .SetProperty(l => l.AppTargets, total.AppTargets)
+                    .SetProperty(l => l.AppSent, total.AppSent)
+                    .SetProperty(l => l.WalletTargets, total.WalletTargets)
+                    .SetProperty(l => l.WalletSent, total.WalletSent), ct);
+        }
 
         private async Task MarkRunAsync(int settingId, DateTime localToday, CancellationToken ct)
         {
@@ -859,24 +1121,35 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .ExecuteUpdateAsync(set => set.SetProperty(x => x.LastRunLocalDate, localToday), ct);
         }
 
-        /// <summary>Müştərinin bu tenant-dakı aktiv kartına hədiyyə: xal kartı ₼ (müddətli ola bilər), möhür kartı möhür. Hədiyyə mətni qaytarır.</summary>
-        private async Task<string?> GrantBirthdayGiftAsync(TenantBirthdaySetting s, int customerId, BirthdayNotificationLog log, CancellationToken ct)
+        /// <summary>
+        /// Müştərinin ayardakı növə uyğun ilk aktiv kartına hədiyyə: Points → xal/tier kartına ₼ (müddət ad günündən), Stamps → möhür,
+        /// FreeItem → CompletedCycles +N. (mətn, kartId) qaytarır; uyğun kart yoxdursa mətn null (bildiriş hədiyyəsiz gedir).
+        /// </summary>
+        private async Task<(string? Text, int? CardId)> GrantBirthdayGiftAsync(TenantBirthdaySetting s, int customerId, BirthdayNotificationLog log, int daysUntilBirthday, CancellationToken ct)
         {
-            var card = await _db.LoyaltyCards
+            var cards = await _db.LoyaltyCards
                 .Include(lc => lc.LoyaltyProgram).ThenInclude(p => p.CardTemplate)
                 .Where(lc => lc.CustomerId == customerId && lc.TenantId == s.TenantId && lc.IsActive && lc.Status == CardStatus.Active)
                 .OrderBy(lc => lc.Id)
-                .FirstOrDefaultAsync(ct);
-            if (card == null) return null;
+                .ToListAsync(ct);
+            static CardTemplateType TypeOf(LoyaltyCard lc) => lc.LoyaltyProgram?.CardTemplate?.EffectiveType ?? CardTemplateType.PointsBased;
+            var card = cards.FirstOrDefault(lc => BirthdayGiftMath.IsCompatible(s.GiftType, TypeOf(lc)));
+            if (card == null)
+            {
+                _logger.LogWarning("Birthday gift skipped: no compatible card. TenantId={TenantId} CustomerId={CustomerId} GiftType={GiftType} Cards={Cards}",
+                    s.TenantId, customerId, s.GiftType, cards.Count);
+                return (null, cards.FirstOrDefault()?.Id);
+            }
 
             var template = card.LoyaltyProgram?.CardTemplate;
-            var type = template?.EffectiveType ?? CardTemplateType.PointsBased;
-            var isStamp = type == CardTemplateType.ProgressBased;
-            var delta = isStamp ? Math.Floor(s.GiftValue) : s.GiftValue;
-            if (delta <= 0) return null;
+            var type = TypeOf(card);
+            var isPoints = s.GiftType == BirthdayGiftType.Points;
+            var totalSteps = template?.TotalSteps ?? 10;
+            var delta = BirthdayGiftMath.Delta(s.GiftType, s.GiftValue, totalSteps);
+            if (delta <= 0) return (null, card.Id);
 
-            BalanceMath.ApplyDelta(card, new CardTemplateSnapshot { TemplateType = type, TotalSteps = template?.TotalSteps ?? 10 }, delta);
-            if (!isStamp) card.LifetimePoints += delta;
+            BalanceMath.ApplyDelta(card, new CardTemplateSnapshot { TemplateType = type, TotalSteps = totalSteps }, delta);
+            if (isPoints) card.LifetimePoints += delta;
             card.EditDate = DateTime.UtcNow;
 
             var now = DateTime.UtcNow;
@@ -895,25 +1168,28 @@ namespace Loyalty.Business.Services.Implementations.Main
                 LocalOccurredAt = DateTimeOffset.UtcNow,
                 TimeZoneIdUsed = "UTC"
             });
-            if (!isStamp && s.GiftExpiryDays.HasValue)
+            if (isPoints && s.GiftExpiryDays.HasValue)
             {
                 _db.BonusGrants.Add(new BonusGrant
                 {
                     TenantId = s.TenantId, LoyaltyCardId = card.Id, Source = "birthday", Amount = delta,
-                    GrantedAtUtc = now, ExpiresAtUtc = now.AddDays(s.GiftExpiryDays.Value), Status = BonusGrantStatus.Active,
+                    GrantedAtUtc = now, ExpiresAtUtc = BirthdayGiftMath.ExpiryUtc(now, daysUntilBirthday, s.GiftExpiryDays.Value),
+                    Status = BonusGrantStatus.Active,
                     RegUserId = SystemUserId, RegDate = now, IsActive = true
                 });
             }
-            log.GiftAmount = delta;
+            var units = BirthdayGiftMath.Units(s.GiftType, s.GiftValue);
+            log.GiftAmount = units;
+            log.GiftType = (int)s.GiftType;
             log.LoyaltyCardId = card.Id;
             await _db.SaveChangesAsync(ct);
 
-            // Wallet pass balansı (Apple + Google) — background; POS (iiko) balansı — xal kartı
+            // Wallet pass balansı (Apple + Google) — background; POS (iiko) balansı — yalnız xal
             try { BackgroundJob.Enqueue<IWalletPushJob>(j => j.RunAsync(card.Id, card.LoyaltyProgramId, delta)); }
             catch (Exception ex) { _logger.LogWarning(ex, "Birthday gift wallet push enqueue failed. CardId={CardId}", card.Id); }
-            if (!isStamp) await SyncPosSafeAsync(card.TenantId, card.CustomerId, card.CurrentPoints, ct);
+            if (isPoints) await SyncPosSafeAsync(card.TenantId, card.CustomerId, card.CurrentPoints, ct);
 
-            return NotificationTemplate.GiftText(delta, isStamp);
+            return (NotificationTemplate.GiftText(units, s.GiftType, template?.FreeRewardLabel, s.GiftLabel), card.Id);
         }
 
         private async Task SyncPosSafeAsync(int tenantId, int customerId, decimal currentPoints, CancellationToken ct)

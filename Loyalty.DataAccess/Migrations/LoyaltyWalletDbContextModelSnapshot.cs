@@ -211,6 +211,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<decimal?>("GiftAmount")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<int?>("GiftType")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -3663,6 +3666,9 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<int>("DaysBefore")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("EditDate")
                         .HasColumnType("datetime2");
 
@@ -3677,6 +3683,15 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<int?>("GiftExpiryDays")
                         .HasColumnType("int");
+
+                    b.Property<string>("GiftLabel")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("GiftType")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
 
                     b.Property<decimal>("GiftValue")
                         .HasColumnType("decimal(18,2)");
@@ -4094,6 +4109,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int?>("AppSent")
                         .HasColumnType("int");
 
+                    b.Property<int?>("AppTargets")
+                        .HasColumnType("int");
+
                     b.Property<string>("AudienceSummary")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -4155,11 +4173,70 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int?>("WalletSent")
                         .HasColumnType("int");
 
+                    b.Property<int?>("WalletTargets")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "RegDate");
 
                     b.ToTable("TenantNotificationLogs");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantNotificationRecipient", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("AppSent")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AppTarget")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("LoyaltyCardId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantNotificationLogId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("WalletSent")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("WalletTarget")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantNotificationLogId");
+
+                    b.HasIndex("TenantId", "CustomerId");
+
+                    b.ToTable("TenantNotificationRecipients", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TimeZone", b =>
@@ -5705,6 +5782,15 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("Tenant");
 
                     b.Navigation("TimeZone");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.TenantNotificationRecipient", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.TenantNotificationLog", null)
+                        .WithMany()
+                        .HasForeignKey("TenantNotificationLogId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Transaction", b =>

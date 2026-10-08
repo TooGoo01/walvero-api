@@ -136,19 +136,66 @@ namespace Loyalty.Business.Helpers
             var thisYear = At(localToday.Year);
             return thisYear >= localToday.Date ? thisYear : At(localToday.Year + 1);
         }
+
+        /// <summary>
+        /// [bu gün, bu gün + daysBefore] aralığındakı bütün günlər üçün SQL (ay*100+gün) açarları (29 fevral qaydası daxil).
+        /// Aralıq skanı: ayar 0→7 dəyişəndə və ya job bir gün işləməyəndə heç kim atlanmır — unikal (CustomerId, Year) bir göndəriş verir.
+        /// </summary>
+        public static IReadOnlyList<int> BirthdayKeysInRange(DateTime localToday, int daysBefore)
+        {
+            var keys = new HashSet<int>();
+            for (var i = 0; i <= Math.Max(0, daysBefore); i++)
+                foreach (var (m, d) in BirthdayKeys(localToday.Date.AddDays(i)))
+                    keys.Add(m * 100 + d);
+            return keys.ToList();
+        }
+
+        /// <summary>Aralıq skanında müştərinin real ad günü (bu il/gələn il); aralıqdan kənardırsa null.</summary>
+        public static DateTime? BirthdayWithin(DateTime dob, DateTime localToday, int daysBefore)
+        {
+            var next = NextBirthday(dob, localToday);
+            return (next - localToday.Date).TotalDays <= Math.Max(0, daysBefore) ? next : null;
+        }
     }
 
-    /// <summary>Mesaj şablonu: {ad}, {restoran}, {hədiyyə} (həmçinin {hediyye}).</summary>
+    /// <summary>Ad günü hədiyyəsi riyaziyyatı (pure — testlənir).</summary>
+    public static class BirthdayGiftMath
+    {
+        /// <summary>Points yalnız xal/tier kartına, Stamps/FreeItem yalnız möhür kartına yazılır.</summary>
+        public static bool IsCompatible(BirthdayGiftType type, CardTemplateType effectiveType) =>
+            type == BirthdayGiftType.Points
+                ? effectiveType != CardTemplateType.ProgressBased
+                : effectiveType == CardTemplateType.ProgressBased;
+
+        /// <summary>Göstərmə vahidi: Points ₼ (0.01 dəqiqlik), Stamps/FreeItem tam ədəd.</summary>
+        public static decimal Units(BirthdayGiftType type, decimal value) =>
+            type == BirthdayGiftType.Points ? Math.Round(value, 2) : Math.Floor(value);
+
+        /// <summary>Karta yazılan delta: Points ₼, Stamps möhür, FreeItem məhsul × TotalSteps (CompletedCycles +N).</summary>
+        public static decimal Delta(BirthdayGiftType type, decimal value, int totalSteps) => type switch
+        {
+            BirthdayGiftType.Stamps => Math.Floor(value),
+            BirthdayGiftType.FreeItem => Math.Floor(value) * Math.Max(1, totalSteps),
+            _ => Math.Round(value, 2)
+        };
+
+        /// <summary>Bonus müddəti ad günündən hesablanır: indi + (ad gününə qalan gün) + müddət.</summary>
+        public static DateTime ExpiryUtc(DateTime nowUtc, int daysUntilBirthday, int expiryDays) =>
+            nowUtc.AddDays(Math.Max(0, daysUntilBirthday) + expiryDays);
+    }
+
+    /// <summary>Mesaj şablonu: {ad}, {restoran}, {hədiyyə} (həmçinin {hediyye}), {tarix}.</summary>
     public static class NotificationTemplate
     {
-        public static string Render(string template, string? firstName, string? tenantName, string? giftText)
+        public static string Render(string template, string? firstName, string? tenantName, string? giftText, string? dateText = null)
         {
             if (string.IsNullOrEmpty(template)) return template;
             var s = template
                 .Replace("{ad}", string.IsNullOrWhiteSpace(firstName) ? "" : firstName.Trim(), StringComparison.OrdinalIgnoreCase)
                 .Replace("{restoran}", tenantName ?? "", StringComparison.OrdinalIgnoreCase)
                 .Replace("{hədiyyə}", giftText ?? "", StringComparison.OrdinalIgnoreCase)
-                .Replace("{hediyye}", giftText ?? "", StringComparison.OrdinalIgnoreCase);
+                .Replace("{hediyye}", giftText ?? "", StringComparison.OrdinalIgnoreCase)
+                .Replace("{tarix}", dateText ?? "", StringComparison.OrdinalIgnoreCase);
             // boş placeholder-dən qalan "Salam , ..." kimi artıq boşluqları təmizlə
             while (s.Contains("  ")) s = s.Replace("  ", " ");
             return s.Replace(" ,", ",").Replace(" !", "!").Trim();
@@ -157,9 +204,28 @@ namespace Loyalty.Business.Helpers
         public static bool HasPersonalPlaceholder(string? s) =>
             !string.IsNullOrEmpty(s) && s.Contains("{ad}", StringComparison.OrdinalIgnoreCase);
 
+        public static bool HasGiftPlaceholder(string? s) =>
+            !string.IsNullOrEmpty(s)
+            && (s.Contains("{hədiyyə}", StringComparison.OrdinalIgnoreCase) || s.Contains("{hediyye}", StringComparison.OrdinalIgnoreCase));
+
         /// <summary>Hədiyyə mətni: xal kartında "5 ₼", möhür kartında "2 möhür".</summary>
         public static string GiftText(decimal value, bool isStamp) =>
             isStamp ? $"{decimal.ToInt32(Math.Floor(value))} möhür" : $"{value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',')} ₼";
+
+        /// <summary>
+        /// Növə görə hədiyyə mətni: customLabel doludursa o ("1 kofe"); Points "5 ₼"; Stamps "2 möhür";
+        /// FreeItem "1 Pulsuz içki" (şablonun FreeRewardLabel-i, app-ın freeRewardText formatı ilə eyni).
+        /// </summary>
+        public static string GiftText(decimal units, BirthdayGiftType type, string? freeRewardLabel, string? customLabel)
+        {
+            if (!string.IsNullOrWhiteSpace(customLabel)) return customLabel.Trim();
+            return type switch
+            {
+                BirthdayGiftType.Stamps => GiftText(units, true),
+                BirthdayGiftType.FreeItem => $"{decimal.ToInt32(Math.Floor(units))} {(string.IsNullOrWhiteSpace(freeRewardLabel) ? "Pulsuz içki" : freeRewardLabel.Trim())}",
+                _ => GiftText(units, false)
+            };
+        }
     }
 
     /// <summary>Müddətli bonusun istifadə olunmamış hissəsi ("bonus əvvəl xərclənir").</summary>

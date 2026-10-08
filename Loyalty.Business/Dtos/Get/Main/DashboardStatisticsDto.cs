@@ -45,6 +45,32 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int TotalVisits { get; set; }
         /// <summary>Seçilən dövrdə ≥2 ziyarəti olan kartlar.</summary>
         public int RepeatCards { get; set; }
+
+        // ── Dashboard v2.3 (bildirişlər, 2026-10-06) ──
+        /// <summary>Seçilən dövrdə tenant bildirişləri (manual + planlı + ad günü) və 7 günlük geri dönüş.</summary>
+        public NotificationStatsDto? Notifications { get; set; }
+    }
+
+    public class NotificationStatsDto
+    {
+        /// <summary>Göndəriş sayı (uğurlu loglar).</summary>
+        public int Sends { get; set; }
+        public int BirthdaySends { get; set; }
+        /// <summary>Alıcı cəmi (bütün göndərişlər).</summary>
+        public int Recipients { get; set; }
+        /// <summary>≥1 cihaza FCM çatan müştəri cəmi (v3 loglar).</summary>
+        public int AppSent { get; set; }
+        /// <summary>≥1 wallet kanalı uğurlu müştəri cəmi (v3 loglar).</summary>
+        public int WalletSent { get; set; }
+        /// <summary>Alıcı sətri olan (attribution mümkün) göndərişlərin alıcı cəmi — VisitRate məxrəci.</summary>
+        public int AttributedRecipients { get; set; }
+        /// <summary>Göndərişdən sonrakı AttributionDays gündə gələn (Earned/Redeemed) alıcılar.</summary>
+        public int Visits { get; set; }
+        /// <summary>Visits / AttributedRecipients × 100.</summary>
+        public double VisitRate { get; set; }
+        /// <summary>Gələn alıcıların Earned tx məbləği cəmi (₼).</summary>
+        public decimal Revenue { get; set; }
+        public int AttributionDays { get; set; } = 7;
     }
 
     public class PeriodStatDto

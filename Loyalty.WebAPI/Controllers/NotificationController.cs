@@ -385,11 +385,21 @@ namespace Loyalty.WebAPI.Controllers
 
         [HttpGet]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
-        public async Task<IActionResult> MyHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default)
+        public async Task<IActionResult> MyHistory([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int windowDays = 7, CancellationToken ct = default)
         {
             var ctx = ResolveContext(out var err);
             if (ctx == null) return err!;
-            return FromResult(await _tenantNotifications.HistoryAsync(ctx, page, pageSize, ct));
+            return FromResult(await _tenantNotifications.HistoryAsync(ctx, page, pageSize, windowDays, ct));
+        }
+
+        /// <summary>Ad günü kampaniyası nəticələri (son N gün; geri dönüş pəncərəsi windowDays).</summary>
+        [HttpGet]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> BirthdayStats([FromQuery] int days = 365, [FromQuery] int windowDays = 7, CancellationToken ct = default)
+        {
+            var ctx = ResolveContext(out var err);
+            if (ctx == null) return err!;
+            return FromResult(await _tenantNotifications.BirthdayStatsAsync(ctx.TenantId, days, windowDays, ct));
         }
 
         [HttpGet]

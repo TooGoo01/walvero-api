@@ -1,5 +1,6 @@
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
+using Loyalty.DataAccess.Enums;
 
 namespace Loyalty.Business.Services.Abstractions.Main
 {
@@ -26,13 +27,20 @@ namespace Loyalty.Business.Services.Abstractions.Main
     {
         public bool Enabled { get; set; }
         public int SendHourLocal { get; set; } = 10;
+        /// <summary>0 = ad günü günü, 1–14 = N gün əvvəl.</summary>
+        public int DaysBefore { get; set; }
         public string Title { get; set; } = string.Empty;
         public string Body { get; set; } = string.Empty;
         public bool ToApp { get; set; } = true;
         public bool ToWallet { get; set; } = true;
         public bool GiftEnabled { get; set; }
+        /// <summary>1 = Points (₼), 2 = Stamps (möhür), 3 = FreeItem (pulsuz məhsul).</summary>
+        public BirthdayGiftType GiftType { get; set; } = BirthdayGiftType.Points;
         public decimal GiftValue { get; set; }
+        /// <summary>Yalnız Points.</summary>
         public int? GiftExpiryDays { get; set; }
+        /// <summary>{hədiyyə} üçün sərbəst mətn (≤100); boş = avtomatik.</summary>
+        public string? GiftLabel { get; set; }
     }
 
     /// <summary>Tenant admin bildirişləri v2: filtrli/planlı göndəriş, kvota, tarixçə, ad günü ayarları.</summary>
@@ -44,10 +52,13 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> ListScheduledAsync(TenantNotificationContext ctx, CancellationToken ct = default);
         Task<ServiceResult> UpdateScheduledAsync(TenantNotificationContext ctx, int id, SendTenantNotificationRequest request, CancellationToken ct = default);
         Task<ServiceResult> CancelScheduledAsync(TenantNotificationContext ctx, int id, CancellationToken ct = default);
-        Task<ServiceResult> HistoryAsync(TenantNotificationContext ctx, int page, int pageSize, CancellationToken ct = default);
+        /// <summary>Tarixçə + geri dönüş: hər göndəriş üçün alıcıların sonrakı <paramref name="windowDays"/> gündəki ziyarət/dövriyyəsi.</summary>
+        Task<ServiceResult> HistoryAsync(TenantNotificationContext ctx, int page, int pageSize, int windowDays = 7, CancellationToken ct = default);
         Task<ServiceResult> GetBirthdaySettingsAsync(int tenantId, CancellationToken ct = default);
         Task<ServiceResult> SaveBirthdaySettingsAsync(TenantNotificationContext ctx, BirthdaySettingsDto dto, CancellationToken ct = default);
         Task<ServiceResult> UpcomingBirthdaysAsync(int tenantId, int days, CancellationToken ct = default);
+        /// <summary>Ad günü kampaniyası nəticələri: son <paramref name="days"/> gün — göndəriş, hədiyyə, geri dönüş, bonus istifadəsi.</summary>
+        Task<ServiceResult> BirthdayStatsAsync(int tenantId, int days = 365, int windowDays = 7, CancellationToken ct = default);
     }
 
     /// <summary>Hangfire recurring job-ları (Program.cs). onlyTenantId — super admin əl ilə test (RunJobsNow) üçün.</summary>
