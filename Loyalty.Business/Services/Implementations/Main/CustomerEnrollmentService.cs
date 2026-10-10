@@ -354,6 +354,9 @@ UserManager<ApplicationUser> userManager,
                 return new ServiceResult(false, AppMessages.Get("NameRequired"));
             if (string.IsNullOrWhiteSpace(dto.PhoneNumber))
                 return new ServiceResult(false, AppMessages.Get("PhoneRequired"));
+            // Gələcək tarix / 7 yaşdan kiçik / 1900-dən əvvəl → rədd (iiko create_or_update belə tarixi qəbul etmir)
+            if (!BirthDateRules.IsValidInput(dto.DateOfBirth, DateTime.UtcNow))
+                return new ServiceResult(false, AppMessages.Get("DobInvalid"));
 
             // 1) Program tenant-ə məxsusdurmu?
             var program = await _programRepo.GetByIdNameAsync(dto.LoyaltyProgramId, ct);

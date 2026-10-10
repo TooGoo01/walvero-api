@@ -423,7 +423,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Email = string.IsNullOrWhiteSpace(customer.Email) ? null : customer.Email.Trim(),
                 CardTrack = primaryCard,
                 CardNumber = primaryCard,
-                Birthday = customer.DateOfBirth?.ToString("yyyy-MM-dd HH:mm:ss.fff")
+                // iiko 1900-01-01–bu gün aralığından kənar tarixi rədd edir → sahə göndərilmir
+                Birthday = Helpers.BirthDateRules.IsWithinPosRange(customer.DateOfBirth, DateTime.UtcNow)
+                    ? customer.DateOfBirth!.Value.ToString("yyyy-MM-dd HH:mm:ss.fff")
+                    : null
             };
 
             var result = await _iikoClient.CreateOrUpdateCustomerAsync(accessToken, orgId, iikoCustomer, ct);

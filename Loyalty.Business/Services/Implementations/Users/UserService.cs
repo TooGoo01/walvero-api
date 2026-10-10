@@ -1155,6 +1155,10 @@ namespace Loyalty.Business.Services.Implementations.Users
             {
                 _logger?.LogInformation("Registration started for phone: {Phone}", WalletCodeHelper.MaskPhone(request.Phone));
 
+                // Doğum tarixi: gələcək / 7 yaşdan kiçik / 1900-dən əvvəl → rədd
+                if (!BirthDateRules.IsValidInput(request.DateOfBirth, DateTime.UtcNow))
+                    return ServiceResult<OtpRequiredResponse>.Fail(AppMessages.Get("DobInvalid"));
+
                 // Check if user with this phone already exists
                 var existingUser = await _dbContext.Users
                     .FirstOrDefaultAsync(u => u.PhoneNumber == request.Phone || u.UserName == request.Phone, ct);
@@ -1721,6 +1725,10 @@ namespace Loyalty.Business.Services.Implementations.Users
                 {
                     return ServiceResult<UpdateProfileResponseDto>.Fail(AppMessages.Get("UserNotFound"));
                 }
+
+                // Doğum tarixi: gələcək / 7 yaşdan kiçik / 1900-dən əvvəl → rədd (Customer-lərə və iiko-ya kopyalanır)
+                if (!BirthDateRules.IsValidInput(dto.DateOfBirth, DateTime.UtcNow))
+                    return ServiceResult<UpdateProfileResponseDto>.Fail(AppMessages.Get("DobInvalid"));
 
                 // Əvvəlcə telefon nömrəsi istisna olmaqla digər məlumatları yenilə
                 if (!string.IsNullOrEmpty(dto.Name))

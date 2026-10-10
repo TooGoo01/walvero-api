@@ -1,5 +1,6 @@
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Helpers;
+using Loyalty.Business.Resources;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.Business.Services.Abstractions.Sequences;
@@ -49,6 +50,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             var phone = PhoneNormalizer.ToE164(dto.Phone);
             if (phone == null || phone.Length != 13 || !phone.StartsWith("+994"))
                 return ServiceResult<ImportCustomerResultDto>.Fail($"Telefon Azərbaycan nömrəsi deyil: '{dto.Phone}'.");
+            if (!BirthDateRules.IsValidInput(dto.DateOfBirth, DateTime.UtcNow))
+                return ServiceResult<ImportCustomerResultDto>.Fail(AppMessages.Get("DobInvalid"));
 
             // 2) Proqram
             var program = await _programRepo.GetByIdNameAsync(dto.LoyaltyProgramId, ct);

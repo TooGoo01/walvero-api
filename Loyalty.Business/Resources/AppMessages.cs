@@ -27,6 +27,7 @@ namespace Loyalty.Business.Resources
             ["AccountBlocked"] = ("Hesabınız bloklanıb.", "Your account is blocked.", "Ваш аккаунт заблокирован."),
             ["PhoneAlreadyExists"] = ("Bu nömrə ilə hesab artıq mövcuddur.", "An account with this phone number already exists.", "Аккаунт с этим номером уже существует."),
             ["RegistrationFailed"] = ("Qeydiyyat alınmadı. Yenidən cəhd edin.", "Registration failed. Please try again.", "Регистрация не удалась. Попробуйте ещё раз."),
+            ["DobInvalid"] = ("Doğum tarixi düzgün deyil: gələcək tarix ola bilməz, yaş ən azı 7 olmalıdır.", "Invalid date of birth: it cannot be in the future and the person must be at least 7 years old.", "Неверная дата рождения: не может быть в будущем, возраст не менее 7 лет."),
             ["PasswordTooWeak"] = ("Şifrə çox sadədir. Ən azı 6 simvol istifadə edin.", "Password is too weak. Use at least 6 characters.", "Пароль слишком простой. Используйте минимум 6 символов."),
             ["PhoneNotFound"] = ("Bu nömrə ilə hesab tapılmadı.", "No account found with this number.", "Аккаунт с этим номером не найден."),
             ["PasswordTooShort"] = ("Şifrə ən azı {0} simvol olmalıdır.", "Password must be at least {0} characters.", "Пароль должен содержать не менее {0} символов."),

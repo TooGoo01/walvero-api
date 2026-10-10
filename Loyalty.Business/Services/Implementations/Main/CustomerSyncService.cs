@@ -203,8 +203,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Email = string.IsNullOrWhiteSpace(customer.Email) ? null : customer.Email.Trim(),
                 CardTrack = actualBarcode,
                 CardNumber = actualBarcode,
-                Birthday = customer.DateOfBirth?.ToString("yyyy-MM-dd HH:mm:ss.fff")
+                // iiko 1900-01-01–bu gün aralığından kənar tarixi rədd edir (Validation_DateValidationError) → sahə göndərilmir, sync davam edir
+                Birthday = Helpers.BirthDateRules.IsWithinPosRange(customer.DateOfBirth, DateTime.UtcNow)
+                    ? customer.DateOfBirth!.Value.ToString("yyyy-MM-dd HH:mm:ss.fff")
+                    : null
             };
+            if (customer.DateOfBirth.HasValue && iikoCustomer.Birthday == null)
+                _logger.LogWarning("iiko sync: DOB out of range, birthday skipped. customerId={CustomerId} dob={Dob}", customerId, customer.DateOfBirth);
 
             var result = await _iikoClient.CreateOrUpdateCustomerAsync(accessToken, orgId, iikoCustomer, ct);
             if (result == null)

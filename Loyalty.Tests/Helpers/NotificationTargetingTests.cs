@@ -12,12 +12,41 @@ public class NotificationTargetingTests
     [Theory]
     [InlineData("1995-05-10", "2026-01-01", true)]
     [InlineData("2026-09-19", "2026-09-19", false)]   // picker default = qeydiyyat günü
-    [InlineData("2023-01-01", "2026-01-01", false)]   // yaş < 6
-    [InlineData("2020-10-02", "2026-01-01", true)]    // tam 6 yaş
-    [InlineData("2020-10-03", "2026-01-01", false)]   // 6-ya 1 gün qalıb
+    [InlineData("2023-01-01", "2026-01-01", false)]   // yaş < 7
+    [InlineData("2019-10-02", "2026-01-01", true)]    // tam 7 yaş
+    [InlineData("2019-10-03", "2026-01-01", false)]   // 7-yə 1 gün qalıb
     [InlineData("1990-03-15", "1990-03-15", false)]   // DOB = qeydiyyat günü (köhnə qeyd belə)
     public void BirthDate_IsUsable(string dob, string reg, bool expected)
         => BirthDateRules.IsUsable(DateTime.Parse(dob), DateTime.Parse(reg), Today).Should().Be(expected);
+
+    // Giriş validasiyası (web/app/import): boş ola bilər; 1900-01-01 ≤ DOB ≤ bu gün − 7 il
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("2026-11-11", false)]   // gələcək (Pims 1665 halı)
+    [InlineData("2026-10-02", false)]   // bu gün
+    [InlineData("2021-01-01", false)]   // 5 yaş
+    [InlineData("2019-10-03", false)]   // 7-yə 1 gün qalıb
+    [InlineData("2019-10-02", true)]    // tam 7 yaş
+    [InlineData("1990-05-10", true)]
+    [InlineData("1900-01-01", true)]
+    [InlineData("1899-12-31", false)]   // iiko alt həddi
+    public void DobInput_Valid(string? dob, bool expected)
+        => BirthDateRules.IsValidInput(dob == null ? null : DateTime.Parse(dob), Today).Should().Be(expected);
+
+    // iiko-ya göndərmə aralığı: 1900-01-01 ≤ DOB ≤ bu gün (köhnə 5 yaş qeydi göndərilir, gələcək göndərilmir)
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("2021-01-01", true)]
+    [InlineData("2026-10-02", true)]
+    [InlineData("2026-10-03", false)]
+    [InlineData("2026-11-11", false)]
+    [InlineData("1899-12-31", false)]
+    public void DobPosRange(string? dob, bool expected)
+        => BirthDateRules.IsWithinPosRange(dob == null ? null : DateTime.Parse(dob), Today).Should().Be(expected);
+
+    [Fact]
+    public void MaxDobForInput_IsSevenYearsAgo()
+        => BirthDateRules.MaxDobForInput(Today).Should().Be(new DateTime(2019, 10, 2));
 
     [Fact]
     public void BirthDate_Null_NotUsable() => BirthDateRules.IsUsable(null, Today, Today).Should().BeFalse();

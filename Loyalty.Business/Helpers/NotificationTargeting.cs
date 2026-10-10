@@ -87,10 +87,27 @@ namespace Loyalty.Business.Helpers
     /// <summary>Doğum tarixi, yaş və ad günü qaydaları (pure — testlənir).</summary>
     public static class BirthDateRules
     {
-        /// <summary>Bundan kiçik "yaş" real sayılmır (date picker default-u, səhv giriş).</summary>
-        public const int MinPlausibleAge = 6;
+        /// <summary>Minimum yaş: giriş validasiyası (web/app/import) və ad günü filtri üçün eyni qayda (2026-10-09: 7).</summary>
+        public const int MinPlausibleAge = 7;
+        /// <summary>Alt hədd — iiko 1900-dən əvvəlki tarixi qəbul etmir.</summary>
+        public static readonly DateTime MinDob = new(1900, 1, 1);
 
-        /// <summary>DOB istifadəyə yararlıdır: yaş ≥ 6 və DOB qeydiyyat günü ilə eyni deyil (picker default-u).</summary>
+        /// <summary>Seçilə bilən ən son doğum tarixi: bu gün − MinPlausibleAge il.</summary>
+        public static DateTime MaxDobForInput(DateTime today) => today.Date.AddYears(-MinPlausibleAge);
+
+        /// <summary>Giriş validasiyası: boş ola bilər; doludursa 1900-01-01 ≤ DOB ≤ bu gün − 7 il (gələcək tarix və 7 yaşdan kiçik rədd).</summary>
+        public static bool IsValidInput(DateTime? dob, DateTime today)
+        {
+            if (!dob.HasValue) return true;
+            var d = dob.Value.Date;
+            return d >= MinDob && d <= MaxDobForInput(today);
+        }
+
+        /// <summary>POS-a (iiko) göndərilə bilər: 1900-01-01 ≤ DOB ≤ bu gün (iiko qaydası); kənar olanda sahə göndərilmir.</summary>
+        public static bool IsWithinPosRange(DateTime? dob, DateTime today)
+            => dob.HasValue && dob.Value.Date >= MinDob && dob.Value.Date <= today.Date;
+
+        /// <summary>DOB istifadəyə yararlıdır: yaş ≥ MinPlausibleAge və DOB qeydiyyat günü ilə eyni deyil (picker default-u).</summary>
         public static bool IsUsable(DateTime? dob, DateTime regDate, DateTime localToday)
         {
             if (!dob.HasValue) return false;
