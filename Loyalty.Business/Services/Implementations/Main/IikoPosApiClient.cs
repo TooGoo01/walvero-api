@@ -19,7 +19,9 @@ namespace Loyalty.Business.Services.Implementations.Main
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            // iiko bəzi cavablarda PascalCase açar qaytarır ("Programs" — withoutMarketingCampaigns=false) → oxuma case-insensitive
+            PropertyNameCaseInsensitive = true
         };
 
         public IikoPosApiClient(
@@ -200,6 +202,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             return response?.Programs;
         }
 
+        public async Task<List<IikoLoyaltyProgramDetail>?> GetLoyaltyProgramsDetailedAsync(
+            string accessToken, Guid organizationId, CancellationToken ct = default)
+        {
+            var response = await PostAsync<IikoLoyaltyProgramsDetailedResponse>(
+                accessToken, "/api/1/loyalty/iiko/program", new { organizationId, withoutMarketingCampaigns = false }, ct);
+            if (response == null)
+                _logger.LogWarning("iiko loyalty programs (detailed) unavailable for organizationId={OrgId}", organizationId);
+            return response?.Programs;
+        }
+
         public async Task<IikoNomenclatureResponse?> GetNomenclatureAsync(
             string accessToken, Guid organizationId, CancellationToken ct = default)
         {
@@ -340,6 +352,11 @@ namespace Loyalty.Business.Services.Implementations.Main
         private class IikoLoyaltyProgramsResponse
         {
             public List<IikoLoyaltyProgram>? Programs { get; set; }
+        }
+
+        private class IikoLoyaltyProgramsDetailedResponse
+        {
+            public List<IikoLoyaltyProgramDetail>? Programs { get; set; }
         }
     }
 }

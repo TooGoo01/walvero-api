@@ -110,9 +110,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                 // iiko müştərisi org-lar arası paylaşılır → hər iiko id üçün bir dəfə; uğursuzluq (artıq var / başqasında) yalnız log.
                 if (cardAddedTo.Add(v.IikoCustomerId.Value))
                 {
-                    var tracks = new[] { ctx.DefaultCard?.BarcodeValue, ctx.WalveroId?.ToString(), ctx.LookupCardTrack }
-                        .Where(t => !string.IsNullOrWhiteSpace(t))
-                        .Select(t => t!.Trim())
+                    // Əsas track inteqrasiyanın CardTrackMode-una görə (son N rəqəm ola bilər); tam barkod + WalveroId həmişə
+                    var integ = ctx.Integrations.FirstOrDefault(i => i.Id == v.IntegrationId);
+                    var wanted = PosCardTrack.AllTracks(
+                        integ?.CardTrackMode ?? PosCardTrackMode.FullBarcode, integ?.CardTrackDigits,
+                        ctx.DefaultCard?.BarcodeValue, ctx.WalveroId?.ToString());
+                    if (!string.IsNullOrWhiteSpace(ctx.LookupCardTrack)) wanted.Add(ctx.LookupCardTrack.Trim());
+                    var tracks = wanted
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .Where(t => !v.IikoCardTracks.Contains(t, StringComparer.OrdinalIgnoreCase));
                     foreach (var track in tracks)

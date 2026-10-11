@@ -1,4 +1,4 @@
-﻿using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
@@ -33,6 +33,8 @@ namespace Loyalty.WebAPI.Controllers
         private readonly LoyaltyWalletDbContext _dbContext;
         private readonly ITimeZoneService _timeZoneService;
         private readonly ITenantStatusGuard _tenantStatusGuard;
+        private readonly ITenantIntegrationRepository _tenantIntegrationRepo;
+        private readonly ILoyaltyCardRepository _cardRepository;
         private readonly ILogger<RedeemController> _logger;
 
         public RedeemController(
@@ -46,9 +48,13 @@ namespace Loyalty.WebAPI.Controllers
             ICustomerRepository customerRepository,
             LoyaltyWalletDbContext dbContext,
             ITimeZoneService timeZoneService,
-            ITenantStatusGuard tenantStatusGuard)
+            ITenantStatusGuard tenantStatusGuard,
+            ITenantIntegrationRepository tenantIntegrationRepo,
+            ILoyaltyCardRepository cardRepository)
         {
             _tenantStatusGuard = tenantStatusGuard;
+            _tenantIntegrationRepo = tenantIntegrationRepo;
+            _cardRepository = cardRepository;
             _tenantProvider = tenantProvider;
             _redeemService = redeemService;
             _programSvc = programSvc;
@@ -248,6 +254,23 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
             // First, try to find by barcode (priority)
             var cardModel = await _cardSvc.GetByBarcodeValueAsync(tenantId, codeStr);
             card = cardModel.Data as GetLoyaltyCardDto;
+
+            // iiko "son N rəqəm" rejimi: kassir qısa kod yazıb → barkod sonluğu ilə tap, sonra tam barkodla DTO-nu oxu
+            if (card == null && codeStr.Length > 0 && codeStr.All(char.IsDigit))
+            {
+                var iiko = await _tenantIntegrationRepo.GetActiveByTenantAndSourceAsync(tenantId, "iiko_pos", ct);
+                if (iiko != null && iiko.CardTrackMode == PosCardTrackMode.LastDigits && PosCardTrack.IsShortCode(codeStr, iiko.CardTrackDigits))
+                {
+                    var (byShort, matches) = await _cardRepository.GetByBarcodeSuffixAsync(tenantId, codeStr, ct);
+                    if (matches > 1)
+                        return NotFound(new { success = false, message = "Qısa kod bir neçə karta uyğundur — tam barkod istifadə edin" });
+                    if (byShort?.BarcodeValue != null)
+                    {
+                        var shortModel = await _cardSvc.GetByBarcodeValueAsync(tenantId, byShort.BarcodeValue);
+                        card = shortModel.Data as GetLoyaltyCardDto;
+                    }
+                }
+            }
             
             if (card == null && long.TryParse(codeStr, out long walveroId))
             {

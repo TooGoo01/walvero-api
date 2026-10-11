@@ -402,6 +402,9 @@ namespace Loyalty.DataAccess.Context
                 entity.HasIndex(lc => lc.CardNumber).IsUnique();
                 entity.Property(lc => lc.BarcodeValue).HasMaxLength(200);
                 entity.Property(lc => lc.BarcodeType).HasConversion<int>();
+                // iiko webhook / scanner: BarcodeValue dəqiq və son-N (LIKE '%nnnn') axtarışı tenant daxilində
+                entity.HasIndex(lc => new { lc.TenantId, lc.BarcodeValue })
+                    .HasDatabaseName("IX_LoyaltyCards_Tenant_BarcodeValue");
                 entity.Property(lc => lc.Status).HasConversion<int>();
 
                 entity.Property(lc => lc.CurrentPoints).HasPrecision(18, 2);
@@ -1139,6 +1142,7 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(ti => ti.ApiTokenEncrypted).HasMaxLength(2000);
                 entity.Property(ti => ti.WalletTokenHash).HasMaxLength(128);
                 entity.Property(ti => ti.WalletTokenEncrypted).HasMaxLength(2000);
+                entity.Property(ti => ti.CardTrackMode).HasConversion<int>().HasDefaultValue(PosCardTrackMode.FullBarcode);
 
                 entity.HasIndex(ti => new { ti.TenantId, ti.IntegrationTypeId }).IsUnique();
                 entity.HasIndex(ti => ti.WalletTokenHash);

@@ -1,4 +1,4 @@
-﻿using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Entities.Main;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,6 +12,11 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         Task<LoyaltyCard?> GetByCardNumberAsync(int tenantId, string cardNumber, CancellationToken ct = default);
         Task<LoyaltyCard?> GetByBarcodeValueAsync(int tenantId, string cardNumber, CancellationToken ct = default);
         Task<bool> ExistsAsync(int tenantId, string cardNumber, CancellationToken ct = default);
+        /// <summary>
+        /// Kassirin yazdığı qısa kod (barkodun son N rəqəmi) ilə aktiv kart. Matches = tenant daxilində uyğun kart sayı;
+        /// 1 → Card dolu (tracked, Customer+applicationUser ilə), 0 və ya 2+ → Card null (ambiguous).
+        /// </summary>
+        Task<(LoyaltyCard? Card, int Matches)> GetByBarcodeSuffixAsync(int tenantId, string suffix, CancellationToken ct = default);
         Task<List<LoyaltyCard>> ListByCustomerAsync(int tenantId, int customerId, CancellationToken ct = default);
         Task<LoyaltyCard?> GetLastActiveByCustomerAsync(int tenantId, int programId, int customerId, CancellationToken ct);
         Task<LoyaltyCard?> GetLastInactiveByCustomerAsync(int tenantId, int programId, int customerId, CancellationToken ct);

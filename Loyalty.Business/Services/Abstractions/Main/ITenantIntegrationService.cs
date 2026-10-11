@@ -1,4 +1,6 @@
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
+using Loyalty.DataAccess.Enums;
 
 namespace Loyalty.Business.Services.Abstractions.Main
 {
@@ -37,6 +39,10 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ApiToken { get; set; }
         public string? ApiAppId { get; set; }
         public string? ApiSecret { get; set; }
+        /// <summary>iiko əsas kart track rejimi (1 tam barkod, 2 Walvero ID, 3 son N rəqəm). Boş = tam barkod.</summary>
+        public PosCardTrackMode? CardTrackMode { get; set; }
+        /// <summary>LastDigits üçün N (4–8).</summary>
+        public int? CardTrackDigits { get; set; }
     }
 
     public class TenantIntegrationCreateResult
@@ -55,6 +61,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? DisplayName { get; set; }
         public string? ExternalVenueId { get; set; }
         public bool IsActive { get; set; }
+        public PosCardTrackMode CardTrackMode { get; set; }
+        public int? CardTrackDigits { get; set; }
+        public string CardTrackLabel { get; set; } = string.Empty;
     }
 
     public class TenantIntegrationDetailDto
@@ -73,6 +82,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ApiUsername { get; set; }
         public string? ApiAppId { get; set; }
         public bool IsActive { get; set; }
+        public PosCardTrackMode CardTrackMode { get; set; }
+        public int? CardTrackDigits { get; set; }
+        public string CardTrackLabel { get; set; } = string.Empty;
     }
 
     public class TenantIntegrationUpdateDto
@@ -88,6 +100,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ApiAppId { get; set; }
         public string? ApiSecret { get; set; }
         public bool? IsActive { get; set; }
+        /// <summary>iiko əsas kart track rejimi; yalnız super admin dəyişir (controller yoxlayır).</summary>
+        public PosCardTrackMode? CardTrackMode { get; set; }
+        public int? CardTrackDigits { get; set; }
     }
 
     public class TenantIntegrationVenueDto

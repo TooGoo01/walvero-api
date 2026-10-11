@@ -17,5 +17,9 @@ namespace Loyalty.Business.Models.TenantIntegration
         // Multi-org (per-branch): resolved via TenantIntegrationVenue. Null for legacy single-org tenants.
         public int? BranchId { get; set; }
         public int? TenantIntegrationVenueId { get; set; }
+
+        // iiko kart track rejimi (TenantIntegration.CardTrackMode) — LastDigits-də webhook Customer.CardNumber qısa kod ola bilər
+        public Loyalty.DataAccess.Enums.PosCardTrackMode CardTrackMode { get; set; } = Loyalty.DataAccess.Enums.PosCardTrackMode.FullBarcode;
+        public int? CardTrackDigits { get; set; }
     }
 }

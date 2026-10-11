@@ -908,6 +908,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var byWalvero = await _customerRepo.GetByWalveroIdAsync(context.TenantId, walveroId, ct);
                 customerId = byWalvero?.Id;
             }
+            // Fallback: inteqrasiya "son N rəqəm" rejimindədirsə kassir qısa kodu yazıb → barkod sonluğu ilə tap.
+            // 2+ uyğunluq → tapılmır (ambiguous), dəqiq barkod/telefon lazımdır.
+            if (customerId == null && context.CardTrackMode == PosCardTrackMode.LastDigits
+                && PosCardTrack.IsShortCode(request.CustomerCardNumber, context.CardTrackDigits))
+            {
+                var (byShort, matches) = await _loyaltyCardRepo.GetByBarcodeSuffixAsync(context.TenantId, request.CustomerCardNumber!.Trim(), ct);
+                if (matches > 1)
+                    return IikoFail(IikoFailureKind.Permanent, $"Ambiguous short card code {request.CustomerCardNumber} ({matches} cards)");
+                customerId = byShort?.CustomerId;
+            }
             if (customerId == null)
                 return IikoFail(IikoFailureKind.Retriable, $"Customer not found (extId={request.ExternalCustomerId}, phone={request.CustomerPhone}, card={request.CustomerCardNumber})");
 

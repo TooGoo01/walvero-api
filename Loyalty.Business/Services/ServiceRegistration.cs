@@ -166,6 +166,8 @@ namespace Loyalty.Business.Services
             services.AddScoped<IPosNomenclatureJobs>(sp => sp.GetRequiredService<PosEarnExclusionService>());
             services.AddScoped<IPosObservedProductRecorder>(sp => sp.GetRequiredService<PosEarnExclusionService>());
             services.AddScoped<IPosLoyaltyDiscountTypeService, PosLoyaltyDiscountTypeService>();
+            // iiko proqram qaydaları (read-only, tenant admin) — canlı iiko + 5 dəq cache
+            services.AddScoped<IIikoRulesService, IikoRulesService>();
             services.AddScoped<IRewardCrudService, RewardCrudService>();
             services.AddScoped<IWalletWebhookService, WalletWebhookService>();
             services.AddScoped<IMonyoPosApiClient, MonyoPosApiClient>();

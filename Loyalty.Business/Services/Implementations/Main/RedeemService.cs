@@ -1,4 +1,4 @@
-﻿// Business/Services/Implementations/Main/RedeemService.cs
+// Business/Services/Implementations/Main/RedeemService.cs
 using Hangfire;
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
@@ -50,6 +50,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ITenantStatusGuard _tenantStatusGuard;
         private readonly IWelcomeBonusService _welcomeBonus;
+        private readonly ITenantIntegrationRepository _tenantIntegrationRepo;
         public RedeemService(
             ILoyaltyCardRepository cardSvc,
             ILoyaltyProgramRepository programSvc,
@@ -72,9 +73,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             Hangfire.IBackgroundJobClient jobClient,
             IServiceScopeFactory scopeFactory,
             ITenantStatusGuard tenantStatusGuard,
-            IWelcomeBonusService welcomeBonus)
+            IWelcomeBonusService welcomeBonus,
+            ITenantIntegrationRepository tenantIntegrationRepo)
         {
             _welcomeBonus = welcomeBonus;
+            _tenantIntegrationRepo = tenantIntegrationRepo;
             _cardSvc = cardSvc;
             _programSvc = programSvc;
             _brandingSvc = brandingSvc;
@@ -306,6 +309,25 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                     if (resolvedCustomer != null)
                         card = await FindActiveCardForCustomer(request.TenantId, resolvedCustomer.Id, request.LoyaltyProgramId, ct);
+                }
+
+                // 1b2) iiko "son N rəqəm" rejimi: kassir qısa kod yazıb → barkod sonluğu (tenant daxilində unikal olmalı)
+                if (card == null && code.All(char.IsDigit))
+                {
+                    var iiko = await _tenantIntegrationRepo.GetActiveByTenantAndSourceAsync(request.TenantId, "iiko_pos", ct);
+                    if (iiko != null && iiko.CardTrackMode == PosCardTrackMode.LastDigits && PosCardTrack.IsShortCode(code, iiko.CardTrackDigits))
+                    {
+                        var (byShort, matches) = await _cardSvc.GetByBarcodeSuffixAsync(request.TenantId, code, ct);
+                        if (matches > 1)
+                        {
+                            _logger.LogWarning("Short code ambiguous. Code={Code}, Matches={Matches}", code, matches);
+                            return Fail("Qısa kod bir neçə karta uyğundur — tam barkod və ya telefon istifadə edin.");
+                        }
+                        if (byShort != null)
+                            card = byShort.LoyaltyProgramId == request.LoyaltyProgramId
+                                ? byShort
+                                : await FindActiveCardForCustomer(request.TenantId, byShort.CustomerId, request.LoyaltyProgramId, ct);
+                    }
                 }
 
                 // 1c) Phone nömrəsi ilə axtar

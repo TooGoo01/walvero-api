@@ -1,4 +1,4 @@
-﻿using Loyalty.DataAccess.Context;
+using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
@@ -29,6 +29,22 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
 
         public Task<bool> ExistsAsync(int tenantId, string cardNumber, CancellationToken ct = default)
             => GetAsQueryable().AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.CardNumber == cardNumber, ct);
+
+        // iiko LastDigits rejimi: BarcodeValue LIKE %nnnn — tenant daxilində (IX_LoyaltyCards_Tenant_BarcodeValue),
+        // yalnız aktiv kartlar; 2+ uyğunluq → ambiguous (Card null), çağıran dəqiq barkod tələb edir.
+        public async Task<(LoyaltyCard? Card, int Matches)> GetByBarcodeSuffixAsync(int tenantId, string suffix, CancellationToken ct = default)
+        {
+            var pattern = "%" + suffix;
+            var hits = await GetAsQueryable()
+                .Include(x => x.Customer)
+                    .ThenInclude(c => c.applicationUser)
+                .AsSplitQuery()
+                .Where(x => x.TenantId == tenantId && x.IsActive && x.BarcodeValue != null && EF.Functions.Like(x.BarcodeValue, pattern))
+                .OrderByDescending(x => x.Id)
+                .Take(2)
+                .ToListAsync(ct);
+            return hits.Count == 1 ? (hits[0], 1) : (null, hits.Count);
+        }
 
         public Task<List<LoyaltyCard>> ListByCustomerAsync(int tenantId, int customerId, CancellationToken ct = default)
             => GetAsQueryable().AsNoTracking()

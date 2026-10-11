@@ -16,17 +16,20 @@ namespace Loyalty.WebAPI.Controllers
     public class TenantIntegrationController : ControllerBase
     {
         private readonly ITenantIntegrationService _service;
+        private readonly IIikoRulesService _iikoRules;
         private readonly IIntegrationTypeRepository _typeRepo;
         private readonly ITenantProvider _tenantProvider;
         private readonly IUnitOfWork _uow;
 
         public TenantIntegrationController(
             ITenantIntegrationService service,
+            IIikoRulesService iikoRules,
             IIntegrationTypeRepository typeRepo,
             ITenantProvider tenantProvider,
             IUnitOfWork uow)
         {
             _service = service;
+            _iikoRules = iikoRules;
             _typeRepo = typeRepo;
             _tenantProvider = tenantProvider;
             _uow = uow;
@@ -123,6 +126,9 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> Update(int id, [FromBody] TenantIntegrationUpdateDto dto, [FromQuery] int? tenantId, CancellationToken ct)
         {
+            // Kart track rejimi (iiko-ya hansı identifikator gedir) yalnız super admin tərəfindən dəyişilir
+            if ((dto.CardTrackMode.HasValue || dto.CardTrackDigits.HasValue) && !User.IsInRole("Super Admin"))
+                return StatusCode(403, "Kart identifikator rejimini yalnız super admin dəyişə bilər.");
             var tid = tenantId ?? _tenantProvider.CurrentTenantId;
             var result = await _service.UpdateAsync(id, dto, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
@@ -206,6 +212,21 @@ namespace Loyalty.WebAPI.Controllers
         {
             var tid = tenantId ?? _tenantProvider.CurrentTenantId;
             var result = await _service.GetIikoOrganizationsAsync(id, tid, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok(result.Data);
+        }
+
+        /// <summary>
+        /// iiko loyallıq proqramının qaydaları (kampaniyalar: hansı məhsula neçə %, şərtlər) — read-only, filial (venue) üzrə.
+        /// Tenant admin öz tenant-ının inteqrasiyasını görür; super admin tenantId ilə.
+        /// </summary>
+        [HttpGet("{id}/iiko/rules")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> GetIikoRules(int id, [FromQuery] int? tenantId, [FromQuery] int? venueId, [FromQuery] bool refresh = false, CancellationToken ct = default)
+        {
+            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            if (!tid.HasValue || tid <= 0) return BadRequest("TenantId required.");
+            var result = await _iikoRules.GetRulesAsync(tid.Value, id, venueId, refresh, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok(result.Data);
         }

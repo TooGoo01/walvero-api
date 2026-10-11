@@ -141,13 +141,43 @@ UserManager<ApplicationUser> userManager,
             return new ServiceResult(false);
         }
 
+        /// <summary>iiko "son N rəqəm" / WalveroId rejimində admin kassa kodunu görsün — tam barkoddan fərqlidirsə doldurulur.</summary>
+        private async Task FillPosTracksAsync(Customer customer, GetCustomerDto dto)
+        {
+            try
+            {
+                if (dto.LoyaltyCards == null || dto.LoyaltyCards.Count == 0) return;
+                var iiko = await _dbContext.Set<TenantIntegration>().AsNoTracking()
+                    .Where(t => t.TenantId == customer.TenantId && t.IsActive && t.IntegrationType.Source == "iiko_pos")
+                    .Select(t => new { t.CardTrackMode, t.CardTrackDigits })
+                    .FirstOrDefaultAsync();
+                if (iiko == null || iiko.CardTrackMode == PosCardTrackMode.FullBarcode) return;
+                string? walveroId = null;
+                if (customer.applicationUserId.HasValue)
+                    walveroId = (await _dbContext.Users.AsNoTracking()
+                        .Where(u => u.Id == customer.applicationUserId.Value)
+                        .Select(u => u.WalveroId).FirstOrDefaultAsync())?.ToString();
+                foreach (var c in dto.LoyaltyCards)
+                {
+                    var track = PosCardTrack.Primary(iiko.CardTrackMode, iiko.CardTrackDigits, c.BarcodeValue ?? c.CardNumber, walveroId);
+                    if (!string.IsNullOrEmpty(track) && !string.Equals(track, c.BarcodeValue, StringComparison.OrdinalIgnoreCase))
+                        c.PosTrack = track;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "PosTrack fill failed. CustomerId={CustomerId}", customer.Id);
+            }
+        }
+
         public async Task<ServiceResult> GetByIdName(int customer, string username)
         {
             var partners = await _customerRepo.GetByIdAsync(customer);
             if (partners != null)
             {
                 var response = _mapper.Map<GetCustomerDto>(partners);
-                return new ServiceResult(true, response);   
+                await FillPosTracksAsync(partners, response);
+                return new ServiceResult(true, response);
             }
 
             return new ServiceResult(false);

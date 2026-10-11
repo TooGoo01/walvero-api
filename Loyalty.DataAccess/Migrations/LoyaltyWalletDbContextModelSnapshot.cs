@@ -1669,6 +1669,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasIndex("LoyaltyProgramId", "TenantId")
                         .HasDatabaseName("IX_LoyaltyCards_Program_Tenant");
 
+                    b.HasIndex("TenantId", "BarcodeValue")
+                        .HasDatabaseName("IX_LoyaltyCards_Tenant_BarcodeValue");
+
                     b.HasIndex("TenantId", "CustomerId", "IsActive")
                         .HasDatabaseName("IX_LoyaltyCards_Tenant_Customer_IsActive");
 
@@ -3849,6 +3852,14 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<string>("ApiUsername")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("CardTrackDigits")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CardTrackMode")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");

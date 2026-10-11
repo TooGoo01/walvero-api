@@ -1,5 +1,7 @@
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
 using Microsoft.EntityFrameworkCore;
@@ -119,8 +121,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return ServiceResult<TenantIntegrationCreateResult>.Fail("Bu tenant üçün bu inteqrasiya artıq mövcuddur.");
 
             var (token, hash) = _tokenGenerator.Generate();
+            var trackErr = ValidateCardTrack(dto.CardTrackMode, dto.CardTrackDigits);
+            if (trackErr != null) return ServiceResult<TenantIntegrationCreateResult>.Fail(trackErr);
             var entity = new TenantIntegration
             {
+                CardTrackMode = dto.CardTrackMode ?? PosCardTrackMode.FullBarcode,
+                CardTrackDigits = (dto.CardTrackMode ?? PosCardTrackMode.FullBarcode) == PosCardTrackMode.LastDigits ? PosCardTrack.NormalizeDigits(dto.CardTrackDigits) : null,
                 TenantId = dto.TenantId,
                 IntegrationTypeId = dto.IntegrationTypeId,
                 DisplayName = dto.DisplayName,
@@ -168,7 +174,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Source = it?.Source ?? "",
                     DisplayName = ti.DisplayName,
                     ExternalVenueId = ti.ExternalVenueId,
-                    IsActive = ti.IsActive
+                    IsActive = ti.IsActive,
+                    CardTrackMode = ti.CardTrackMode,
+                    CardTrackDigits = ti.CardTrackDigits,
+                    CardTrackLabel = PosCardTrack.Describe(ti.CardTrackMode, ti.CardTrackDigits)
                 });
             }
             return ServiceResult<List<TenantIntegrationListDto>>.Ok(dtos);
@@ -196,8 +205,21 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ApiBaseUrl = ti.ApiBaseUrl,
                 ApiUsername = ti.ApiUsername,
                 ApiAppId = ti.ApiAppId,
-                IsActive = ti.IsActive
+                IsActive = ti.IsActive,
+                CardTrackMode = ti.CardTrackMode,
+                CardTrackDigits = ti.CardTrackDigits,
+                CardTrackLabel = PosCardTrack.Describe(ti.CardTrackMode, ti.CardTrackDigits)
             });
+        }
+
+        /// <summary>LastDigits üçün N 4–8 olmalıdır.</summary>
+        private static string? ValidateCardTrack(PosCardTrackMode? mode, int? digits)
+        {
+            if (mode == PosCardTrackMode.LastDigits && digits.HasValue && (digits < PosCardTrack.MinDigits || digits > PosCardTrack.MaxDigits))
+                return $"Son rəqəm sayı {PosCardTrack.MinDigits}–{PosCardTrack.MaxDigits} aralığında olmalıdır.";
+            if (mode.HasValue && !Enum.IsDefined(typeof(PosCardTrackMode), mode.Value))
+                return "Kart track rejimi düzgün deyil.";
+            return null;
         }
 
         public async Task<ServiceResult<bool>> UpdateAsync(int id, TenantIntegrationUpdateDto dto, int? tenantId, CancellationToken ct = default)
@@ -218,6 +240,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.ApiAppId != null) ti.ApiAppId = dto.ApiAppId.Trim();
             if (!string.IsNullOrEmpty(dto.ApiSecret)) ti.ApiSecretEncrypted = _protector.Encrypt(dto.ApiSecret);
             if (dto.IsActive.HasValue) ti.IsActive = dto.IsActive.Value;
+            if (dto.CardTrackMode.HasValue || dto.CardTrackDigits.HasValue)
+            {
+                var mode = dto.CardTrackMode ?? ti.CardTrackMode;
+                var trackErr = ValidateCardTrack(mode, dto.CardTrackDigits);
+                if (trackErr != null) return ServiceResult<bool>.Fail(trackErr);
+                ti.CardTrackMode = mode;
+                ti.CardTrackDigits = mode == PosCardTrackMode.LastDigits
+                    ? PosCardTrack.NormalizeDigits(dto.CardTrackDigits ?? ti.CardTrackDigits)
+                    : null;
+            }
             ti.UpdatedAt = DateTime.UtcNow;
             _repo.Update(ti);
             await _uow.CommitAsync(ct);

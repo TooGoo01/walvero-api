@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
@@ -291,8 +292,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return (null, false);
             }
 
-            var (cardsInfo, walveroId, primaryCard) = await GatherIikoCardInfoAsync(integration.TenantId, customer, ct);
-            return await CreateIikoCustomerInOrgAsync(customer, accessToken, orgId, integration.ExternalProgramId, cardsInfo, walveroId, primaryCard, ct);
+            var (cardsInfo, walveroId, primaryCard, allTracks) = await GatherIikoCardInfoAsync(integration, customer, ct);
+            return await CreateIikoCustomerInOrgAsync(customer, accessToken, orgId, integration.ExternalProgramId, cardsInfo, walveroId, primaryCard, allTracks, ct);
         }
 
         /// <summary>Per-branch: hər venue org-una ayrıca müştəri yarat + per-venue mapping. Token bir dəfə alınır.</summary>
@@ -306,7 +307,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return;
             }
 
-            var (cardsInfo, walveroId, primaryCard) = await GatherIikoCardInfoAsync(integration.TenantId, customer, ct);
+            var (cardsInfo, walveroId, primaryCard, allTracks) = await GatherIikoCardInfoAsync(integration, customer, ct);
             var ensuredTracksFor = new HashSet<Guid>();
 
             foreach (var venue in venues)
@@ -334,11 +335,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                     // Mapping əvvəldən var (admin import / push ilə yaranıb) — müştəri sonradan app-a qeydiyyatdan keçibsə
                     // WalveroId və kart barkodu iiko-da olmaya bilər → çatışmayanları əlavə et (iiko müştərisi org-lar arası ortaqdır, 1 dəfə).
                     if (Guid.TryParse(existing.ExternalCustomerId, out var mappedId) && ensuredTracksFor.Add(mappedId))
-                        await EnsureIikoCardTracksAsync(accessToken, orgId, mappedId, customer.Id, new[] { primaryCard, walveroId?.ToString() }, ct);
+                        await EnsureIikoCardTracksAsync(accessToken, orgId, mappedId, customer.Id, allTracks, ct);
                     continue;
                 }
 
-                var (externalId, enrolled) = await CreateIikoCustomerInOrgAsync(customer, accessToken, orgId, programId, cardsInfo, walveroId, primaryCard, ct);
+                var (externalId, enrolled) = await CreateIikoCustomerInOrgAsync(customer, accessToken, orgId, programId, cardsInfo, walveroId, primaryCard, allTracks, ct);
                 externalId ??= customer.Id.ToString();
                 var mapping = new PosCustomerMapping
                 {
@@ -388,8 +389,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             return await _iikoClient.GetAccessTokenAsync(apiLogin, integration.ApiAppId, clientSecret, ct: ct);
         }
 
-        private async Task<(List<LoyaltyCard>? Cards, long? WalveroId, string PrimaryCard)> GatherIikoCardInfoAsync(int tenantId, Customer customer, CancellationToken ct)
+        /// <summary>
+        /// Kartlar + WalveroId + iiko-ya gedən track-lər. PrimaryCard = inteqrasiyanın CardTrackMode-una görə əsas track
+        /// (tam barkod / WalveroId / son N); AllTracks = əsas + tam barkod (həmişə) + WalveroId. Barkod yoxdursa Customer.Id.
+        /// </summary>
+        private async Task<(List<LoyaltyCard>? Cards, long? WalveroId, string PrimaryCard, List<string> AllTracks)> GatherIikoCardInfoAsync(TenantIntegration integration, Customer customer, CancellationToken ct)
         {
+            var tenantId = integration.TenantId;
             var cards = await _cardRepo.ListByCustomerAsync(tenantId, customer.Id, ct);
             var barcodeValue = cards?
                 .Where(c => c.IsActive && !string.IsNullOrEmpty(c.BarcodeValue))
@@ -406,14 +412,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                     .FirstOrDefaultAsync(ct);
             }
 
-            var primaryCard = !string.IsNullOrEmpty(barcodeValue) ? barcodeValue! : customer.Id.ToString();
-            return (cards?.ToList(), walveroId, primaryCard);
+            var allTracks = PosCardTrack.AllTracks(integration.CardTrackMode, integration.CardTrackDigits, barcodeValue, walveroId?.ToString());
+            var primaryCard = allTracks.FirstOrDefault() ?? customer.Id.ToString();
+            return (cards?.ToList(), walveroId, primaryCard, allTracks);
         }
 
         /// <summary>Bir iiko org-da müştəri yarat/yenilə + program enroll + walveroId kartı + balans topup. programId — per-org (venue) və ya parent.</summary>
         private async Task<(string? ExternalId, bool EnrolledInProgram)> CreateIikoCustomerInOrgAsync(
             Customer customer, string accessToken, Guid orgId, string? programId,
-            List<LoyaltyCard>? cards, long? walveroId, string primaryCard, CancellationToken ct)
+            List<LoyaltyCard>? cards, long? walveroId, string primaryCard, List<string> allTracks, CancellationToken ct)
         {
             var iikoCustomer = new IikoCustomerDto
             {
@@ -438,12 +445,12 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var enrolledInProgram = await TryEnrollIikoCustomerInProgramAsync(programId, accessToken, orgId, result.Id, customer.Id, ct);
 
-            if (walveroId.HasValue)
+            // Əlavə kartlar: tam barkod (skan üçün həmişə) + WalveroId — əsas track create_or_update ilə yazılıb
+            foreach (var track in allTracks.Where(t => !string.Equals(t, primaryCard, StringComparison.OrdinalIgnoreCase)))
             {
-                var walveroIdStr = walveroId.Value.ToString();
-                var addCardOk = await _iikoClient.AddCustomerCardAsync(accessToken, orgId, result.Id, walveroIdStr, walveroIdStr, ct);
+                var addCardOk = await _iikoClient.AddCustomerCardAsync(accessToken, orgId, result.Id, track, track, ct);
                 if (!addCardOk)
-                    _logger.LogInformation("iiko sync: WalveroId kart əlavə edilmədi (ola bilsin artıq var). CustomerId={CustomerId}, WalveroId={WalveroId}", customer.Id, walveroIdStr);
+                    _logger.LogInformation("iiko sync: əlavə kart track yazılmadı (ola bilsin artıq var). CustomerId={CustomerId}, Track={Track}", customer.Id, track);
             }
 
             if (cards != null && cards.Any())

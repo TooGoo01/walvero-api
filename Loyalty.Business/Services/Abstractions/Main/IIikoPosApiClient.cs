@@ -69,6 +69,13 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// <summary>
         /// iiko menyusunu (nomenclature) alır.
         /// </summary>
+        /// <summary>
+        /// Loyallıq proqramları marketinq kampaniyaları ilə birgə (withoutMarketingCampaigns=false) —
+        /// hansı məhsula neçə % düşdüyünü göstərmək üçün (read-only, admin). Xəta/404 → null.
+        /// </summary>
+        Task<List<IikoLoyaltyProgramDetail>?> GetLoyaltyProgramsDetailedAsync(
+            string accessToken, Guid organizationId, CancellationToken ct = default);
+
         Task<IikoNomenclatureResponse?> GetNomenclatureAsync(
             string accessToken, Guid organizationId, CancellationToken ct = default);
     }
@@ -190,6 +197,52 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? Name { get; set; }
         public bool IsActive { get; set; }
         public Guid? WalletId { get; set; }
+    }
+
+    // ── iiko loyalty program (detailed, with marketing campaigns) ──
+    public class IikoLoyaltyProgramDetail
+    {
+        public Guid Id { get; set; }
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public DateTime? ServiceFrom { get; set; }
+        public DateTime? ServiceTo { get; set; }
+        public bool IsActive { get; set; }
+        public Guid? WalletId { get; set; }
+        public int ProgramType { get; set; }
+        public int RefillType { get; set; }
+        public List<IikoMarketingCampaign>? MarketingCampaigns { get; set; }
+    }
+
+    public class IikoMarketingCampaign
+    {
+        public Guid Id { get; set; }
+        public Guid? ProgramId { get; set; }
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public bool IsActive { get; set; }
+        public DateTime? PeriodFrom { get; set; }
+        public DateTime? PeriodTo { get; set; }
+        public List<IikoActionConditionBinding>? OrderActionConditionBindings { get; set; }
+        public List<IikoActionConditionBinding>? PeriodicActionConditionBindings { get; set; }
+        public List<IikoActionConditionBinding>? GuestRegistrationActionConditionBindings { get; set; }
+        public List<IikoActionConditionBinding>? OverdraftActionConditionBindings { get; set; }
+    }
+
+    public class IikoActionConditionBinding
+    {
+        public Guid Id { get; set; }
+        public bool StopFurtherExecution { get; set; }
+        public List<IikoRuleItem>? Actions { get; set; }
+        public List<IikoRuleItem>? Conditions { get; set; }
+    }
+
+    /// <summary>Action və ya condition: TypeName (məs. LoyaltyProgramEngine.Actions.RefillWalletPercentAction) + Settings (JSON mətn).</summary>
+    public class IikoRuleItem
+    {
+        public Guid Id { get; set; }
+        public string? TypeName { get; set; }
+        public string? Settings { get; set; }
     }
 
     public class IikoNomenclatureResponse

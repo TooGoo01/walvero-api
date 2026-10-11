@@ -23,6 +23,7 @@ namespace Loyalty.WebAPI.Controllers
         private readonly ITenantStatusGuard _tenantStatusGuard;
         private readonly IPosCustomerIikoService _posCustomerIiko;
         private readonly IPosCustomerImportService _posCustomerImport;
+        private readonly global::Hangfire.IBackgroundJobClient _jobClient;
         private readonly ILogger<PosController> _logger;
 
         public PosController(
@@ -33,8 +34,10 @@ namespace Loyalty.WebAPI.Controllers
             ITenantStatusGuard tenantStatusGuard,
             IPosCustomerIikoService posCustomerIiko,
             IPosCustomerImportService posCustomerImport,
+            global::Hangfire.IBackgroundJobClient jobClient,
             ILogger<PosController> logger)
         {
+            _jobClient = jobClient;
             _posCustomerIiko = posCustomerIiko;
             _posCustomerImport = posCustomerImport;
             _transactionReverseService = transactionReverseService;
@@ -125,6 +128,23 @@ namespace Loyalty.WebAPI.Controllers
             if (blocked != null) return blocked;
             var count = await _customerSyncService.SyncAllCustomersToPosAsync(tid.Value, ct);
             return Ok(new { syncedCount = count });
+        }
+
+        /// <summary>
+        /// Bütün müştəriləri POS-a arxa planda (Hangfire) sinxron et — kart track rejimi dəyişəndən sonra
+        /// hər müştəriyə qısa/əlavə track yazılsın. Sinxron variant (sync-customers) minlərlə iiko çağırışında timeout verir.
+        /// </summary>
+        [HttpPost("sync-customers/enqueue")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        public async Task<IActionResult> EnqueueSyncAllCustomers([FromQuery] int tenantId, CancellationToken ct)
+        {
+            if (tenantId <= 0) return BadRequest("TenantId required.");
+            var blocked = await BlockIfTenantInactiveAsync(tenantId, ct);
+            if (blocked != null) return blocked;
+            var jobId = global::Hangfire.BackgroundJobClientExtensions.Enqueue<ICustomerSyncService>(
+                _jobClient, s => s.SyncAllCustomersToPosAsync(tenantId, CancellationToken.None));
+            _logger.LogInformation("POS sync-all enqueued. TenantId={TenantId}, JobId={JobId}", tenantId, jobId);
+            return Ok(new { jobId });
         }
 
         /// <summary>

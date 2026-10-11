@@ -78,7 +78,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 LoyaltyProgramId = ti.LoyaltyProgramId,
                 Source = ti.IntegrationType?.Source ?? string.Empty,
                 TenantIntegrationId = ti.Id,
-                ExternalVenueId = ti.ExternalVenueId
+                ExternalVenueId = ti.ExternalVenueId,
+                CardTrackMode = ti.CardTrackMode,
+                CardTrackDigits = ti.CardTrackDigits
             };
         }
 
@@ -93,7 +95,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 TenantIntegrationId = ti.Id,
                 ExternalVenueId = venue.ExternalVenueId,
                 BranchId = venue.BranchId,
-                TenantIntegrationVenueId = venue.Id
+                TenantIntegrationVenueId = venue.Id,
+                CardTrackMode = ti.CardTrackMode,
+                CardTrackDigits = ti.CardTrackDigits
             };
         }
     }

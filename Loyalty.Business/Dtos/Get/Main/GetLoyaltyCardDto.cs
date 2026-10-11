@@ -1,4 +1,4 @@
-﻿using Loyalty.DataAccess.Enums;
+using Loyalty.DataAccess.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,6 +17,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         // Card Details
         public string CardNumber { get; set; } = string.Empty;
         public string? BarcodeValue { get; set; }
+        /// <summary>iiko kassasında əsas kart track-i (inteqrasiyanın CardTrackMode-una görə; tam barkoddan fərqlidirsə admin göstərir).</summary>
+        public string? PosTrack { get; set; }
 
         // Points
         public decimal CurrentPoints { get; set; } = 0;

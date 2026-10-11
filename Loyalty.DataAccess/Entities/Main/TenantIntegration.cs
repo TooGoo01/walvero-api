@@ -1,5 +1,6 @@
 using Loyalty.DataAccess.Abstractions;
 using Loyalty.DataAccess.Entities.Base;
+using Loyalty.DataAccess.Enums;
 
 namespace Loyalty.DataAccess.Entities.Main
 {
@@ -28,6 +29,11 @@ namespace Loyalty.DataAccess.Entities.Main
 
         public string? WalletTokenHash { get; set; }
         public string? WalletTokenEncrypted { get; set; }
+
+        /// <summary>iiko-ya göndərilən əsas kart track-i (tam barkod / WalveroId / son N rəqəm). Tam barkod həmişə əlavə olunur.</summary>
+        public PosCardTrackMode CardTrackMode { get; set; } = PosCardTrackMode.FullBarcode;
+        /// <summary>LastDigits rejimində rəqəm sayı (4–8).</summary>
+        public int? CardTrackDigits { get; set; }
 
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
