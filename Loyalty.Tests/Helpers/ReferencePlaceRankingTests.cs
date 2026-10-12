@@ -74,6 +74,28 @@ public class ReferencePlaceRankingTests
     }
 
     [Fact]
+    public void Area_FiltersToPlacesInArea_SpacingAndDiacriticsInsensitive()
+    {
+        var places = new List<AiReferencePlace>
+        {
+            P("Qala Divari", "milli mətbəx, restoran", area: "İçərişəhər"),
+            P("Art Garden Restoran", "restoran", area: "İçərişəhər"),
+            P("Khan Museum Restaurant", "restoran, milli mətbəx"), // ərazisiz — kənarda
+            new() { Name = "Cizz-Bizz", Keywords = "restoran", Address = "Kiçik Qala 118, İçəri Şəhər", IsActive = true },
+        };
+        var hits = ReferencePlaceRanking.Rank(places, new[] { "restoran" }, null, null, null, 8, area: "İçəri şəhər");
+        hits.Select(h => h.Place.Name).Should().BeEquivalentTo(new[] { "Qala Divari", "Art Garden Restoran", "Cizz-Bizz" });
+
+        // yalnız ərazi (açar sözsüz) → ərazidəki hamısı
+        ReferencePlaceRanking.Rank(places, Array.Empty<string>(), null, null, null, 8, area: "İçərişəhər")
+            .Should().HaveCount(3);
+
+        // ərazidə heç nə yoxdursa filtr tətbiq olunmur (köhnə davranış)
+        ReferencePlaceRanking.Rank(places, new[] { "restoran" }, null, null, null, 8, area: "Mərdəkan")
+            .Should().HaveCount(4);
+    }
+
+    [Fact]
     public void NoTokens_NoGeo_Empty_And_TakeClamped()
     {
         ReferencePlaceRanking.Rank(Places, Array.Empty<string>(), null, null, null, 8).Should().BeEmpty();

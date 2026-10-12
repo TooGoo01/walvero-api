@@ -1,3 +1,4 @@
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Dtos.Chatbot;
 using Loyalty.Business.Services.Abstractions.Main;
 using Microsoft.Extensions.Configuration;
@@ -220,12 +221,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     var content = message["content"]?.GetValue<string>() ?? string.Empty;
                     if (traceIter is not null) traceIter.Content = content;
+                    // Kartlar cavabı izləsin: yalnız adı cavabda keçən məkanlar, cavabdakı sıra ilə
+                    var cards = ReplyCardFilter.Filter(collectedPlaces, content);
                     if (trace is not null)
                     {
                         trace.FinalReply = content;
-                        trace.Places = collectedPlaces;
+                        trace.Places = cards;
                     }
-                    return new AssistantReply { Reply = content, Places = collectedPlaces };
+                    return new AssistantReply { Reply = content, Places = cards };
                 }
 
                 // Assistant tool-call mesajını olduğu kimi geri əlavə et.
@@ -352,9 +355,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                         var placeName = GetString(args["placeName"]) ?? string.Empty;
                         var categoryName = GetString(args["categoryName"]);
                         var overview = await _menuSearch.GetPlaceMenuAsync(placeName, categoryName, ct);
-                        return overview is null
-                            ? "{\"error\":\"place_not_found\"}"
-                            : Serialize(overview);
+                        if (overview is not null) return Serialize(overview);
+
+                        // Walvero-da yoxdur → xarici bilik bazasında axtar (model ikinci addım atmasın deyə burada)
+                        var rpFallback = await _referencePlace.FindByNameAsync(placeName, ct);
+                        if (rpFallback is null) return "{\"error\":\"place_not_found\"}";
+                        if (string.IsNullOrWhiteSpace(rpFallback.MenuJson))
+                            return Serialize(new { rpFallback.Name, error = "menu_not_available", rpFallback.MenuUrl, rpFallback.Address, notInApp = true });
+                        const int maxFallbackChars = 15000;
+                        if (rpFallback.MenuJson!.Length > maxFallbackChars)
+                            return Serialize(new { rpFallback.Name, notInApp = true, truncated = true, menuRaw = rpFallback.MenuJson[..maxFallbackChars] });
+                        return Serialize(new { rpFallback.Name, notInApp = true, menu = JsonNode.Parse(rpFallback.MenuJson) });
                     }
 
                     case "search_reference_places":
@@ -494,9 +505,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             sb.AppendLine("To find places ALWAYS call the `search_places` tool — never invent places.");
             sb.AppendLine("If the user asks for a specific DISH/product (e.g. 'who sells lasagna', 'any vegan burger?') call `search_menu_items`.");
             sb.AppendLine("`search_reference_places` is a knowledge base of external places that are NOT in the Walvero app.");
-            sb.AppendLine("Use it when search_places is empty or when it would help. BUT when presenting those results you");
-            sb.AppendLine("MUST note that the place is not available in the Walvero app (info only) — so the user does not try");
-            sb.AppendLine("to find it in the app.");
+            sb.AppendLine("For EVERY place-discovery question (restaurant/cafe/bar, cuisine, feature, area, 'near me') call");
+            sb.AppendLine("BOTH `search_places` AND `search_reference_places` in the same step. When presenting external");
+            sb.AppendLine("results you MUST note they are not available in the Walvero app (info only).");
+            sb.AppendLine("AREA RULE: if the user names an area/neighbourhood/landmark (e.g. İçərişəhər, Port Baku, Nizami,");
+            sb.AppendLine("Ağ Şəhər), pass it as `area` to search_reference_places and include it in search_places keywords.");
+            sb.AppendLine("Then present ONLY places that are actually in that area (check Address / Area). Do NOT present");
+            sb.AppendLine("Walvero places outside the area as an answer. Order: Walvero places in the area first, then");
+            sb.AppendLine("external places in the area. If no Walvero place is in the area, say so in one short sentence and");
+            sb.AppendLine("list the external ones. Mention every place you recommend by its exact name.");
             sb.AppendLine("Some reference places store a menu: results with `hasMenu=true`. When the user asks about the");
             sb.AppendLine("menu/dishes/prices of such an EXTERNAL place, call `get_reference_place_menu(placeName)` and answer");
             sb.AppendLine("from its data — still stating the place is not in the Walvero app. If `hasMenu` is false or the tool");
@@ -504,8 +521,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             sb.AppendLine("If the user says 'near me' / 'nearby' without a distance, use radiusKm=5 by DEFAULT and");
             sb.AppendLine("search immediately — do NOT ask the user to choose a radius. If nothing is within 5 km,");
             sb.AppendLine("retry once with radiusKm=15 and say the distance.");
-            sb.AppendLine("For proximity questions, if `search_places` returns nothing nearby, also call");
-            sb.AppendLine("`search_reference_places` with the same radiusKm (its results include `distanceKm`).");
+            sb.AppendLine("For proximity questions pass the same radiusKm to `search_reference_places` too (its results");
+            sb.AppendLine("include `distanceKm`); list Walvero places first, then external ones, each with its distance.");
             if (isAuth)
             {
                 sb.AppendLine("For the user's own account questions:");
@@ -619,7 +636,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         ["required"] = new JsonArray { "placeName" }
                     }),
                 Fn("search_reference_places",
-                    "Search a knowledge base of external restaurants/places that are NOT in the Walvero app (info only). Use as a fallback when search_places returns nothing, or when the user asks a general 'where can I find X'. Results are not in the app.",
+                    "Search a knowledge base of external restaurants/cafes/bars that are NOT in the Walvero app (info only). Call it together with search_places for every place-discovery question. Use `area` for a neighbourhood (e.g. İçərişəhər) — results are then limited to that area. Results are not in the app.",
                     new JsonObject
                     {
                         ["type"] = "object",

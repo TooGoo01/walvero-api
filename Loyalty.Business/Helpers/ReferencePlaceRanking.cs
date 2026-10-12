@@ -32,8 +32,28 @@ namespace Loyalty.Business.Helpers
             IEnumerable<AiReferencePlace> places,
             IEnumerable<string?> tokens,
             double? lat, double? lng, double? radiusKm,
-            int take)
+            int take,
+            string? area = null)
         {
+            // Ərazi (məs. "İçərişəhər") verilibsə: yalnız Area/Address/Keywords/Name-də o ərazi olan məkanlar.
+            // Heç biri uyğun gəlmirsə filtr tətbiq olunmur (köhnə davranış — ərazi sadəcə əlavə token).
+            var areaKey = Compact(area);
+            var areaApplied = false;
+            if (areaKey.Length >= 3)
+            {
+                var list = places as IList<AiReferencePlace> ?? places.ToList();
+                var inArea = list.Where(p => InArea(p, areaKey)).ToList();
+                if (inArea.Count > 0)
+                {
+                    places = inArea;
+                    areaApplied = true;
+                }
+                else
+                {
+                    tokens = tokens.Append(area);
+                }
+            }
+
             var normTokens = tokens
                 .Where(t => !string.IsNullOrWhiteSpace(t))
                 .Select(t => Normalize(t!))
@@ -43,7 +63,7 @@ namespace Loyalty.Business.Helpers
 
             var hasOrigin = lat.HasValue && lng.HasValue;
             var geoFilter = hasOrigin && radiusKm is > 0;
-            if (normTokens.Count == 0 && !geoFilter)
+            if (normTokens.Count == 0 && !geoFilter && !areaApplied)
                 return new List<Hit>();
 
             var hits = new List<Hit>();
@@ -77,6 +97,15 @@ namespace Loyalty.Business.Helpers
                 .Take(Math.Clamp(take <= 0 ? 8 : take, 1, 20))
                 .ToList();
         }
+
+        /// <summary>Məkan bu ərazidədirmi (boşluqsuz normalize müqayisə: "İçəri Şəhər" = "İçərişəhər").</summary>
+        public static bool InArea(AiReferencePlace p, string areaKey)
+            => new[] { p.Area, p.Address, p.Keywords, p.Name }
+                .Any(s => !string.IsNullOrWhiteSpace(s) && Compact(s).Contains(areaKey, StringComparison.Ordinal));
+
+        public static string Compact(string? s)
+            => string.IsNullOrWhiteSpace(s) ? string.Empty
+               : new string(Normalize(s).Where(char.IsLetterOrDigit).ToArray());
 
         /// <summary>Kiçik hərf + AZ diakritiklər ASCII (ə→e, ğ→g, ı→i, ö→o, ü→u, ş→s, ç→c).</summary>
         public static string Normalize(string s)

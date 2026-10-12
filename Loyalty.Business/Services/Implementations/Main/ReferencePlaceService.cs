@@ -79,9 +79,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var tokens = new List<string?>();
             if (keywords != null) tokens.AddRange(keywords);
-            if (!string.IsNullOrWhiteSpace(area)) tokens.Add(area);
 
-            return ReferencePlaceRanking.Rank(all, tokens, lat, lng, radiusKm, take)
+            return ReferencePlaceRanking.Rank(all, tokens, lat, lng, radiusKm, take, area)
                 .Select(h =>
                 {
                     var dto = Map(h.Place);
