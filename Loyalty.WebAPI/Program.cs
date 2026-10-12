@@ -449,14 +449,44 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     ForwardLimit = null // Allow all forwarded headers
 });
 
+// === Wallet signing secrets must never be served ===
+// Əvvəlki versiya Apple .p12 / Google SA JSON nüsxələrini wwwroot/passes/downloads-a yazırdı (public statik qovluq).
+// İndi sirlər temp-də saxlanılır (WalletSecretFetcher); köhnə nüsxələri sil və yolu həmişə 404 et.
+try
+{
+    var legacySecretsDir = Path.Combine(app.Environment.WebRootPath ?? "wwwroot", "passes", "downloads");
+    if (Directory.Exists(legacySecretsDir))
+    {
+        foreach (var f in Directory.EnumerateFiles(legacySecretsDir))
+        {
+            try { System.IO.File.Delete(f); } catch { /* növbəti startup-da */ }
+        }
+    }
+}
+catch { /* startup heç vaxt buna görə dayanmamalıdır */ }
+
+app.Use(async (ctx, next) =>
+{
+    var path = ctx.Request.Path;
+    if (path.StartsWithSegments("/passes/downloads", StringComparison.OrdinalIgnoreCase)
+        || path.Value?.EndsWith(".p12", StringComparison.OrdinalIgnoreCase) == true
+        || path.Value?.EndsWith(".pfx", StringComparison.OrdinalIgnoreCase) == true)
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+    await next();
+});
+
 // === Static files ===
+// .p12/.pfx/.pem MIME xəritəsi qəsdən YOXDUR — imza açarları statik serv olunmamalıdır.
 var contentTypes = new FileExtensionContentTypeProvider();
 contentTypes.Mappings[".cer"] = "application/pkix-cert";
 contentTypes.Mappings[".crt"] = "application/x-x509-ca-cert";
 contentTypes.Mappings[".der"] = "application/pkix-cert";
-contentTypes.Mappings[".pem"] = "application/x-pem-file";
-contentTypes.Mappings[".p12"] = "application/x-pkcs12";
-contentTypes.Mappings[".pfx"] = "application/x-pkcs12";
+contentTypes.Mappings.Remove(".p12");
+contentTypes.Mappings.Remove(".pfx");
+contentTypes.Mappings.Remove(".pem");
 contentTypes.Mappings[".pkpass"] = "application/vnd.apple.pkpass";
 // Diaqnostika: .pkpass endirilməsi + brauzer UA. In-app brauzer / Chrome iOS faylı endirir,
 // amma Wallet-ə ötürmür → Register gəlmir; UA-dan səbəb görünür ("pkpass download" traces-də).

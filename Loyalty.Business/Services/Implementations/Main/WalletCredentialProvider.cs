@@ -20,7 +20,7 @@ namespace Loyalty.Business.Services.Implementations.Main
     {
         private readonly IUnitOfWork _uow;
         private readonly IAppEnvironment _env;
-        private readonly IHttpClientFactory _http;
+        private readonly IWalletSecretFetcher _secrets;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly ILogger<WalletCredentialProvider> _logger;
 
@@ -30,13 +30,13 @@ namespace Loyalty.Business.Services.Implementations.Main
         public WalletCredentialProvider(
             IUnitOfWork uow,
             IAppEnvironment env,
-            IHttpClientFactory http,
+            IWalletSecretFetcher secrets,
             IHttpContextAccessor httpContextAccessor,
             ILogger<WalletCredentialProvider> logger)
         {
             _uow = uow;
             _env = env;
-            _http = http;
+            _secrets = secrets;
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
         }
@@ -104,7 +104,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 TeamIdentifier = cred.TeamIdentifier!,
                 PassTypeIdentifier = cred.PassTypeIdentifier!,
                 CertP12Path = p12Path,
-                CertPassword = cred.CertificatePassword!, // PAROLU LOG ETMİRİK
+                CertPassword = _secrets.RevealPassword(cred.CertificatePassword), // PAROLU LOG ETMİRİK (enc:v1: → decrypt)
                 WwdrCertPath = wwdrPath,
                 WebServiceUrl = cred.PassKitServiceUrl,   // TOKEN/URL log etmə!
                 AuthToken = cred.PassKitAuthToken,
@@ -161,75 +161,33 @@ namespace Loyalty.Business.Services.Implementations.Main
         // ---------- Helpers ----------
 
         /// <summary>
-        /// Verilən path və ya URL-i walvero.com-dan endirib
-        /// API tətbiqinin wwwroot/passes/downloads qovluğuna yazır,
-        /// və ABSOLUTE fayl path-i qaytarır.
+        /// Sirr faylının (p12 / WWDR / Google SA JSON) lokal ABSOLUTE yolunu qaytarır.
+        /// Öz blob/CDN linkləri storage açarı ilə (authenticated) oxunur; fayl public olmayan temp qovluğa
+        /// yazılır və keşlənir (əvvəl hər çağırışda public wwwroot/passes/downloads-a yeni nüsxə yazılırdı).
+        /// Nisbi yol → https://appapi.walvero.com/ + yol (legacy).
         /// </summary>
         private async Task<string> ResolvePathOrDownloadAsync(
             string pathOrUrl, string prefix, string defaultExt, CancellationToken ct)
         {
-            var webRoot = string.IsNullOrWhiteSpace(_env.WebRootPath)
-                ? Path.Combine(AppContext.BaseDirectory, "wwwroot")
-                : _env.WebRootPath;
+            var source = pathOrUrl.Trim();
+            if (!(Uri.TryCreate(source, UriKind.Absolute, out var abs) &&
+                  (abs.Scheme == Uri.UriSchemeHttp || abs.Scheme == Uri.UriSchemeHttps)))
+            {
+                // Məs: "~/resource/Apple.cer", "/resource/Apple.cer", "resource/Apple.cer"
+                var rel = source.StartsWith("~/") ? source[2..] : source;
+                source = new Uri(WalveroBaseUri, rel.TrimStart('/', '\\')).ToString();
+            }
 
             try
             {
-                Uri uri;
-
-                // 1) Əgər artıq tam URL-dirsə (http/https) → birbaşa istifadə edirik
-                if (Uri.TryCreate(pathOrUrl, UriKind.Absolute, out var abs) &&
-                    (abs.Scheme == Uri.UriSchemeHttp || abs.Scheme == Uri.UriSchemeHttps))
-                {
-                    uri = abs;
-                }
-                else
-                {
-                    // 2) Əks halda path nisbidir → walvero.com ilə birləşdir
-                    // Məs: "~/resource/Apple.cer", "/resource/Apple.cer", "resource/Apple.cer"
-                    var rel = pathOrUrl;
-
-                    if (rel.StartsWith("~/"))
-                        rel = rel.Substring(2);
-
-                    rel = rel.TrimStart('/', '\\');
-
-                    uri = new Uri(WalveroBaseUri, rel); // https://walvero.com/ + rel
-                }
-
-                _logger.LogInformation("Downloading credential file. Url={Url}", uri);
-
-                var client = _http.CreateClient();
-                using var res = await client.GetAsync(uri, ct);
-                res.EnsureSuccessStatusCode();
-
-                // Fayl adı/uzantı
-                var cd = res.Content.Headers.ContentDisposition;
-                string? fileName = cd?.FileNameStar ?? cd?.FileName?.Trim('"');
-
-                var ext = Path.GetExtension(fileName ?? "");
-                if (string.IsNullOrWhiteSpace(ext))
-                    ext = Path.GetExtension(uri.AbsolutePath);
-                if (string.IsNullOrWhiteSpace(ext))
-                    ext = defaultExt;
-
-                // WWWROOT/passes/downloads altına yaz
-                var targetDir = Path.Combine(webRoot, "passes", "downloads");
-                Directory.CreateDirectory(targetDir);
-
-                var localPath = Path.Combine(targetDir, $"{prefix}-{Guid.NewGuid():N}{ext}");
-                await using (var fs = new FileStream(localPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                {
-                    await res.Content.CopyToAsync(fs, ct);
-                }
-
-                _logger.LogInformation("Download saved. File={FileName}, Size={SizeBytes}",
-                    SafeFileName(localPath), new FileInfo(localPath).Length);
-
-                return localPath; // ABS path
+                var localPath = await _secrets.MaterializeAsync(source, defaultExt, ct);
+                _logger.LogInformation("Wallet secret resolved. Kind={Kind}, Ext={Ext}", prefix, Path.GetExtension(localPath));
+                return localPath;
             }
-            catch (Exception ex) when (ex is HttpRequestException or IOException or UnauthorizedAccessException)
+            catch (Exception ex)
             {
-                _logger.LogError(ex, "ResolvePathOrDownloadAsync failed. Source={Source}", pathOrUrl);
+                // URL loglanmır — sirrin yeri təxmin olunmasın
+                _logger.LogError(ex, "Wallet secret resolve failed. Kind={Kind}", prefix);
                 throw;
             }
         }

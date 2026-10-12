@@ -112,6 +112,8 @@ namespace Loyalty.Business.Services
             services.AddScoped<IAppleWalletFactory, AppleWalletFactory>();
             services.AddSingleton<FileDownloader>();
             services.AddSingleton<IApplePassBuilder, ApplePassBuilder>();
+            // Wallet imza sirləri (p12 / Google SA JSON): öz blob/CDN linkləri authenticated oxunur, public wwwroot-a yazılmır
+            services.AddSingleton<IWalletSecretFetcher, WalletSecretFetcher>();
             services.AddSingleton<IApplePassSigner, ApplePassSigner>();
             services.AddScoped<IAppleWalletService, AppleWalletService>();
             services.AddScoped<ILoyaltyProgramService, LoyaltyProgramService>();

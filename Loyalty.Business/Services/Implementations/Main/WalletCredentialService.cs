@@ -1,5 +1,8 @@
-﻿using AutoMapper;
+using AutoMapper;
 using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.Business.Helpers;
+using Loyalty.Business.Services.Abstractions.Storage.Azure;
+using Loyalty.Infrastructure.Utilities.Security.Encryption;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
@@ -24,11 +27,14 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
         private readonly IWalletCredentialRepository _repo;
-        private readonly IStorage _storage;
+        // Sirr faylları PRIVATE konteynerə yüklənir (anonim oxuma/siyahı yox); parol DB-də şifrəli (enc:v1:)
+        private readonly IAzureStorage _storage;
+        private readonly ISensitiveDataProtector _protector;
 
-        public WalletCredentialService(IStorage storage, IWalletCredentialRepository repo, IMapper mapper, IUnitOfWork unitOfWork)
+        public WalletCredentialService(IAzureStorage storage, ISensitiveDataProtector protector, IWalletCredentialRepository repo, IMapper mapper, IUnitOfWork unitOfWork)
         {
             _storage = storage;
+            _protector = protector;
             _repo = repo;
             _mapper = mapper;
             _unitOfWork = unitOfWork;
@@ -84,9 +90,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     if (dto.AppleCertificateFile is not null && dto.AppleCertificateFile.Length > 0)
                     {
                         // (istəsən MIME/extension yoxlaması əlavə et)
-                        var uploaded = await _storage.UploadFileAsync(container, new[] { dto.AppleCertificateFile });
+                        var uploaded = await _storage.UploadPrivateFileAsync(container, new[] { dto.AppleCertificateFile });
                         var (_, relativePath) = uploaded.First();
-                        cred.AppleCertificateUrl = EnsureRelative(relativePath); // ✅ DÜZGÜN property
+                        cred.AppleCertificateUrl = relativePath; // private blob URL (WalletSecretFetcher authenticated oxuyur)
                     }
                     else if (!string.IsNullOrWhiteSpace(dto.AppleCertificateUrl))
                     {
@@ -100,9 +106,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     // --- WWDR .cer (opsional, amma məsləhətlidir) ---
                     if (dto.AppleWwdrCertFile is not null && dto.AppleWwdrCertFile.Length > 0)
                     {
-                        var uploaded = await _storage.UploadFileAsync(container, new[] { dto.AppleWwdrCertFile });
+                        var uploaded = await _storage.UploadPrivateFileAsync(container, new[] { dto.AppleWwdrCertFile });
                         var (_, relativePath) = uploaded.First();
-                        cred.AppleWwdrCertUrl = EnsureRelative(relativePath);
+                        cred.AppleWwdrCertUrl = relativePath;
                     }
                     else if (!string.IsNullOrWhiteSpace(dto.AppleWwdrCertUrl))
                     {
@@ -118,7 +124,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     // --- Dəyərlər ---
                     cred.TeamIdentifier = dto.TeamIdentifier!.Trim();
                     cred.PassTypeIdentifier = dto.PassTypeIdentifier!.Trim();
-                    cred.CertificatePassword = dto.CertificatePassword; // (tövsiyə: encrypted saxla)
+                    cred.CertificatePassword = WalletSecretPaths.Protect(dto.CertificatePassword, _protector.Encrypt); // enc:v1:… (WalletSecretFetcher.RevealPassword açır)
                 }
                 else // --- GOOGLE ---
                 {
@@ -130,9 +136,9 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                     if (dto.GooglePrivateKeyFile is not null && dto.GooglePrivateKeyFile.Length > 0)
                     {
-                        var uploaded = await _storage.UploadFileAsync(container, new[] { dto.GooglePrivateKeyFile });
+                        var uploaded = await _storage.UploadPrivateFileAsync(container, new[] { dto.GooglePrivateKeyFile });
                         var (_, relativePath) = uploaded.First();
-                        cred.GooglePrivateKeyUrl = EnsureRelative(relativePath);
+                        cred.GooglePrivateKeyUrl = relativePath;
                     }
                     else if (!string.IsNullOrWhiteSpace(dto.GooglePrivateKeyUrl))
                     {

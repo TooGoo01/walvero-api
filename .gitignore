@@ -349,3 +349,8 @@ MigrationBackup/
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
 Loyalty.WebAPI/serviceAccountKey.json
+
+# Wallet signing secrets (Apple .p12, Google service account JSON) — never commit
+Loyalty.WebAPI/wwwroot/passes/downloads/
+*.p12
+*.pfx

@@ -21,9 +21,11 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly Microsoft.Extensions.Logging.ILoggerFactory? _loggerFactory;
         private readonly ITenantSuspensionGuard? _suspensionGuard;
         private readonly ITimeZoneService? _timeZoneService;
+        private readonly IWalletSecretFetcher? _secrets;
         public GoogleWalletServiceFactory(IAppEnvironment env, ILoyaltyProgramRepository programSvc, IWalletCredentialRepository walletSvc, HttpClient httpClient, ILoyaltyCardRepository? cardRepo, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null,
-            ITenantSuspensionGuard? suspensionGuard = null, ITimeZoneService? timeZoneService = null)
+            ITenantSuspensionGuard? suspensionGuard = null, ITimeZoneService? timeZoneService = null, IWalletSecretFetcher? secrets = null)
         {
+            _secrets = secrets;
             _env = env;
             _programSvc = programSvc;
             _walletSvc = walletSvc;
@@ -69,19 +71,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             // 🔹 Nəticədə istifadə edəcəyimiz FİZİKİ fayl yolu
             string serviceAccountFilePath;
 
-            // 3.1. Əgər HTTP/HTTPS URL-dirsə → linkdən JSON yüklə
+            // 3.1. Əgər HTTP/HTTPS URL-dirsə → öz storage-imizdən authenticated oxu, public olmayan temp-ə keşlə
             if (Uri.TryCreate(saJsonPathOrUrl, UriKind.Absolute, out var uri) &&
                 (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
             {
-                // Məs: cred.GooglePrivateKeyUrl = "https://walvero.com/sa/google/serviceAccount.json"
-                // Buradan JSON mətnini götürürük
-                var json = await _httpClient.GetStringAsync(uri, ct);
-
-                // Müvəqqəti fayl yaradıb ora yazırıq
-                var tempFile = Path.GetTempFileName();
-                await File.WriteAllTextAsync(tempFile, json, ct);
-
-                serviceAccountFilePath = tempFile;
+                serviceAccountFilePath = _secrets != null
+                    ? await _secrets.MaterializeAsync(saJsonPathOrUrl, ".json", ct)
+                    : await DownloadToTempLegacyAsync(uri, ct);
             }
             else
             {
@@ -111,6 +107,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ? Microsoft.Extensions.Logging.LoggerFactoryExtensions.CreateLogger<GoogleWalletService>(_loggerFactory)
                 : null;
             return new GoogleWalletService(cfg, gwLogger, _cardRepo, null, _suspensionGuard, _timeZoneService);
+        }
+
+        // Fetcher verilməyən (test) konstruksiyalar üçün köhnə davranış
+        private async Task<string> DownloadToTempLegacyAsync(Uri uri, CancellationToken ct)
+        {
+            var json = await _httpClient.GetStringAsync(uri, ct);
+            var tempFile = Path.GetTempFileName();
+            await File.WriteAllTextAsync(tempFile, json, ct);
+            return tempFile;
         }
 
     }

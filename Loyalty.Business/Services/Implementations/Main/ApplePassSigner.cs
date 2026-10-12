@@ -11,12 +11,12 @@ namespace Loyalty.Business.Services.Implementations.Main
 {
     public sealed class ApplePassSigner : IApplePassSigner
     {
-        private readonly IHttpClientFactory _http;
+        private readonly IWalletSecretFetcher _secrets;
         private readonly ILogger<ApplePassSigner> _log;
 
-        public ApplePassSigner(IHttpClientFactory http, ILogger<ApplePassSigner> log)
+        public ApplePassSigner(IWalletSecretFetcher secrets, ILogger<ApplePassSigner> log)
         {
-            _http = http;
+            _secrets = secrets;
             _log = log;
         }
 
@@ -32,7 +32,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
                 using var passCert = new X509Certificate2(
                     p12Bytes,
-                    p12Password ?? string.Empty,
+                    _secrets.RevealPassword(p12Password),
                     X509KeyStorageFlags.MachineKeySet |
                     X509KeyStorageFlags.Exportable |
                     X509KeyStorageFlags.PersistKeySet);
@@ -126,28 +126,18 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
 
         /// <summary>
-        /// Loads bytes from either local file or HTTPS URL.
+        /// Loads bytes from a local file, our own blob/CDN storage (authenticated) or another URL.
         /// </summary>
         private byte[] LoadBytes(string pathOrUrl)
         {
             try
             {
-                if (Uri.TryCreate(pathOrUrl, UriKind.Absolute, out var uri) &&
-                    (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
-                {
-                    var client = _http.CreateClient("wallet");
-                    using var res = client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead)
-                                          .GetAwaiter().GetResult();
-                    res.EnsureSuccessStatusCode();
-                    return res.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
-                }
-
-                var full = Path.GetFullPath(pathOrUrl.Trim().Trim('"'));
-                return File.ReadAllBytes(full);
+                return _secrets.GetBytes(pathOrUrl);
             }
             catch (Exception ex)
             {
-                _log.LogError(ex, "Error loading certificate or file from {PathOrUrl}", pathOrUrl);
+                // URL loglanmır — sirrin yeri təxmin olunmasın
+                _log.LogError(ex, "Error loading signing certificate (ext {Ext}).", Path.GetExtension(pathOrUrl ?? string.Empty));
                 throw;
             }
         }

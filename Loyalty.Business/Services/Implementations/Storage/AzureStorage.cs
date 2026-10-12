@@ -1,4 +1,4 @@
-﻿using Azure.Storage.Blobs;
+using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Loyalty.Business.Services.Abstractions.Storage;
 using Loyalty.Business.Services.Abstractions.Storage.Azure;
@@ -69,7 +69,7 @@ namespace Loyalty.Business.Services.Implementations.Storage
         {
             _blobContainerClient = _blobServiceClient.GetBlobContainerClient(pathOrContainerName);
             await _blobContainerClient.CreateIfNotExistsAsync();
-            await _blobContainerClient.SetAccessPolicyAsync(PublicAccessType.BlobContainer);
+            await _blobContainerClient.SetAccessPolicyAsync(PublicAccessType.Blob);
 
             var rnd = new Random();
 
@@ -125,7 +125,7 @@ namespace Loyalty.Business.Services.Implementations.Storage
             //   2) Asynchronous job pattern (background queue) tətbiq et.
             _blobContainerClient = _blobServiceClient.GetBlobContainerClient(pathOrContainerName);
             await _blobContainerClient.CreateIfNotExistsAsync();
-            await _blobContainerClient.SetAccessPolicyAsync(PublicAccessType.BlobContainer);
+            await _blobContainerClient.SetAccessPolicyAsync(PublicAccessType.Blob);
 
             var name = Path.GetFileNameWithoutExtension(file.FileName)
                 + Random.Shared.Next(1000, 9999) + Path.GetExtension(file.FileName);
@@ -151,7 +151,7 @@ namespace Loyalty.Business.Services.Implementations.Storage
         {
             _blobContainerClient = _blobServiceClient.GetBlobContainerClient(pathOrContainerName);
             await _blobContainerClient.CreateIfNotExistsAsync();
-            await _blobContainerClient.SetAccessPolicyAsync(PublicAccessType.BlobContainer);
+            await _blobContainerClient.SetAccessPolicyAsync(PublicAccessType.Blob);
 
             var ext = Path.GetExtension(file.FileName);
             if (string.IsNullOrWhiteSpace(ext)) ext = ".mp4";
@@ -382,11 +382,38 @@ namespace Loyalty.Business.Services.Implementations.Storage
             throw new InvalidOperationException($"Video müddəti parse oluna bilmədi: '{stdout}'");
         }
 
+        public async Task<List<(string fileName, string url)>> UploadPrivateFileAsync(string containerName, IEnumerable<IFormFile> files)
+        {
+            var container = _blobServiceClient.GetBlobContainerClient(containerName);
+            await container.CreateIfNotExistsAsync(PublicAccessType.None);
+            // Mövcud (əvvəl public yaradılmış) konteyneri də bağla
+            await container.SetAccessPolicyAsync(PublicAccessType.None);
+
+            var result = new List<(string fileName, string url)>();
+            foreach (var file in files)
+            {
+                var name = $"{Guid.NewGuid():N}{Path.GetExtension(file.FileName).ToLowerInvariant()}";
+                var blob = container.GetBlobClient(name);
+                await using var stream = file.OpenReadStream();
+                await blob.UploadAsync(stream, new BlobUploadOptions
+                {
+                    HttpHeaders = new BlobHttpHeaders
+                    {
+                        ContentType = "application/octet-stream",
+                        CacheControl = "no-store",
+                    }
+                });
+                // Birbaşa blob URL (CDN rewriter YOX) — WalletSecretFetcher bunu storage açarı ilə oxuyur
+                result.Add((name, $"https://walverostorage.blob.core.windows.net/{containerName}/{name}"));
+            }
+            return result;
+        }
+
         public async Task<List<(string fileName, string pathOrContainerName)>> UploadFileAsync(string pathOrContainerName, IEnumerable<IFormFile> files)
         {
             _blobContainerClient = _blobServiceClient.GetBlobContainerClient(pathOrContainerName);
             await _blobContainerClient.CreateIfNotExistsAsync();
-            await _blobContainerClient.SetAccessPolicyAsync(PublicAccessType.BlobContainer);
+            await _blobContainerClient.SetAccessPolicyAsync(PublicAccessType.Blob);
 
             var rnd = new Random();
             List<(string fileName, string pathOrContainerName)> datas = new();
