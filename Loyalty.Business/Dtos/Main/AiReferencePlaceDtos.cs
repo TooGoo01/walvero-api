@@ -18,6 +18,10 @@ namespace Loyalty.Business.Dtos.Main
         public string? LogoUrl { get; set; }
         public bool IsActive { get; set; }
         public bool Verified { get; set; }
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
+        /// <summary>Yalnız geo axtarışında doldurulur (km, 1 rəqəm).</summary>
+        public double? DistanceKm { get; set; }
     }
 
     public class CreateAiReferencePlaceDto
@@ -40,6 +44,9 @@ namespace Loyalty.Business.Dtos.Main
         public bool Verified { get; set; } = false;
         /// <summary>Loqo URL-i (AppSetting/UploadImage ilə yüklənir).</summary>
         [MaxLength(500)] public string? LogoUrl { get; set; }
+        /// <summary>Koordinat (ixtiyari) — "yaxınlıqda" axtarışı üçün.</summary>
+        [Range(-90, 90)] public decimal? Latitude { get; set; }
+        [Range(-180, 180)] public decimal? Longitude { get; set; }
     }
 
     public class UpdateAiReferencePlaceDto : CreateAiReferencePlaceDto

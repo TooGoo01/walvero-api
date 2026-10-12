@@ -20,6 +20,10 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? Phone { get; set; }
         public string? MenuUrl { get; set; }
 
+        /// <summary>Koordinat (ixtiyari) — AI "yaxınlıqda" sorğularında məsafə filtri üçün.</summary>
+        public decimal? Latitude { get; set; }
+        public decimal? Longitude { get; set; }
+
         /// <summary>
         /// Strukturlu menyu JSON (AI menyu suallarına cavab verə bilsin deyə).
         /// Format sərbəstdir; tövsiyə: {"categories":[{"name":"...","items":[{"name":"...","price":0}]}]}.

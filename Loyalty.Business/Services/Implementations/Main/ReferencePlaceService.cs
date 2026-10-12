@@ -1,4 +1,5 @@
 using Loyalty.Business.Dtos.Main;
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Context;
@@ -71,42 +72,22 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, "Silindi");
         }
 
-        public async Task<List<GetAiReferencePlaceDto>> SearchAsync(string[] keywords, string? area, int take = 8, CancellationToken ct = default)
+        public async Task<List<GetAiReferencePlaceDto>> SearchAsync(string[] keywords, string? area, int take = 8,
+            double? lat = null, double? lng = null, double? radiusKm = null, CancellationToken ct = default)
         {
             var all = await GetActiveCachedAsync(ct);
 
-            var tokens = new List<string>();
+            var tokens = new List<string?>();
             if (keywords != null) tokens.AddRange(keywords);
-            if (!string.IsNullOrWhiteSpace(area)) tokens.Add(area!);
-            var normTokens = tokens
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .Select(Normalize)
-                .Where(t => t.Length > 0)
-                .Distinct()
-                .ToList();
+            if (!string.IsNullOrWhiteSpace(area)) tokens.Add(area);
 
-            if (normTokens.Count == 0)
-                return new List<GetAiReferencePlaceDto>();
-
-            var scored = new List<(AiReferencePlace p, int score)>();
-            foreach (var p in all)
-            {
-                // MenuJson raw string də haystack-dədir — yemək adları ilə xarici məkan tapılsın
-                // (mötərizə/dırnaq Normalize-dan sonra zərərsiz "noise"-dur).
-                var haystack = Normalize(string.Join(" ", new[]
+            return ReferencePlaceRanking.Rank(all, tokens, lat, lng, radiusKm, take)
+                .Select(h =>
                 {
-                    p.Name, p.Category, p.City, p.Area, p.Address, p.Keywords, p.Description, p.MenuJson
-                }.Where(s => !string.IsNullOrWhiteSpace(s))));
-
-                var score = normTokens.Count(tok => haystack.Contains(tok, StringComparison.Ordinal));
-                if (score > 0) scored.Add((p, score));
-            }
-
-            return scored
-                .OrderByDescending(x => x.score)
-                .ThenBy(x => x.p.Name)
-                .Take(Math.Clamp(take <= 0 ? 8 : take, 1, 20))
-                .Select(x => Map(x.p))
+                    var dto = Map(h.Place);
+                    dto.DistanceKm = h.DistanceKm;
+                    return dto;
+                })
                 .ToList();
         }
 
@@ -153,6 +134,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             e.MenuJson = string.IsNullOrWhiteSpace(d.MenuJson) ? null : d.MenuJson.Trim();
             e.Verified = d.Verified;
             e.LogoUrl = d.LogoUrl?.Trim();
+            e.Latitude = d.Latitude;
+            e.Longitude = d.Longitude;
         }
 
         /// <summary>MenuJson doludursa valid JSON olmalıdır; xəta mesajı və ya null qaytarır.</summary>
@@ -186,19 +169,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             LogoUrl = p.LogoUrl,
             IsActive = p.IsActive,
             Verified = p.Verified,
+            Latitude = p.Latitude,
+            Longitude = p.Longitude,
         };
 
-        private static string Normalize(string s)
-        {
-            if (string.IsNullOrWhiteSpace(s)) return string.Empty;
-            s = s.ToLowerInvariant().Trim();
-            var map = new Dictionary<char, char>
-            {
-                ['ə'] = 'e', ['ğ'] = 'g', ['ı'] = 'i', ['ö'] = 'o', ['ü'] = 'u',
-                ['ş'] = 's', ['ç'] = 'c'
-            };
-            var chars = s.Select(c => map.TryGetValue(c, out var r) ? r : c).ToArray();
-            return new string(chars);
-        }
+        private static string Normalize(string s) => ReferencePlaceRanking.Normalize(s);
     }
 }

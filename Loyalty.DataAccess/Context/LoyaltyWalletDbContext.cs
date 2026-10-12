@@ -1336,6 +1336,8 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(e => e.Address).HasMaxLength(500);
                 entity.Property(e => e.Phone).HasMaxLength(50);
                 entity.Property(e => e.MenuUrl).HasMaxLength(500);
+                entity.Property(e => e.Latitude).HasPrecision(9, 6);
+                entity.Property(e => e.Longitude).HasPrecision(9, 6);
                 entity.HasIndex(e => e.Name);
             });
 

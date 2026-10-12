@@ -363,7 +363,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                             .Select(n => GetString(n)).Where(s => !string.IsNullOrEmpty(s)).Select(s => s!).ToArray()
                             ?? Array.Empty<string>();
                         var area = GetString(args["area"]);
-                        var refs = await _referencePlace.SearchAsync(kws, area, 8, ct);
+                        // Geo request-dən (modeldən istəmirik); radiusKm yalnız yaxınlıq soruşulanda modeldən gəlir
+                        var refs = await _referencePlace.SearchAsync(kws, area, 8,
+                            request.Lat, request.Lng, GetDouble(args["radiusKm"]), ct);
 
                         // Reference place-lər də app-a kart kimi gedir (logo + verified check + "Walvero-da deyil").
                         // BranchId = -Id (mənfi pseudo-id) — real branch dedupe-u ilə toqquşmasın.
@@ -380,6 +382,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                                     LogoUrl = r.LogoUrl,
                                     Verified = r.Verified,
                                     NotInApp = true,
+                                    DistanceKm = r.DistanceKm,
                                     Menu = new PlaceMenuDto { InApp = false, ExternalMenuUrl = r.MenuUrl }
                                 });
 
@@ -392,6 +395,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                             r.Description, r.Phone, r.MenuUrl,
                             hasMenu = !string.IsNullOrWhiteSpace(r.MenuJson),
                             verified = r.Verified, // Walvero tərəfindən yoxlanılıb — məlumat etibarlıdır
+                            distanceKm = r.DistanceKm,
                             notInApp = true
                         }));
                     }
@@ -500,6 +504,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             sb.AppendLine("If the user says 'near me' / 'nearby' without a distance, use radiusKm=5 by DEFAULT and");
             sb.AppendLine("search immediately — do NOT ask the user to choose a radius. If nothing is within 5 km,");
             sb.AppendLine("retry once with radiusKm=15 and say the distance.");
+            sb.AppendLine("For proximity questions, if `search_places` returns nothing nearby, also call");
+            sb.AppendLine("`search_reference_places` with the same radiusKm (its results include `distanceKm`).");
             if (isAuth)
             {
                 sb.AppendLine("For the user's own account questions:");
@@ -625,7 +631,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                                 ["items"] = new JsonObject { ["type"] = "string" },
                                 ["description"] = "Keywords: cuisine/name/feature (e.g. ['sushi'], ['kebab','national'])."
                             },
-                            ["area"] = new JsonObject { ["type"] = "string", ["description"] = "Area/neighborhood (optional), e.g. Nizami." }
+                            ["area"] = new JsonObject { ["type"] = "string", ["description"] = "Area/neighborhood (optional), e.g. Nizami." },
+                            ["radiusKm"] = new JsonObject { ["type"] = "number", ["description"] = "Only when proximity is requested (e.g. 'near me'). In kilometers. Keywords may then be empty to list the nearest places." }
                         },
                         ["required"] = new JsonArray { "keywords" }
                     }),
