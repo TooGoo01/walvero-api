@@ -160,18 +160,31 @@ public sealed class AppleWalletService : IAppleWalletService
                     try
                     {
                         var branches = await _branchRepo.GetByTenantAsync(tenantId, ct);
+                        // Yaxınlıq cütləri: hər filial öz siyahısından təsadüfi mətn; pass-da başlıq (organizationName)
+                        // tək olduğu üçün əsas filialın (yoxdursa növbətinin) seçilmiş başlığı götürülür.
+                        // Əsas filial önə — Apple yalnız ilk 10 lokasiyanı istifadə edir.
+                        string? geoTitle = null;
                         var branchLocs = branches?
                             .Where(b => b.IsActive && b.Latitude.HasValue && b.Longitude.HasValue)
-                            .Select(b => new PassLocation
+                            .OrderByDescending(b => b.IsMainBranch)
+                            .ThenBy(b => b.Id)
+                            .Select(b =>
                             {
-                                Latitude = (double)b.Latitude!.Value,
-                                Longitude = (double)b.Longitude!.Value,
-                                RelevantText = b.Name
+                                var pick = BranchGeoTexts.Pick(b.GeoTextsJson);
+                                geoTitle ??= pick?.Title;
+                                return new PassLocation
+                                {
+                                    Latitude = (double)b.Latitude!.Value,
+                                    Longitude = (double)b.Longitude!.Value,
+                                    RelevantText = pick?.Text ?? b.Name
+                                };
                             })
                             .ToList();
 
                         if (branchLocs?.Count > 0)
                             req.Locations = branchLocs;
+                        if (!string.IsNullOrWhiteSpace(geoTitle))
+                            req.OrganizationName = geoTitle;
                     }
                     catch (Exception ex)
                     {

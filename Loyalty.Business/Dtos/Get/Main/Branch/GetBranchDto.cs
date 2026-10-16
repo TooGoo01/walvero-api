@@ -86,5 +86,8 @@ namespace Loyalty.Business.Dtos.Get.Main.Branch
         // Görünüş
         public int? AnnouncementFontSize { get; set; }
         public string? DefaultMenuView { get; set; }
+
+        // Yaxınlıq bildirişi cütləri (Branch.GeoTextsJson)
+        public List<BranchGeoTextDto> GeoTexts { get; set; } = new();
     }
 }

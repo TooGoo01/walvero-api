@@ -101,6 +101,10 @@ namespace Loyalty.DataAccess.Entities.Main
         public int? AnnouncementFontSize { get; set; } // px; menyu səhifəsindəki elan zolağının şrifti, null → default
         public string? DefaultMenuView { get; set; }   // "grid" | "list"; null → TenantBranding.DefaultMenuView
 
+        // Yaxınlıq bildirişi cütləri — JSON [{title,text}]. Apple pass (organizationName + relevantText)
+        // və app geofence-də təsadüfi biri göstərilir. null → filial adı / default mətn.
+        public string? GeoTextsJson { get; set; }
+
         public ICollection<Room> Rooms { get; set; } = new List<Room>();
 
         // Inverse navigation collections — DbContext-də HasOne(...).WithMany(b => b.Staff/Transactions)

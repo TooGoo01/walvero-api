@@ -90,5 +90,8 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
         public string? AnnouncementAz { get; set; }
         public string? AnnouncementEn { get; set; }
         public string? AnnouncementRu { get; set; }
+
+        // Yaxınlıq bildirişi cütləri (normalizasiya: BranchGeoTexts.Serialize)
+        public List<Get.Main.Branch.BranchGeoTextDto>? GeoTexts { get; set; }
     }
 }

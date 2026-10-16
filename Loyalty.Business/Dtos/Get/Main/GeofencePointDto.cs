@@ -13,6 +13,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int? BranchId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Type { get; set; } = "added"; // "added" | "premium"
-        public string? RelevantText { get; set; }   // bildiriş mətni
+        public string? RelevantText { get; set; }   // bildiriş mətni (köhnə app-lar; Texts-dən təsadüfi biri)
+        public List<Branch.BranchGeoTextDto>? Texts { get; set; } // filial cütləri — yeni app hər tetiklənmədə birini seçir; yalnız "added"
     }
 }

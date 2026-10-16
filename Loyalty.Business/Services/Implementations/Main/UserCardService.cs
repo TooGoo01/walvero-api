@@ -368,6 +368,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 foreach (var b in branches)
                 {
+                    // Filial yaxınlıq cütləri yalnız kart sahibinə (added); premium default mətndə qalır
+                    var texts = type == "added" ? BranchGeoTexts.Parse(b.GeoTextsJson) : null;
+                    if (texts?.Count == 0) texts = null;
                     points.Add(new GeofencePointDto
                     {
                         Lat = (double)b.Latitude!.Value,
@@ -377,7 +380,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                         BranchId = b.Id,
                         Name = string.IsNullOrWhiteSpace(b.Name) ? t.CompanyName : $"{t.CompanyName} — {b.Name}",
                         Type = type,
-                        RelevantText = relevantText
+                        RelevantText = texts != null ? texts[Random.Shared.Next(texts.Count)].Text : relevantText,
+                        Texts = texts
                     });
                 }
             }

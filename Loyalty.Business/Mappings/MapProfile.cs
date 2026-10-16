@@ -7,6 +7,7 @@ using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Dtos.Post.Main.Branch;
 using Loyalty.Business.Dtos.Post.Main.Room;
 using Loyalty.Business.Dtos.Post.Users;
+using Loyalty.Business.Helpers;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Entities.Users;
 using Loyalty.DataAccess.Models;
@@ -285,7 +286,8 @@ namespace Loyalty.Business.Mappings
             #region Branch & Room
             CreateMap<BranchEntity, GetBranchDto>()
                 .ForMember(d => d.StaffCount, opt => opt.Ignore())
-                .ForMember(d => d.DistanceKm, opt => opt.Ignore());
+                .ForMember(d => d.DistanceKm, opt => opt.Ignore())
+                .ForMember(d => d.GeoTexts, opt => opt.MapFrom(s => BranchGeoTexts.Parse(s.GeoTextsJson)));
             CreateMap<BranchEntity, BranchSummaryDto>();
 
             CreateMap<CreateBranchDto, BranchEntity>()
@@ -299,7 +301,8 @@ namespace Loyalty.Business.Mappings
                 .ForMember(d => d.TenantId, opt => opt.Ignore())
                 .ForMember(d => d.Rooms, opt => opt.Ignore())
                 .ForMember(d => d.RadiusMeters, opt => opt.MapFrom(s => s.RadiusMeters ?? 100))
-                .ForMember(d => d.IsMainBranch, opt => opt.MapFrom(s => s.IsMainBranch ?? false));
+                .ForMember(d => d.IsMainBranch, opt => opt.MapFrom(s => s.IsMainBranch ?? false))
+                .ForMember(d => d.GeoTextsJson, opt => opt.MapFrom(s => BranchGeoTexts.Serialize(s.GeoTexts)));
 
             CreateMap<RoomEntity, GetRoomDto>()
                 .ForMember(d => d.MediaCount, opt => opt.MapFrom(s => s.Files != null ? s.Files.Count(f => f.IsActive) : 0));

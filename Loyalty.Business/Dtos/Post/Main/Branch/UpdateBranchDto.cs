@@ -99,5 +99,8 @@ namespace Loyalty.Business.Dtos.Post.Main.Branch
         // Görünüş (PATCH: null = dəyişdirilməz; AnnouncementFontSize 0 = sil; DefaultMenuView "" = sil)
         public int? AnnouncementFontSize { get; set; }
         [MaxLength(10)] public string? DefaultMenuView { get; set; }
+
+        // Yaxınlıq bildirişi cütləri (PATCH: null = dəyişdirilməz; boş massiv = sil)
+        public List<Get.Main.Branch.BranchGeoTextDto>? GeoTexts { get; set; }
     }
 }

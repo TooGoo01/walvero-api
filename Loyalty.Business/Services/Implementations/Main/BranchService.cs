@@ -1,6 +1,7 @@
 using AutoMapper;
 using Loyalty.Business.Dtos.Get.Main.Branch;
 using Loyalty.Business.Dtos.Post.Main.Branch;
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.Business.Services.Abstractions.Storage;
@@ -191,6 +192,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 branch.AppDisplayName = string.IsNullOrWhiteSpace(dto.AppDisplayName)
                     ? null
                     : dto.AppDisplayName.Trim();
+            // Boş massiv göndərilsə siyahı silinir (filial adı / default mətnə qayıdır)
+            if (dto.GeoTexts != null) branch.GeoTextsJson = BranchGeoTexts.Serialize(dto.GeoTexts);
 
             if (dto.IsMainBranch.HasValue && dto.IsMainBranch.Value && !branch.IsMainBranch)
             {

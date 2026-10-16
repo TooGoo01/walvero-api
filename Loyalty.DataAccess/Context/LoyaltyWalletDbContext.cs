@@ -1315,6 +1315,7 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(b => b.LinkedInUrl).HasMaxLength(500);
                 entity.Property(b => b.WoltUrl).HasMaxLength(500);
                 entity.Property(b => b.BoltFoodUrl).HasMaxLength(500);
+                entity.Property(b => b.GeoTextsJson).HasMaxLength(4000);
 
                 entity.HasIndex(b => b.TenantId);
                 entity.HasIndex(b => new { b.TenantId, b.IsActive });

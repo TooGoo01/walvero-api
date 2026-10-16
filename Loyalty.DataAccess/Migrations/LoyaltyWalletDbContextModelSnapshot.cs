@@ -388,6 +388,10 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("ForegroundColor")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("GeoTextsJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
                     b.Property<bool>("HideInApp")
                         .HasColumnType("bit");
 
