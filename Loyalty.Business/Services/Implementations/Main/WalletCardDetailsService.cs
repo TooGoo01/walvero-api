@@ -134,6 +134,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return ServiceResult<WalletCardDetailsResponseDto>.Fail("Card not found");
             }
 
+            // 3b. Bağlı kart (məs. ambassador keçidi) → həmin tenant-dakı aktiv karta yönləndir;
+            // aktiv kart yoxdursa köhnə davranış (bağlı kartın detalları).
+            if (!card.IsActive)
+            {
+                var activeCard = await _cardRepository.GetActiveCardForTenantAndUserAsync(tenantId, applicationUserId, ct);
+                if (activeCard != null) card = activeCard;
+            }
+
             // 4. Build response with full card details
             // Use card's LoyaltyProgram directly since it's already loaded with CardTemplate
             var response = new WalletCardDetailsResponseDto
@@ -154,7 +162,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             var branding = tenant.Branding;
             var category = tenant.Category;
-            var program = tenant.LoyaltyPrograms?.FirstOrDefault(lp => lp.IsActive);
+            var program = tenant.LoyaltyPrograms.DefaultProgram();
             return BuildTenantPublicDto(tenant, program, null, baseUrl);
         }
 

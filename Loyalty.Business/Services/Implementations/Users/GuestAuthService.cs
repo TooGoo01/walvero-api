@@ -1,3 +1,4 @@
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Dtos.Get.Users;
 using Loyalty.Business.Resources;
 using Loyalty.Business.Dtos.Post.Users;
@@ -84,7 +85,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                         string? googleLogoUrl = null;
                         if (user.TenantId != null && user.Tenant?.LoyaltyPrograms != null)
                         {
-                            var firstProgram = user.Tenant.LoyaltyPrograms.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null);
+                            var firstProgram = user.Tenant.LoyaltyPrograms.DefaultProgramWithTemplate();
                             if (firstProgram != null)
                             {
                                 programId = firstProgram.Id;
@@ -196,7 +197,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 string? guestGoogleLogoUrl = null;
                 if (guestUser.TenantId != null && guestUser.Tenant?.LoyaltyPrograms != null)
                 {
-                    var firstProgram = guestUser.Tenant.LoyaltyPrograms.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null);
+                    var firstProgram = guestUser.Tenant.LoyaltyPrograms.DefaultProgramWithTemplate();
                     if (firstProgram != null)
                     {
                         guestProgramId = firstProgram.Id;
@@ -374,7 +375,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 string? googleLogoUrl = null;
                 if (user.TenantId != null && user.Tenant?.LoyaltyPrograms != null)
                 {
-                    var firstProgram = user.Tenant.LoyaltyPrograms.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null);
+                    var firstProgram = user.Tenant.LoyaltyPrograms.DefaultProgramWithTemplate();
                     if (firstProgram != null)
                     {
                         programId = firstProgram.Id;
@@ -496,7 +497,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                 string? googleLogoUrl = null;
                 if (user.TenantId != null && user.Tenant?.LoyaltyPrograms != null)
                 {
-                    var firstProgram = user.Tenant.LoyaltyPrograms.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null);
+                    var firstProgram = user.Tenant.LoyaltyPrograms.DefaultProgramWithTemplate();
                     if (firstProgram != null)
                     {
                         programId = firstProgram.Id;

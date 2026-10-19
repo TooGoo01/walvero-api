@@ -39,7 +39,20 @@ namespace Loyalty.Business.Helpers
         /// <summary>Orijinal action/condition-lar ("Xam qaydalar" bölməsi).</summary>
         public List<IikoRawRule> RawActions { get; set; } = new();
         public List<IikoRawRule> RawConditions { get; set; } = new();
+
+        // ── Strukturlu çıxarış (bütün binding-lər: order + periodic + guestRegistration + overdraft) — idxal/seçim üçün ──
+        /// <summary>Action settings-dəki cüzdan id-ləri (RefillWalletPercent/Refill/Payment …), təkrarsız.</summary>
+        public List<string> WalletIds { get; set; } = new();
+        /// <summary>PaymentAction (cüzdandan ödəniş) — məs. pims ambassador: F&amp;B kateqoriyası, 1 məhsul = 1 vahid.</summary>
+        public IikoPaymentSpec? Payment { get; set; }
+        /// <summary>GuestCategoryCondition — kampaniya yalnız bu qonaq kateqoriyalarına işləyir.</summary>
+        public List<string> GuestCategoryIds { get; set; } = new();
+        /// <summary>GuestNotInCategoryCondition — bu kateqoriyalar istisnadır.</summary>
+        public List<string> ExcludedGuestCategoryIds { get; set; } = new();
     }
+
+    /// <summary>PaymentAction: hansı cüzdandan, hansı məhsullara, məhsul başına neçə vahid (UnitsPrice; null = məbləğlə).</summary>
+    public sealed record IikoPaymentSpec(string? WalletId, decimal? UnitsPerItem, int? WhatToPay, decimal? LimitPercent, List<IikoProductMask> Masks);
 
     public sealed record IikoProductMask(string Value, int? Type, string? ResolvedName);
     public sealed record IikoConditionSummary(string Type, string Text);
@@ -169,7 +182,74 @@ namespace Loyalty.Business.Helpers
                 ? AllProductsText
                 : concrete.Count > 0 ? "Seçilmiş məhsullar" : "Məhsul filtri yoxdur";
 
+            ExtractStructured(c, resolveName);
             return c;
+        }
+
+        /// <summary>
+        /// Xam action/condition-lardan (bütün binding-lər, "overdraft:" kimi etiketlər daxil) cüzdan id-ləri, PaymentAction
+        /// və qonaq kateqoriyası şərtlərini strukturlu çıxarır.
+        /// </summary>
+        private static void ExtractStructured(IikoCampaignSummary c, Func<string, string?>? resolveName)
+        {
+            static string BareType(string t) { var i = t.IndexOf(':'); return i >= 0 ? t[(i + 1)..] : t; }
+
+            foreach (var a in c.RawActions)
+            {
+                var s = Parse(a.Settings);
+                var walletId = Str(s, "WalletId");
+                if (!string.IsNullOrWhiteSpace(walletId) && !c.WalletIds.Contains(walletId, StringComparer.OrdinalIgnoreCase))
+                    c.WalletIds.Add(walletId);
+
+                if (BareType(a.Type) == "PaymentAction" && c.Payment == null)
+                {
+                    var masks = new List<IikoProductMask>();
+                    CollectMasks(s, masks, resolveName);
+                    c.Payment = new IikoPaymentSpec(
+                        WalletId: walletId,
+                        UnitsPerItem: FirstMaskDecimal(s, "UnitsPrice"),
+                        WhatToPay: Int(s, "WhatToPay"),
+                        LimitPercent: Dec(s, "PaymentLimitPercent"),
+                        Masks: masks);
+                }
+            }
+
+            foreach (var cond in c.RawConditions)
+            {
+                var type = BareType(cond.Type);
+                var target = type switch
+                {
+                    "GuestCategoryCondition" => c.GuestCategoryIds,
+                    "GuestNotInCategoryCondition" => c.ExcludedGuestCategoryIds,
+                    _ => null
+                };
+                if (target == null) continue;
+                foreach (var id in IdList(Parse(cond.Settings), "GuestCategoryIds"))
+                    if (!target.Contains(id, StringComparer.OrdinalIgnoreCase)) target.Add(id);
+            }
+        }
+
+        private static string? Str(JsonElement? s, string prop)
+            => s != null && s.Value.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+        private static decimal? FirstMaskDecimal(JsonElement? s, string prop)
+        {
+            if (s == null || !s.Value.TryGetProperty("MaskItems", out var arr) || arr.ValueKind != JsonValueKind.Array) return null;
+            foreach (var m in arr.EnumerateArray())
+                if (m.ValueKind == JsonValueKind.Object && m.TryGetProperty(prop, out var v)
+                    && v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var d))
+                    return d;
+            return null;
+        }
+
+        private static IEnumerable<string> IdList(JsonElement? s, string prop)
+        {
+            if (s == null || !s.Value.TryGetProperty(prop, out var arr) || arr.ValueKind != JsonValueKind.Array) yield break;
+            foreach (var e in arr.EnumerateArray())
+            {
+                var raw = e.ValueKind == JsonValueKind.String ? e.GetString() : e.ToString();
+                if (!string.IsNullOrWhiteSpace(raw)) yield return raw!;
+            }
         }
 
         /// <summary>Proqramın effektiv keşbek faizi: şərtsiz aktiv "Keşbek %" kampaniyası, yoxdursa ilk aktiv.</summary>

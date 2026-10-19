@@ -216,8 +216,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!string.IsNullOrWhiteSpace(req.AuthenticationToken))
                 root["authenticationToken"] = req.AuthenticationToken;
 
-            // Location-based triggers (branch locations)
-            if (req.Locations?.Count > 0)
+            if (req.Voided)
+                root["voided"] = true;
+
+            // Location-based triggers (branch locations) — voided pass-da yox
+            if (req.Locations?.Count > 0 && !req.Voided)
             {
                 root["locations"] = req.Locations
                     .Select(loc => new Dictionary<string, object>

@@ -45,6 +45,9 @@ namespace Loyalty.Business.Dtos.Post.Main
 
         // Location triggers (branch locations)
         public List<PassLocation>? Locations { get; set; }
+
+        // Bağlanmış kart (məs. ambassador keçidi) — Apple pass-ı "voided" göstərir, lokasiya bildirişi yoxdur
+        public bool Voided { get; set; }
     }
 
     public class PassLocation

@@ -29,5 +29,30 @@ namespace Loyalty.Business.Dtos.Post.Main
         public int? BasePercentCash { get; set; }
         public int? BasePercentCard { get; set; }
         public List<HappyHoursWindowDto>? HappyHoursWindows { get; set; }
+
+        // null → yeni proqramda Public, mövcudda dəyişmir (köhnə admin formaları sahəni göndərmir)
+        public ProgramAudience? Audience { get; set; }
+
+        // null → yeni proqramda Legacy, mövcudda dəyişmir
+        public PosEarnSource? PosEarnSource { get; set; }
+
+        // Möhür proqramında qayda uyğun gəlməyən POS sifarişinə möhür sayı. null = dəyişmə; 0 = söndür
+        public int? StepsPerOrder { get; set; }
+
+        // iiko cüzdanı / onun iiko proqramı (GUID). null = dəyişmə; "" = sil
+        public string? PosWalletId { get; set; }
+        public string? PosExternalProgramId { get; set; }
+    }
+
+    /// <summary>Proqramın POS (iiko) bağlantısı — tenant admin öz proqramı üçün dəyişir. null sahə = dəyişmə.</summary>
+    public class UpdatePosLinkDto
+    {
+        public PosEarnSource? PosEarnSource { get; set; }
+        /// <summary>0 = söndür</summary>
+        public int? StepsPerOrder { get; set; }
+        /// <summary>"" = sil</summary>
+        public string? PosWalletId { get; set; }
+        /// <summary>"" = sil</summary>
+        public string? PosExternalProgramId { get; set; }
     }
 }

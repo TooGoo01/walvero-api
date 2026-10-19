@@ -17,6 +17,9 @@ namespace Loyalty.WebAPI.Controllers
     {
         private readonly ITenantIntegrationService _service;
         private readonly IIikoRulesService _iikoRules;
+        private readonly IIikoCatalogService _iikoCatalog;
+        private readonly IIikoConnectionResolver _iikoConnection;
+        private readonly IPosEarnExclusionService _nomenclature;
         private readonly IIntegrationTypeRepository _typeRepo;
         private readonly ITenantProvider _tenantProvider;
         private readonly IUnitOfWork _uow;
@@ -24,12 +27,18 @@ namespace Loyalty.WebAPI.Controllers
         public TenantIntegrationController(
             ITenantIntegrationService service,
             IIikoRulesService iikoRules,
+            IIikoCatalogService iikoCatalog,
+            IIikoConnectionResolver iikoConnection,
+            IPosEarnExclusionService nomenclature,
             IIntegrationTypeRepository typeRepo,
             ITenantProvider tenantProvider,
             IUnitOfWork uow)
         {
             _service = service;
             _iikoRules = iikoRules;
+            _iikoCatalog = iikoCatalog;
+            _iikoConnection = iikoConnection;
+            _nomenclature = nomenclature;
             _typeRepo = typeRepo;
             _tenantProvider = tenantProvider;
             _uow = uow;
@@ -228,6 +237,89 @@ namespace Loyalty.WebAPI.Controllers
             var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!tid.HasValue || tid <= 0) return BadRequest("TenantId required.");
             var result = await _iikoRules.GetRulesAsync(tid.Value, id, venueId, refresh, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok(result.Data);
+        }
+
+        /// <summary>
+        /// iiko kataloqu: proqramlar + kampaniyalar, cüzdanlar, qonaq kateqoriyaları, məhsul qrupları/kateqoriyaları —
+        /// seçim siyahıları, idxal və sinxron paneli üçün. Tenant admin öz inteqrasiyasını, super admin tenantId ilə.
+        /// </summary>
+        [HttpGet("{id}/iiko/catalog")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> GetIikoCatalog(int id, [FromQuery] int? tenantId, [FromQuery] bool refresh = false, CancellationToken ct = default)
+        {
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
+            if (!tid.HasValue || tid <= 0) return BadRequest("TenantId required.");
+            var result = await _iikoCatalog.GetCatalogAsync(tid.Value, id, refresh, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok(result.Data);
+        }
+
+        /// <summary>Kataloqda məhsul axtarışı (iiko nomenklaturası + sifarişlərdən yığılan məhsullar).</summary>
+        [HttpGet("{id}/iiko/catalog/products")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> SearchIikoCatalogProducts(int id, [FromQuery] int? tenantId, [FromQuery] string? q,
+            [FromQuery] string? groupId, [FromQuery] string? categoryId, [FromQuery] int take = 100, CancellationToken ct = default)
+        {
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
+            if (!tid.HasValue || tid <= 0) return BadRequest("TenantId required.");
+            var (ti, error) = await _iikoConnection.GetOwnedIikoIntegrationAsync(tid.Value, id, ct);
+            if (ti == null) return BadRequest(error);
+            var result = await _nomenclature.SearchProductsAsync(id, q, groupId, categoryId, Math.Clamp(take, 1, 300), ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok(result.Data);
+        }
+
+        /// <summary>Nomenklaturanı iiko-dan yenilə (məhsul qrupları/kateqoriyaları).</summary>
+        [HttpPost("{id}/iiko/catalog/refresh-nomenclature")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> RefreshIikoNomenclature(int id, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
+            if (!tid.HasValue || tid <= 0) return BadRequest("TenantId required.");
+            var (ti, error) = await _iikoConnection.GetOwnedIikoIntegrationAsync(tid.Value, id, ct);
+            if (ti == null) return BadRequest(error);
+            var result = await _nomenclature.RefreshNomenclatureAsync(id, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok(result.Data);
+        }
+
+        /// <summary>Kassa kampaniyalarından Walvero ayar təklifləri (önbaxış — heç nə yazılmır).</summary>
+        [HttpGet("{id}/iiko/import/preview")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> PreviewIikoImport(int id, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
+            if (!tid.HasValue || tid <= 0) return BadRequest("TenantId required.");
+            var result = await _iikoCatalog.PreviewImportAsync(tid.Value, id, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok(result.Data);
+        }
+
+        public sealed record IikoImportApplyRequest(List<string> Keys);
+
+        /// <summary>Seçilmiş idxal təkliflərini tətbiq et (proqram/şablon/inteqrasiya ayarları; lazım olsa ambassador proqramı yaradılır).</summary>
+        [HttpPost("{id}/iiko/import/apply")]
+        [Authorize(Policy = "TenantAdminOrSuperAdmin")]
+        public async Task<IActionResult> ApplyIikoImport(int id, [FromBody] IikoImportApplyRequest request, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
+            if (!tid.HasValue || tid <= 0) return BadRequest("TenantId required.");
+            var userId = int.TryParse(_tenantProvider.CurrentUserId, out var uid) ? uid : 1;
+            var result = await _iikoCatalog.ApplyImportAsync(tid.Value, id, request?.Keys ?? new List<string>(), userId, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok(result.Data);
+        }
+
+        /// <summary>Kassa ↔ Walvero sinxron vəziyyəti (bağlı/bağlanmamış cüzdanlar, riskli rejimlər, kateqoriya, kataloq).</summary>
+        [HttpGet("{id}/iiko/sync-status")]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        public async Task<IActionResult> GetIikoSyncStatus(int id, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
+            if (!tid.HasValue || tid <= 0) return BadRequest("TenantId required.");
+            var result = await _iikoCatalog.GetSyncStatusAsync(tid.Value, id, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok(result.Data);
         }

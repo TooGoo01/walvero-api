@@ -160,6 +160,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// <summary>Gözlənilən cashback hesabı üçün faiz (UI-dan).</summary>
         public decimal? CashbackPercent { get; set; }
         public bool IsProgress { get; set; }
+        /// <summary>Hansı proqramın kartı üçün (proqrama bağlı qaydalar); boş = inteqrasiyanın proqramı.</summary>
+        public int? LoyaltyProgramId { get; set; }
     }
 
     public class EarnExclusionSimulateItemDto

@@ -74,6 +74,32 @@ namespace Loyalty.WebAPI.Controllers
             }
         }
 
+        /// <summary>Ambassadorluqdan çıxar: ambassador kartı bağlanır, müştərinin adi kartı (balansı ilə) geri açılır.</summary>
+        [HttpPost]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> Demote([FromBody] DemoteAmbassadorDto model, CancellationToken ct)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(new ServiceResult(false, "Invalid request data"));
+
+            var tenantId = _tenantProvider.CurrentTenantId;
+            if (!tenantId.HasValue)
+                return BadRequest(new ServiceResult(false, "Tenant not found."));
+
+            var userId = _tenantProvider.CurrentUserId ?? "";
+
+            try
+            {
+                var result = await _ambassadorService.DemoteAsync(tenantId.Value, userId, model, ct);
+                return result.Success ? Ok(result) : BadRequest(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ServiceResult(false, $"Server error: {ex.Message}"));
+            }
+        }
+
         /// <summary>Ambassador kartına manual xal əlavə et. Wallet push + POS forward tetiklenir.</summary>
         [HttpPost]
         [Authorize(Policy = "TenantAdminOrModerator")]

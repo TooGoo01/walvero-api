@@ -282,7 +282,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                             ? null
                             : new TenantDiscoverCategoryDto { EnName = t.Category.EnName },
                         LoyaltyPrograms = t.LoyaltyPrograms
-                            .Where(lp => lp.IsActive)
+                            .Where(lp => lp.IsActive && lp.Audience != ProgramAudience.Ambassador)
                             .OrderBy(lp => lp.Id)
                             .Select(lp => new TenantDiscoverProgramDto
                             {

@@ -643,9 +643,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             var rules = await _db.PosProductEarnRules.AsNoTracking()
                 .Where(r => r.TenantIntegrationId == tenantIntegrationId && r.IsActive)
                 .ToListAsync(ct);
-            var rulesByProduct = rules
-                .GroupBy(r => r.ExternalProductId.Trim(), StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+            var programId = request.LoyaltyProgramId
+                            ?? await _db.TenantIntegrations.AsNoTracking()
+                                .Where(t => t.Id == tenantIntegrationId)
+                                .Select(t => t.LoyaltyProgramId)
+                                .FirstOrDefaultAsync(ct)
+                            ?? 0;
+            // OrderClosed ilə eyni seçim: proqram-spesifik qayda ümumidən üstün
+            var rulesByProduct = PosEarnRouting.RulesForProgram(rules, programId);
 
             EarnRuleHit? RuleFor(EarnLine l)
             {

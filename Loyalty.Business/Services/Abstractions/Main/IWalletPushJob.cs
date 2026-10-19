@@ -7,5 +7,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public interface IWalletPushJob
     {
         Task RunAsync(int cardId, int loyaltyProgramId, decimal delta);
+
+        /// <summary>Geri açılan kart: Google obyektini ACTIVE et, sonra adi push (Apple voided götürülür).</summary>
+        Task ReactivateAsync(int cardId, int loyaltyProgramId);
     }
 }

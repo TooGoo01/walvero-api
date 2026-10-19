@@ -192,6 +192,9 @@ public sealed class AppleWalletService : IAppleWalletService
                     }
                 }
 
+                // Bağlanmış kart (ambassador keçidi / silinmə) → pass voided
+                req.Voided = !card.IsActive;
+
                 await BuildAndSignAsync(req, creds, workDir, card.Id, ct);
 
                 // 4) pkpass (TMP → MOVE atomik)

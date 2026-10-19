@@ -78,6 +78,31 @@ namespace Loyalty.Business.Services.Abstractions.Main
 
         Task<IikoNomenclatureResponse?> GetNomenclatureAsync(
             string accessToken, Guid organizationId, CancellationToken ct = default);
+
+        /// <summary>Org-un manual qonaq kateqoriyaları (`/loyalty/iiko/customer_category`). null = iiko cavab vermədi.</summary>
+        Task<List<IikoGuestCategory>?> GetGuestCategoriesAsync(
+            string accessToken, Guid organizationId, CancellationToken ct = default);
+
+        /// <summary>Müştərini qonaq kateqoriyasına əlavə et (məs. ambassador).</summary>
+        Task<bool> AddCustomerCategoryAsync(
+            string accessToken, Guid organizationId, Guid customerId, Guid categoryId, CancellationToken ct = default);
+
+        /// <summary>Müştərini qonaq kateqoriyasından çıxar.</summary>
+        Task<bool> RemoveCustomerCategoryAsync(
+            string accessToken, Guid organizationId, Guid customerId, Guid categoryId, CancellationToken ct = default);
+    }
+
+    public class IikoGuestCategory
+    {
+        public Guid Id { get; set; }
+        public string? Name { get; set; }
+        public bool IsActive { get; set; }
+        public bool IsDefaultForNewGuests { get; set; }
+    }
+
+    public class IikoGuestCategoriesResponse
+    {
+        public List<IikoGuestCategory>? GuestCategories { get; set; }
     }
 
     // ── DTOs ──

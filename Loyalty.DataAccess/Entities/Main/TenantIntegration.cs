@@ -35,6 +35,12 @@ namespace Loyalty.DataAccess.Entities.Main
         /// <summary>LastDigits rejimində rəqəm sayı (4–8).</summary>
         public int? CardTrackDigits { get; set; }
 
+        /// <summary>
+        /// iiko qonaq kateqoriyası (GUID) — Walvero ambassador edəndə müştəri bu kateqoriyaya yazılır, çıxaranda silinir
+        /// (iiko kampaniyalarındakı GuestCategoryCondition işləsin). null = sinxron yoxdur.
+        /// </summary>
+        public string? AmbassadorIikoCategoryId { get; set; }
+
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
 

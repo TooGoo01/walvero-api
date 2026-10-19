@@ -1698,6 +1698,9 @@ namespace Loyalty.DataAccess.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("Audience")
+                        .HasColumnType("int");
+
                     b.Property<int?>("BasePercentCard")
                         .HasColumnType("int");
 
@@ -1759,6 +1762,17 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<decimal>("PointsPerCurrency")
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<int>("PosEarnSource")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PosExternalProgramId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("PosWalletId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<string>("ProgramName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -1782,6 +1796,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int>("SignupGiftValue")
                         .HasColumnType("int");
 
+                    b.Property<int?>("StepsPerOrder")
+                        .HasColumnType("int");
+
                     b.Property<int>("TenantId")
                         .HasColumnType("int");
 
@@ -1792,6 +1809,11 @@ namespace Loyalty.DataAccess.Migrations
                         .HasFilter("[CardTemplateId] IS NOT NULL");
 
                     b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "Audience")
+                        .IsUnique()
+                        .HasDatabaseName("IX_LoyaltyPrograms_Tenant_AmbassadorActive")
+                        .HasFilter("[Audience] = 2 AND [IsActive] = 1");
 
                     b.ToTable("LoyaltyPrograms", (string)null);
                 });
@@ -2608,6 +2630,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<int?>("LoyaltyProgramId")
+                        .HasColumnType("int");
+
                     b.Property<int>("PointsPerUnit")
                         .HasColumnType("int");
 
@@ -2628,6 +2653,8 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("LoyaltyProgramId");
 
                     b.HasIndex("TenantIntegrationId");
 
@@ -3847,6 +3874,10 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AmbassadorIikoCategoryId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<string>("ApiAppId")
                         .HasColumnType("nvarchar(max)");
@@ -5554,11 +5585,18 @@ namespace Loyalty.DataAccess.Migrations
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosProductEarnRule", b =>
                 {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.LoyaltyProgram", "LoyaltyProgram")
+                        .WithMany()
+                        .HasForeignKey("LoyaltyProgramId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("Loyalty.DataAccess.Entities.Main.TenantIntegration", "TenantIntegration")
                         .WithMany()
                         .HasForeignKey("TenantIntegrationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("LoyaltyProgram");
 
                     b.Navigation("TenantIntegration");
                 });

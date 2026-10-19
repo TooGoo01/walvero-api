@@ -8,8 +8,14 @@ namespace Loyalty.Business.Dtos.Post.Main
     /// </summary>
     public sealed class CreateAmbassadorDto
     {
-        [Required]
+        /// <summary>
+        /// Yalnız tenant-da Ambassador proqramı YOXDURSA istifadə olunur (köhnə rejim: kart bu proqramda).
+        /// Ambassador proqramı varsa ignor edilir — kart həmişə ambassador proqramında açılır.
+        /// </summary>
         public int LoyaltyProgramId { get; set; }
+
+        /// <summary>Adi kartın pul balansını ambassador kartına köçür (yalnız hər ikisi xal/cashback kartıdırsa).</summary>
+        public bool CarryOverBalance { get; set; }
 
         [Required]
         [StringLength(50)]
@@ -45,10 +51,23 @@ namespace Loyalty.Business.Dtos.Post.Main
         [Required]
         public int CustomerId { get; set; }
         public int? LoyaltyProgramId { get; set; }
+        /// <summary>Adi kartın pul balansını ambassador kartına köçür (yalnız hər ikisi xal/cashback kartıdırsa).</summary>
+        public bool CarryOverBalance { get; set; }
         /// <summary>Ambassador edilən anda karta yazılacaq ilkin balans/xal (opsional).</summary>
         public decimal? InitialPoints { get; set; }
         /// <summary>Balansın son istifadə tarixi (UTC). Boş = müddətsiz.</summary>
         public DateTime? ExpiresAt { get; set; }
+    }
+
+    /// <summary>
+    /// Ambassadorluqdan çıxar: ambassador kartı bağlanır, müştərinin köhnə adi kartı (balansı ilə) geri açılır.
+    /// </summary>
+    public sealed class DemoteAmbassadorDto
+    {
+        [Required]
+        public int CustomerId { get; set; }
+        /// <summary>Ambassador kartının pul balansını adi karta köçür (yalnız hər ikisi xal/cashback kartıdırsa).</summary>
+        public bool CarryOverBalance { get; set; }
     }
 
     /// <summary>

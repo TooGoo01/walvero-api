@@ -182,6 +182,18 @@ UserManager<ApplicationUser> userManager,
 
             return new ServiceResult(false);
         }
+        /// <summary>
+        /// Müştərinin tenant-da başqa proqramda aktiv kartı varsa (məs. ambassador kartı) həmin proqramı qaytarır —
+        /// ikinci aktiv kart yaranmasın. Yoxdursa istənilən proqram.
+        /// </summary>
+        private async Task<LoyaltyProgram> RedirectToActiveCardProgramAsync(int tenantId, int customerId, LoyaltyProgram requested, CancellationToken ct)
+        {
+            if (customerId <= 0) return requested;
+            var active = await _cardRepo.GetActiveByCustomerAsync(tenantId, customerId, ct);
+            if (active is null || active.LoyaltyProgramId == requested.Id) return requested;
+            return await _programRepo.GetByIdNameAsync(active.LoyaltyProgramId, ct) ?? requested;
+        }
+
         public async Task<ServiceResult> StartEnrollmentAsync(AddCustomerWithCardDto dto, CancellationToken ct = default)
         {
             var tenantId = dto.TenantId;
@@ -196,6 +208,8 @@ UserManager<ApplicationUser> userManager,
             var program = await _programRepo.GetByIdNameAsync(dto.LoyaltyProgramId, ct);
             if (program is null || program.TenantId != tenantId)
                 return new ServiceResult(false, "Program not found for this tenant.");
+            if (program.Audience == ProgramAudience.Ambassador)
+                return new ServiceResult(false, "Bu proqrama açıq qeydiyyat mümkün deyil.");
 
             decimal signupGift = 0m;
 
@@ -277,6 +291,8 @@ UserManager<ApplicationUser> userManager,
                 await SyncPosSafeAsync(tenantId, customer.Id, ct);
             }
             customer.applicationUserId = int.Parse(userId);
+            // 2b) Bir müştəri = bir aktiv kart: başqa proqramda (məs. ambassador) aktiv kartı varsa onu istifadə et
+            program = await RedirectToActiveCardProgramAsync(tenantId, customer.Id, program, ct);
             // 3) Son aktiv kartı reuse et / yoxdursa deactive kartı aktivləşdir / yoxdursa yarat
             var card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
             var hasPendingCardUpdate = false;
@@ -392,6 +408,8 @@ UserManager<ApplicationUser> userManager,
             var program = await _programRepo.GetByIdNameAsync(dto.LoyaltyProgramId, ct);
             if (program is null || program.TenantId != tenantId)
                 return new ServiceResult(false, "Program not found for this tenant.");
+            if (program.Audience == ProgramAudience.Ambassador)
+                return new ServiceResult(false, "Bu proqrama açıq qeydiyyat mümkün deyil.");
 
             var phone = dto.PhoneNumber.Trim();
             var email = dto.Email?.Trim();
@@ -471,7 +489,8 @@ UserManager<ApplicationUser> userManager,
                 }
             }
 
-            // 3) Kart tap / yarat
+            // 3) Kart tap / yarat (başqa proqramda aktiv kart varsa — məs. ambassador — onu istifadə et)
+            program = await RedirectToActiveCardProgramAsync(tenantId, customer.Id, program, ct);
             var card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
             if (card is null)
             {
@@ -590,7 +609,9 @@ UserManager<ApplicationUser> userManager,
             // (və ya frontdan CardId ötürürsə, onu istifadə et)
             var tenantId = customer.TenantId;
             var programId = dto.LoyaltyProgramId;
-            var card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, programId, customer.Id, ct);
+            var card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, programId, customer.Id, ct)
+                       // Start addımı müştərini başqa proqramdakı aktiv karta yönləndiribsə (ambassador)
+                       ?? await _cardRepo.GetActiveByCustomerAsync(tenantId, customer.Id, ct);
             if (card is null) return new ServiceResult(false, "Card not found.");
 
             // Program/snapshot (CardTemplate include ilə)

@@ -66,6 +66,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.PointsExpiryDays is < 0)
                 return new ServiceResult(false, "PointsExpiryDays cannot be negative.");
 
+            if (dto.StepsPerOrder is < 0 or > 100)
+                return new ServiceResult(false, "StepsPerOrder 0..100 olmalıdır.");
+            if (!IsGuidOrEmpty(dto.PosWalletId) || !IsGuidOrEmpty(dto.PosExternalProgramId))
+                return new ServiceResult(false, "iiko cüzdanı / proqramı GUID olmalıdır.");
+
             // --- HappyHours validation (bütün program tipləri üçün — override-all) ---
             if (dto.BasePercentCash is <= 0 || dto.BasePercentCard is <= 0)
                 return new ServiceResult(false, "Base percent values must be greater than 0.");
@@ -96,6 +101,15 @@ namespace Loyalty.Business.Services.Implementations.Main
             // --- Check if the program already exists ---
             var existingProgram = await _repo.GetByCodeAsync(dto.TenantId.Value, dto.Code, ct);
 
+            // --- Ambassador proqramı: tenant başına ən çox bir aktiv ---
+            var audience = dto.Audience ?? existingProgram?.Audience ?? ProgramAudience.Public;
+            if (audience == ProgramAudience.Ambassador && dto.IsActive)
+            {
+                var other = await _repo.GetAmbassadorProgramAsync(tenantId.Value, ct);
+                if (other != null && other.Id != existingProgram?.Id)
+                    return new ServiceResult(false, $"Bu tenant-da artıq aktiv ambassador proqramı var: {other.ProgramName}.");
+            }
+
             if (existingProgram != null)
             {
                 // --- Update existing program ---
@@ -112,6 +126,11 @@ namespace Loyalty.Business.Services.Implementations.Main
                 existingProgram.LotteryAmountThreshold = dto.LotteryAmountThreshold;
                 existingProgram.BasePercentCash = dto.BasePercentCash;
                 existingProgram.BasePercentCard = dto.BasePercentCard;
+                existingProgram.Audience = audience;
+                if (dto.PosEarnSource.HasValue) existingProgram.PosEarnSource = dto.PosEarnSource.Value;
+                if (dto.StepsPerOrder.HasValue) existingProgram.StepsPerOrder = dto.StepsPerOrder.Value > 0 ? dto.StepsPerOrder.Value : null;
+                if (dto.PosWalletId != null) existingProgram.PosWalletId = NullIfEmpty(dto.PosWalletId);
+                if (dto.PosExternalProgramId != null) existingProgram.PosExternalProgramId = NullIfEmpty(dto.PosExternalProgramId);
 
                 // Update entity in the database
                 _unitOfWork.Repository<LoyaltyProgram>().Update(existingProgram);
@@ -157,6 +176,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     existingProgram.LotteryAmountThreshold,
                     existingProgram.BasePercentCash,
                     existingProgram.BasePercentCard,
+                    existingProgram.Audience,
+                    existingProgram.PosEarnSource,
+                    existingProgram.StepsPerOrder,
                     HappyHoursWindows = dto.HappyHoursWindows ?? new List<HappyHoursWindowDto>()
                 };
 
@@ -181,7 +203,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                     LotteryPurchaseThreshold = dto.LotteryPurchaseThreshold,
                     LotteryAmountThreshold = dto.LotteryAmountThreshold,
                     BasePercentCash = dto.BasePercentCash,
-                    BasePercentCard = dto.BasePercentCard
+                    BasePercentCard = dto.BasePercentCard,
+                    Audience = audience,
+                    PosEarnSource = dto.PosEarnSource ?? PosEarnSource.Legacy,
+                    StepsPerOrder = dto.StepsPerOrder is > 0 ? dto.StepsPerOrder : null,
+                    PosWalletId = NullIfEmpty(dto.PosWalletId),
+                    PosExternalProgramId = NullIfEmpty(dto.PosExternalProgramId)
                 };
 
                 await _unitOfWork.Repository<LoyaltyProgram>().AddAsync(entity);
@@ -225,11 +252,50 @@ namespace Loyalty.Business.Services.Implementations.Main
                     entity.LotteryAmountThreshold,
                     entity.BasePercentCash,
                     entity.BasePercentCard,
+                    entity.Audience,
+                    entity.PosEarnSource,
+                    entity.StepsPerOrder,
                     HappyHoursWindows = dto.HappyHoursWindows ?? new List<HappyHoursWindowDto>()
                 };
 
                 return new ServiceResult(true, result);
             }
+        }
+
+        private static string? NullIfEmpty(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+        private static bool IsGuidOrEmpty(string? v) => string.IsNullOrWhiteSpace(v) || Guid.TryParse(v.Trim(), out _);
+
+        public async Task<ServiceResult> UpdatePosLinkAsync(int programId, UpdatePosLinkDto dto, int? ownershipTenantId, CancellationToken ct = default)
+        {
+            if (dto is null)
+                return new ServiceResult(false, "Model is null.");
+            var program = await _repo.GetByIdTrackedAsync(programId, ct);
+            if (program is null)
+                return new ServiceResult(false, "Loyalty program not found.");
+            if (ownershipTenantId.HasValue && program.TenantId != ownershipTenantId.Value)
+                return new ServiceResult(false, "Bu proqram sizin tenant-a aid deyil.");
+            if (dto.StepsPerOrder is < 0 or > 100)
+                return new ServiceResult(false, "StepsPerOrder 0..100 olmalıdır.");
+            if (!IsGuidOrEmpty(dto.PosWalletId) || !IsGuidOrEmpty(dto.PosExternalProgramId))
+                return new ServiceResult(false, "iiko cüzdanı / proqramı GUID olmalıdır.");
+            if (dto.PosEarnSource.HasValue && !Enum.IsDefined(typeof(PosEarnSource), dto.PosEarnSource.Value))
+                return new ServiceResult(false, "Qazanc mənbəyi düzgün deyil.");
+
+            if (dto.PosEarnSource.HasValue) program.PosEarnSource = dto.PosEarnSource.Value;
+            if (dto.StepsPerOrder.HasValue) program.StepsPerOrder = dto.StepsPerOrder.Value > 0 ? dto.StepsPerOrder.Value : null;
+            if (dto.PosWalletId != null) program.PosWalletId = NullIfEmpty(dto.PosWalletId);
+            if (dto.PosExternalProgramId != null) program.PosExternalProgramId = NullIfEmpty(dto.PosExternalProgramId);
+
+            _unitOfWork.Repository<LoyaltyProgram>().Update(program);
+            _unitOfWork.Commit();
+            return new ServiceResult(true, new
+            {
+                program.Id,
+                program.PosEarnSource,
+                program.StepsPerOrder,
+                program.PosWalletId,
+                program.PosExternalProgramId
+            });
         }
 
         private static string NormalizeCode(string? code, string fallbackFromName)
@@ -318,10 +384,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> GetActiveByTenantAsync(int tenantId)
         {
-            var active = await _repo.GetActive();
-            var scoped = (active ?? new List<LoyaltyProgram>())
-                .Where(p => p.TenantId == tenantId)
-                .ToList();
+            // Ambassador proqramı da qaytarılır (card-design / admin "(Ambassador)" etiketi ilə göstərir)
+            var scoped = await _repo.GetActiveByTenantAsync(tenantId, null);
             var response = _mapper.Map<ICollection<GetLoyaltyProgramDto>>(scoped);
             return new ServiceResult(true, response);
         }
@@ -335,7 +399,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             throw new NotImplementedException();
         }
 
-        public async Task<ServiceResult> UpdateHappyHoursAsync(int programId, UpdateHappyHoursDto dto, CancellationToken ct = default)
+        public async Task<ServiceResult> UpdateHappyHoursAsync(int programId, UpdateHappyHoursDto dto, int? ownershipTenantId = null, CancellationToken ct = default)
         {
             if (dto is null)
                 return new ServiceResult(false, "Model is null.");
@@ -343,6 +407,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             var program = await _repo.GetByIdTrackedAsync(programId, ct);
             if (program is null)
                 return new ServiceResult(false, "Loyalty program not found.");
+            if (ownershipTenantId.HasValue && program.TenantId != ownershipTenantId.Value)
+                return new ServiceResult(false, "Bu proqram sizin tenant-a aid deyil.");
 
             // 0% cashback icazə verilmir
             if (dto.BasePercentCash is <= 0 || dto.BasePercentCard is <= 0)

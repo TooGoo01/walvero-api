@@ -64,6 +64,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// Class yoxdursa yaradır. Runtime (redeem) yolunda ÇAĞIRILMIR — yalnız admin saxlama / refresh.
         Task<ServiceResult> UpdateClassDesignAsync(CardTemplateSnapshot tpl, CancellationToken ct = default);
 
+        /// Kart obyektinin vəziyyəti (bağlanmış kart → "INACTIVE", geri açılan → "ACTIVE"). Obyekt yoxdursa no-op (uğurlu).
+        Task<ServiceResult> SetObjectStateAsync(int tenantId, int programId, int loyaltyCardId, string state, CancellationToken ct = default);
+
         /// Get IssuerId for constructing object IDs
         string GetIssuerId();
 

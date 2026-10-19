@@ -284,7 +284,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     if (phoneCustomer != null && phoneCustomer.Id != card.CustomerId)
                     {
                         // Phone ilə tapılan customer fərqlidirsə, onun kartını istifadə et
-                        var phoneCard = await FindActiveCardForCustomer(request.TenantId, phoneCustomer.Id, request.LoyaltyProgramId, ct);
+                        var phoneCard = await FindActiveCardForCustomer(request.TenantId, phoneCustomer.Id, null, ct);
                         if (phoneCard != null)
                             card = phoneCard;
                     }
@@ -308,7 +308,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     }
 
                     if (resolvedCustomer != null)
-                        card = await FindActiveCardForCustomer(request.TenantId, resolvedCustomer.Id, request.LoyaltyProgramId, ct);
+                        card = await FindActiveCardForCustomer(request.TenantId, resolvedCustomer.Id, null, ct);
                 }
 
                 // 1b2) iiko "son N rəqəm" rejimi: kassir qısa kod yazıb → barkod sonluğu (tenant daxilində unikal olmalı)
@@ -324,9 +324,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                             return Fail("Qısa kod bir neçə karta uyğundur — tam barkod və ya telefon istifadə edin.");
                         }
                         if (byShort != null)
-                            card = byShort.LoyaltyProgramId == request.LoyaltyProgramId
+                            card = byShort.IsActive
                                 ? byShort
-                                : await FindActiveCardForCustomer(request.TenantId, byShort.CustomerId, request.LoyaltyProgramId, ct);
+                                : await FindActiveCardForCustomer(request.TenantId, byShort.CustomerId, null, ct);
                     }
                 }
 
@@ -336,7 +336,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     _logger.LogInformation("Trying phone lookup: {Phone}", code);
                     var phoneCustomer = await _customerRepo.GetByPhoneAsync(request.TenantId, code, ct);
                     if (phoneCustomer != null)
-                        card = await FindActiveCardForCustomer(request.TenantId, phoneCustomer.Id, request.LoyaltyProgramId, ct);
+                        card = await FindActiveCardForCustomer(request.TenantId, phoneCustomer.Id, null, ct);
                 }
 
                 if (card == null)

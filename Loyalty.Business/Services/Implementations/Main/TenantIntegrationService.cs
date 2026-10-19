@@ -177,7 +177,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     IsActive = ti.IsActive,
                     CardTrackMode = ti.CardTrackMode,
                     CardTrackDigits = ti.CardTrackDigits,
-                    CardTrackLabel = PosCardTrack.Describe(ti.CardTrackMode, ti.CardTrackDigits)
+                    CardTrackLabel = PosCardTrack.Describe(ti.CardTrackMode, ti.CardTrackDigits),
+                    LoyaltyProgramId = ti.LoyaltyProgramId,
+                    AmbassadorIikoCategoryId = ti.AmbassadorIikoCategoryId
                 });
             }
             return ServiceResult<List<TenantIntegrationListDto>>.Ok(dtos);
@@ -208,7 +210,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 IsActive = ti.IsActive,
                 CardTrackMode = ti.CardTrackMode,
                 CardTrackDigits = ti.CardTrackDigits,
-                CardTrackLabel = PosCardTrack.Describe(ti.CardTrackMode, ti.CardTrackDigits)
+                CardTrackLabel = PosCardTrack.Describe(ti.CardTrackMode, ti.CardTrackDigits),
+                AmbassadorIikoCategoryId = ti.AmbassadorIikoCategoryId
             });
         }
 
@@ -233,7 +236,24 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.ExternalVenueId != null) ti.ExternalVenueId = dto.ExternalVenueId;
             if (dto.ExternalProgramId != null) ti.ExternalProgramId = dto.ExternalProgramId;
             if (dto.ExternalTerminalGroupId != null) ti.ExternalTerminalGroupId = dto.ExternalTerminalGroupId;
-            if (dto.LoyaltyProgramId.HasValue) ti.LoyaltyProgramId = dto.LoyaltyProgramId;
+            if (dto.LoyaltyProgramId.HasValue)
+            {
+                // Proqram inteqrasiyanın tenant-ına aid olmalıdır (başqa tenant-ın proqramına bağlanmasın)
+                var programTenant = await _db.LoyaltyPrograms.AsNoTracking()
+                    .Where(p => p.Id == dto.LoyaltyProgramId.Value)
+                    .Select(p => (int?)p.TenantId)
+                    .FirstOrDefaultAsync(ct);
+                if (programTenant != ti.TenantId)
+                    return ServiceResult<bool>.Fail("Proqram bu tenant-a aid deyil.");
+                ti.LoyaltyProgramId = dto.LoyaltyProgramId;
+            }
+            if (dto.AmbassadorIikoCategoryId != null)
+            {
+                var cat = dto.AmbassadorIikoCategoryId.Trim();
+                if (cat.Length > 0 && !Guid.TryParse(cat, out _))
+                    return ServiceResult<bool>.Fail("Qonaq kateqoriyası GUID olmalıdır.");
+                ti.AmbassadorIikoCategoryId = cat.Length == 0 ? null : cat;
+            }
             if (dto.ApiBaseUrl != null) ti.ApiBaseUrl = dto.ApiBaseUrl.Trim();
             if (dto.ApiUsername != null) ti.ApiUsername = dto.ApiUsername.Trim();
             if (!string.IsNullOrEmpty(dto.ApiToken)) ti.ApiTokenEncrypted = _protector.Encrypt(dto.ApiToken);

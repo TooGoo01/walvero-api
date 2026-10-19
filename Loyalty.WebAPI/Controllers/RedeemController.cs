@@ -110,6 +110,39 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(dto);
         }
         /// <summary>ProgressBased + RewardAsPoints → PointsBased davranışı (CardTemplate.EffectiveType-in DTO ekvivalenti).</summary>
+        /// <summary>Yeni skaner kartın proqramına görə UI qurur (X-Scanner-Caps: card-routing).</summary>
+        private bool ScannerSupportsCardRouting()
+            => Request.Headers["X-Scanner-Caps"].ToString().Contains("card-routing", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Kartın öz proqramı (məs. ambassador kartı skanerin seçdiyi proqramdan fərqli ola bilər).
+        /// Köhnə skaner UI-ni header proqramının tipinə görə qurur — tip fərqlidirsə (möhür vs xal) səhv məbləğ
+        /// göndərər, ona görə yeniləmə tələb olunur.
+        /// </summary>
+        private async Task<(GetLoyaltyProgramDto? Program, string? Error)> ResolveCardProgramAsync(GetLoyaltyCardDto card, int? headerProgramId)
+        {
+            var program = (await _programSvc.Get(card.LoyaltyProgramId)).Data as GetLoyaltyProgramDto;
+            if (program?.CardTemplate is null)
+                return (null, "Kartın proqramı və ya kart şablonu tapılmadı.");
+
+            if (headerProgramId is > 0 && headerProgramId != card.LoyaltyProgramId && !ScannerSupportsCardRouting())
+            {
+                var header = (await _programSvc.Get(headerProgramId.Value)).Data as GetLoyaltyProgramDto;
+                if (header?.CardTemplate != null && EffectiveType(header.CardTemplate) != EffectiveType(program.CardTemplate))
+                    return (null, "Bu kart fərqli proqramdadır — kassir tətbiqini yeniləyin.");
+            }
+            return (program, null);
+        }
+
+        /// <summary>Müştərinin aktiv kartı; yoxdursa (köhnə data) header proqramındakı son kart.</summary>
+        private static GetLoyaltyCardDto? PickCustomerCard(GetCustomerDto customer, int? headerProgramId)
+        {
+            var cards = customer.LoyaltyCards ?? new List<GetLoyaltyCardDto>();
+            return cards.Where(c => c.IsActive).OrderByDescending(c => c.Id).FirstOrDefault()
+                   ?? cards.Where(c => headerProgramId.HasValue && c.LoyaltyProgramId == headerProgramId.Value)
+                           .OrderByDescending(c => c.Id).FirstOrDefault();
+        }
+
         private static CardTemplateType EffectiveType(GetCardTemplateDto tpl) =>
             tpl.TemplateType == CardTemplateType.ProgressBased && tpl.RewardAsPoints
                 ? CardTemplateType.PointsBased
@@ -296,14 +329,8 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                     return NotFound(new { success = false, message = "Card not found" });
                 }
 
-                // Find the active card for this customer and program
-                if (programId > 0 && customer.LoyaltyCards != null && customer.LoyaltyCards.Any())
-                {
-                    card = customer.LoyaltyCards
-                        .Where(c => c.LoyaltyProgramId == programId)
-                        .OrderByDescending(c => c.Id)
-                        .FirstOrDefault();
-                }
+                // Müştərinin aktiv kartı (proqramından asılı olmayaraq — ambassador kartı ola bilər)
+                card = PickCustomerCard(customer, programId > 0 ? programId : null);
 
                 if (card == null)
                 {
@@ -324,9 +351,11 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 customer = customerModel.Data as GetCustomerDto;
             }
 
-            var programModel = await _programSvc.Get(programId);
-            var program = programModel.Data as GetLoyaltyProgramDto;
-            var tpl = program.CardTemplate;
+            // Kartın öz proqramı (ambassador kartı header proqramından fərqli ola bilər)
+            var (program, programError) = await ResolveCardProgramAsync(card, programId > 0 ? programId : null);
+            if (program is null)
+                return BadRequest(new { success = false, message = programError });
+            var tpl = program.CardTemplate!;
 
             string? tierName = null; int? tierPercent = null; int? tierPercentCash = null; string? tierIconUrl = null;
             if (tpl.TemplateType != CardTemplateType.ProgressBased)
@@ -413,7 +442,17 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 spendCount = spendCount2,
                 requireReceiptOcr,
                 requireQrVerification,
-                ekassaUrlTemplate
+                ekassaUrlTemplate,
+                // Kart-səviyyəli proqram (yeni skaner UI-ni bununla qurur; köhnə ui-config header proqramındandır)
+                programId = program.Id,
+                programName = program.ProgramName,
+                programAudience = (int)program.Audience,
+                templateType = (int)EffectiveType(tpl),
+                oneRedeem = tpl.OneRedeem,
+                payMentType = tpl.PayMentType,
+                totalSteps = tpl.TotalSteps,
+                currentSteps = card.CurrentSteps,
+                stepLabel = tpl.StepLabel
             });
         }
 
@@ -541,14 +580,8 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                     return BadRequest(new { success = false, message = "Customer məlumatları tapılmadı." });
                 }
 
-                // Find the active card for this customer and program
-                if (programId.HasValue && customer.LoyaltyCards != null && customer.LoyaltyCards.Any())
-                {
-                    card = customer.LoyaltyCards
-                        .Where(c => c.LoyaltyProgramId == programId.Value)
-                        .OrderByDescending(c => c.Id)
-                        .FirstOrDefault();
-                }
+                // Müştərinin aktiv kartı (proqramından asılı olmayaraq — ambassador kartı ola bilər)
+                card = PickCustomerCard(customer, programId);
 
                 if (card == null)
                 {
@@ -569,9 +602,11 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
                 customer = customerModel.Data as GetCustomerDto;
             }
 
-            var programModel = await _programSvc.Get(programId.Value);
-            var program = programModel.Data as GetLoyaltyProgramDto;
-            var tpl = program.CardTemplate;
+            // Kartın öz proqramı: faiz/tier/happy hours həmin proqramın şablonundan
+            var (program, programError) = await ResolveCardProgramAsync(card, programId);
+            if (program is null)
+                return BadRequest(new { success = false, message = programError });
+            var tpl = program.CardTemplate!;
 
             string? tierName = null; int? tierPercent = null; int? tierPercentCash = null; string? tierIconUrl = null;
             // Percent hesaplaması ProgressBased olmayan template'ler üçün (PointsBased və TierBased)
@@ -644,7 +679,7 @@ double points, GetCardTemplateDto tpl, Func<string?, string?>? toAbsHttps = null
 
             var dto = new RedeemRequestDto
             {
-                LoyaltyProgramId = programId,
+                LoyaltyProgramId = program.Id,
                 QrDocId = qrDocId,
                 EkassaImage = ekassaImage,
                 Code = code,

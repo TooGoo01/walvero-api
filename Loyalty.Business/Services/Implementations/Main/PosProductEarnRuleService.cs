@@ -10,13 +10,16 @@ namespace Loyalty.Business.Services.Implementations.Main
     {
         private readonly IPosProductEarnRuleRepository _repo;
         private readonly ITenantIntegrationRepository _tenantIntegrationRepo;
+        private readonly ILoyaltyProgramRepository _programRepo;
         private readonly IUnitOfWork _uow;
 
         public PosProductEarnRuleService(
             IPosProductEarnRuleRepository repo,
             ITenantIntegrationRepository tenantIntegrationRepo,
+            ILoyaltyProgramRepository programRepo,
             IUnitOfWork uow)
         {
+            _programRepo = programRepo;
             _repo = repo;
             _tenantIntegrationRepo = tenantIntegrationRepo;
             _uow = uow;
@@ -29,9 +32,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (tenantId.HasValue && ti.TenantId != tenantId.Value)
                 return ServiceResult<PosProductEarnRuleDto>.Fail("Yetkisiz.");
 
+            if (dto.LoyaltyProgramId is > 0 && !await ProgramBelongsToTenantAsync(dto.LoyaltyProgramId.Value, ti.TenantId, ct))
+                return ServiceResult<PosProductEarnRuleDto>.Fail("Proqram bu tenant-a aid deyil.");
+
             var entity = new PosProductEarnRule
             {
                 TenantIntegrationId = dto.TenantIntegrationId,
+                LoyaltyProgramId = dto.LoyaltyProgramId is > 0 ? dto.LoyaltyProgramId : null,
                 ExternalProductId = dto.ExternalProductId?.Trim() ?? string.Empty,
                 ProductName = dto.ProductName?.Trim(),
                 StepsPerUnit = dto.StepsPerUnit,
@@ -52,7 +59,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ExternalProductId = saved.ExternalProductId,
                 ProductName = saved.ProductName,
                 StepsPerUnit = saved.StepsPerUnit,
-                PointsPerUnit = saved.PointsPerUnit
+                PointsPerUnit = saved.PointsPerUnit,
+                LoyaltyProgramId = saved.LoyaltyProgramId
             });
         }
 
@@ -71,7 +79,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ExternalProductId = r.ExternalProductId,
                 ProductName = r.ProductName,
                 StepsPerUnit = r.StepsPerUnit,
-                PointsPerUnit = r.PointsPerUnit
+                PointsPerUnit = r.PointsPerUnit,
+                LoyaltyProgramId = r.LoyaltyProgramId
             }).ToList();
             return ServiceResult<List<PosProductEarnRuleDto>>.Ok(dtos);
         }
@@ -89,10 +98,22 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.ProductName != null) r.ProductName = dto.ProductName.Trim();
             if (dto.StepsPerUnit.HasValue) r.StepsPerUnit = dto.StepsPerUnit.Value;
             if (dto.PointsPerUnit.HasValue) r.PointsPerUnit = dto.PointsPerUnit.Value;
+            if (dto.LoyaltyProgramId.HasValue)
+            {
+                if (dto.LoyaltyProgramId.Value > 0 && !await ProgramBelongsToTenantAsync(dto.LoyaltyProgramId.Value, ti.TenantId, ct))
+                    return ServiceResult<bool>.Fail("Proqram bu tenant-a aid deyil.");
+                r.LoyaltyProgramId = dto.LoyaltyProgramId.Value > 0 ? dto.LoyaltyProgramId.Value : null;
+            }
 
             _repo.Update(r);
             _uow.Commit();
             return ServiceResult<bool>.Ok(true);
+        }
+
+        private async Task<bool> ProgramBelongsToTenantAsync(int programId, int tenantId, CancellationToken ct)
+        {
+            var program = await _programRepo.GetByIdAsync(programId, ct);
+            return program != null && program.TenantId == tenantId;
         }
 
         public async Task<ServiceResult<bool>> DeleteAsync(int id, int? tenantId, CancellationToken ct = default)

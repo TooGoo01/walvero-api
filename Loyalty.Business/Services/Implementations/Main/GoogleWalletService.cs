@@ -470,6 +470,25 @@ public sealed class GoogleWalletService : IGoogleWalletService
     public string BuildObjectIdForCard(int tenantId, int programId, int loyaltyCardId)
         => ObjectIdForCard(_issuerId, tenantId, programId, loyaltyCardId);
 
+    public async Task<ServiceResult> SetObjectStateAsync(int tenantId, int programId, int loyaltyCardId, string state, CancellationToken ct = default)
+    {
+        if (!_isInitialized || _svc == null)
+            return new ServiceResult(false, "Google Wallet service not initialized.");
+
+        var objectId = ObjectIdForCard(_issuerId, tenantId, programId, loyaltyCardId);
+        try
+        {
+            await _svc.Loyaltyobject.Patch(new LoyaltyObject { State = state }, objectId).ExecuteAsync(ct);
+            _log?.LogInformation("GW object state set. ObjectId={ObjectId}, State={State}", objectId, state);
+            return new ServiceResult(true, "OK");
+        }
+        catch (Google.GoogleApiException ex) when (ex.HttpStatusCode == HttpStatusCode.NotFound)
+        {
+            // Kart heç vaxt Google Wallet-ə əlavə olunmayıb — dəyişiləcək obyekt yoxdur
+            return new ServiceResult(true, "Object not found (no Google pass).");
+        }
+    }
+
     public async Task<ServiceResult> AddMessageToObjectAsync(string objectId, string title, string body, CancellationToken ct = default)
     {
         if (!_isInitialized || _svc == null)

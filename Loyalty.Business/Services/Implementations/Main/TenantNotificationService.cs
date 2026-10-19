@@ -681,7 +681,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private async Task<ProgramKinds> ProgramKindsAsync(int tenantId, CancellationToken ct)
         {
             var templates = await _db.LoyaltyPrograms.AsNoTracking()
-                .Where(p => p.TenantId == tenantId && p.CardTemplate != null)
+                .Where(p => p.TenantId == tenantId && p.CardTemplate != null && p.Audience != ProgramAudience.Ambassador)
                 .OrderBy(p => p.Id)
                 .Select(p => p.CardTemplate!)
                 .ToListAsync(ct);

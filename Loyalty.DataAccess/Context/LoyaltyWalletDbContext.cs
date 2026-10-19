@@ -361,6 +361,17 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(lp => lp.FirstPurchaseBonusValue).HasPrecision(18, 2);
                 entity.Property(lp => lp.FirstPurchaseBonusMaxPoints).HasPrecision(18, 2);
                 entity.Property(lp => lp.SignupGiftType).HasConversion<int>();
+                entity.Property(lp => lp.Audience).HasConversion<int>();
+                entity.Property(lp => lp.PosEarnSource).HasConversion<int>();
+                entity.Property(lp => lp.PosWalletId).HasMaxLength(64);
+                entity.Property(lp => lp.PosExternalProgramId).HasMaxLength(64);
+                // FK indeksi ayrıca saxlanır — aşağıdakı filtrli indeks bütün sətirləri əhatə etmir
+                entity.HasIndex(lp => lp.TenantId);
+                // Tenant başına ən çox bir aktiv Ambassador proqramı
+                entity.HasIndex(lp => new { lp.TenantId, lp.Audience })
+                    .IsUnique()
+                    .HasFilter("[Audience] = 2 AND [IsActive] = 1")
+                    .HasDatabaseName("IX_LoyaltyPrograms_Tenant_AmbassadorActive");
 
                 entity.HasOne(lp => lp.CardTemplate)
                     .WithOne(ct => ct.LoyaltyProgram)
@@ -1137,6 +1148,7 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(ti => ti.DisplayName).HasMaxLength(200);
                 entity.Property(ti => ti.ExternalVenueId).HasMaxLength(100);
                 entity.Property(ti => ti.ExternalProgramId).HasMaxLength(100);
+                entity.Property(ti => ti.AmbassadorIikoCategoryId).HasMaxLength(64);
                 entity.Property(ti => ti.ExternalTerminalGroupId).HasMaxLength(100);
                 entity.Property(ti => ti.ApiBaseUrl).HasMaxLength(500);
                 entity.Property(ti => ti.ApiTokenEncrypted).HasMaxLength(2000);
@@ -1176,6 +1188,12 @@ namespace Loyalty.DataAccess.Context
                     .WithMany()
                     .HasForeignKey(pr => pr.TenantIntegrationId)
                     .OnDelete(DeleteBehavior.Cascade);
+
+                // Proqram silinmir (soft delete), amma FK multiple cascade path yaratmasın deyə NoAction
+                entity.HasOne(pr => pr.LoyaltyProgram)
+                    .WithMany()
+                    .HasForeignKey(pr => pr.LoyaltyProgramId)
+                    .OnDelete(DeleteBehavior.NoAction);
             });
 
             // ==== POS EARN EXCLUSION (bonus qazandırmayan məhsul/qrup/kateqoriya) ====

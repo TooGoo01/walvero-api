@@ -18,6 +18,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ILoyaltyProgramRepository _programRepo;
         private readonly ITenantBrandingRepository _brandingRepo;
         private readonly IWalletRouter _walletRouter;
+        private readonly IGoogleWalletServiceFactory _googleFactory;
         private readonly ILogger<WalletPushJob> _logger;
 
         public WalletPushJob(
@@ -25,13 +26,41 @@ namespace Loyalty.Business.Services.Implementations.Main
             ILoyaltyProgramRepository programRepo,
             ITenantBrandingRepository brandingRepo,
             IWalletRouter walletRouter,
+            IGoogleWalletServiceFactory googleFactory,
             ILogger<WalletPushJob> logger)
         {
             _cardRepo = cardRepo;
             _programRepo = programRepo;
             _brandingRepo = brandingRepo;
             _walletRouter = walletRouter;
+            _googleFactory = googleFactory;
             _logger = logger;
+        }
+
+        [AutomaticRetry(Attempts = 3, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
+        [Queue("default")]
+        public async Task ReactivateAsync(int cardId, int loyaltyProgramId)
+        {
+            var card = await _cardRepo.GetById(cardId, CancellationToken.None);
+            if (card == null) return;
+            await SetGoogleStateAsync(card, loyaltyProgramId, "ACTIVE");
+            await RunAsync(cardId, loyaltyProgramId, 0);
+        }
+
+        private async Task SetGoogleStateAsync(LoyaltyCard card, int loyaltyProgramId, string state)
+        {
+            if (!card.IsAndroid) return; // Google pass yoxdur
+            try
+            {
+                var gw = await _googleFactory.CreateForTenantAsync(card.TenantId, loyaltyProgramId, CancellationToken.None);
+                var res = await gw.SetObjectStateAsync(card.TenantId, loyaltyProgramId, card.Id, state, CancellationToken.None);
+                if (!res.Success)
+                    _logger.LogWarning("WalletPushJob: Google state {State} failed. CardId={CardId}, Message={Message}", state, card.Id, res.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "WalletPushJob: Google state {State} error. CardId={CardId}", state, card.Id);
+            }
         }
 
         // Push uğursuz olsa Hangfire 3 dəfə yenidən cəhd etsin.
@@ -67,6 +96,26 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             var snapshot = CardTemplateSnapshotFactory.From(program, program.CardTemplate, branding, ToAbs);
+
+            // Bağlanmış kart (ambassador keçidi): Google obyekti INACTIVE, Apple pass voided (AppleWalletService kartdan oxuyur)
+            if (!card.IsActive)
+            {
+                await SetGoogleStateAsync(card, loyaltyProgramId, "INACTIVE");
+                if (card.IsIOS)
+                {
+                    try
+                    {
+                        await _walletRouter.RouteAsync(WalletPlatform.AppleWallet, card.Id, snapshot,
+                            card.CurrentPoints, card.CurrentSteps, card.CompletedCycles, 0, CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "WalletPushJob: Apple void push error. CardId={CardId}", cardId);
+                    }
+                }
+                return;
+            }
+
             var primaryPlatform = card.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;
             var secondaryPlatform = card.IsIOS ? WalletPlatform.GooglePay : WalletPlatform.AppleWallet;
             var intDelta = (int)delta;

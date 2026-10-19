@@ -10,6 +10,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int CustomerId { get; set; }
         public int TenantId { get; set; }
         public int LoyaltyProgramId { get; set; }
+        /// <summary>Bağlanmış kart (ambassador keçidi / silinmə) false — admin aktiv kartı seçir.</summary>
+        public bool IsActive { get; set; }
 
         public string CardNumber { get; set; } = string.Empty;
         public string? BarcodeValue { get; set; }

@@ -1,5 +1,6 @@
 ﻿using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -24,6 +25,24 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Where(x => x.IsActive == true)
                 .ToListAsync(ct);
         }
+
+        public Task<List<LoyaltyProgram>> GetActiveByTenantAsync(int tenantId, ProgramAudience? audience, CancellationToken ct = default)
+        {
+            var q = GetAsQueryable()
+                .AsNoTracking()
+                .Include(x => x.CardTemplate)
+                .Where(x => x.TenantId == tenantId && x.IsActive);
+            if (audience.HasValue) q = q.Where(x => x.Audience == audience.Value);
+            return q.OrderBy(x => x.Id).ToListAsync(ct);
+        }
+
+        public Task<LoyaltyProgram?> GetAmbassadorProgramAsync(int tenantId, CancellationToken ct = default)
+            => GetAsQueryable()
+                .AsNoTracking()
+                .Include(x => x.CardTemplate)
+                .Where(x => x.TenantId == tenantId && x.IsActive && x.Audience == ProgramAudience.Ambassador)
+                .OrderBy(x => x.Id)
+                .FirstOrDefaultAsync(ct);
 
         public Task<LoyaltyProgram?> GetByCodeAsync(int tenantId, string code, CancellationToken ct = default)
         => GetAsQueryable().AsNoTracking().FirstOrDefaultAsync(x => x.TenantId == tenantId && x.Code == code, ct);

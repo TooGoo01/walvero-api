@@ -14,6 +14,10 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         Task<LoyaltyProgram?> GetByIdTrackedAsync(int programId, CancellationToken ct = default);
         Task<List<LoyaltyProgram>> ListAsync(int tenantId, bool onlyActive = true, CancellationToken ct = default);
         Task<List<LoyaltyProgram>> GetActive(CancellationToken ct = default);
+        /// <summary>Tenant-ın aktiv proqramları (Id sırası); audience null = hamısı.</summary>
+        Task<List<LoyaltyProgram>> GetActiveByTenantAsync(int tenantId, Enums.ProgramAudience? audience, CancellationToken ct = default);
+        /// <summary>Tenant-ın aktiv Ambassador proqramı (CardTemplate ilə) və ya null.</summary>
+        Task<LoyaltyProgram?> GetAmbassadorProgramAsync(int tenantId, CancellationToken ct = default);
         Task<List<LoyaltyProgram>> GetByIdsAsync(IEnumerable<int> programIds, CancellationToken ct = default);
     }
 }

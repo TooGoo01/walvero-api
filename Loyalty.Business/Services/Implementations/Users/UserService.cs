@@ -195,11 +195,11 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                             // Get Google Logo URL from tenant's first active loyalty program's card template
                             var googleLogoUrl = user.Tenant?.LoyaltyPrograms
-                                ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
+                                .DefaultProgramWithTemplate()
                                 ?.CardTemplate?.GoogleLogoUrl;
 
                             var loginPrograms = user.Tenant?.LoyaltyPrograms?
-                                .Where(lp => lp.IsActive)
+                                .Where(lp => lp.IsActive && lp.IsPublic())
                                 .Select(lp => new ProgramSummaryDto
                                 {
                                     Id = lp.Id,
@@ -219,7 +219,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                                 Gender = user.Gender.HasValue ? (int)user.Gender.Value : null,
                                 Roles = rolem,
                                 TenantId = user.TenantId,
-                                ProgramId = user.Tenant?.LoyaltyPrograms?.FirstOrDefault()?.Id,
+                                ProgramId = user.Tenant?.LoyaltyPrograms.DefaultProgram()?.Id,
                                 BranchId = user.BranchId,
                                 BranchName = user.Branch?.Name,
                                 BranchSlug = user.Branch?.Slug,
@@ -588,9 +588,9 @@ namespace Loyalty.Business.Services.Implementations.Users
             }
 
             // Add program_id if exists
-            if (user.TenantId != null && user.Tenant?.LoyaltyPrograms?.FirstOrDefault() != null)
+            if (user.TenantId != null && user.Tenant?.LoyaltyPrograms.DefaultProgram() is { } defaultProgram)
             {
-                claims.Add(new Claim("program_id", user.Tenant.LoyaltyPrograms.FirstOrDefault().Id.ToString()!));
+                claims.Add(new Claim("program_id", defaultProgram.Id.ToString()));
             }
 
             return claims;
@@ -917,7 +917,7 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                         // Get Google Logo URL from tenant's first active loyalty program's card template
                         var googleLogoUrl = user.Tenant?.LoyaltyPrograms
-                            ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
+                            .DefaultProgramWithTemplate()
                             ?.CardTemplate?.GoogleLogoUrl;
 
                         var session = new UserSessionDto
@@ -1408,11 +1408,11 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                     // Get Google Logo URL from tenant's first active loyalty program's card template
                     var googleLogoUrl = user.Tenant?.LoyaltyPrograms
-                        ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
+                        .DefaultProgramWithTemplate()
                         ?.CardTemplate?.GoogleLogoUrl;
 
                     var programs = user.Tenant?.LoyaltyPrograms?
-                        .Where(lp => lp.IsActive)
+                        .Where(lp => lp.IsActive && lp.IsPublic())
                         .Select(lp => new ProgramSummaryDto
                         {
                             Id = lp.Id,
@@ -1431,7 +1431,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                         BirthDate = user.DateOfBirth ?? DateTime.Now,
                         Roles = roles.ToList(),
                         TenantId = user.TenantId,
-                        ProgramId = user.Tenant?.LoyaltyPrograms?.FirstOrDefault()?.Id,
+                        ProgramId = user.Tenant?.LoyaltyPrograms.DefaultProgram()?.Id,
                         BranchId = user.BranchId,
                         BranchName = user.Branch?.Name,
                                 BranchSlug = user.Branch?.Slug,
@@ -1562,11 +1562,11 @@ namespace Loyalty.Business.Services.Implementations.Users
 
                 // Get Google Logo URL from tenant's first active loyalty program's card template
                 var googleLogoUrl = user.Tenant?.LoyaltyPrograms
-                    ?.FirstOrDefault(lp => lp.IsActive && lp.CardTemplate != null)
+                    .DefaultProgramWithTemplate()
                     ?.CardTemplate?.GoogleLogoUrl;
 
                 var otpPrograms = user.Tenant?.LoyaltyPrograms?
-                    .Where(lp => lp.IsActive)
+                    .Where(lp => lp.IsActive && lp.IsPublic())
                     .Select(lp => new ProgramSummaryDto
                     {
                         Id = lp.Id,
@@ -1586,7 +1586,7 @@ namespace Loyalty.Business.Services.Implementations.Users
                     BirthDate = user.DateOfBirth ?? DateTime.Now,
                     Roles = roles.ToList(),
                     TenantId = user.TenantId,
-                    ProgramId = user.Tenant?.LoyaltyPrograms?.FirstOrDefault()?.Id,
+                    ProgramId = user.Tenant?.LoyaltyPrograms.DefaultProgram()?.Id,
                     BranchId = user.BranchId,
                     BranchName = user.Branch?.Name,
                                 BranchSlug = user.Branch?.Slug,

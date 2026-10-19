@@ -15,6 +15,11 @@ namespace Loyalty.DataAccess.Entities.Main
         public int StepsPerUnit { get; set; }
         public int PointsPerUnit { get; set; }
 
+        // null = inteqrasiyanın bütün proqramları; dolu = yalnız həmin proqramın kartları (məs. ambassador).
+        // Eyni məhsul üçün proqram-spesifik qayda ümumi qaydadan üstündür.
+        public int? LoyaltyProgramId { get; set; }
+
         public TenantIntegration TenantIntegration { get; set; } = null!;
+        public LoyaltyProgram? LoyaltyProgram { get; set; }
     }
 }

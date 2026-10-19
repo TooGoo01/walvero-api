@@ -135,6 +135,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                 card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
                 if (card == null)
                 {
+                    // Bir müştəri = bir aktiv kart: başqa proqramda (məs. ambassador) aktiv kart varsa onu istifadə et
+                    var otherActive = await _cardRepo.GetActiveByCustomerAsync(tenantId, customer.Id, ct);
+                    if (otherActive != null)
+                    {
+                        result.Warnings.Add($"Müştərinin başqa proqramda aktiv kartı var (#{otherActive.Id}) — yeni kart yaradılmadı.");
+                        card = otherActive;
+                    }
+                }
+                if (card == null)
+                {
                     var inactive = await _cardRepo.GetLastInactiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
                     if (inactive != null)
                     {

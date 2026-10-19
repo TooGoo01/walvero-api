@@ -74,10 +74,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!tenant.EnableAmbassadors)
                 return new ServiceResult(false, "Ambassador proqramı bu tenant üçün aktiv deyil.");
 
-            // 2) Program tenant-ə aiddirmi?
-            var program = await _programRepo.GetByIdNameAsync(dto.LoyaltyProgramId, ct);
+            // 2) Proqram: tenant-da Ambassador proqramı varsa həmişə o (ayrı dizayn/mexanika, bir aktiv kart);
+            //    yoxdursa köhnə rejim — kart göndərilən proqramda, keçid yoxdur.
+            var ambassadorProgram = await _programRepo.GetAmbassadorProgramAsync(tenantId, ct);
+            var program = await _programRepo.GetByIdNameAsync(ambassadorProgram?.Id ?? dto.LoyaltyProgramId, ct);
             if (program is null || program.TenantId != tenantId)
                 return new ServiceResult(false, "Program not found for this tenant.");
+            var segmentMode = ambassadorProgram != null;
 
             var phone = dto.PhoneNumber.Trim();
             var regUserId = int.TryParse(userId, out var uid) ? uid : 1;
@@ -147,8 +150,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                 await _uow.CommitAsync(ct);
             }
 
-            // 4) Kart tap / yarat (BarcodeValue boş → SaveChanges Customer.CardNumber-dən doldurur)
-            var card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
+            // 4) Kart: seqment rejimində adi kart bağlanır, ambassador kartı açılır (bir aktiv kart);
+            //    köhnə rejimdə kart tap / yarat (BarcodeValue boş → SaveChanges Customer.CardNumber-dən doldurur)
+            LoyaltyCard? card;
+            if (segmentMode)
+            {
+                var switched = await SwitchActiveCardAsync(customer, program, dto.CarryOverBalance, regUserId, "ambassador edildi", ct);
+                if (!switched.Success) return new ServiceResult(false, switched.Error);
+                card = switched.Card!;
+            }
+            else
+                card = await _cardRepo.GetLastActiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
             if (card is null)
             {
                 var deactive = await _cardRepo.GetLastInactiveByCustomerAsync(tenantId, program.Id, customer.Id, ct);
@@ -184,6 +196,8 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             // 5) POS-a müştəri sync (iiko customer create + program enroll) — isolated scope, best-effort
             await RunPosCustomerSyncSafeAsync(tenantId, customer.Id, ct);
+            // iiko ambassador qonaq kateqoriyası (inteqrasiyada təyin edilibsə)
+            await RunAmbassadorCategorySyncSafeAsync(tenantId, customer.Id, true, ct);
 
             // 6) İlkin xal (varsa) + bitmə tarixi
             if (dto.InitialPoints.HasValue && dto.InitialPoints.Value != 0)
@@ -214,9 +228,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (customer is null)
                 return new ServiceResult(false, "Müştəri tapılmadı.");
 
-            // Proqram resolve: verilən → müştərinin aktiv kart proqramı → tenant-in ilk aktiv proqramı
+            // Proqram resolve yalnız köhnə rejimdə (Ambassador proqramı varsa Create onu özü seçir):
+            // verilən → müştərinin aktiv kart proqramı → tenant-in ilk aktiv proqramı
             int programId = 0;
-            if (dto.LoyaltyProgramId.HasValue && dto.LoyaltyProgramId.Value > 0)
+            if (await _programRepo.GetAmbassadorProgramAsync(tenantId, ct) != null)
+            {
+                // seqment rejimi — programId ignor edilir
+            }
+            else if (dto.LoyaltyProgramId.HasValue && dto.LoyaltyProgramId.Value > 0)
             {
                 var p = await _programRepo.GetByIdNameAsync(dto.LoyaltyProgramId.Value, ct);
                 if (p is null || p.TenantId != tenantId)
@@ -235,8 +254,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     programId = cardProgramId.Value;
                 else
                 {
-                    var active = await _programRepo.GetActive(ct);
-                    var first = (active ?? new List<LoyaltyProgram>()).FirstOrDefault(p => p.TenantId == tenantId);
+                    var first = (await _programRepo.GetActiveByTenantAsync(tenantId, ProgramAudience.Public, ct)).FirstOrDefault();
                     if (first is null)
                         return new ServiceResult(false, "Tenant-də aktiv proqram yoxdur.");
                     programId = first.Id;
@@ -253,11 +271,216 @@ namespace Loyalty.Business.Services.Implementations.Main
                 Email = customer.Email,
                 CardNumber = customer.CardNumber,
                 InitialPoints = dto.InitialPoints,
-                ExpiresAt = dto.ExpiresAt
+                ExpiresAt = dto.ExpiresAt,
+                CarryOverBalance = dto.CarryOverBalance
             };
 
             return await CreateAmbassadorAsync(tenantId, userId, createDto, ct);
         }
+
+        public async Task<ServiceResult> DemoteAsync(int tenantId, string userId, DemoteAmbassadorDto dto, CancellationToken ct = default)
+        {
+            if (tenantId <= 0)
+                return new ServiceResult(false, "Tenant not resolved.");
+            if (dto == null || dto.CustomerId <= 0)
+                return new ServiceResult(false, "Customer is required.");
+
+            var customer = await _db.Set<Customer>()
+                .FirstOrDefaultAsync(c => c.Id == dto.CustomerId && c.TenantId == tenantId, ct);
+            if (customer is null)
+                return new ServiceResult(false, "Müştəri tapılmadı.");
+            if (!customer.IsAmbassador)
+                return new ServiceResult(false, "Müştəri ambassador deyil.");
+
+            var regUserId = int.TryParse(userId, out var uid) ? uid : 1;
+
+            // Aktiv kart ambassador proqramındadırsa → adi proqrama keçid; köhnə rejimdə yalnız işarə götürülür
+            var active = await _cardRepo.GetActiveByCustomerAsync(tenantId, customer.Id, ct);
+            var activeProgram = active == null ? null : await _programRepo.GetByIdNameAsync(active.LoyaltyProgramId, ct);
+            LoyaltyCard? resultCard = active;
+            if (activeProgram?.Audience == ProgramAudience.Ambassador)
+            {
+                // Hədəf: müştərinin son bağlanmış Public kartının proqramı → tenant-ın default Public proqramı
+                var publicPrograms = await _programRepo.GetActiveByTenantAsync(tenantId, ProgramAudience.Public, ct);
+                var publicIds = publicPrograms.Select(p => p.Id).ToList();
+                var lastPublicProgramId = await _db.Set<LoyaltyCard>()
+                    .Where(c => c.TenantId == tenantId && c.CustomerId == customer.Id && !c.IsActive && publicIds.Contains(c.LoyaltyProgramId))
+                    .OrderByDescending(c => c.Id)
+                    .Select(c => (int?)c.LoyaltyProgramId)
+                    .FirstOrDefaultAsync(ct);
+                var targetId = lastPublicProgramId ?? publicPrograms.FirstOrDefault()?.Id;
+                if (targetId == null)
+                    return new ServiceResult(false, "Tenant-da aktiv adi proqram yoxdur — ambassador kartı açıq qaldı.");
+                var target = await _programRepo.GetByIdNameAsync(targetId.Value, ct);
+
+                var switched = await SwitchActiveCardAsync(customer, target!, dto.CarryOverBalance, regUserId, "ambassadorluqdan çıxarıldı", ct);
+                if (!switched.Success) return new ServiceResult(false, switched.Error);
+                resultCard = switched.Card;
+            }
+
+            customer.IsAmbassador = false;
+            customer.EditDate = DateTime.UtcNow;
+            _uow.Repository<Customer>().Update(customer);
+            await _uow.CommitAsync(ct);
+
+            await RunAmbassadorCategorySyncSafeAsync(tenantId, customer.Id, false, ct);
+
+            return new ServiceResult(true, new { customerId = customer.Id, cardId = resultCard?.Id });
+        }
+
+        private sealed record SwitchResult(bool Success, LoyaltyCard? Card, string? Error);
+
+        /// <summary>
+        /// Bir müştəri = bir aktiv kart: müştərinin tenant-dakı digər aktiv kartlarını bağlayır (Cancelled, balans dondurulur)
+        /// və hədəf proqramda kartı açır (aktiv varsa onu, bağlı varsa reaktiv, yoxdursa yeni — eyni barkodla).
+        /// carryOver: bağlanan kartların pul balansı hədəf karta köçürülür (yalnız hər iki tərəf xal/cashback kartıdırsa).
+        /// </summary>
+        private async Task<SwitchResult> SwitchActiveCardAsync(
+            Customer customer, LoyaltyProgram target, bool carryOver, int regUserId, string reason, CancellationToken ct)
+        {
+            var now = DateTime.UtcNow;
+            var tenantId = customer.TenantId;
+            var activeCards = await _db.Set<LoyaltyCard>()
+                .Where(c => c.TenantId == tenantId && c.CustomerId == customer.Id && c.IsActive)
+                .OrderByDescending(c => c.Id)
+                .ToListAsync(ct);
+
+            var targetCard = activeCards.FirstOrDefault(c => c.LoyaltyProgramId == target.Id);
+            var toClose = activeCards.Where(c => c.Id != targetCard?.Id).ToList();
+
+            // Köçürmə yoxlaması — heç nə dəyişməzdən əvvəl
+            var targetType = target.CardTemplate?.EffectiveType ?? CardTemplateType.PointsBased;
+            var carryCards = new List<LoyaltyCard>();
+            if (carryOver)
+            {
+                var closeProgramIds = toClose.Select(c => c.LoyaltyProgramId).Distinct().ToList();
+                var closePrograms = await _db.Set<LoyaltyProgram>().AsNoTracking()
+                    .Include(p => p.CardTemplate)
+                    .Where(p => closeProgramIds.Contains(p.Id))
+                    .ToListAsync(ct);
+                foreach (var c in toClose.Where(c => c.CurrentPoints > 0))
+                {
+                    var fromType = closePrograms.FirstOrDefault(p => p.Id == c.LoyaltyProgramId)?.CardTemplate?.EffectiveType ?? CardTemplateType.PointsBased;
+                    if (!AmbassadorCardSwitch.CanCarryOver(fromType, targetType))
+                        return new SwitchResult(false, null, "Balans köçürülməsi hədiyyə (möhür) kartı ilə mümkün deyil — köçürmə seçimini söndürün.");
+                    carryCards.Add(c);
+                }
+            }
+
+            // 1) Köhnə aktiv kartları bağla (balans kartda qalır — geri açılanda qayıdır)
+            foreach (var old in toClose)
+            {
+                old.IsActive = false;
+                old.Status = CardStatus.Cancelled;
+                old.EditDate = now;
+                old.EditUserId = regUserId;
+                _uow.Repository<LoyaltyCard>().Update(old);
+                _uow.Repository<Transaction>().Add(NewMarkerTx(old.Id, 0, old.CurrentPoints, $"Kart bağlandı: {reason}", now));
+            }
+
+            // 2) Hədəf kart: aktiv → bağlı (reaktiv) → yeni (eyni barkod, unikal CardNumber)
+            var reactivated = false;
+            if (targetCard == null)
+            {
+                targetCard = await _db.Set<LoyaltyCard>()
+                    .Where(c => c.TenantId == tenantId && c.CustomerId == customer.Id && c.LoyaltyProgramId == target.Id && !c.IsActive)
+                    .OrderByDescending(c => c.Id)
+                    .FirstOrDefaultAsync(ct);
+                if (targetCard != null)
+                {
+                    targetCard.IsActive = true;
+                    targetCard.Status = CardStatus.Active;
+                    targetCard.ActivatedAt = now;
+                    targetCard.EditDate = now;
+                    targetCard.EditUserId = regUserId;
+                    _uow.Repository<LoyaltyCard>().Update(targetCard);
+                    _uow.Repository<Transaction>().Add(NewMarkerTx(targetCard.Id, 0, targetCard.CurrentPoints, $"Kart yenidən açıldı: {reason}", now));
+                    reactivated = true;
+                }
+                else
+                {
+                    var barcode = toClose.Select(c => c.BarcodeValue).FirstOrDefault(b => !string.IsNullOrWhiteSpace(b))
+                                  ?? customer.CardNumber;
+                    var baseNumber = !string.IsNullOrWhiteSpace(customer.CardNumber) ? customer.CardNumber : barcode;
+                    string? cardNumber = null;
+                    if (!string.IsNullOrWhiteSpace(baseNumber))
+                    {
+                        var suffix = target.Audience == ProgramAudience.Ambassador ? "A" : "P";
+                        for (var i = 0; i < 50 && cardNumber == null; i++)
+                        {
+                            var candidate = AmbassadorCardSwitch.CardNumberCandidate(baseNumber, suffix, i);
+                            if (!await _db.Set<LoyaltyCard>().AnyAsync(c => c.CardNumber == candidate, ct))
+                                cardNumber = candidate;
+                        }
+                    }
+                    targetCard = new LoyaltyCard
+                    {
+                        TenantId = tenantId,
+                        CustomerId = customer.Id,
+                        LoyaltyProgramId = target.Id,
+                        // CardNumber qlobal unique — açıq təyin (SaveChanges toqquşmanı yalnız tracked kartlarda yoxlayır);
+                        // boş qalarsa SaveChanges generasiya edir. Barkod köhnə kartla eyni (çap olunmuş kart, POS cardTrack).
+                        CardNumber = cardNumber ?? string.Empty,
+                        BarcodeValue = barcode,
+                        BarcodeType = BarcodeType.Code128,
+                        Status = CardStatus.Active,
+                        ActivatedAt = now,
+                        RegUserId = regUserId,
+                        RegDate = now,
+                        IsActive = true
+                    };
+                    await _uow.Repository<LoyaltyCard>().AddAsync(targetCard);
+                }
+            }
+            await _uow.CommitAsync(ct);
+
+            // 3) Bağlanan kartların pass-ları yenilənir (inaktiv kart → Apple voided / Google INACTIVE) — background
+            foreach (var old in toClose)
+            {
+                var oldId = old.Id;
+                var oldProgramId = old.LoyaltyProgramId;
+                try { BackgroundJob.Enqueue<IWalletPushJob>(j => j.RunAsync(oldId, oldProgramId, 0)); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Closed card wallet push enqueue failed. CardId={CardId}", oldId); }
+            }
+            if (reactivated)
+            {
+                var reId = targetCard.Id;
+                var reProgramId = targetCard.LoyaltyProgramId;
+                try { BackgroundJob.Enqueue<IWalletPushJob>(j => j.ReactivateAsync(reId, reProgramId)); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Reactivated card wallet push enqueue failed. CardId={CardId}", reId); }
+            }
+
+            // 4) Balans köçürməsi: köhnədən çıx (Adjusted), yeniyə kredit (wallet push + POS sync CreditPointsInternalAsync-də)
+            foreach (var from in carryCards)
+            {
+                var amount = from.CurrentPoints;
+                from.CurrentPoints = 0;
+                from.EditDate = now;
+                _uow.Repository<LoyaltyCard>().Update(from);
+                _uow.Repository<Transaction>().Add(NewMarkerTx(from.Id, -amount, 0, $"Balans köçürüldü → kart #{targetCard.Id}", now));
+                await _uow.CommitAsync(ct);
+                await CreditPointsInternalAsync(targetCard, target, customer.Id, amount, $"Balans köçürüldü ← kart #{from.Id}", null, ct);
+            }
+
+            _logger.LogInformation(
+                "Ambassador card switch: CustomerId={CustomerId}, Closed=[{Closed}], Target={TargetCardId} (Program {ProgramId}), CarriedCards={Carry}",
+                customer.Id, string.Join(",", toClose.Select(c => c.Id)), targetCard.Id, target.Id, carryCards.Count);
+            return new SwitchResult(true, targetCard, null);
+        }
+
+        private static Transaction NewMarkerTx(int cardId, decimal points, decimal balanceAfter, string description, DateTime now) => new()
+        {
+            LoyaltyCardId = cardId,
+            Type = TransactionType.Adjusted,
+            Status = RedeemStatus.Applied,
+            Points = points,
+            BalanceAfter = balanceAfter,
+            Description = description,
+            RegDate = now,
+            IsActive = true,
+            LocalOccurredAt = DateTimeOffset.UtcNow,
+            TimeZoneIdUsed = "UTC"
+        };
 
         public async Task<ServiceResult> AddPointsAsync(int tenantId, CreditPointsDto dto, CancellationToken ct = default)
         {
@@ -269,6 +492,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new ServiceResult(false, "Card not found.");
             if (card.TenantId != tenantId)
                 return new ServiceResult(false, "Card does not belong to your tenant.");
+            if (!card.IsActive)
+                return new ServiceResult(false, "Kart aktiv deyil — müştərinin aktiv kartına xal verin.");
 
             var program = await _programRepo.GetByIdNameAsync(card.LoyaltyProgramId, ct);
             if (program is null)
@@ -292,6 +517,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new ServiceResult(false, "Card not found.");
             if (card.TenantId != tenantId)
                 return new ServiceResult(false, "Card does not belong to your tenant.");
+            if (!card.IsActive)
+                return new ServiceResult(false, "Kart aktiv deyil — müştərinin aktiv kartında dəyişin.");
 
             var now = DateTime.UtcNow;
             card.ExpiresAt = dto.ExpiresAt.HasValue
@@ -374,6 +601,20 @@ namespace Loyalty.Business.Services.Implementations.Main
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Ambassador POS customer sync failed. CustomerId={CustomerId}, TenantId={TenantId}", customerId, tenantId);
+            }
+        }
+
+        private async Task RunAmbassadorCategorySyncSafeAsync(int tenantId, int customerId, bool isAmbassador, CancellationToken ct)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var sync = scope.ServiceProvider.GetRequiredService<IPosSyncService>();
+                await sync.SyncAmbassadorCategoryAsync(tenantId, customerId, isAmbassador, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Ambassador iiko category sync failed. CustomerId={CustomerId}, TenantId={TenantId}", customerId, tenantId);
             }
         }
 

@@ -118,9 +118,14 @@ namespace Loyalty.WebAPI.Controllers
         public async Task<IActionResult> Get(int id)
         {
             var result = await _loyaltyProgramService.Get(id);
-            if (result.Success)
-                return Ok(result);
-            return NotFound(result);
+            if (!result.Success)
+                return NotFound(result);
+            // Super Admin deyilsə yalnız öz tenant-ının proqramı
+            if (!User.IsInRole("Super Admin")
+                && result.Data is Business.Dtos.Get.Main.GetLoyaltyProgramDto dto
+                && dto.TenantId != _tenantProvider.CurrentTenantId)
+                return NotFound(new ServiceResult(false, "Loyalty program not found."));
+            return Ok(result);
         }
 
         [HttpPost]
@@ -128,7 +133,30 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> UpdateHappyHours(int id, [FromBody] UpdateHappyHoursDto dto, CancellationToken ct)
         {
-            var result = await _loyaltyProgramService.UpdateHappyHoursAsync(id, dto, ct);
+            // Super Admin hər proqramı, digər rollar yalnız öz tenant-ının proqramını
+            int? ownership = User.IsInRole("Super Admin") ? null : _tenantProvider.CurrentTenantId ?? -1;
+            var result = await _loyaltyProgramService.UpdateHappyHoursAsync(id, dto, ownership, ct);
+            if (result.Success)
+                return Ok(result);
+            return BadRequest(result);
+        }
+
+        /// <summary>Proqramın iiko bağlantısı (cüzdan, qazanc mənbəyi, sifariş başına möhür). Super Admin hər proqramı, Tenant Admin öz proqramını.</summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrSuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> UpdatePosLink(int id, [FromBody] UpdatePosLinkDto dto, CancellationToken ct)
+        {
+            int? ownership = null;
+            if (!User.IsInRole("Super Admin"))
+            {
+                ownership = _tenantProvider.CurrentTenantId;
+                if (!ownership.HasValue)
+                    return BadRequest(new ServiceResult(false, "Tenant not found."));
+            }
+
+            var result = await _loyaltyProgramService.UpdatePosLinkAsync(id, dto, ownership, ct);
             if (result.Success)
                 return Ok(result);
             return BadRequest(result);

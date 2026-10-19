@@ -13,6 +13,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int CustomerId { get; set; } // YENİ (əvvəlki UserId)
         public int TenantId { get; set; }
         public int LoyaltyProgramId { get; set; }
+        /// <summary>Bağlanmış kart (ambassador keçidi / silinmə) false.</summary>
+        public bool IsActive { get; set; }
 
         // Card Details
         public string CardNumber { get; set; } = string.Empty;

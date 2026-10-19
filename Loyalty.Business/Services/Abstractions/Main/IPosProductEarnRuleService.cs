@@ -18,6 +18,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ProductName { get; set; }
         public int StepsPerUnit { get; set; }
         public int PointsPerUnit { get; set; }
+        /// <summary>null = inteqrasiyanın bütün proqramları; dolu = yalnız həmin proqram (məs. ambassador).</summary>
+        public int? LoyaltyProgramId { get; set; }
     }
 
     public class PosProductEarnRuleCreateDto
@@ -27,6 +29,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ProductName { get; set; }
         public int StepsPerUnit { get; set; }
         public int PointsPerUnit { get; set; }
+        public int? LoyaltyProgramId { get; set; }
     }
 
     public class PosProductEarnRuleUpdateDto
@@ -35,5 +38,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ProductName { get; set; }
         public int? StepsPerUnit { get; set; }
         public int? PointsPerUnit { get; set; }
+        /// <summary>null = dəyişmə; 0 = bütün proqramlar; &gt;0 = həmin proqram.</summary>
+        public int? LoyaltyProgramId { get; set; }
     }
 }

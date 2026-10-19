@@ -219,6 +219,26 @@ namespace Loyalty.Business.Services.Implementations.Main
                 accessToken, "/api/1/nomenclature", new { organizationId }, ct);
         }
 
+        public async Task<List<IikoGuestCategory>?> GetGuestCategoriesAsync(
+            string accessToken, Guid organizationId, CancellationToken ct = default)
+        {
+            var response = await PostAsync<IikoGuestCategoriesResponse>(
+                accessToken, "/api/1/loyalty/iiko/customer_category", new { organizationId }, ct);
+            if (response == null)
+                _logger.LogWarning("iiko guest categories unavailable for organizationId={OrgId}", organizationId);
+            return response?.GuestCategories;
+        }
+
+        public Task<bool> AddCustomerCategoryAsync(
+            string accessToken, Guid organizationId, Guid customerId, Guid categoryId, CancellationToken ct = default)
+            => PostRawAsync(accessToken, "/api/1/loyalty/iiko/customer/category/add",
+                new { organizationId, customerId, categoryId }, ct);
+
+        public Task<bool> RemoveCustomerCategoryAsync(
+            string accessToken, Guid organizationId, Guid customerId, Guid categoryId, CancellationToken ct = default)
+            => PostRawAsync(accessToken, "/api/1/loyalty/iiko/customer/category/remove",
+                new { organizationId, customerId, categoryId }, ct);
+
         // ── Private helpers ──
 
         private async Task<T?> PostAsync<T>(string? accessToken, string path, object payload, CancellationToken ct)

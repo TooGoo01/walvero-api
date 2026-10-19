@@ -19,6 +19,8 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
         Task<(LoyaltyCard? Card, int Matches)> GetByBarcodeSuffixAsync(int tenantId, string suffix, CancellationToken ct = default);
         Task<List<LoyaltyCard>> ListByCustomerAsync(int tenantId, int customerId, CancellationToken ct = default);
         Task<LoyaltyCard?> GetLastActiveByCustomerAsync(int tenantId, int programId, int customerId, CancellationToken ct);
+        /// <summary>Müştərinin tenant-dakı aktiv kartı (proqramdan asılı olmayaraq), tracked.</summary>
+        Task<LoyaltyCard?> GetActiveByCustomerAsync(int tenantId, int customerId, CancellationToken ct = default);
         Task<LoyaltyCard?> GetLastInactiveByCustomerAsync(int tenantId, int programId, int customerId, CancellationToken ct);
         Task<LoyaltyCard?> GetById(int id,CancellationToken ct);
         Task<List<LoyaltyCard>> GetLastActiveCardsForApplicationUserAsync(

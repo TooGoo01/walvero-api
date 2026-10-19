@@ -179,27 +179,32 @@ namespace Loyalty.Business.Services.Implementations.Main
             return null;
         }
 
+        /// <summary>
+        /// Barkod/WalveroId ilə müştərinin AKTİV kartı (proqramından asılı olmayaraq — bir müştəri = bir aktiv kart,
+        /// məs. ambassador kartı inteqrasiyanın proqramından fərqli ola bilər). Bağlı kart tapılarsa aktiv karta keçir.
+        /// </summary>
+        private async Task<LoyaltyCard?> ResolveActiveCardAsync(int tenantId, string rawBarcode, CancellationToken ct)
+        {
+            var card = await ResolveCardAsync(tenantId, rawBarcode, null, ct);
+            if (card == null || card.IsActive) return card;
+            return await _loyaltyCardRepo.GetActiveByCustomerAsync(tenantId, card.CustomerId, ct) ?? card;
+        }
+
         public async Task<GetWalletResponse> GetWalletAsync(WalletWebhookResolvedContext context, string barcode, CancellationToken ct = default)
         {
             var tenantId = context.TenantId;
-            var programId = context.LoyaltyProgramId;
 
-            var card = await ResolveCardAsync(tenantId, barcode, programId, ct);
+            var card = await ResolveActiveCardAsync(tenantId, barcode, ct);
             if (card == null)
                 return new GetWalletResponse { Success = false, Message = "Customer not found" };
 
-            if (!programId.HasValue)
-                return new GetWalletResponse { Success = false, Message = "No loyalty program configured" };
-
+            // Kartın öz proqramı (ambassador kartı inteqrasiyanın proqramından fərqli ola bilər)
+            int? programId = card.LoyaltyProgramId;
             var program = await _loyaltyProgramRepo.GetByIdAsync(programId.Value, ct);
             if (program == null)
                 return new GetWalletResponse { Success = false, Message = "Program not found" };
 
-            var cardInProgram = card.LoyaltyProgramId == programId.Value ? card : null;
-            if (cardInProgram == null)
-            {
-                cardInProgram = await _loyaltyCardRepo.GetLastActiveByCustomerAsync(tenantId, programId.Value, card.CustomerId, ct);
-            }
+            var cardInProgram = card;
 
             var loyalty = new List<LoyaltyCampaignItem>();
             double cashbackBalans = 0;
@@ -267,13 +272,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!programId.HasValue)
                 return new SetRedeemResponse { Status = false, Message = "No program configured" };
 
-            var card = await ResolveCardAsync(tenantId, request.Barcode, programId, ct);
+            var card = await ResolveActiveCardAsync(tenantId, request.Barcode, ct);
             if (card == null)
                 return new SetRedeemResponse { Status = false, Message = "Customer not found" };
 
-            var cardForProgram = card.LoyaltyProgramId == programId ? card : await _loyaltyCardRepo.GetLastActiveByCustomerAsync(tenantId, programId.Value, card.CustomerId, ct);
-            if (cardForProgram == null)
-                return new SetRedeemResponse { Status = false, Message = "No active card for program" };
+            // Kartın öz proqramı
+            programId = card.LoyaltyProgramId;
+            var cardForProgram = card;
 
             decimal delta = request.Delta;
 
@@ -335,13 +340,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!programId.HasValue)
                 return new SetVerifyResponse { Status = false };
 
-            var card = await ResolveCardAsync(tenantId, request.Barcode, programId, ct);
+            var card = await ResolveActiveCardAsync(tenantId, request.Barcode, ct);
             if (card == null)
                 return new SetVerifyResponse { Status = false };
 
-            var cardForProgram = card.LoyaltyProgramId == programId ? card : await _loyaltyCardRepo.GetLastActiveByCustomerAsync(tenantId, programId.Value, card.CustomerId, ct);
-            if (cardForProgram == null)
-                return new SetVerifyResponse { Status = false };
+            // Kartın öz proqramı
+            programId = card.LoyaltyProgramId;
+            var cardForProgram = card;
 
             var allPending = await _uow.Repository<RedeemRequest>().GetAllAsync(
                 rr => rr.LoyaltyCardId == cardForProgram.Id && rr.Status == RedeemStatus.Pending && rr.ExpiresUtc > DateTime.UtcNow);
@@ -427,9 +432,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!customerId.HasValue)
                 return new CollectResponse { Success = false };
 
-            var card = await _loyaltyCardRepo.GetLastActiveByCustomerAsync(context.TenantId, programId.Value, customerId.Value, ct);
+            // Müştərinin aktiv kartı (proqramından asılı olmayaraq) — qaydalar/faiz kartın proqramından
+            var card = await _loyaltyCardRepo.GetActiveByCustomerAsync(context.TenantId, customerId.Value, ct);
             if (card == null)
                 return new CollectResponse { Success = false };
+            programId = card.LoyaltyProgramId;
 
             if (request.Status == "deleted")
             {
@@ -482,7 +489,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             var earnRules = await _earnRuleRepo.GetByTenantIntegrationIdAsync(tenantIntegrationId, ct);
-            var rulesByProduct = earnRules.ToDictionary(r => r.ExternalProductId.Trim(), StringComparer.OrdinalIgnoreCase);
+            var rulesByProduct = PosEarnRouting.RulesForProgram(earnRules, card.LoyaltyProgramId);
             // Super admin istisnaları: Monyo item-lərində qiymət yoxdur → yalnız möhür/məhsul xalı bloku tətbiq olunur.
             var exclusionMap = await LoadExclusionMapAsync(tenantIntegrationId, ct);
 
@@ -688,12 +695,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (customerId == null)
                 return new IikoTransactionResponse { Success = false, Message = $"Customer not found for externalId: {request.CustomerId}" };
 
-            // 3) Aktiv LoyaltyCard tap
-            if (context.LoyaltyProgramId == null)
-                return new IikoTransactionResponse { Success = false, Message = "LoyaltyProgramId not configured" };
-
-            var card = await _loyaltyCardRepo.GetLastActiveByCustomerAsync(
-                context.TenantId, context.LoyaltyProgramId.Value, customerId.Value, ct);
+            // 3) Müştərinin aktiv kartı (proqramından asılı olmayaraq — ambassador kartı ola bilər)
+            var card = await _loyaltyCardRepo.GetActiveByCustomerAsync(context.TenantId, customerId.Value, ct);
             if (card == null)
                 return new IikoTransactionResponse { Success = false, Message = "Active loyalty card not found" };
 
@@ -701,12 +704,45 @@ namespace Loyalty.Business.Services.Implementations.Main
             var delta = request.Sum;
             var txType = delta > 0 ? TransactionType.Earned : (delta < 0 ? TransactionType.Redeemed : TransactionType.Earned);
 
-            // Program + CardTemplate yüklə (ProgressBased/PointsBased fərqi üçün)
-            var program = await _loyaltyProgramRepo.GetByIdNameAsync(context.LoyaltyProgramId!.Value);
+            // Kartın proqramı + CardTemplate (ProgressBased/PointsBased fərqi üçün)
+            var program = await _loyaltyProgramRepo.GetByIdNameAsync(card.LoyaltyProgramId);
 
             var template = program?.CardTemplate;
             var templateType = template?.EffectiveType ?? CardTemplateType.PointsBased;
             var totalSteps = template?.TotalSteps ?? 10;
+
+            // Kartın proqramına başqa iiko cüzdanı bağlıdır (məs. ambassador-un 5% keşbeki Cashback cüzdanına gəlir) —
+            // bu tranzaksiya kartın balansını (məhsul sayı) əvəz etməməlidir → yalnız marker
+            var otherWallet = program != null && !IikoWalletSelection.MirrorAppliesToCard(program.PosWalletId, request.WalletId);
+
+            // WalveroRules proqramı: qazancı Walvero hesablayır — iiko cüzdan güzgüsü balansa toxunmur (yalnız marker)
+            if (program != null && (otherWallet || !PosEarnRouting.MirrorWritesBalance(program.PosEarnSource)))
+            {
+                _uow.Repository<Transaction>().Add(new Transaction
+                {
+                    LoyaltyCardId = card.Id,
+                    Type = TransactionType.Adjusted,
+                    Status = RedeemStatus.Applied,
+                    Points = 0,
+                    BalanceAfter = card.CurrentPoints,
+                    OrderId = idempotencyKey,
+                    ReferenceNumber = request.TransactionId,
+                    Description = otherWallet
+                        ? $"iiko {request.TransactionType} {request.Sum:0.##} (başqa iiko cüzdanı — balans dəyişmədi)"
+                        : $"iiko {request.TransactionType} {request.Sum:0.##} (proqram Walvero qaydaları ilə — balans dəyişmədi)",
+                    BranchId = context.BranchId,
+                    RegDate = DateTime.UtcNow,
+                    IsActive = true,
+                    LocalOccurredAt = DateTimeOffset.UtcNow,
+                    TimeZoneIdUsed = "UTC"
+                });
+                await _uow.CommitAsync(ct);
+                return new IikoTransactionResponse
+                {
+                    Success = true,
+                    Message = otherWallet ? "Wallet not linked to card's program — not mirrored" : "Program uses Walvero rules — iiko balance not mirrored"
+                };
+            }
 
             // iiko-nun authoritative `balance` field-i istifadə olunur (absolute state, drift yox).
             // `sum` (delta) yalnız Transaction log-da, LifetimePoints earn tracking və UI mesajı üçün saxlanır.
@@ -878,9 +914,6 @@ namespace Loyalty.Business.Services.Implementations.Main
         private async Task<IikoTransactionResponse> ProcessIikoOrderEventCoreAsync(
             WalletWebhookResolvedContext context, IikoOrderEventRequest request, string eventType, CancellationToken ct)
         {
-            if (context.LoyaltyProgramId == null)
-                return IikoFail(IikoFailureKind.Retriable, "LoyaltyProgramId not configured");
-
             int? customerId = null;
             if (!string.IsNullOrWhiteSpace(request.ExternalCustomerId))
             {
@@ -921,12 +954,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (customerId == null)
                 return IikoFail(IikoFailureKind.Retriable, $"Customer not found (extId={request.ExternalCustomerId}, phone={request.CustomerPhone}, card={request.CustomerCardNumber})");
 
-            var card = await _loyaltyCardRepo.GetLastActiveByCustomerAsync(
-                context.TenantId, context.LoyaltyProgramId.Value, customerId.Value, ct);
+            // Müştərinin aktiv kartı (proqramından asılı olmayaraq — ambassador kartı ola bilər); qaydalar kartın proqramından
+            var card = await _loyaltyCardRepo.GetActiveByCustomerAsync(context.TenantId, customerId.Value, ct);
             if (card == null)
                 return IikoFail(IikoFailureKind.Retriable, "Active loyalty card not found");
 
-            var program = await _loyaltyProgramRepo.GetByIdNameAsync(context.LoyaltyProgramId.Value);
+            var program = await _loyaltyProgramRepo.GetByIdNameAsync(card.LoyaltyProgramId);
             var template = program?.CardTemplate;
             // ProgressBased + RewardAsPoints → PointsBased davranışı (xal rejimi)
             var templateType = template?.EffectiveType ?? CardTemplateType.PointsBased;
@@ -1081,9 +1114,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             // Aktiv reward-lar (ProductNumber → reward). Həm precise (DiscountByItem),
             // həm də fallback (DiscountByItem-siz) yol üçün əvvəldən yüklə.
             var rewardByProductId = new Dictionary<string, Reward>(StringComparer.OrdinalIgnoreCase);
-            if (context.LoyaltyProgramId.HasValue)
             {
-                var activeRewards = await _rewardRepo.GetActiveRewardsByProgramIdAsync(context.LoyaltyProgramId.Value, ct);
+                var activeRewards = await _rewardRepo.GetActiveRewardsByProgramIdAsync(card.LoyaltyProgramId, ct);
                 rewardByProductId = activeRewards
                     .Where(r => !string.IsNullOrWhiteSpace(r.ExternalProductId))
                     .GroupBy(r => r.ExternalProductId!.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -1147,11 +1179,14 @@ namespace Loyalty.Business.Services.Implementations.Main
             decimal totalEarnPoints = 0m;
             int totalEarnSteps = 0;
             bool anyEarnRuleMatched = false;
+            var earnSource = program?.PosEarnSource ?? PosEarnSource.Legacy;
 
-            if (earnBase > 0)
+            // PosMirror: qazancı iiko hesablayır, balans iiko cüzdan güzgüsü ilə gəlir — burada earn yoxdur
+            if (earnBase > 0 && PosEarnRouting.ComputeOrderEarn(earnSource))
             {
                 var earnRules = await _earnRuleRepo.GetByTenantIntegrationIdAsync(context.TenantIntegrationId, ct);
-                var rulesByProduct = earnRules.ToDictionary(r => r.ExternalProductId.Trim(), StringComparer.OrdinalIgnoreCase);
+                // Kartın proqramına aid qaydalar (proqram-spesifik > ümumi)
+                var rulesByProduct = PosEarnRouting.RulesForProgram(earnRules, card.LoyaltyProgramId);
 
                 var stampEarn = EarnExclusionMath.ApplyEarnRules(
                     earnLines,
@@ -1189,6 +1224,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                 {
                     totalEarnPoints = totalEarnSteps;
                     totalEarnSteps = 0;
+                }
+
+                // Möhür proqramı: qayda uyğun gəlməyibsə sifariş başına möhür (StepsPerOrder)
+                var orderSteps = PosEarnRouting.StepsForOrder(program?.StepsPerOrder, anyEarnRuleMatched, templateType);
+                if (orderSteps > 0)
+                {
+                    totalEarnSteps = orderSteps;
+                    anyEarnRuleMatched = true; // faiz fallback-ı açılmasın
                 }
 
                 if (!anyEarnRuleMatched && program != null)
@@ -1287,7 +1330,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             // ProgressBased-də manat→step blind conversion mənasız. Reward konsum yalnız Discounts.DiscountByItem yolu ilə.
-            if (walletRedeemSum > 0 && templateType != CardTemplateType.ProgressBased)
+            if (walletRedeemSum > 0 && templateType != CardTemplateType.ProgressBased && !PosEarnRouting.ApplyOrderWalletPayment(earnSource))
+            {
+                _logger.LogInformation(
+                    "iiko OrderClosed: walletRedeemSum={Sum} skipped — program PosMirror (balance comes from iiko wallet mirror). OrderId={OrderId} CardId={CardId}",
+                    walletRedeemSum, request.OrderId, c.Id);
+            }
+            else if (walletRedeemSum > 0 && templateType != CardTemplateType.ProgressBased)
             {
                 c.CurrentPoints = Math.Max(0m, c.CurrentPoints - walletRedeemSum);
 
@@ -1362,7 +1411,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _uow.Repository<Transaction>().Add(discountRedeemTx);
             }
 
-            bool walletRedeemApplied = walletRedeemSum > 0 && templateType != CardTemplateType.ProgressBased;
+            bool walletRedeemApplied = walletRedeemSum > 0 && templateType != CardTemplateType.ProgressBased
+                                       && PosEarnRouting.ApplyOrderWalletPayment(earnSource);
             if (earnedValue > 0 || walletRedeemApplied || totalRedeemUnits > 0)
             {
                 // marker tx — duplicate guard üçün (idempotency key tam match)
@@ -1415,7 +1465,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             decimal effectiveWalletRedeem = walletRedeemApplied ? walletRedeemSum : 0m;
             decimal netDelta = earnedValue + welcomeBonus - effectiveWalletRedeem - discountRedeemPoints;
             EnqueueWalletPush(c.Id, program, netDelta);
-            if (welcomeBonus > 0)
+            // WalveroRules: qazancı Walvero hesablayır → iiko cüzdanı yeni balansla sinxron qalsın
+            // (öz topup-umuzun güzgü əks-sədası WalveroRules-da balansa toxunmur)
+            var pushToPos = PosEarnRouting.PushBalanceAfterOrderEarn(earnSource)
+                            && templateType != CardTemplateType.ProgressBased && netDelta != 0;
+            if (welcomeBonus > 0 || pushToPos)
                 await _welcomeBonus.SyncPosBalanceSafeAsync(context.TenantId, c.CustomerId, c.CurrentPoints, ct);
 
             string msg = templateType switch

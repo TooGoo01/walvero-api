@@ -293,7 +293,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             var (cardsInfo, walveroId, primaryCard, allTracks) = await GatherIikoCardInfoAsync(integration, customer, ct);
-            return await CreateIikoCustomerInOrgAsync(customer, accessToken, orgId, integration.ExternalProgramId, cardsInfo, walveroId, primaryCard, allTracks, ct);
+            return await CreateIikoCustomerInOrgAsync(customer, accessToken, orgId, integration.ExternalProgramId, cardsInfo, walveroId, primaryCard, allTracks, ct,
+                integration.AmbassadorIikoCategoryId);
         }
 
         /// <summary>Per-branch: hər venue org-una ayrıca müştəri yarat + per-venue mapping. Token bir dəfə alınır.</summary>
@@ -339,7 +340,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     continue;
                 }
 
-                var (externalId, enrolled) = await CreateIikoCustomerInOrgAsync(customer, accessToken, orgId, programId, cardsInfo, walveroId, primaryCard, allTracks, ct);
+                var (externalId, enrolled) = await CreateIikoCustomerInOrgAsync(customer, accessToken, orgId, programId, cardsInfo, walveroId, primaryCard, allTracks, ct,
+                    integration.AmbassadorIikoCategoryId);
                 externalId ??= customer.Id.ToString();
                 var mapping = new PosCustomerMapping
                 {
@@ -420,7 +422,8 @@ namespace Loyalty.Business.Services.Implementations.Main
         /// <summary>Bir iiko org-da müştəri yarat/yenilə + program enroll + walveroId kartı + balans topup. programId — per-org (venue) və ya parent.</summary>
         private async Task<(string? ExternalId, bool EnrolledInProgram)> CreateIikoCustomerInOrgAsync(
             Customer customer, string accessToken, Guid orgId, string? programId,
-            List<LoyaltyCard>? cards, long? walveroId, string primaryCard, List<string> allTracks, CancellationToken ct)
+            List<LoyaltyCard>? cards, long? walveroId, string primaryCard, List<string> allTracks, CancellationToken ct,
+            string? ambassadorCategoryId = null)
         {
             var iikoCustomer = new IikoCustomerDto
             {
@@ -445,6 +448,20 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var enrolledInProgram = await TryEnrollIikoCustomerInProgramAsync(programId, accessToken, orgId, result.Id, customer.Id, ct);
 
+            // Kartın proqramının öz iiko proqramı/cüzdanı (məs. ambassador) — müştəri ona da yazılır ki, cüzdan yaransın
+            var target = await GetWalletTargetAsync(customer.TenantId, customer.Id, ct);
+            if (!string.IsNullOrWhiteSpace(target.IikoProgramId)
+                && !string.Equals(target.IikoProgramId, programId, StringComparison.OrdinalIgnoreCase))
+                await TryEnrollIikoCustomerInProgramAsync(target.IikoProgramId, accessToken, orgId, result.Id, customer.Id, ct);
+
+            // Ambassador qonaq kateqoriyası
+            if (customer.IsAmbassador && Guid.TryParse(ambassadorCategoryId, out var ambCategory))
+            {
+                var catOk = await _iikoClient.AddCustomerCategoryAsync(accessToken, orgId, result.Id, ambCategory, ct);
+                _logger.LogInformation("iiko ambassador category add (create): CustomerId={CustomerId}, orgId={OrgId}, Category={Category}, Success={Success}",
+                    customer.Id, orgId, ambCategory, catOk);
+            }
+
             // Əlavə kartlar: tam barkod (skan üçün həmişə) + WalveroId — əsas track create_or_update ilə yazılıb
             foreach (var track in allTracks.Where(t => !string.Equals(t, primaryCard, StringComparison.OrdinalIgnoreCase)))
             {
@@ -459,12 +476,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (activeCard != null && activeCard.CurrentPoints > 0)
                 {
                     var customerInfo = await _iikoClient.GetCustomerInfoAsync(accessToken, orgId, cardTrack: primaryCard, ct: ct);
-                    if (customerInfo?.WalletBalances != null && customerInfo.WalletBalances.Count > 0)
+                    var wallets = (customerInfo?.WalletBalances ?? new List<IikoWalletBalance>()).Select(w => (w.Id, w.Balance)).ToList();
+                    // Proqramın cüzdanı (PosWalletId) — başqa cüzdana yazılmır; təyin edilməyibsə birinci (bugünkü)
+                    var pick = Helpers.IikoWalletSelection.Pick(wallets, target.WalletId);
+                    if (pick.Outcome == Helpers.IikoWalletSelection.Outcome.Found)
                     {
-                        var wallet = customerInfo.WalletBalances.First();
-                        var topUpOk = await _iikoClient.TopUpWalletAsync(accessToken, orgId, result.Id, wallet.Id, activeCard.CurrentPoints, ct);
-                        _logger.LogInformation("iiko sync balance: CustomerId={CustomerId}, WalletId={WalletId}, Amount={Amount}, Success={Success}", customer.Id, wallet.Id, activeCard.CurrentPoints, topUpOk);
+                        var topUpOk = await _iikoClient.TopUpWalletAsync(accessToken, orgId, result.Id, pick.WalletId!.Value, activeCard.CurrentPoints, ct);
+                        _logger.LogInformation("iiko sync balance: CustomerId={CustomerId}, WalletId={WalletId}, Amount={Amount}, Success={Success}", customer.Id, pick.WalletId, activeCard.CurrentPoints, topUpOk);
                     }
+                    else
+                        _logger.LogWarning("iiko sync balance skipped: wallet {Outcome}. CustomerId={CustomerId}, PreferredWallet={Wallet}", pick.Outcome, customer.Id, target.WalletId);
                 }
             }
 
@@ -531,6 +552,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var accessToken = await GetIikoTokenAsync(integration, ct);
                     if (string.IsNullOrEmpty(accessToken)) { allOk = false; continue; }
 
+                    var target = await GetWalletTargetAsync(tenantId, customerId, ct);
                     var cards = await _cardRepo.ListByCustomerAsync(tenantId, customerId, ct);
                     var cardTrack = cards?
                         .Where(c => c.IsActive && !string.IsNullOrEmpty(c.BarcodeValue))
@@ -547,7 +569,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                             if (!Guid.TryParse(venue.ExternalVenueId, out var vOrgId)) continue;
                             var vMapping = await _mappingRepo.GetByVenueAndCustomerAsync(venue.Id, customerId, ct);
                             if (vMapping == null) continue;
-                            if (!await TopUpIikoBalanceAsync(accessToken, vOrgId, vMapping, cardTrack, currentPoints, customerId, ct))
+                            if (!await TopUpIikoBalanceAsync(accessToken, vOrgId, vMapping, cardTrack, currentPoints, customerId, target, ct))
                                 allOk = false;
                         }
                     }
@@ -560,7 +582,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                             continue;
                         }
                         if (!Guid.TryParse(integration.ExternalVenueId, out var orgId)) continue;
-                        if (!await TopUpIikoBalanceAsync(accessToken, orgId, mapping, cardTrack, currentPoints, customerId, ct))
+                        if (!await TopUpIikoBalanceAsync(accessToken, orgId, mapping, cardTrack, currentPoints, customerId, target, ct))
                             allOk = false;
                     }
                 }
@@ -573,8 +595,80 @@ namespace Loyalty.Business.Services.Implementations.Main
             return allOk;
         }
 
+        /// <summary>Müştərinin aktiv kartının proqramına bağlı iiko cüzdanı + iiko proqramı (null = bugünkü davranış).</summary>
+        private async Task<(string? WalletId, string? IikoProgramId)> GetWalletTargetAsync(int tenantId, int customerId, CancellationToken ct)
+        {
+            var programId = await _db.Set<LoyaltyCard>().AsNoTracking()
+                .Where(c => c.TenantId == tenantId && c.CustomerId == customerId && c.IsActive)
+                .OrderByDescending(c => c.Id)
+                .Select(c => (int?)c.LoyaltyProgramId)
+                .FirstOrDefaultAsync(ct);
+            if (programId == null) return (null, null);
+            var p = await _db.Set<LoyaltyProgram>().AsNoTracking()
+                .Where(x => x.Id == programId.Value)
+                .Select(x => new { x.PosWalletId, x.PosExternalProgramId })
+                .FirstOrDefaultAsync(ct);
+            return (p?.PosWalletId, p?.PosExternalProgramId);
+        }
+
+        public async Task<bool> SyncAmbassadorCategoryAsync(int tenantId, int customerId, bool isAmbassador, CancellationToken ct = default)
+        {
+            var integrations = await _integrationRepo.GetAllActiveByTenantAsync(tenantId, ct);
+            var allOk = true;
+            foreach (var integration in integrations ?? Enumerable.Empty<TenantIntegration>())
+            {
+                if (integration.IntegrationType?.Source != "iiko_pos") continue;
+                if (!Guid.TryParse(integration.AmbassadorIikoCategoryId, out var categoryId)) continue;
+                try
+                {
+                    var accessToken = await GetIikoTokenAsync(integration, ct);
+                    if (string.IsNullOrEmpty(accessToken)) { allOk = false; continue; }
+
+                    // org → iiko müştəri id (venue mapping-ləri; yoxdursa legacy tək-org mapping)
+                    var targets = new List<(Guid OrgId, string? ExternalCustomerId)>();
+                    var venues = await _venueRepo.GetActiveByIntegrationAsync(integration.Id, ct);
+                    if (venues.Count > 0)
+                    {
+                        foreach (var v in venues)
+                        {
+                            if (!Guid.TryParse(v.ExternalVenueId, out var vOrg)) continue;
+                            var m = await _mappingRepo.GetByVenueAndCustomerAsync(v.Id, customerId, ct);
+                            targets.Add((vOrg, m?.ExternalCustomerId));
+                        }
+                    }
+                    else if (Guid.TryParse(integration.ExternalVenueId, out var org))
+                    {
+                        var m = await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, customerId, ct);
+                        targets.Add((org, m?.ExternalCustomerId));
+                    }
+
+                    foreach (var (orgId, extId) in targets)
+                    {
+                        if (!Guid.TryParse(extId, out var iikoCustomerId))
+                        {
+                            _logger.LogInformation("iiko ambassador category skipped (no mapping): CustomerId={CustomerId}, orgId={OrgId}", customerId, orgId);
+                            continue;
+                        }
+                        var ok = isAmbassador
+                            ? await _iikoClient.AddCustomerCategoryAsync(accessToken, orgId, iikoCustomerId, categoryId, ct)
+                            : await _iikoClient.RemoveCustomerCategoryAsync(accessToken, orgId, iikoCustomerId, categoryId, ct);
+                        _logger.LogInformation("iiko ambassador category {Op}: CustomerId={CustomerId}, orgId={OrgId}, Category={Category}, Success={Success}",
+                            isAmbassador ? "add" : "remove", customerId, orgId, categoryId, ok);
+                        if (!ok) allOk = false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    allOk = false;
+                    _logger.LogWarning(ex, "iiko ambassador category sync FAILED: IntegrationId={IntegrationId}, CustomerId={CustomerId}", integration.Id, customerId);
+                }
+            }
+            return allOk;
+        }
+
         /// <summary>Bir iiko org-da müştərinin wallet balansını currentPoints-ə uyğunlaşdır (diff topup). Qaytarır: uğur (fərq yoxdursa true; wallet tapılmasa false).</summary>
-        private async Task<bool> TopUpIikoBalanceAsync(string accessToken, Guid orgId, PosCustomerMapping mapping, string cardTrack, decimal currentPoints, int customerId, CancellationToken ct)
+        private async Task<bool> TopUpIikoBalanceAsync(string accessToken, Guid orgId, PosCustomerMapping mapping, string cardTrack, decimal currentPoints, int customerId,
+            (string? WalletId, string? IikoProgramId) target, CancellationToken ct)
         {
             // Mapping-dəki iiko id ilə axtar (kart track dəyişmiş ola bilər), tapılmasa cardTrack ilə.
             IikoCustomerInfoResponse? customerInfo = null;
@@ -585,23 +679,37 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             var iikoCustomerId = hasMappedId ? mappedId : (customerInfo?.Id ?? Guid.Empty);
 
-            if (customerInfo?.WalletBalances != null && customerInfo.WalletBalances.Count > 0)
+            // Proqramın cüzdanı (PosWalletId; pims: Cashback vs Ambassador) — təyin edilməyibsə birinci (bugünkü davranış)
+            var wallets = (customerInfo?.WalletBalances ?? new List<IikoWalletBalance>()).Select(w => (w.Id, w.Balance)).ToList();
+            var pick = Helpers.IikoWalletSelection.Pick(wallets, target.WalletId);
+            if (pick.Outcome == Helpers.IikoWalletSelection.Outcome.PreferredMissing
+                && iikoCustomerId != Guid.Empty && !string.IsNullOrWhiteSpace(target.IikoProgramId))
             {
-                var wallet = customerInfo.WalletBalances.First();
-                var diff = Math.Round(currentPoints - wallet.Balance, 2);
+                // Müştəri həmin iiko proqramında deyil → yaz, cüzdan yaranır, yenidən oxu
+                await TryEnrollIikoCustomerInProgramAsync(target.IikoProgramId, accessToken, orgId, iikoCustomerId, customerId, ct);
+                var again = (await _iikoClient.FindCustomerAsync(accessToken, orgId, IikoCustomerLookup.Id, iikoCustomerId.ToString(), ct)).Data;
+                wallets = (again?.WalletBalances ?? new List<IikoWalletBalance>()).Select(w => (w.Id, w.Balance)).ToList();
+                pick = Helpers.IikoWalletSelection.Pick(wallets, target.WalletId);
+            }
+
+            if (pick.Outcome == Helpers.IikoWalletSelection.Outcome.Found)
+            {
+                var walletId = pick.WalletId!.Value;
+                var diff = Math.Round(currentPoints - pick.Balance, 2);
                 if (diff == 0) return true;
 
                 // iiko-da mənfi topup yoxdur — azalma chargeoff ilə gedir
                 var ok = diff > 0
-                    ? await _iikoClient.TopUpWalletAsync(accessToken, orgId, iikoCustomerId, wallet.Id, diff, ct)
-                    : await _iikoClient.ChargeOffWalletAsync(accessToken, orgId, iikoCustomerId, wallet.Id, -diff, ct);
+                    ? await _iikoClient.TopUpWalletAsync(accessToken, orgId, iikoCustomerId, walletId, diff, ct)
+                    : await _iikoClient.ChargeOffWalletAsync(accessToken, orgId, iikoCustomerId, walletId, -diff, ct);
                 _logger.LogInformation(
                     "iiko balance sync: CustomerId={CustomerId}, orgId={OrgId}, WalletId={WalletId}, Diff={Diff}, NewBalance={NewBalance}, Success={Success}",
-                    customerId, orgId, wallet.Id, diff, currentPoints, ok);
+                    customerId, orgId, walletId, diff, currentPoints, ok);
                 return ok;
             }
 
-            _logger.LogWarning("iiko balance sync: wallet tapılmadı. CustomerId={CustomerId}, orgId={OrgId}", customerId, orgId);
+            _logger.LogWarning("iiko balance sync: wallet {Outcome}. CustomerId={CustomerId}, orgId={OrgId}, PreferredWallet={Wallet}",
+                pick.Outcome, customerId, orgId, target.WalletId);
             return false;
         }
 

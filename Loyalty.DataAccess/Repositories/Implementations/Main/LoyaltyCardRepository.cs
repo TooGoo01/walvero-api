@@ -25,7 +25,11 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .Include(x => x.Customer)
                     .ThenInclude(c => c.applicationUser)
                 .AsSplitQuery()
-                .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.BarcodeValue == cardNumber, ct);
+                .Where(x => x.TenantId == tenantId && x.BarcodeValue == cardNumber)
+                // Ambassador keçidində köhnə (bağlı) kart eyni barkodu saxlayır → aktiv kart üstün
+                .OrderByDescending(x => x.IsActive)
+                .ThenByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct);
 
         public Task<bool> ExistsAsync(int tenantId, string cardNumber, CancellationToken ct = default)
             => GetAsQueryable().AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.CardNumber == cardNumber, ct);
@@ -62,6 +66,13 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                 .OrderByDescending(x => x.Id)
                 .FirstOrDefaultAsync(ct);
         }
+
+        // Müştərinin tenant-dakı aktiv kartı (proqramdan asılı olmayaraq) — bir müştəri = bir aktiv kart
+        public Task<LoyaltyCard?> GetActiveByCustomerAsync(int tenantId, int customerId, CancellationToken ct = default)
+            => GetAsQueryable()
+                .Where(x => x.TenantId == tenantId && x.CustomerId == customerId && x.IsActive && x.Status == CardStatus.Active)
+                .OrderByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct);
 
         public Task<LoyaltyCard?> GetLastInactiveByCustomerAsync(int tenantId, int programId, int customerId, CancellationToken ct)
         {

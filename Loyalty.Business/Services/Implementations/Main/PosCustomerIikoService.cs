@@ -66,6 +66,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             public Dictionary<int, string?> Tokens = new();
             public Dictionary<int, CardTemplateType> TemplateTypes = new();
             public Dictionary<Guid, List<IikoLoyaltyProgram>?> ProgramsByOrg = new();
+            /// <summary>Kartın proqramına bağlı iiko cüzdanı (LoyaltyProgram.PosWalletId) — varsa seçimdə üstündür.</summary>
+            public string? PreferredWalletId;
         }
 
         public async Task<ServiceResult<PosCustomerIikoStatusDto>> GetStatusAsync(int tenantId, int customerId, int? cardId, string? lookupCardTrack = null, CancellationToken ct = default)
@@ -238,6 +240,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             var active = ctx.Cards.Where(c => c.IsActive).OrderByDescending(c => c.Id).ToList();
             if (cardId.HasValue) ctx.DefaultCard = ctx.Cards.FirstOrDefault(c => c.Id == cardId.Value);
             ctx.DefaultCard ??= active.FirstOrDefault(c => !string.IsNullOrEmpty(c.BarcodeValue)) ?? active.FirstOrDefault();
+            if (ctx.DefaultCard != null)
+                ctx.PreferredWalletId = await _db.Set<LoyaltyProgram>().AsNoTracking()
+                    .Where(p => p.Id == ctx.DefaultCard.LoyaltyProgramId)
+                    .Select(p => p.PosWalletId)
+                    .FirstOrDefaultAsync(ct);
 
             if (customer.applicationUserId.HasValue)
             {
@@ -378,8 +385,19 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (status.Wallets.Count == 0) return;
 
             IikoWalletDto? selected = null;
+            if (Guid.TryParse(ctx.PreferredWalletId, out var preferredWallet))
+            {
+                // Proqramın öz cüzdanı (pims: Ambassador) — tapılmasa başqa cüzdana düşmə, admin görsün
+                selected = status.Wallets.FirstOrDefault(w => w.Id == preferredWallet);
+                if (selected == null)
+                {
+                    var note = $"Proqramın iiko cüzdanı ({preferredWallet}) bu müştəridə yoxdur — müştəri həmin iiko proqramına yazılmayıb";
+                    status.LookupNote = string.IsNullOrEmpty(status.LookupNote) ? note : status.LookupNote + " | " + note;
+                    return;
+                }
+            }
             var programIdStr = venue?.ExternalProgramId ?? integration.ExternalProgramId;
-            if (Guid.TryParse(programIdStr, out var programId))
+            if (selected == null && Guid.TryParse(programIdStr, out var programId))
             {
                 if (!ctx.ProgramsByOrg.TryGetValue(orgId, out var programs))
                 {

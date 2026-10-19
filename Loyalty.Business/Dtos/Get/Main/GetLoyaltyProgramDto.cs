@@ -40,6 +40,12 @@ namespace Loyalty.Business.Dtos.Get.Main
         public SignupGiftType SignupGiftType { get; set; }
         public int SignupGiftValue { get; set; }
 
+        public ProgramAudience Audience { get; set; } = ProgramAudience.Public;
+        public PosEarnSource PosEarnSource { get; set; } = PosEarnSource.Legacy;
+        public int? StepsPerOrder { get; set; }
+        public string? PosWalletId { get; set; }
+        public string? PosExternalProgramId { get; set; }
+
         public GetCardTemplateDto? CardTemplate { get; set; }
     }
 }

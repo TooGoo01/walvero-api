@@ -64,6 +64,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public PosCardTrackMode CardTrackMode { get; set; }
         public int? CardTrackDigits { get; set; }
         public string CardTrackLabel { get; set; } = string.Empty;
+        public int? LoyaltyProgramId { get; set; }
+        public string? AmbassadorIikoCategoryId { get; set; }
     }
 
     public class TenantIntegrationDetailDto
@@ -85,6 +87,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public PosCardTrackMode CardTrackMode { get; set; }
         public int? CardTrackDigits { get; set; }
         public string CardTrackLabel { get; set; } = string.Empty;
+        public string? AmbassadorIikoCategoryId { get; set; }
     }
 
     public class TenantIntegrationUpdateDto
@@ -103,6 +106,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// <summary>iiko əsas kart track rejimi; yalnız super admin dəyişir (controller yoxlayır).</summary>
         public PosCardTrackMode? CardTrackMode { get; set; }
         public int? CardTrackDigits { get; set; }
+        /// <summary>iiko ambassador qonaq kateqoriyası (GUID). null = dəyişmə; "" = sil.</summary>
+        public string? AmbassadorIikoCategoryId { get; set; }
     }
 
     public class TenantIntegrationVenueDto

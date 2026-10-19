@@ -1,5 +1,6 @@
 ﻿using Loyalty.DataAccess.Context;
 using Loyalty.DataAccess.Entities.Main;
+using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Models;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Microsoft.EntityFrameworkCore;
@@ -181,42 +182,42 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
                     TenantSlug = t.Subdomain,
                     // Get first active program's name (deterministic ordering by Id)
                     TenantProgramName = t.LoyaltyPrograms
-                        .Where(lp => lp.IsActive)
+                        .Where(lp => lp.IsActive && lp.Audience != ProgramAudience.Ambassador)
                         .OrderBy(lp => lp.Id)
                         .Select(lp => lp.ProgramName)
                         .FirstOrDefault(),
                     // Get GoogleLogoUrl from CardTemplate of first active program
                     GoogleLogoUrl = t.LoyaltyPrograms
-                        .Where(lp => lp.IsActive && lp.CardTemplate != null)
+                        .Where(lp => lp.IsActive && lp.Audience != ProgramAudience.Ambassador && lp.CardTemplate != null)
                         .OrderBy(lp => lp.Id)
                         .Select(lp => lp.CardTemplate!.GoogleLogoUrl)
                         .FirstOrDefault(),
                     // App-specific .webp logo və strip — mobil app trending/brand list-ində istifadə edir
                     AppLogoUrl = t.LoyaltyPrograms
-                        .Where(lp => lp.IsActive && lp.CardTemplate != null)
+                        .Where(lp => lp.IsActive && lp.Audience != ProgramAudience.Ambassador && lp.CardTemplate != null)
                         .OrderBy(lp => lp.Id)
                         .Select(lp => lp.CardTemplate!.AppLogoUrl)
                         .FirstOrDefault(),
                     AppStripUrl = t.LoyaltyPrograms
-                        .Where(lp => lp.IsActive && lp.CardTemplate != null)
+                        .Where(lp => lp.IsActive && lp.Audience != ProgramAudience.Ambassador && lp.CardTemplate != null)
                         .OrderBy(lp => lp.Id)
                         .Select(lp => lp.CardTemplate!.AppStripUrl)
                         .FirstOrDefault(),
                     // Get RewardDescription from CardTemplate of first active program
                     // (CardTemplate.RewardDescription is the primary source for reward description)
                     RewardDescription = t.LoyaltyPrograms
-                        .Where(lp => lp.IsActive && lp.CardTemplate != null)
+                        .Where(lp => lp.IsActive && lp.Audience != ProgramAudience.Ambassador && lp.CardTemplate != null)
                         .OrderBy(lp => lp.Id)
                         .Select(lp => lp.CardTemplate!.RewardDescription)
                         .FirstOrDefault(),
                     // Cashback faizləri — home brend kartında qısa "X% Cashback"
                     BronzePercent = t.LoyaltyPrograms
-                        .Where(lp => lp.IsActive && lp.CardTemplate != null)
+                        .Where(lp => lp.IsActive && lp.Audience != ProgramAudience.Ambassador && lp.CardTemplate != null)
                         .OrderBy(lp => lp.Id)
                         .Select(lp => lp.CardTemplate!.BronzePercent)
                         .FirstOrDefault(),
                     BronzePercentCash = t.LoyaltyPrograms
-                        .Where(lp => lp.IsActive && lp.CardTemplate != null)
+                        .Where(lp => lp.IsActive && lp.Audience != ProgramAudience.Ambassador && lp.CardTemplate != null)
                         .OrderBy(lp => lp.Id)
                         .Select(lp => lp.CardTemplate!.BronzePercentCash)
                         .FirstOrDefault()
