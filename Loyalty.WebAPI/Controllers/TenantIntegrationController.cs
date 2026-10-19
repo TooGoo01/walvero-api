@@ -93,7 +93,8 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> Create([FromBody] TenantIntegrationCreateDto dto, CancellationToken ct)
         {
-            var tenantId = dto.TenantId > 0 ? dto.TenantId : _tenantProvider.CurrentTenantId ?? 0;
+            // Tenant-a bağlı işçi body-də başqa tenant göndərə bilməz
+            var tenantId = this.ScopedTenantId(dto.TenantId > 0 ? dto.TenantId : null, _tenantProvider) ?? 0;
             if (tenantId <= 0) return BadRequest("TenantId required.");
             dto.TenantId = tenantId;
 
@@ -106,7 +107,7 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> List([FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!tid.HasValue || tid <= 0) return BadRequest("TenantId required.");
             var result = await _service.ListByTenantAsync(tid.Value, ct);
             return Ok(result.Data);
@@ -116,7 +117,7 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> GetById(int id, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.GetByIdAsync(id, tid, ct);
             if (result.Data == null) return NotFound();
             return Ok(result.Data);
@@ -129,7 +130,7 @@ namespace Loyalty.WebAPI.Controllers
             // Kart track rejimi (iiko-ya hansı identifikator gedir) yalnız super admin tərəfindən dəyişilir
             if ((dto.CardTrackMode.HasValue || dto.CardTrackDigits.HasValue) && !User.IsInRole("Super Admin"))
                 return StatusCode(403, "Kart identifikator rejimini yalnız super admin dəyişə bilər.");
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.UpdateAsync(id, dto, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok();
@@ -139,7 +140,7 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> Delete(int id, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.DeleteAsync(id, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok();
@@ -149,7 +150,7 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> RegenerateWalletToken(int id, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.RegenerateWalletTokenAsync(id, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok(new { walletToken = result.Data });
@@ -161,7 +162,7 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> ListVenues(int id, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.ListVenuesAsync(id, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok(result.Data);
@@ -171,7 +172,7 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> AddVenue(int id, [FromBody] TenantIntegrationVenueUpsertDto dto, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.AddVenueAsync(id, dto, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok(new { id = result.Data });
@@ -181,7 +182,7 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> UpdateVenue(int venueId, [FromBody] TenantIntegrationVenueUpsertDto dto, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.UpdateVenueAsync(venueId, dto, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok();
@@ -191,7 +192,7 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> DeleteVenue(int venueId, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.DeleteVenueAsync(venueId, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok();
@@ -210,7 +211,7 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> GetIikoOrganizations(int id, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.GetIikoOrganizationsAsync(id, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok(result.Data);
@@ -224,7 +225,7 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> GetIikoRules(int id, [FromQuery] int? tenantId, [FromQuery] int? venueId, [FromQuery] bool refresh = false, CancellationToken ct = default)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!tid.HasValue || tid <= 0) return BadRequest("TenantId required.");
             var result = await _iikoRules.GetRulesAsync(tid.Value, id, venueId, refresh, ct);
             if (!result.Success) return BadRequest(result.Message);
@@ -236,7 +237,7 @@ namespace Loyalty.WebAPI.Controllers
         [Authorize(Policy = "TenantAdminOrModerator")]
         public async Task<IActionResult> AutoFillVenuePrograms(int id, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.AutoFillVenueProgramsAsync(id, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok(new { filled = result.Data });

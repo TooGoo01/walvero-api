@@ -67,7 +67,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult<List<GetTenantLinkDto>>), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> List([FromQuery] int? tenantId = null, [FromQuery] int? branchId = null)
         {
-            var resolvedTenantId = tenantId ?? _tenantProvider.CurrentTenantId;
+            var resolvedTenantId = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!resolvedTenantId.HasValue)
                 return BadRequest(new ServiceResult(false, "Tenant Id təyin olunmayıb"));
 

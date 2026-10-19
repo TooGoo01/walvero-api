@@ -121,7 +121,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(object), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> SyncAllCustomers([FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!tid.HasValue || tid <= 0)
                 return BadRequest("TenantId required.");
             var blocked = await BlockIfTenantInactiveAsync(tid, ct);
@@ -154,7 +154,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(object), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> SyncCustomer(int customerId, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!tid.HasValue || tid <= 0)
                 return BadRequest("TenantId required.");
             var blocked = await BlockIfTenantInactiveAsync(tid, ct);
@@ -169,7 +169,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> GetCustomerIikoStatus(int customerId, [FromQuery] int? cardId, [FromQuery] int? tenantId, [FromQuery] string? lookupCardTrack, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!tid.HasValue || tid <= 0)
                 return BadRequest(new ServiceResult(false, "TenantId required."));
             var result = await _posCustomerIiko.GetStatusAsync(tid.Value, customerId, cardId, lookupCardTrack, ct);
@@ -186,7 +186,7 @@ namespace Loyalty.WebAPI.Controllers
         public async Task<IActionResult> ImportCustomer([FromBody] ImportCustomerDto dto, [FromQuery] int? tenantId, [FromQuery] bool dryRun, CancellationToken ct)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!tid.HasValue || tid <= 0)
                 return BadRequest(new ServiceResult(false, "TenantId required."));
             var blocked = await BlockIfTenantInactiveAsync(tid, ct);
@@ -201,7 +201,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> PushCustomerBalanceToIiko(int customerId, [FromBody] IikoPushBalanceDto dto, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!tid.HasValue || tid <= 0)
                 return BadRequest(new ServiceResult(false, "TenantId required."));
             var blocked = await BlockIfTenantInactiveAsync(tid, ct);
@@ -216,7 +216,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> PullCustomerBalanceFromIiko(int customerId, [FromBody] IikoPullBalanceDto dto, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!tid.HasValue || tid <= 0)
                 return BadRequest(new ServiceResult(false, "TenantId required."));
             var blocked = await BlockIfTenantInactiveAsync(tid, ct);

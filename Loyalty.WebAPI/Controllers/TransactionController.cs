@@ -1,4 +1,5 @@
 using Loyalty.Business.Dtos.Get.Main;
+using Loyalty.WebAPI.Tenancy;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
@@ -38,7 +39,7 @@ namespace Loyalty.WebAPI.Controllers
             var effectiveEndDate = endDate ?? today;
             var effectiveStartDate = startDate ?? effectiveEndDate.AddDays(-30);
 
-            var id = tenantId ?? _tenantProvider.CurrentTenantId ?? 0;
+            var id = this.ScopedTenantId(tenantId, _tenantProvider) ?? 0;
             if (id <= 0)
                 return BadRequest(new ServiceResult(false, "TenantId is required"));
 

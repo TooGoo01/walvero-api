@@ -1,4 +1,5 @@
-﻿using Loyalty.Business.Services.Abstractions.Main;
+﻿using Loyalty.Business.Helpers;
+using Loyalty.Business.Services.Abstractions.Main;
 using System.Security.Claims;
 
 namespace Loyalty.WebAPI.Tenancy
@@ -12,7 +13,14 @@ namespace Loyalty.WebAPI.Tenancy
             _httpContextAccessor = httpContextAccessor;
         }
 
-        public int? CurrentTenantId => GetIntHeader("X-Tenant-Id") ?? GetIntClaimOrCookie("tenant_id", "TenantId");
+        // Tenant-a bağlı işçi rolları üçün JWT tenant_id qalibdir (header spoofing ilə başqa tenant-a keçid yoxdur);
+        // Super Admin header ilə tenant seçir; müştəri/anonim üçün bugünkü sıra (header → claim → cookie).
+        public int? CurrentTenantId => TenantScopeRules.Resolve(
+            isSuperAdmin: User?.IsInRole("Super Admin") == true,
+            isTenantBoundStaff: TenantScopeRules.TenantBoundRoles.Any(r => User?.IsInRole(r) == true),
+            claimTenantId: GetIntClaim("tenant_id"),
+            headerTenantId: GetIntHeader("X-Tenant-Id"),
+            cookieTenantId: GetIntClaimOrCookie("tenant_id", "TenantId"));
         public int? CurrentProgramId => GetIntHeader("X-Program-Id") ?? GetIntClaim("program_id");
         public int? CurrentBranchId => GetIntClaim("branch_id") ?? GetIntHeader("X-Branch-Id");
         public string? CurrentUserId => GetClaim(ClaimTypes.NameIdentifier);

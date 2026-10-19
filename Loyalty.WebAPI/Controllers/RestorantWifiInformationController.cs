@@ -47,7 +47,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult<List<GetRestorantWifiInformationDto>>), (int)HttpStatusCode.OK)]
         public async Task<IActionResult> List([FromQuery] int? tenantId = null, [FromQuery] int? branchId = null)
         {
-            var resolvedTenantId = tenantId ?? _tenantProvider.CurrentTenantId;
+            var resolvedTenantId = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!resolvedTenantId.HasValue)
                 return BadRequest(new ServiceResult(false, "Tenant Id təyin olunmayıb"));
 
@@ -132,8 +132,8 @@ namespace Loyalty.WebAPI.Controllers
                 return BadRequest(ModelState);
 
             // Client tenantId göndərməyibsə (0) token-dən götür — FK xətasının qarşısını alır
-            if (dto.TenantId <= 0 && _tenantProvider.CurrentTenantId is > 0)
-                dto.TenantId = _tenantProvider.CurrentTenantId.Value;
+            // Tenant-a bağlı işçi body-də başqa tenant göndərə bilməz
+            dto.TenantId = this.ScopedTenantId(dto.TenantId > 0 ? dto.TenantId : null, _tenantProvider) ?? 0;
             if (dto.TenantId <= 0)
                 return BadRequest(new ServiceResult(false, "Tenant təyin olunmayıb"));
 
@@ -163,8 +163,8 @@ namespace Loyalty.WebAPI.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            if (dto.TenantId <= 0 && _tenantProvider.CurrentTenantId is > 0)
-                dto.TenantId = _tenantProvider.CurrentTenantId.Value;
+            // Tenant-a bağlı işçi body-də başqa tenant göndərə bilməz
+            dto.TenantId = this.ScopedTenantId(dto.TenantId > 0 ? dto.TenantId : null, _tenantProvider) ?? 0;
 
             if (IsBranchScoped())
             {

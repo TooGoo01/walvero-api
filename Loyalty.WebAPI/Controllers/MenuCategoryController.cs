@@ -59,7 +59,7 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> List([FromQuery] int? tenantId = null, [FromQuery] int? branchId = null)
         {
-            var resolvedTenantId = tenantId ?? _tenantProvider.CurrentTenantId;
+            var resolvedTenantId = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!resolvedTenantId.HasValue)
                 return BadRequest(new ServiceResult(false, "Tenant Id təyin olunmayıb"));
 
@@ -184,8 +184,8 @@ namespace Loyalty.WebAPI.Controllers
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
         public async Task<IActionResult> Reorder([FromBody] ReorderMenuCategoryDto dto)
         {
-            if (dto.TenantId <= 0)
-                dto.TenantId = _tenantProvider.CurrentTenantId ?? 0;
+            // Tenant-a bağlı işçi body-də başqa tenant göndərə bilməz
+            dto.TenantId = this.ScopedTenantId(dto.TenantId > 0 ? dto.TenantId : null, _tenantProvider) ?? 0;
             if (dto.TenantId <= 0)
                 return BadRequest(new ServiceResult(false, "Tenant Id təyin olunmayıb"));
 
@@ -210,8 +210,8 @@ namespace Loyalty.WebAPI.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            if (dto.TenantId <= 0)
-                dto.TenantId = _tenantProvider.CurrentTenantId ?? 0;
+            // Tenant-a bağlı işçi body-də başqa tenant göndərə bilməz
+            dto.TenantId = this.ScopedTenantId(dto.TenantId > 0 ? dto.TenantId : null, _tenantProvider) ?? 0;
             if (dto.TenantId <= 0)
                 return BadRequest(new ServiceResult(false, "Tenant Id təyin olunmayıb"));
 

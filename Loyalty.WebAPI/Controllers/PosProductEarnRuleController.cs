@@ -24,7 +24,7 @@ namespace Loyalty.WebAPI.Controllers
         public async Task<IActionResult> Create(int tenantIntegrationId, [FromBody] PosProductEarnRuleCreateDto dto, [FromQuery] int? tenantId, CancellationToken ct)
         {
             dto.TenantIntegrationId = tenantIntegrationId;
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.CreateAsync(dto, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok(result.Data);
@@ -33,7 +33,7 @@ namespace Loyalty.WebAPI.Controllers
         [HttpGet]
         public async Task<IActionResult> List(int tenantIntegrationId, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.ListByTenantIntegrationAsync(tenantIntegrationId, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok(result.Data);
@@ -42,7 +42,7 @@ namespace Loyalty.WebAPI.Controllers
         [HttpPut("{id:int}")]
         public async Task<IActionResult> Update(int tenantIntegrationId, int id, [FromBody] PosProductEarnRuleUpdateDto dto, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.UpdateAsync(id, dto, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok();
@@ -51,7 +51,7 @@ namespace Loyalty.WebAPI.Controllers
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> Delete(int tenantIntegrationId, int id, [FromQuery] int? tenantId, CancellationToken ct)
         {
-            var tid = tenantId ?? _tenantProvider.CurrentTenantId;
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.DeleteAsync(id, tid, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok();
