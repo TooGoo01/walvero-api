@@ -24,6 +24,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IPosEarnExclusionService _nomenclature;
         private readonly IMemoryCache _cache;
         private readonly LoyaltyWalletDbContext _db;
+        private readonly IAmbassadorProgramFactory _ambassadorFactory;
         private readonly ILogger<IikoCatalogService> _logger;
 
         public IikoCatalogService(
@@ -33,9 +34,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             IPosEarnExclusionService nomenclature,
             IMemoryCache cache,
             LoyaltyWalletDbContext db,
+            IAmbassadorProgramFactory ambassadorFactory,
             ILogger<IikoCatalogService> logger)
         {
             _db = db;
+            _ambassadorFactory = ambassadorFactory;
             _rules = rules;
             _connection = connection;
             _iiko = iiko;
@@ -179,7 +182,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                         }
                         case IikoImportPlanner.TargetNewAmbassadorProgram:
                         {
-                            created ??= await CreateAmbassadorProgramAsync(tenantId, userId, now, ct);
+                            // Kassa idxalı: say balansı («məhsul»), kassa hesablayır
+                            created ??= await _ambassadorFactory.CreateAsync(tenantId, userId, AmbassadorCardKind.Units, null, null,
+                                PosEarnSource.PosMirror, now, ct);
                             if (change.Field is "PosWalletId" or "PosExternalProgramId")
                                 ApplyProgramField(created, change.Field, change.To);
                             break;
@@ -233,61 +238,6 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
 
         /// <summary>Ambassador proqramı + xal kartı şablonu (valyuta «məhsul»); dizayn adi proqramın şablonundan kopyalanır.</summary>
-        private async Task<LoyaltyProgram> CreateAmbassadorProgramAsync(int tenantId, int userId, DateTime now, CancellationToken ct)
-        {
-            var code = "AMBASSADOR";
-            for (var i = 1; await _db.LoyaltyPrograms.AnyAsync(p => p.TenantId == tenantId && p.Code == code, ct); i++)
-                code = $"AMBASSADOR-{i}";
-
-            var program = new LoyaltyProgram
-            {
-                TenantId = tenantId,
-                ProgramName = "Ambassador",
-                Code = code,
-                ProgramType = LoyaltyProgramType.PointsBased,
-                Audience = ProgramAudience.Ambassador,
-                PosEarnSource = PosEarnSource.PosMirror,
-                PointsPerCurrency = 1,
-                CurrencyPerPoint = 1,
-                IsActive = true,
-                RegUserId = userId,
-                RegDate = now
-            };
-            _db.LoyaltyPrograms.Add(program);
-            await _db.SaveChangesAsync(ct);
-
-            var source = await _db.LoyaltyPrograms.AsNoTracking()
-                .Where(p => p.TenantId == tenantId && p.IsActive && p.Audience != ProgramAudience.Ambassador && p.CardTemplate != null)
-                .OrderBy(p => p.Id)
-                .Select(p => p.CardTemplate!)
-                .FirstOrDefaultAsync(ct);
-
-            var template = new CardTemplate
-            {
-                LoyaltyProgramId = program.Id,
-                TemplateName = "Ambassador",
-                TemplateType = CardTemplateType.PointsBased,
-                Currency = IikoImportPlanner.UnitCurrency,
-                BackgroundColor = source?.BackgroundColor ?? "#FFFFFF",
-                ForegroundColor = source?.ForegroundColor ?? "#000000",
-                LabelColor = source?.LabelColor ?? "#999999",
-                ProgressBarColor = source?.ProgressBarColor ?? "#4CAF50",
-                LogoUrl = source?.LogoUrl,
-                GoogleLogoUrl = source?.GoogleLogoUrl,
-                AppLogoUrl = source?.AppLogoUrl,
-                StripImageUrl = source?.StripImageUrl,
-                HeroImageUrl = source?.HeroImageUrl,
-                AppStripUrl = source?.AppStripUrl,
-                RegUserId = userId,
-                RegDate = now
-            };
-            _db.CardTemplates.Add(template);
-            await _db.SaveChangesAsync(ct);
-
-            program.CardTemplateId = template.Id;
-            return program;
-        }
-
         private async Task<WalveroPosState> LoadWalveroStateAsync(int tenantId, int integrationId, CancellationToken ct)
         {
             var integration = await _db.TenantIntegrations.AsNoTracking()

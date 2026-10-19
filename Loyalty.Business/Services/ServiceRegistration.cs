@@ -172,6 +172,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IIikoRulesService, IikoRulesService>();
             services.AddScoped<IIikoConnectionResolver, IikoConnectionResolver>();
             services.AddScoped<IIikoCatalogService, IikoCatalogService>();
+            services.AddScoped<IAmbassadorProgramFactory, AmbassadorProgramFactory>();
             services.AddScoped<IRewardCrudService, RewardCrudService>();
             services.AddScoped<IWalletWebhookService, WalletWebhookService>();
             services.AddScoped<IMonyoPosApiClient, MonyoPosApiClient>();

@@ -45,6 +45,16 @@ namespace Loyalty.Business.Dtos.Post.Main
     }
 
     /// <summary>Proqramın POS (iiko) bağlantısı — tenant admin öz proqramı üçün dəyişir. null sahə = dəyişmə.</summary>
+    /// <summary>Tenant admin: ambassador kartı yarat (dizayn adi kartdan kopyalanır).</summary>
+    public class CreateAmbassadorProgramDto
+    {
+        /// <summary>1 = ₼, 2 = məhsul sayı, 3 = möhür</summary>
+        public Loyalty.Business.Helpers.AmbassadorCardKind Kind { get; set; } = Loyalty.Business.Helpers.AmbassadorCardKind.Money;
+        /// <summary>Möhür kartı üçün hədiyyəyə qədər möhür sayı (default 6).</summary>
+        public int? TotalSteps { get; set; }
+        public string? Name { get; set; }
+    }
+
     public class UpdatePosLinkDto
     {
         public PosEarnSource? PosEarnSource { get; set; }

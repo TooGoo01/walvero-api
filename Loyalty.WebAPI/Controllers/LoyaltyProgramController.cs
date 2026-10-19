@@ -2,6 +2,7 @@
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.WebAPI.Tenancy;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -19,11 +20,14 @@ namespace Loyalty.WebAPI.Controllers
     {
         private readonly ILoyaltyProgramService _loyaltyProgramService;
         private readonly ITenantProvider _tenantProvider;
+        private readonly IAmbassadorProgramFactory _ambassadorFactory;
 
-        public LoyaltyProgramController(ITenantProvider tenantProvider, ILoyaltyProgramService loyaltyProgramService)
+        public LoyaltyProgramController(ITenantProvider tenantProvider, ILoyaltyProgramService loyaltyProgramService,
+            IAmbassadorProgramFactory ambassadorFactory)
         {
             _tenantProvider = tenantProvider;
             _loyaltyProgramService = loyaltyProgramService;
+            _ambassadorFactory = ambassadorFactory;
         }
         [HttpGet]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
@@ -157,6 +161,27 @@ namespace Loyalty.WebAPI.Controllers
             }
 
             var result = await _loyaltyProgramService.UpdatePosLinkAsync(id, dto, ownership, ct);
+            if (result.Success)
+                return Ok(result);
+            return BadRequest(result);
+        }
+
+        /// <summary>
+        /// Ambassador kartı yarat: ayrıca ambassador proqramı + adi kartın dizaynından kopya şablon (sonra «Kart dizaynı»nda dəyişdirilir).
+        /// Tenant admin öz tenant-ı üçün; super admin ?tenantId= ilə.
+        /// </summary>
+        [HttpPost]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrSuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult<CreateAmbassadorProgramResultDto>), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> CreateAmbassador([FromBody] CreateAmbassadorProgramDto dto, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
+            if (!tid.HasValue || tid <= 0)
+                return BadRequest(new ServiceResult(false, "Tenant not found."));
+            var userId = int.TryParse(_tenantProvider.CurrentUserId, out var uid) ? uid : 1;
+
+            var result = await _ambassadorFactory.CreateForTenantAsync(tid.Value, userId, dto.Kind, dto.TotalSteps, dto.Name, ct);
             if (result.Success)
                 return Ok(result);
             return BadRequest(result);
