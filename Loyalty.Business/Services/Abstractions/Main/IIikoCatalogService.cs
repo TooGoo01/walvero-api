@@ -51,6 +51,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public bool AlreadyApplied { get; set; }
         public bool SelectedByDefault { get; set; }
         public string? Warning { get; set; }
+        /// <summary>Eyni qrupun təklifləri alternativdir (məs. keşbeki kassa və ya Walvero hesablasın) — yalnız biri seçilə bilər.</summary>
+        public string? Group { get; set; }
     }
 
     /// <param name="Target">program | new_ambassador_program | template | integration</param>

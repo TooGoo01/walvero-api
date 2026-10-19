@@ -137,6 +137,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
             if (selected.Count == 0)
                 return ServiceResult<IikoImportResultDto>.Ok(result);
+            if (selected.Where(p => p.Group != null).GroupBy(p => p.Group).Any(g => g.Count() > 1))
+                return ServiceResult<IikoImportResultDto>.Fail("Eyni kampaniya üçün yalnız bir variant seçilə bilər (kassa və ya Walvero hesablasın).");
 
             // EnableRetryOnFailure açıqdır → əl ilə transaction execution strategy içində olmalıdır
             var now = DateTime.UtcNow;

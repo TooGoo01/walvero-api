@@ -47,6 +47,10 @@ namespace Loyalty.Business.Helpers
 
         public const string UnitCurrency = "məhsul";
 
+        /// <summary>Keşbek variantları: kassa hesablayır (güzgü) / Walvero hesablayır.</summary>
+        public const string VariantPos = "pos";
+        public const string VariantWalvero = "walvero";
+
         public static List<IikoImportProposalDto> Plan(IReadOnlyList<IikoCatalogProgramDto> iikoPrograms, WalveroPosState w)
         {
             var proposals = new List<IikoImportProposalDto>();
@@ -63,41 +67,48 @@ namespace Loyalty.Business.Helpers
                     var walletId = c.Payment?.WalletId ?? c.WalletIds.FirstOrDefault() ?? ip.WalletId;
                     var label = $"{ip.Name} → {c.Name}";
 
-                    // 1) Ümumi keşbek — adi proqram kassa cüzdanını güzgüləyir
+                    // 1) Ümumi keşbek — iki alternativ: kassa hesablasın (güzgü) və ya Walvero hesablasın (kassa kampaniyası söndürülür)
                     if (c.Kind == IikoRuleParser.KindCashbackPercent && c.AllProducts && c.GuestCategoryIds.Count == 0 && c.Percent.HasValue)
                     {
-                        var p = new IikoImportProposalDto
+                        var group = $"{KindCashback}:{c.Id}";
+                        var title = $"Keşbek {c.Percent:0.##}% — {label}";
+                        var pos = new IikoImportProposalDto
                         {
-                            Key = $"cashback:{c.Id}",
+                            Key = $"{group}:{VariantPos}",
+                            Group = group,
                             Kind = KindCashback,
-                            Title = $"Keşbek {c.Percent:0.##}% — {label}",
-                            Explanation = "Keşbeki kassa hesablayır; Walvero kartı kassa cüzdanının balansını göstərir (ikiqat hesab olmasın).",
+                            Title = $"{title} · kassa hesablayır",
+                            Explanation = "Keşbeki kassanın öz kampaniyası hesablayır; Walvero kartı kassa cüzdanının balansını göstərir. Kassada dəyişiklik lazım deyil.",
                         };
-                        if (publicTarget == null)
+                        var walvero = new IikoImportProposalDto
                         {
-                            p.Applicable = false;
-                            p.Warning = "Adi (Public) Walvero proqramı yoxdur.";
-                        }
-                        else if (!claimedPrograms.Add(publicTarget.Id))
+                            Key = $"{group}:{VariantWalvero}",
+                            Group = group,
+                            Kind = KindCashback,
+                            Title = $"{title} · Walvero hesablayır",
+                            Explanation = $"Walvero hər sifarişdən {c.Percent:0.##}% hesablayır və balansı kassa cüzdanına göndərir; kassanın cüzdan əməliyyatları kartın balansını əvəz etmir.",
+                        };
+                        string? blocked = publicTarget == null
+                            ? "Adi (Public) Walvero proqramı yoxdur."
+                            : !claimedPrograms.Add(publicTarget.Id)
+                                ? $"«{publicTarget.Name}» artıq başqa keşbek kampaniyasına bağlanır — yalnız biri seçilə bilər."
+                                : null;
+                        if (blocked != null)
                         {
-                            p.Applicable = false;
-                            p.Warning = $"«{publicTarget.Name}» artıq başqa keşbek kampaniyasına bağlanır — yalnız biri seçilə bilər.";
+                            pos.Warning = walvero.Warning = blocked;
                         }
                         else
                         {
-                            AddProgramChange(p, publicTarget, "PosEarnSource", publicTarget.PosEarnSource.ToString(), nameof(PosEarnSource.PosMirror));
-                            AddProgramChange(p, publicTarget, "PosWalletId", publicTarget.PosWalletId, walletId);
-                            AddProgramChange(p, publicTarget, "PosExternalProgramId", publicTarget.PosExternalProgramId, ip.Id);
-                            if (publicTarget.TemplateType is CardTemplateType.PointsBased or CardTemplateType.TierBased)
-                            {
-                                var pct = (int)Math.Round(c.Percent.Value);
-                                if (publicTarget.BronzePercent != pct)
-                                    p.Changes.Add(new IikoImportChangeDto(TargetTemplate, publicTarget.Id, publicTarget.Name, "BronzePercent",
-                                        publicTarget.BronzePercent?.ToString(), pct.ToString()));
-                            }
-                            Finish(p);
+                            FillCashback(pos, publicTarget!, PosEarnSource.PosMirror, walletId, ip.Id, c.Percent.Value);
+                            FillCashback(walvero, publicTarget!, PosEarnSource.WalveroRules, walletId, ip.Id, c.Percent.Value);
+                            Finish(pos);
+                            walvero.Warning = $"Kassada «{c.Name}» kampaniyasını söndürün — yoxsa kassa cüzdanına {c.Percent:0.##}% iki dəfə yazılır (kassa özü + Walvero).";
+                            Finish(walvero);
+                            // Qazanc rejimi şüurlu seçimdir — heç bir variant default seçilmir (köhnə "hər ikisi" rejimi də qanunidir)
+                            pos.SelectedByDefault = walvero.SelectedByDefault = false;
                         }
-                        proposals.Add(p);
+                        proposals.Add(pos);
+                        proposals.Add(walvero);
                         continue;
                     }
 
@@ -181,6 +192,20 @@ namespace Loyalty.Business.Helpers
             return proposals;
         }
 
+        private static void FillCashback(IikoImportProposalDto p, WalveroProgramState target, PosEarnSource source, string? walletId, string iikoProgramId, decimal percent)
+        {
+            AddProgramChange(p, target, "PosEarnSource", target.PosEarnSource.ToString(), source.ToString());
+            AddProgramChange(p, target, "PosWalletId", target.PosWalletId, walletId);
+            AddProgramChange(p, target, "PosExternalProgramId", target.PosExternalProgramId, iikoProgramId);
+            if (target.TemplateType is CardTemplateType.PointsBased or CardTemplateType.TierBased)
+            {
+                var pct = (int)Math.Round(percent);
+                if (target.BronzePercent != pct)
+                    p.Changes.Add(new IikoImportChangeDto(TargetTemplate, target.Id, target.Name, "BronzePercent",
+                        target.BronzePercent?.ToString(), pct.ToString()));
+            }
+        }
+
         private static void AddProgramChange(IikoImportProposalDto p, WalveroProgramState prog, string field, string? from, string? to)
         {
             if (string.Equals(from ?? "", to ?? "", StringComparison.OrdinalIgnoreCase)) return;
@@ -221,11 +246,23 @@ namespace Loyalty.Business.Helpers
                 .SelectMany(ip => ip.Campaigns.Where(c => c.IsActive && c.Kind == IikoRuleParser.KindCashbackPercent)
                     .Select(c => c.WalletIds.FirstOrDefault() ?? ip.WalletId))
                 .Where(x => x != null).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            // Bütün məhsullara aktiv keşbek kampaniyaları (cüzdan → kampaniya adı)
+            var fullCashbackByWallet = catalog.Programs.Where(ip => ip.IsActive)
+                .SelectMany(ip => ip.Campaigns
+                    .Where(c => c.IsActive && c.Kind == IikoRuleParser.KindCashbackPercent && c.AllProducts && c.GuestCategoryIds.Count == 0)
+                    .Select(c => (Wallet: c.WalletIds.FirstOrDefault() ?? ip.WalletId, c.Name)))
+                .Where(x => x.Wallet != null)
+                .GroupBy(x => x.Wallet!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
             foreach (var p in w.Programs)
             {
+                if (p.PosEarnSource == PosEarnSource.WalveroRules && p.PosWalletId != null
+                    && fullCashbackByWallet.TryGetValue(p.PosWalletId, out var activeCampaign))
+                    items.Add(new IikoSyncItemDto("warn", "program", $"«{p.Name}»: Walvero hesablayır, amma kassada «{activeCampaign}» keşbek kampaniyası da aktivdir",
+                        "İkiqat yığım riski — kassada həmin kampaniyanı söndürün və ya «Kassa hesablayır» seçin."));
                 if (p.PosEarnSource == PosEarnSource.Legacy && cashbackWallets.Count > 0 && p.Audience != ProgramAudience.Ambassador)
-                    items.Add(new IikoSyncItemDto("warn", "program", $"«{p.Name}»: qazanc mənbəyi «hər ikisi (köhnə)», kassada keşbek kampaniyası var",
-                        "İkiqat hesab / balans fərqi riski — «Kassa hesablayır» və ya «Walvero hesablayır» seçin."));
+                    items.Add(new IikoSyncItemDto("info", "program", $"«{p.Name}»: kassa da, Walvero da hesablayır (köhnə rejim)",
+                        "Walvero sifarişdən hesablayır; kassa cüzdan əməliyyatı gələndə kartın balansı kassanın balansı ilə yenilənir."));
                 if (p.TemplateType == CardTemplateType.ProgressBased && p.PosEarnSource != PosEarnSource.WalveroRules)
                     items.Add(new IikoSyncItemDto("warn", "program", $"«{p.Name}»: möhür kartı, kassa cüzdanı güzgüsü açıqdır",
                         "Kassa balansı möhürləri əvəz edə bilər — «Walvero hesablayır» seçin."));
