@@ -8,5 +8,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public interface ITenantSuspensionPassRefresher
     {
         Task RefreshTenantPassesAsync(int tenantId, CancellationToken ct = default);
+
+        /// <summary>Yalnız bir proqramın kartları (məs. ambassador kartının dizaynı dəyişəndə). programId null → bütün tenant.</summary>
+        Task RefreshProgramPassesAsync(int tenantId, int? programId, CancellationToken ct = default);
     }
 }

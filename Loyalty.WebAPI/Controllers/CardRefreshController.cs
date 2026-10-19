@@ -29,38 +29,40 @@ namespace Loyalty.WebAPI.Controllers
             _tenantProvider = tenantProvider;
         }
 
-        private Task<int> CountActiveWalletCardsAsync(int tenantId, CancellationToken ct) =>
+        // programId: yalnız həmin proqramın kartları (ambassador kartı ayrıca dizayndır); null → bütün tenant
+        private Task<int> CountActiveWalletCardsAsync(int tenantId, int? programId, CancellationToken ct) =>
             _db.LoyaltyCards.AsNoTracking()
                 .Where(c => c.TenantId == tenantId
                          && c.IsActive
                          && c.Status == CardStatus.Active
-                         && (c.IsAndroid || c.IsIOS))
+                         && (c.IsAndroid || c.IsIOS)
+                         && (programId == null || c.LoyaltyProgramId == programId))
                 .CountAsync(ct);
 
-        private static void EnqueueRefresh(int tenantId) =>
+        private static void EnqueueRefresh(int tenantId, int? programId) =>
             BackgroundJob.Enqueue<ITenantSuspensionPassRefresher>(
-                x => x.RefreshTenantPassesAsync(tenantId, CancellationToken.None));
+                x => x.RefreshProgramPassesAsync(tenantId, programId, CancellationToken.None));
 
         // ───────────── Super admin (per-tenant) ─────────────
 
         /// <summary>Super admin: tenant-ın aktiv wallet kart sayı (təsdiq üçün).</summary>
         [HttpGet]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
-        public async Task<IActionResult> Count([FromQuery] int tenantId, CancellationToken ct)
+        public async Task<IActionResult> Count([FromQuery] int tenantId, [FromQuery] int? programId, CancellationToken ct)
         {
             if (tenantId <= 0) return Ok(new ServiceResult(false, "Tenant tapılmadı."));
-            var count = await CountActiveWalletCardsAsync(tenantId, ct);
+            var count = await CountActiveWalletCardsAsync(tenantId, programId, ct);
             return Ok(new ServiceResult(true, new { count }));
         }
 
         /// <summary>Super admin: tenant-ın bütün kartlarına dizayn update push (background).</summary>
         [HttpPost]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
-        public async Task<IActionResult> Refresh([FromQuery] int tenantId, CancellationToken ct)
+        public async Task<IActionResult> Refresh([FromQuery] int tenantId, [FromQuery] int? programId, CancellationToken ct)
         {
             if (tenantId <= 0) return Ok(new ServiceResult(false, "Tenant tapılmadı."));
-            var count = await CountActiveWalletCardsAsync(tenantId, ct);
-            EnqueueRefresh(tenantId);
+            var count = await CountActiveWalletCardsAsync(tenantId, programId, ct);
+            EnqueueRefresh(tenantId, programId);
             return Ok(new ServiceResult(true, new { count }));
         }
 
@@ -69,23 +71,23 @@ namespace Loyalty.WebAPI.Controllers
         /// <summary>Tenant admin: öz tenant-ının aktiv wallet kart sayı.</summary>
         [HttpGet]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
-        public async Task<IActionResult> MyCount(CancellationToken ct)
+        public async Task<IActionResult> MyCount([FromQuery] int? programId, CancellationToken ct)
         {
             var tenantId = _tenantProvider.CurrentTenantId;
             if (!tenantId.HasValue) return Ok(new ServiceResult(false, "Tenant tapılmadı."));
-            var count = await CountActiveWalletCardsAsync(tenantId.Value, ct);
+            var count = await CountActiveWalletCardsAsync(tenantId.Value, programId, ct);
             return Ok(new ServiceResult(true, new { count }));
         }
 
         /// <summary>Tenant admin: öz tenant kartlarına dizayn update push (background).</summary>
         [HttpPost]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrModerator")]
-        public async Task<IActionResult> RefreshMine(CancellationToken ct)
+        public async Task<IActionResult> RefreshMine([FromQuery] int? programId, CancellationToken ct)
         {
             var tenantId = _tenantProvider.CurrentTenantId;
             if (!tenantId.HasValue) return Ok(new ServiceResult(false, "Tenant tapılmadı."));
-            var count = await CountActiveWalletCardsAsync(tenantId.Value, ct);
-            EnqueueRefresh(tenantId.Value);
+            var count = await CountActiveWalletCardsAsync(tenantId.Value, programId, ct);
+            EnqueueRefresh(tenantId.Value, programId);
             return Ok(new ServiceResult(true, new { count }));
         }
     }

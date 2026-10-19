@@ -40,14 +40,19 @@ namespace Loyalty.Business.Services.Implementations.Main
             _logger = logger;
         }
 
-        public async Task RefreshTenantPassesAsync(int tenantId, CancellationToken ct = default)
+        // Növbədəki köhnə Hangfire işləri bu imza ilə gəlir — saxlanır
+        public Task RefreshTenantPassesAsync(int tenantId, CancellationToken ct = default)
+            => RefreshProgramPassesAsync(tenantId, null, ct);
+
+        public async Task RefreshProgramPassesAsync(int tenantId, int? programId, CancellationToken ct = default)
         {
             var cards = await _dbContext.Set<LoyaltyCard>()
                 .AsNoTracking()
                 .Where(c => c.TenantId == tenantId
                          && c.IsActive
                          && c.Status == CardStatus.Active
-                         && (c.IsAndroid || c.IsIOS))
+                         && (c.IsAndroid || c.IsIOS)
+                         && (programId == null || c.LoyaltyProgramId == programId))
                 .Include(c => c.LoyaltyProgram).ThenInclude(p => p.CardTemplate).ThenInclude(t => t.Icons)
                 .ToListAsync(ct);
 
