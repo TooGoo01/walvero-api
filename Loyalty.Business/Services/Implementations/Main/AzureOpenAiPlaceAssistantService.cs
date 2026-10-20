@@ -25,7 +25,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         public const string HttpClientName = "azure-openai";
 
         private readonly IHttpClientFactory _httpFactory;
-        private readonly IConfiguration _config;
+        private readonly IAzureOpenAiConfigProvider _aiConfig;
         private readonly IPlaceSearchService _placeSearch;
         private readonly IMenuSearchService _menuSearch;
         private readonly IReferencePlaceService _referencePlace;
@@ -36,7 +36,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public AzureOpenAiPlaceAssistantService(
             IHttpClientFactory httpFactory,
-            IConfiguration config,
+            IAzureOpenAiConfigProvider aiConfig,
             IPlaceSearchService placeSearch,
             IMenuSearchService menuSearch,
             IReferencePlaceService referencePlace,
@@ -46,7 +46,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _menuSearch = menuSearch;
             _referencePlace = referencePlace;
             _httpFactory = httpFactory;
-            _config = config;
+            _aiConfig = aiConfig;
             _placeSearch = placeSearch;
             _customerTools = customerTools;
             _logger = logger;
@@ -81,13 +81,12 @@ namespace Loyalty.Business.Services.Implementations.Main
         private async Task<AssistantReply> AskCoreAsync(
             ChatbotAskRequest request, SimulationTrace? trace, bool? isAuthOverride, CancellationToken ct)
         {
-            // Həm `AzureOpenAI__X` (hierarxiya), həm flat `AZURE_OPENAI_X` adlarını dəstəklə.
-            // DİQQƏT: appsettings.json boş placeholder ("") saxlayır → `??` boş string-də
-            // keçmir. Ona görə boş/whitespace-i də "yoxdur" sayan PickConfig istifadə olunur.
-            var endpoint = PickConfig(_config, "AzureOpenAI:Endpoint", "AZURE_OPENAI_ENDPOINT");
-            var apiKey = PickConfig(_config, "AzureOpenAI:ApiKey", "AZURE_OPENAI_API_KEY");
-            var deployment = PickConfig(_config, "AzureOpenAI:Deployment", "AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_DEPLOYMENT_NAME");
-            var apiVersion = PickConfig(_config, "AzureOpenAI:ApiVersion", "AZURE_OPENAI_API_VERSION") ?? "2024-08-01-preview";
+            // Mənbə: DB AppSettings (ai.openai.*) → config (AzureOpenAI:X / AZURE_OPENAI_X). Bax AzureOpenAiConfigProvider.
+            var ai = await _aiConfig.GetAsync(ct);
+            var endpoint = ai.Endpoint;
+            var apiKey = ai.ApiKey;
+            var deployment = ai.Deployment;
+            var apiVersion = ai.ApiVersion ?? "2024-08-01-preview";
 
             if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(deployment))
             {
@@ -124,7 +123,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             // Bəzi gpt-5 deployment-ləri function tools ilə yalnız "none" qəbul edir
             // (chat/completions): '400 ... use reasoning_effort none'. Ona görə default "none".
             // Tam çıxarmaq üçün env dəyərini "omit" et.
-            var reasoningEffort = PickConfig(_config, "AzureOpenAI:ReasoningEffort", "AZURE_OPENAI_REASONING_EFFORT") ?? "none";
+            var reasoningEffort = ai.ReasoningEffort ?? "none";
 
             if (trace is not null)
             {
@@ -455,17 +454,6 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _logger.LogError(ex, "Tool dispatch failed: {Tool}", name);
                 return "{\"error\":\"tool_failed\"}";
             }
-        }
-
-        /// <summary>İlk boş-olmayan config dəyərini qaytar (boş/whitespace = yoxdur).</summary>
-        private static string? PickConfig(IConfiguration cfg, params string[] keys)
-        {
-            foreach (var k in keys)
-            {
-                var v = cfg[k];
-                if (!string.IsNullOrWhiteSpace(v)) return v.Trim();
-            }
-            return null;
         }
 
         private static string? GetString(JsonNode? node)

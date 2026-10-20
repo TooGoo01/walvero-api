@@ -197,6 +197,8 @@ namespace Loyalty.Business.Services
             services.AddScoped<IMenuSearchService, MenuSearchService>();
             services.AddScoped<IKeywordGenerationService, KeywordGenerationService>();
             services.AddScoped<ICustomerAssistantTools, CustomerAssistantTools>();
+            // Azure OpenAI ayarları: DB AppSettings (ai.openai.*) → config; 3 AI servisi eyni mənbədən oxuyur
+            services.AddSingleton<IAzureOpenAiConfigProvider, AzureOpenAiConfigProvider>();
             services.AddScoped<IPlaceAssistantService, AzureOpenAiPlaceAssistantService>();
             services.AddScoped<IWalletPushJob, WalletPushJob>();
             services.AddScoped<IIikoWebhookFailureService, IikoWebhookFailureService>();

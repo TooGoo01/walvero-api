@@ -15,18 +15,18 @@ namespace Loyalty.Business.Services.Implementations.Main
     /// </summary>
     public sealed class ReceiptVisionOcrService : IReceiptVisionOcr
     {
-        private readonly IConfiguration _config;
+        private readonly IAzureOpenAiConfigProvider _aiConfig;
         private readonly IHttpClientFactory _httpFactory;
         private readonly ILogger<ReceiptVisionOcrService> _logger;
 
         private const int MaxDim = 1400; // token/cost azaltmaq üçün kiçilt
 
         public ReceiptVisionOcrService(
-            IConfiguration config,
+            IAzureOpenAiConfigProvider aiConfig,
             IHttpClientFactory httpFactory,
             ILogger<ReceiptVisionOcrService> logger)
         {
-            _config = config;
+            _aiConfig = aiConfig;
             _httpFactory = httpFactory;
             _logger = logger;
         }
@@ -35,10 +35,11 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             var result = new VisionReceiptFields { Ok = false };
 
-            var endpoint = Pick("AzureOpenAI:Endpoint", "AZURE_OPENAI_ENDPOINT");
-            var apiKey = Pick("AzureOpenAI:ApiKey", "AZURE_OPENAI_API_KEY");
-            var deployment = Pick("AzureOpenAI:Deployment", "AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_DEPLOYMENT_NAME");
-            var apiVersion = Pick("AzureOpenAI:ApiVersion", "AZURE_OPENAI_API_VERSION") ?? "2025-04-01-preview";
+            var ai = await _aiConfig.GetAsync(ct);
+            var endpoint = ai.Endpoint;
+            var apiKey = ai.ApiKey;
+            var deployment = ai.Deployment;
+            var apiVersion = ai.ApiVersion ?? "2025-04-01-preview";
             if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(deployment))
             {
                 _logger.LogWarning("Receipt vision: AzureOpenAI not configured.");
@@ -91,9 +92,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                     new JsonObject { ["role"] = "system", ["content"] = sys },
                     new JsonObject { ["role"] = "user", ["content"] = userContent }
                 },
-                ["reasoning_effort"] = "minimal",
                 ["max_completion_tokens"] = 800
             };
+            // Effort konfiqurasiyadan (gpt-5.6 "minimal" qəbul etmir: none/low/...); yoxdursa köhnə default, "omit" → göndərmə.
+            var reasoningEffort = ai.ReasoningEffort ?? "minimal";
+            if (!string.Equals(reasoningEffort, "omit", StringComparison.OrdinalIgnoreCase))
+                body["reasoning_effort"] = reasoningEffort;
 
             var url = $"{endpoint.TrimEnd('/')}/openai/deployments/{deployment}/chat/completions?api-version={apiVersion}";
             var client = _httpFactory.CreateClient(AzureOpenAiPlaceAssistantService.HttpClientName);
@@ -201,14 +205,5 @@ namespace Loyalty.Business.Services.Implementations.Main
             return ms.ToArray();
         }
 
-        private string? Pick(params string[] keys)
-        {
-            foreach (var k in keys)
-            {
-                var v = _config[k];
-                if (!string.IsNullOrWhiteSpace(v)) return v.Trim();
-            }
-            return null;
-        }
     }
 }

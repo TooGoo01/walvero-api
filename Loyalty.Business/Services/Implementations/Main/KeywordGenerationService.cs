@@ -16,18 +16,18 @@ namespace Loyalty.Business.Services.Implementations.Main
     /// </summary>
     public class KeywordGenerationService : IKeywordGenerationService
     {
-        private readonly IConfiguration _config;
+        private readonly IAzureOpenAiConfigProvider _aiConfig;
         private readonly IHttpClientFactory _httpFactory;
         private readonly LoyaltyWalletDbContext _db;
         private readonly ILogger<KeywordGenerationService> _logger;
 
         public KeywordGenerationService(
-            IConfiguration config,
+            IAzureOpenAiConfigProvider aiConfig,
             IHttpClientFactory httpFactory,
             LoyaltyWalletDbContext db,
             ILogger<KeywordGenerationService> logger)
         {
-            _config = config;
+            _aiConfig = aiConfig;
             _httpFactory = httpFactory;
             _db = db;
             _logger = logger;
@@ -35,10 +35,11 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult> GenerateForTenantAsync(int tenantId, CancellationToken ct = default)
         {
-            var endpoint = Pick("AzureOpenAI:Endpoint", "AZURE_OPENAI_ENDPOINT");
-            var apiKey = Pick("AzureOpenAI:ApiKey", "AZURE_OPENAI_API_KEY");
-            var deployment = Pick("AzureOpenAI:Deployment", "AZURE_OPENAI_DEPLOYMENT", "AZURE_OPENAI_DEPLOYMENT_NAME");
-            var apiVersion = Pick("AzureOpenAI:ApiVersion", "AZURE_OPENAI_API_VERSION") ?? "2025-04-01-preview";
+            var ai = await _aiConfig.GetAsync(ct);
+            var endpoint = ai.Endpoint;
+            var apiKey = ai.ApiKey;
+            var deployment = ai.Deployment;
+            var apiVersion = ai.ApiVersion ?? "2025-04-01-preview";
 
             if (string.IsNullOrWhiteSpace(endpoint) || string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(deployment))
                 return new ServiceResult(false, "AI konfiqurasiyası yoxdur (Azure OpenAI).");
@@ -87,9 +88,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                     new JsonObject { ["role"] = "user", ["content"] = sb.ToString() }
                 },
                 // gpt-5/reasoning modelləri reasoning-ə token xərcləyir → output üçün geniş limit.
-                ["reasoning_effort"] = "minimal",
                 ["max_completion_tokens"] = 2000
             };
+            // Effort konfiqurasiyadan (gpt-5.6 "minimal" qəbul etmir: none/low/...); yoxdursa köhnə default, "omit" → göndərmə.
+            var reasoningEffort = ai.ReasoningEffort ?? "minimal";
+            if (!string.Equals(reasoningEffort, "omit", StringComparison.OrdinalIgnoreCase))
+                body["reasoning_effort"] = reasoningEffort;
 
             var url = $"{endpoint.TrimEnd('/')}/openai/deployments/{deployment}/chat/completions?api-version={apiVersion}";
             var client = _httpFactory.CreateClient(AzureOpenAiPlaceAssistantService.HttpClientName);
@@ -124,14 +128,5 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, new { tenantId, keywords = string.Join(", ", keywords) });
         }
 
-        private string? Pick(params string[] keys)
-        {
-            foreach (var k in keys)
-            {
-                var v = _config[k];
-                if (!string.IsNullOrWhiteSpace(v)) return v.Trim();
-            }
-            return null;
-        }
     }
 }
