@@ -1394,9 +1394,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             var cards = await _cardSvc.ListByCustomerAsync(tenantId, customerId, ct);
-            return cards?.Where(c => c.Status == CardStatus.Active)
+            var activeId = cards?.Where(c => c.Status == CardStatus.Active)
                 .OrderByDescending(c => c.Id)
+                .Select(c => (int?)c.Id)
                 .FirstOrDefault();
+            if (activeId == null)
+                return null;
+
+            // ListByCustomerAsync AsNoTracking-dir. WalveroId/telefon axtarışı müştərini kartları ilə tracked yükləyir →
+            // detached nüsxəni Update(card) etmək "same key already tracked" atır. Tracked nüsxəni (Customer ilə) qaytar.
+            return await _cardSvc.GetById(activeId.Value, ct);
         }
 
         private static RedeemResultDto Fail(string msg) => new() { Success = false, Message = msg };
