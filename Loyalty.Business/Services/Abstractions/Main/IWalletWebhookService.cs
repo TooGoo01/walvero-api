@@ -164,6 +164,11 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public List<IikoOrderItem> Items { get; set; } = new();
         public List<IikoOrderDiscount> Discounts { get; set; } = new();
         public List<IikoOrderPayment> Payments { get; set; } = new();
+        /// <summary>
+        /// İdempotency açarı / lock / tx təsviri prefiksi ("iiko", "rkeeper").
+        /// Default "iiko" — mövcud iiko açarları (iiko:{OrderId}:...) dəyişmir.
+        /// </summary>
+        public string SourcePrefix { get; set; } = "iiko";
     }
 
     public class IikoOrderItem

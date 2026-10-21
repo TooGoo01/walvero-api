@@ -175,6 +175,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IAmbassadorProgramFactory, AmbassadorProgramFactory>();
             services.AddScoped<IRewardCrudService, RewardCrudService>();
             services.AddScoped<IWalletWebhookService, WalletWebhookService>();
+            services.AddScoped<IRkeeperLoyaltyService, RkeeperLoyaltyService>();
             services.AddScoped<IMonyoPosApiClient, MonyoPosApiClient>();
             services.AddScoped<IIikoPosApiClient, IikoPosApiClient>();
             services.AddScoped<ICustomerSyncService, CustomerSyncService>();

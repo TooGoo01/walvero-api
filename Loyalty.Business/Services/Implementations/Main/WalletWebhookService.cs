@@ -869,6 +869,10 @@ namespace Loyalty.Business.Services.Implementations.Main
         private static IikoTransactionResponse IikoFail(IikoFailureKind kind, string message) =>
             new() { Success = false, Message = message, FailureKind = kind };
 
+        // Köhnə Hangfire job-larında / failure RawBody-də SourcePrefix yoxdur → "iiko" (açarlar dəyişməsin).
+        private static string SourcePrefixOf(IikoOrderEventRequest request) =>
+            string.IsNullOrWhiteSpace(request.SourcePrefix) ? "iiko" : request.SourcePrefix.Trim();
+
         public async Task<IikoTransactionResponse> ProcessIikoOrderEventAsync(
             WalletWebhookResolvedContext context, IikoOrderEventRequest request, CancellationToken ct = default)
         {
@@ -897,7 +901,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             IDisposable orderLock;
             try
             {
-                orderLock = conn.AcquireDistributedLock($"iiko-order:{request.OrderId.Trim()}", TimeSpan.FromSeconds(30));
+                orderLock = conn.AcquireDistributedLock($"{SourcePrefixOf(request)}-order:{request.OrderId.Trim()}", TimeSpan.FromSeconds(30));
             }
             catch (DistributedLockTimeoutException)
             {
@@ -966,7 +970,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             var totalStepsPerCycle = template?.TotalSteps ?? 10;
 
             bool isReturn = string.Equals(eventType, "OrderReturned", StringComparison.OrdinalIgnoreCase);
-            string idempotencyKey = $"iiko:{request.OrderId}:{(isReturn ? "OrderReturned" : "OrderClosed")}";
+            string idempotencyKey = $"{SourcePrefixOf(request)}:{request.OrderId}:{(isReturn ? "OrderReturned" : "OrderClosed")}";
 
             var existing = await _uow.Repository<Transaction>().GetAllAsync(
                 t => t.OrderId == idempotencyKey);
@@ -985,7 +989,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             LoyaltyCard card, IikoOrderEventRequest request, string idempotencyKey,
             CardTemplateType templateType, int totalStepsPerCycle, LoyaltyProgram? program, CancellationToken ct)
         {
-            string closedKeyPrefix = $"iiko:{request.OrderId}:OrderClosed";
+            var src = SourcePrefixOf(request);
+            string closedKeyPrefix = $"{src}:{request.OrderId}:OrderClosed";
 
             var prior = (await _uow.Repository<Transaction>().GetAllAsync(
                 t => t.LoyaltyCardId == card.Id
@@ -1042,7 +1047,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Points = -originalDelta,
                     Amount = Math.Abs(originalDelta),
                     OrderId = idempotencyKey,
-                    Description = $"iiko OrderReturned reverse {tx.Type} ({originalDelta:+#;-#;0})",
+                    Description = $"{src} OrderReturned reverse {tx.Type} ({originalDelta:+#;-#;0})",
                     BranchId = tx.BranchId,
                     RegUserId = 1,
                     RegDate = DateTime.UtcNow,
@@ -1069,6 +1074,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             WalletWebhookResolvedContext context, LoyaltyCard card, IikoOrderEventRequest request, string idempotencyKey,
             CardTemplateType templateType, int totalStepsPerCycle, LoyaltyProgram? program, CardTemplate? template, CancellationToken ct)
         {
+            var src = SourcePrefixOf(request);
             decimal walletRedeemSum = request.Payments
                 .Where(p => !string.IsNullOrWhiteSpace(p.Credential))
                 .Sum(p => p.Sum);
@@ -1309,7 +1315,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Amount = earnBase,
                     OrderId = idempotencyKey + ":earn",
                     ReferenceNumber = request.OrderNumber?.ToString(),
-                    Description = "iiko OrderClosed earn" + EarnExclusionMath.DescribeSuffix(exclusion, stampSkippedUnits),
+                    Description = $"{src} OrderClosed earn" + EarnExclusionMath.DescribeSuffix(exclusion, stampSkippedUnits),
                     BranchId = context.BranchId,
                     RegUserId = 1,
                     RegDate = DateTime.UtcNow,
@@ -1351,7 +1357,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Amount = walletRedeemSum,
                     OrderId = idempotencyKey + ":redeem",
                     ReferenceNumber = request.OrderNumber?.ToString(),
-                    Description = "iiko OrderClosed wallet pay",
+                    Description = $"{src} OrderClosed wallet pay",
                     BranchId = context.BranchId,
                     RegUserId = 1,
                     RegDate = DateTime.UtcNow,
@@ -1399,7 +1405,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Amount = 0m,
                     OrderId = idempotencyKey + ":discount_redeem",
                     ReferenceNumber = request.OrderNumber?.ToString(),
-                    Description = $"iiko discount loyalty redeem ({totalRedeemUnits} units)",
+                    Description = $"{src} discount loyalty redeem ({totalRedeemUnits} units)",
                     BranchId = context.BranchId,
                     RegUserId = 1,
                     RegDate = DateTime.UtcNow,
@@ -1425,7 +1431,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Amount = request.TotalSum,
                     OrderId = idempotencyKey,
                     ReferenceNumber = request.OrderNumber?.ToString(),
-                    Description = $"iiko OrderClosed marker (earn={earnedValue}, redeem={walletRedeemSum}, discountRedeemUnits={totalRedeemUnits})",
+                    Description = $"{src} OrderClosed marker (earn={earnedValue}, redeem={walletRedeemSum}, discountRedeemUnits={totalRedeemUnits})",
                     BranchId = context.BranchId,
                     RegUserId = 1,
                     RegDate = DateTime.UtcNow,
@@ -1448,7 +1454,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     Amount = request.TotalSum,
                     OrderId = idempotencyKey,
                     ReferenceNumber = request.OrderNumber?.ToString(),
-                    Description = "iiko OrderClosed marker (no-op)",
+                    Description = $"{src} OrderClosed marker (no-op)",
                     BranchId = context.BranchId,
                     RegUserId = 1,
                     RegDate = DateTime.UtcNow,

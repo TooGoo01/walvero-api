@@ -410,6 +410,7 @@ builder.Services.AddSwaggerGen(c =>
 //    .CreateLogger();
 
 builder.Services.AddApplicationInsightsTelemetry();
+builder.Services.AddSingleton<ITelemetryInitializer, Loyalty.WebAPI.Extensions.RkeeperTokenTelemetryInitializer>();
 
 builder.Host.UseSerilog((ctx, services, lc) =>
 {
