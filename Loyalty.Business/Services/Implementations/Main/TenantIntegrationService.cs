@@ -127,6 +127,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 CardTrackMode = dto.CardTrackMode ?? PosCardTrackMode.FullBarcode,
                 CardTrackDigits = (dto.CardTrackMode ?? PosCardTrackMode.FullBarcode) == PosCardTrackMode.LastDigits ? PosCardTrack.NormalizeDigits(dto.CardTrackDigits) : null,
+                SendPhoneToPos = dto.SendPhoneToPos ?? true,
+                MatchExistingByPhone = dto.MatchExistingByPhone ?? false,
                 TenantId = dto.TenantId,
                 IntegrationTypeId = dto.IntegrationTypeId,
                 DisplayName = dto.DisplayName,
@@ -179,7 +181,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                     CardTrackDigits = ti.CardTrackDigits,
                     CardTrackLabel = PosCardTrack.Describe(ti.CardTrackMode, ti.CardTrackDigits),
                     LoyaltyProgramId = ti.LoyaltyProgramId,
-                    AmbassadorIikoCategoryId = ti.AmbassadorIikoCategoryId
+                    AmbassadorIikoCategoryId = ti.AmbassadorIikoCategoryId,
+                    SendPhoneToPos = ti.SendPhoneToPos,
+                    MatchExistingByPhone = ti.MatchExistingByPhone
                 });
             }
             return ServiceResult<List<TenantIntegrationListDto>>.Ok(dtos);
@@ -211,7 +215,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 CardTrackMode = ti.CardTrackMode,
                 CardTrackDigits = ti.CardTrackDigits,
                 CardTrackLabel = PosCardTrack.Describe(ti.CardTrackMode, ti.CardTrackDigits),
-                AmbassadorIikoCategoryId = ti.AmbassadorIikoCategoryId
+                AmbassadorIikoCategoryId = ti.AmbassadorIikoCategoryId,
+                SendPhoneToPos = ti.SendPhoneToPos,
+                MatchExistingByPhone = ti.MatchExistingByPhone
             });
         }
 
@@ -260,6 +266,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.ApiAppId != null) ti.ApiAppId = dto.ApiAppId.Trim();
             if (!string.IsNullOrEmpty(dto.ApiSecret)) ti.ApiSecretEncrypted = _protector.Encrypt(dto.ApiSecret);
             if (dto.IsActive.HasValue) ti.IsActive = dto.IsActive.Value;
+            if (dto.SendPhoneToPos.HasValue) ti.SendPhoneToPos = dto.SendPhoneToPos.Value;
+            if (dto.MatchExistingByPhone.HasValue) ti.MatchExistingByPhone = dto.MatchExistingByPhone.Value;
             if (dto.CardTrackMode.HasValue || dto.CardTrackDigits.HasValue)
             {
                 var mode = dto.CardTrackMode ?? ti.CardTrackMode;

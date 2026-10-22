@@ -29,6 +29,8 @@ namespace Loyalty.Business.Dtos.Get.Main
 
         public bool MappingExists { get; set; }
         public string? ExternalCustomerId { get; set; }
+        /// <summary>Telefonla bağlanıb, köhnə kassa balansı hələ Walvero-ya yazılmayıb (bu müddətdə balans push olunmur).</summary>
+        public decimal? LegacyPendingBalance { get; set; }
 
         public bool Found { get; set; }
         /// <summary>id | barcode | walveroId | phone</summary>
@@ -47,6 +49,30 @@ namespace Loyalty.Business.Dtos.Get.Main
         /// <summary>OurBalance − IikoBalance</summary>
         public decimal? Diff { get; set; }
         public string? Error { get; set; }
+    }
+
+    /// <summary>Toplu telefonla uyğunlaşdırma önizləməsi: kassaya bağlanmamış (mapping-siz) müştərilər.</summary>
+    public class IikoPhoneMatchPreviewDto
+    {
+        public int IntegrationId { get; set; }
+        public bool MatchExistingByPhone { get; set; }
+        public int Total { get; set; }
+        public int Skip { get; set; }
+        public int Take { get; set; }
+        public List<IikoPhoneMatchRowDto> Rows { get; set; } = new();
+    }
+
+    public class IikoPhoneMatchRowDto
+    {
+        public int CustomerId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? Phone { get; set; }
+        public bool Found { get; set; }
+        public Guid? IikoCustomerId { get; set; }
+        public decimal? IikoBalance { get; set; }
+        public decimal OurBalance { get; set; }
+        /// <summary>Kassa qonağı artıq başqa Walvero müştərisinə bağlıdır.</summary>
+        public int? ConflictCustomerId { get; set; }
     }
 
     public class IikoWalletDto

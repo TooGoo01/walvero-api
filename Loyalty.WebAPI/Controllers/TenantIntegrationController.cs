@@ -106,6 +106,11 @@ namespace Loyalty.WebAPI.Controllers
             var tenantId = this.ScopedTenantId(dto.TenantId > 0 ? dto.TenantId : null, _tenantProvider) ?? 0;
             if (tenantId <= 0) return BadRequest("TenantId required.");
             dto.TenantId = tenantId;
+            if ((dto.SendPhoneToPos.HasValue || dto.MatchExistingByPhone.HasValue) && !User.IsInRole("Super Admin"))
+            {
+                dto.SendPhoneToPos = null;
+                dto.MatchExistingByPhone = null;
+            }
 
             var result = await _service.CreateAsync(dto, ct);
             if (!result.Success) return BadRequest(result.Message);
@@ -139,6 +144,9 @@ namespace Loyalty.WebAPI.Controllers
             // Kart track rejimi (iiko-ya hansı identifikator gedir) yalnız super admin tərəfindən dəyişilir
             if ((dto.CardTrackMode.HasValue || dto.CardTrackDigits.HasValue) && !User.IsInRole("Super Admin"))
                 return StatusCode(403, "Kart identifikator rejimini yalnız super admin dəyişə bilər.");
+            // Telefonun kassaya göndərilməsi / telefonla köhnə müştəri uyğunlaşdırması — yalnız super admin
+            if ((dto.SendPhoneToPos.HasValue || dto.MatchExistingByPhone.HasValue) && !User.IsInRole("Super Admin"))
+                return StatusCode(403, "Telefon ayarlarını yalnız super admin dəyişə bilər.");
             var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             var result = await _service.UpdateAsync(id, dto, tid, ct);
             if (!result.Success) return BadRequest(result.Message);

@@ -23,6 +23,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ISensitiveDataProtector _protector;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IIikoPosApiClient _iikoClient;
+        private readonly IIikoLegacyBalanceService _legacy;
         private readonly IUnitOfWork _uow;
         private readonly LoyaltyWalletDbContext _db;
         private readonly ILogger<PosSyncService> _logger;
@@ -40,6 +41,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             ISensitiveDataProtector protector,
             IHttpClientFactory httpClientFactory,
             IIikoPosApiClient iikoClient,
+            IIikoLegacyBalanceService legacy,
             IUnitOfWork uow,
             LoyaltyWalletDbContext db,
             ILogger<PosSyncService> logger)
@@ -51,6 +53,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _protector = protector;
             _httpClientFactory = httpClientFactory;
             _iikoClient = iikoClient;
+            _legacy = legacy;
             _uow = uow;
             _db = db;
             _logger = logger;
@@ -62,6 +65,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (integrations == null || !integrations.Any())
                 return;
 
+            // Telefonla axtarış rejimində yeni bağlanma oldu → sonda köhnə balansı Walvero-ya əlavə et + iiko-nu Walvero-ya bərabərləşdir
+            var phoneMatchFlow = false;
             foreach (var integration in integrations)
             {
                 // iiko üçün ApiBaseUrl məcburi deyil (client-də hardcoded)
@@ -75,7 +80,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var venues = await _venueRepo.GetActiveByIntegrationAsync(integration.Id, ct);
                     if (venues.Count > 0)
                     {
-                        try { await SyncIikoAllVenuesAsync(integration, customer, venues, ct); }
+                        try { phoneMatchFlow |= await SyncIikoAllVenuesAsync(integration, customer, venues, ct); }
                         catch (Exception ex) { _logger.LogWarning(ex, "iiko multi-venue sync FAILED: IntegrationId={IntegrationId}, CustomerId={CustomerId}", integration.Id, customer.Id); }
                         continue;
                     }
@@ -105,7 +110,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                         continue;
                     }
 
-                    var (externalId, enrolledInProgram) = await SyncToSinglePosAsync(integration, customer, ct);
+                    string? externalId;
+                    bool enrolledInProgram;
+                    IikoPhoneMatch? phoneMatch = null;
+                    if (isIiko)
+                        (externalId, enrolledInProgram, phoneMatch) = await SyncCustomerToIikoAsync(integration, customer, ct);
+                    else
+                        (externalId, enrolledInProgram) = await SyncToSinglePosAsync(integration, customer, ct);
 
                     // POS external ID qaytarmasa, öz customer ID-ni istifadə et
                     externalId ??= customer.Id.ToString();
@@ -123,8 +134,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                             RegDate = DateTime.UtcNow,
                             IsActive = true
                         };
+                        ApplyPhoneMatch(mapping, phoneMatch, externalId);
                         await _mappingRepo.AddAsync(mapping);
                         await _uow.CommitAsync(ct);
+                        if (isIiko && integration.MatchExistingByPhone) phoneMatchFlow = true;
 
                         _logger.LogInformation(
                             "POS sync OK: IntegrationId={IntegrationId}, CustomerId={CustomerId}, ExternalId={ExternalId}, EnrolledInProgram={Enrolled}",
@@ -138,6 +151,45 @@ namespace Loyalty.Business.Services.Implementations.Main
                         integration.Id, customer.Id);
                 }
             }
+
+            // Əvvəlki sync-də bağlanıb, kart o vaxt yox idi (enrollment: müştəri → sync → kart) → import indi
+            if (!phoneMatchFlow)
+                phoneMatchFlow = await _db.Set<PosCustomerMapping>().AsNoTracking()
+                    .AnyAsync(m => m.CustomerId == customer.Id && m.IsActive && m.LegacyBalance > 0 && m.LegacyImportedAt == null, ct);
+            if (phoneMatchFlow)
+                await FinalizePhoneMatchAsync(tenantId, customer.Id, ct);
+        }
+
+        /// <summary>
+        /// Telefonla bağlanmadan sonra: gözləyən köhnə iiko balansını Walvero kartına əlavə et (X+Y), sonra iiko cüzdanını
+        /// Walvero balansına bərabərləşdir (diff — cüzdan org-lar arası ortaqdırsa 2-ci org fərq görmür). Kart yoxdursa import gözləyir.
+        /// </summary>
+        public async Task FinalizePhoneMatchAsync(int tenantId, int customerId, CancellationToken ct = default)
+        {
+            try
+            {
+                await _legacy.ImportPendingAsync(tenantId, customerId, ct);
+                var points = await _db.Set<LoyaltyCard>().AsNoTracking()
+                    .Where(c => c.TenantId == tenantId && c.CustomerId == customerId && c.IsActive)
+                    .OrderByDescending(c => c.Id)
+                    .Select(c => (decimal?)c.CurrentPoints)
+                    .FirstOrDefaultAsync(ct);
+                if (points.HasValue)
+                    await SyncBalanceToPosAsync(tenantId, customerId, points.Value, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "iiko phone match finalize FAILED: CustomerId={CustomerId}", customerId);
+            }
+        }
+
+        /// <summary>Mapping-ə telefonla tapılan qonağın köhnə balansını yaz (yalnız mapping həmin iiko id-yə bağlanıbsa).</summary>
+        private static void ApplyPhoneMatch(PosCustomerMapping mapping, IikoPhoneMatch? match, string? externalId)
+        {
+            if (match == null || match.IsConflict) return;
+            if (!string.Equals(match.IikoCustomerId.ToString(), externalId, StringComparison.OrdinalIgnoreCase)) return;
+            mapping.LegacyBalance = match.Balance;
+            mapping.LegacyWalletId = match.WalletId?.ToString();
         }
 
         private async Task<(string? ExternalId, bool EnrolledInProgram)> SyncToSinglePosAsync(TenantIntegration integration, Customer customer, CancellationToken ct)
@@ -145,7 +197,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             // iiko POS üçün ayrı işləmə — iiko Cloud API endpoint-lərinə çağırış
             if (integration.IntegrationType?.Source == "iiko_pos")
             {
-                return await SyncCustomerToIikoAsync(integration, customer, ct);
+                var (iikoId, iikoEnrolled, _) = await SyncCustomerToIikoAsync(integration, customer, ct);
+                return (iikoId, iikoEnrolled);
             }
 
             var rawBaseUrl = integration.ApiBaseUrl!.TrimEnd('/');
@@ -265,17 +318,17 @@ namespace Loyalty.Business.Services.Implementations.Main
             return (ExtractExternalId(responseBody), true);
         }
 
-        private async Task<(string? ExternalId, bool EnrolledInProgram)> SyncCustomerToIikoAsync(TenantIntegration integration, Customer customer, CancellationToken ct)
+        private async Task<(string? ExternalId, bool EnrolledInProgram, IikoPhoneMatch? Match)> SyncCustomerToIikoAsync(TenantIntegration integration, Customer customer, CancellationToken ct)
         {
             if (string.IsNullOrEmpty(integration.ApiTokenEncrypted) || string.IsNullOrEmpty(integration.ExternalVenueId))
             {
                 _logger.LogWarning("iiko sync: ApiToken or ExternalVenueId is missing. IntegrationId={Id}", integration.Id);
-                return (null, false);
+                return (null, false, null);
             }
 
             var apiLogin = _protector.Decrypt(integration.ApiTokenEncrypted);
             if (string.IsNullOrEmpty(apiLogin))
-                return (null, false);
+                return (null, false, null);
 
             // iiko access token (55 dəq cache) — v2 app-auth (appId/clientSecret optional)
             var clientSecret = string.IsNullOrEmpty(integration.ApiSecretEncrypted) ? null : _protector.Decrypt(integration.ApiSecretEncrypted);
@@ -283,33 +336,44 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (string.IsNullOrEmpty(accessToken))
             {
                 _logger.LogWarning("iiko sync: access_token alınmadı. IntegrationId={Id}", integration.Id);
-                return (null, false);
+                return (null, false, null);
             }
 
             if (!Guid.TryParse(integration.ExternalVenueId, out var orgId))
             {
                 _logger.LogWarning("iiko sync: ExternalVenueId GUID deyil: {VenueId}", integration.ExternalVenueId);
-                return (null, false);
+                return (null, false, null);
             }
 
             var (cardsInfo, walveroId, primaryCard, allTracks) = await GatherIikoCardInfoAsync(integration, customer, ct);
-            return await CreateIikoCustomerInOrgAsync(customer, accessToken, orgId, integration.ExternalProgramId, cardsInfo, walveroId, primaryCard, allTracks, ct,
-                integration.AmbassadorIikoCategoryId);
+            var match = integration.MatchExistingByPhone
+                ? await _legacy.FindByPhoneAsync(integration, accessToken, orgId, customer, ct)
+                : null;
+            var (externalId, enrolled) = await CreateIikoCustomerInOrgAsync(integration, customer, accessToken, orgId, integration.ExternalProgramId,
+                cardsInfo, walveroId, primaryCard, allTracks, match, ct);
+            return (externalId, enrolled, match);
         }
 
-        /// <summary>Per-branch: hər venue org-una ayrıca müştəri yarat + per-venue mapping. Token bir dəfə alınır.</summary>
-        private async Task SyncIikoAllVenuesAsync(TenantIntegration integration, Customer customer, List<TenantIntegrationVenue> venues, CancellationToken ct)
+        /// <summary>
+        /// Per-branch: hər venue org-una ayrıca müştəri yarat + per-venue mapping. Token bir dəfə alınır.
+        /// Qaytarır: telefonla axtarış rejimində yeni mapping yarandı (köhnə balans finalize lazımdır).
+        /// </summary>
+        private async Task<bool> SyncIikoAllVenuesAsync(TenantIntegration integration, Customer customer, List<TenantIntegrationVenue> venues, CancellationToken ct)
         {
-            if (string.IsNullOrEmpty(integration.ApiTokenEncrypted)) return;
+            if (string.IsNullOrEmpty(integration.ApiTokenEncrypted)) return false;
             var accessToken = await GetIikoTokenAsync(integration, ct);
             if (string.IsNullOrEmpty(accessToken))
             {
                 _logger.LogWarning("iiko multi-venue sync: access_token alınmadı. IntegrationId={Id}", integration.Id);
-                return;
+                return false;
             }
 
             var (cardsInfo, walveroId, primaryCard, allTracks) = await GatherIikoCardInfoAsync(integration, customer, ct);
             var ensuredTracksFor = new HashSet<Guid>();
+            // iiko qonağı + cüzdan org-lar arası ortaqdır → telefonla axtarış bir dəfə (ilk yaradılacaq venue-da)
+            IikoPhoneMatch? match = null;
+            var matchSearched = false;
+            var newlyLinked = false;
 
             foreach (var venue in venues)
             {
@@ -340,8 +404,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                     continue;
                 }
 
-                var (externalId, enrolled) = await CreateIikoCustomerInOrgAsync(customer, accessToken, orgId, programId, cardsInfo, walveroId, primaryCard, allTracks, ct,
-                    integration.AmbassadorIikoCategoryId);
+                if (integration.MatchExistingByPhone && !matchSearched)
+                {
+                    match = await _legacy.FindByPhoneAsync(integration, accessToken, orgId, customer, ct);
+                    matchSearched = true;
+                }
+                var (externalId, enrolled) = await CreateIikoCustomerInOrgAsync(integration, customer, accessToken, orgId, programId,
+                    cardsInfo, walveroId, primaryCard, allTracks, match, ct);
                 externalId ??= customer.Id.ToString();
                 var mapping = new PosCustomerMapping
                 {
@@ -354,10 +423,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                     RegDate = DateTime.UtcNow,
                     IsActive = true
                 };
+                ApplyPhoneMatch(mapping, match, externalId);
                 await _mappingRepo.AddAsync(mapping);
                 await _uow.CommitAsync(ct);
+                if (integration.MatchExistingByPhone) newlyLinked = true;
                 _logger.LogInformation("iiko venue sync OK: IntegrationId={Id}, VenueRowId={VenueId}, CustomerId={CustomerId}, iikoId={IikoId}", integration.Id, venue.Id, customer.Id, externalId);
             }
+            return newlyLinked;
         }
 
         /// <summary>iiko müştərisində çatışmayan kart-track-ləri əlavə et (best-effort; mövcud olanlar keçilir).</summary>
@@ -419,17 +491,23 @@ namespace Loyalty.Business.Services.Implementations.Main
             return (cards?.ToList(), walveroId, primaryCard, allTracks);
         }
 
-        /// <summary>Bir iiko org-da müştəri yarat/yenilə + program enroll + walveroId kartı + balans topup. programId — per-org (venue) və ya parent.</summary>
+        /// <summary>
+        /// Bir iiko org-da müştəri yarat/yenilə + program enroll + walveroId kartı + balans topup. programId — per-org (venue) və ya parent.
+        /// match — telefonla tapılan mövcud qonaq (Id ilə yenilənir, yeni qonaq yaranmır); konfliktdə telefon göndərilmir.
+        /// </summary>
         private async Task<(string? ExternalId, bool EnrolledInProgram)> CreateIikoCustomerInOrgAsync(
-            Customer customer, string accessToken, Guid orgId, string? programId,
-            List<LoyaltyCard>? cards, long? walveroId, string primaryCard, List<string> allTracks, CancellationToken ct,
-            string? ambassadorCategoryId = null)
+            TenantIntegration integration, Customer customer, string accessToken, Guid orgId, string? programId,
+            List<LoyaltyCard>? cards, long? walveroId, string primaryCard, List<string> allTracks, IikoPhoneMatch? match, CancellationToken ct)
         {
+            var ambassadorCategoryId = integration.AmbassadorIikoCategoryId;
+            var conflict = match?.IsConflict == true;
             var iikoCustomer = new IikoCustomerDto
             {
+                Id = match != null && !conflict ? match.IikoCustomerId : null,
                 Name = customer.FirstName?.Trim() ?? "",
                 Surname = customer.LastName?.Trim(),
-                Phone = Helpers.PhoneNormalizer.ToE164(customer.PhoneNumber),
+                // null JSON-a yazılmır → iiko-dakı telefon dəyişmir. Konflikt: başqa Walvero müştərisinin qonağına birləşməsin
+                Phone = integration.SendPhoneToPos && !conflict ? Helpers.PhoneNormalizer.ToE164(customer.PhoneNumber) : null,
                 Email = string.IsNullOrWhiteSpace(customer.Email) ? null : customer.Email.Trim(),
                 CardTrack = primaryCard,
                 CardNumber = primaryCard,
@@ -470,7 +548,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     _logger.LogInformation("iiko sync: əlavə kart track yazılmadı (ola bilsin artıq var). CustomerId={CustomerId}, Track={Track}", customer.Id, track);
             }
 
-            if (cards != null && cards.Any())
+            // Telefonla axtarış rejimində balans sonda FinalizePhoneMatchAsync ilə gedir (köhnə balans əlavəsindən sonra, diff)
+            if (!integration.MatchExistingByPhone && cards != null && cards.Any())
             {
                 var activeCard = cards.Where(c => c.IsActive).OrderByDescending(c => c.Id).FirstOrDefault();
                 if (activeCard != null && activeCard.CurrentPoints > 0)
@@ -670,6 +749,14 @@ namespace Loyalty.Business.Services.Implementations.Main
         private async Task<bool> TopUpIikoBalanceAsync(string accessToken, Guid orgId, PosCustomerMapping mapping, string cardTrack, decimal currentPoints, int customerId,
             (string? WalletId, string? IikoProgramId) target, CancellationToken ct)
         {
+            // Telefonla bağlanmış qonağın köhnə balansı hələ Walvero-ya yazılmayıb — push etsək iiko-dakı X chargeoff olunar
+            if (IikoLegacyBalance.IsPending(mapping.LegacyBalance, mapping.LegacyImportedAt))
+            {
+                _logger.LogInformation("iiko balance sync skipped (legacy import pending): CustomerId={CustomerId}, orgId={OrgId}, Legacy={Legacy}",
+                    customerId, orgId, mapping.LegacyBalance);
+                return true;
+            }
+
             // Mapping-dəki iiko id ilə axtar (kart track dəyişmiş ola bilər), tapılmasa cardTrack ilə.
             IikoCustomerInfoResponse? customerInfo = null;
             var hasMappedId = Guid.TryParse(mapping.ExternalCustomerId, out var mappedId);

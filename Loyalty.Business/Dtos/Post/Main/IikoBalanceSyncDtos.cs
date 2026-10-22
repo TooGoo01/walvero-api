@@ -10,6 +10,16 @@ namespace Loyalty.Business.Dtos.Post.Main
         public string? LookupCardTrack { get; set; }
     }
 
+    /// <summary>
+    /// Kassada (telefonla) tapılan mövcud qonağa bağla: onun köhnə cüzdan balansı Walvero kartına ƏLAVƏ olunur,
+    /// sonra kassa = Walvero. IntegrationId boşdursa bütün iiko inteqrasiyaları.
+    /// </summary>
+    public class IikoMergeByPhoneDto
+    {
+        public int? IntegrationId { get; set; }
+        public int? CardId { get; set; }
+    }
+
     /// <summary>iiko → Walvero. VenueId null = legacy tək-org inteqrasiya.</summary>
     public class IikoPullBalanceDto
     {

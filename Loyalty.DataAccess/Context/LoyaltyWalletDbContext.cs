@@ -1155,6 +1155,8 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(ti => ti.WalletTokenHash).HasMaxLength(128);
                 entity.Property(ti => ti.WalletTokenEncrypted).HasMaxLength(2000);
                 entity.Property(ti => ti.CardTrackMode).HasConversion<int>().HasDefaultValue(PosCardTrackMode.FullBarcode);
+                entity.Property(ti => ti.SendPhoneToPos).HasDefaultValue(true).HasSentinel(true); // false insert-də açıq göndərilsin
+                entity.Property(ti => ti.MatchExistingByPhone).HasDefaultValue(false);
 
                 entity.HasIndex(ti => new { ti.TenantId, ti.IntegrationTypeId }).IsUnique();
                 entity.HasIndex(ti => ti.WalletTokenHash);
@@ -1267,6 +1269,8 @@ namespace Loyalty.DataAccess.Context
                 entity.ToTable("PosCustomerMappings");
                 entity.HasKey(pcm => pcm.Id);
                 entity.Property(pcm => pcm.ExternalCustomerId).IsRequired().HasMaxLength(100);
+                entity.Property(pcm => pcm.LegacyBalance).HasColumnType("decimal(18,2)");
+                entity.Property(pcm => pcm.LegacyWalletId).HasMaxLength(64);
                 // Venue daxil: iiko ortaq CRM-də eyni customer GUID bir neçə org-da qayıda bilər —
                 // hər venue üçün ayrıca mapping sətri lazımdır (legacy sətirlərdə venue NULL).
                 entity.HasIndex(pcm => new { pcm.TenantIntegrationId, pcm.ExternalCustomerId, pcm.TenantIntegrationVenueId }).IsUnique();

@@ -1,6 +1,7 @@
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.WebAPI.Tenancy;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -23,6 +24,7 @@ namespace Loyalty.WebAPI.Controllers
         private readonly ITenantStatusGuard _tenantStatusGuard;
         private readonly IPosCustomerIikoService _posCustomerIiko;
         private readonly IPosCustomerImportService _posCustomerImport;
+        private readonly ITenantIntegrationRepository _tenantIntegrationRepo;
         private readonly global::Hangfire.IBackgroundJobClient _jobClient;
         private readonly ILogger<PosController> _logger;
 
@@ -34,12 +36,14 @@ namespace Loyalty.WebAPI.Controllers
             ITenantStatusGuard tenantStatusGuard,
             IPosCustomerIikoService posCustomerIiko,
             IPosCustomerImportService posCustomerImport,
+            ITenantIntegrationRepository tenantIntegrationRepo,
             global::Hangfire.IBackgroundJobClient jobClient,
             ILogger<PosController> logger)
         {
             _jobClient = jobClient;
             _posCustomerIiko = posCustomerIiko;
             _posCustomerImport = posCustomerImport;
+            _tenantIntegrationRepo = tenantIntegrationRepo;
             _transactionReverseService = transactionReverseService;
             _posSessionService = posSessionService;
             _customerSyncService = customerSyncService;
@@ -223,6 +227,56 @@ namespace Loyalty.WebAPI.Controllers
             if (blocked != null) return blocked;
             var result = await _posCustomerIiko.PullBalanceAsync(tid.Value, customerId, dto, ct);
             return result.Success ? Ok(result) : BadRequest(result);
+        }
+
+        /// <summary>
+        /// Kassada (telefonla) tapılan mövcud qonağa bağla: köhnə kassa balansı Walvero kartına ƏLAVƏ olunur (X+Y),
+        /// sonra kassa cüzdanı = Walvero. Idempotent (eyni qonaq+cüzdan bir dəfə).
+        /// </summary>
+        [HttpPost("customers/{customerId:int}/iiko-merge-by-phone")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrSuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> MergeCustomerByPhone(int customerId, [FromBody] IikoMergeByPhoneDto? dto, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
+            if (!tid.HasValue || tid <= 0)
+                return BadRequest(new ServiceResult(false, "TenantId required."));
+            var blocked = await BlockIfTenantInactiveAsync(tid, ct);
+            if (blocked != null) return blocked;
+            var result = await _posCustomerIiko.MergeByPhoneAsync(tid.Value, customerId, dto ?? new IikoMergeByPhoneDto(), ct);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+
+        /// <summary>Toplu telefonla uyğunlaşdırma önizləməsi (oxuma-yalnız, səhifəli ≤100): bağlanmamış müştərilər kassada telefonla.</summary>
+        [HttpGet("iiko-phone-match/preview")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> PreviewPhoneMatch([FromQuery] int tenantId, [FromQuery] int integrationId, [FromQuery] int skip, [FromQuery] int take, CancellationToken ct)
+        {
+            if (tenantId <= 0 || integrationId <= 0)
+                return BadRequest(new ServiceResult(false, "tenantId və integrationId lazımdır."));
+            var result = await _posCustomerIiko.PreviewPhoneMatchAsync(tenantId, integrationId, skip, take <= 0 ? 50 : take, ct);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+
+        /// <summary>Toplu telefonla uyğunlaşdırma (Hangfire): bağlanmamış müştərilər sync olunur — tapılan bağlanır + köhnə balans əlavə olunur.</summary>
+        [HttpPost("iiko-phone-match/enqueue")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "SuperAdminOnly")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> EnqueuePhoneMatch([FromQuery] int tenantId, [FromQuery] int integrationId, CancellationToken ct)
+        {
+            if (tenantId <= 0 || integrationId <= 0)
+                return BadRequest(new ServiceResult(false, "tenantId və integrationId lazımdır."));
+            var integration = await _tenantIntegrationRepo.GetByIdAsync(integrationId, ct);
+            if (integration == null || integration.TenantId != tenantId)
+                return BadRequest(new ServiceResult(false, "İnteqrasiya tapılmadı."));
+            if (!integration.MatchExistingByPhone)
+                return BadRequest(new ServiceResult(false, "Əvvəlcə 'telefonla mövcud müştərini tap' ayarını aktiv edin."));
+            var blocked = await BlockIfTenantInactiveAsync(tenantId, ct);
+            if (blocked != null) return blocked;
+            var jobId = global::Hangfire.BackgroundJobClientExtensions.Enqueue<IPosCustomerIikoService>(_jobClient,
+                s => s.RunPhoneMatchBulkAsync(tenantId, integrationId, CancellationToken.None));
+            return Ok(new ServiceResult(true, new { jobId }, "Toplu uyğunlaşdırma başladıldı."));
         }
     }
 }

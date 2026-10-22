@@ -19,6 +19,8 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IPosCustomerMappingRepository _mappingRepo;
         private readonly IMonyoPosApiClient _monyoClient;
         private readonly IIikoPosApiClient _iikoClient;
+        private readonly IIikoLegacyBalanceService _legacy;
+        private readonly IPosSyncService _posSync;
         private readonly ISensitiveDataProtector _protector;
         private readonly IUnitOfWork _uow;
         private readonly LoyaltyWalletDbContext _db;
@@ -32,6 +34,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             IPosCustomerMappingRepository mappingRepo,
             IMonyoPosApiClient monyoClient,
             IIikoPosApiClient iikoClient,
+            IIikoLegacyBalanceService legacy,
+            IPosSyncService posSync,
             ISensitiveDataProtector protector,
             IUnitOfWork uow,
             LoyaltyWalletDbContext db,
@@ -44,6 +48,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             _mappingRepo = mappingRepo;
             _monyoClient = monyoClient;
             _iikoClient = iikoClient;
+            _legacy = legacy;
+            _posSync = posSync;
             _protector = protector;
             _uow = uow;
             _db = db;
@@ -163,6 +169,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             // Per-branch: hər venue (org) üçün ayrıca müştəri yarat. Venue yoxdursa — legacy tək-org (parent ExternalVenueId).
             var venues = await _venueRepo.GetActiveByIntegrationAsync(integration.Id, ct);
             var anyOk = false;
+            var phoneState = new PhoneMatchState();
 
             if (venues.Count > 0)
             {
@@ -174,14 +181,20 @@ namespace Loyalty.Business.Services.Implementations.Main
                         continue;
                     }
                     var programId = string.IsNullOrEmpty(venue.ExternalProgramId) ? integration.ExternalProgramId : venue.ExternalProgramId;
-                    var ok = await SyncCustomerToOneOrgAsync(accessToken, vOrgId, integration, venue.Id, programId, customer, customerId, actualBarcode, walveroIdStr, ct);
+                    var ok = await SyncCustomerToOneOrgAsync(accessToken, vOrgId, integration, venue.Id, programId, customer, customerId, actualBarcode, walveroIdStr, phoneState, ct);
                     anyOk = anyOk || ok;
                 }
             }
             else if (!string.IsNullOrEmpty(integration.ExternalVenueId) && Guid.TryParse(integration.ExternalVenueId, out var orgId))
             {
-                anyOk = await SyncCustomerToOneOrgAsync(accessToken, orgId, integration, null, integration.ExternalProgramId, customer, customerId, actualBarcode, walveroIdStr, ct);
+                anyOk = await SyncCustomerToOneOrgAsync(accessToken, orgId, integration, null, integration.ExternalProgramId, customer, customerId, actualBarcode, walveroIdStr, phoneState, ct);
             }
+
+            // Telefonla bağlanma (və ya əvvəldən gözləyən köhnə balans) → Walvero-ya əlavə + iiko-nu bərabərləşdir
+            var pendingLegacy = phoneState.NewlyLinked || await _db.Set<PosCustomerMapping>().AsNoTracking()
+                .AnyAsync(m => m.CustomerId == customerId && m.IsActive && m.LegacyBalance > 0 && m.LegacyImportedAt == null, ct);
+            if (anyOk && pendingLegacy)
+                await _posSync.FinalizePhoneMatchAsync(customer.TenantId, customerId, ct);
 
             return anyOk ? CustomerSyncResult.Ok(null, barcode) : CustomerSyncResult.Fail();
         }
@@ -192,7 +205,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         /// </summary>
         private async Task<bool> SyncCustomerToOneOrgAsync(
             string accessToken, Guid orgId, TenantIntegration integration, int? venueId, string? programId,
-            Customer customer, int customerId, string? actualBarcode, string? walveroIdStr, CancellationToken ct)
+            Customer customer, int customerId, string? actualBarcode, string? walveroIdStr, PhoneMatchState phoneState, CancellationToken ct)
         {
             var integrationId = integration.Id;
             var primaryTrack = PosCardTrack.Primary(integration.CardTrackMode, integration.CardTrackDigits, actualBarcode, walveroIdStr) ?? actualBarcode;
@@ -201,12 +214,23 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ? await _mappingRepo.GetByVenueAndCustomerAsync(venueId.Value, customerId, ct)
                 : await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integrationId, customerId, ct);
 
+            // Mapping yoxdur + telefonla axtarış rejimi → mövcud iiko qonağını tap (qonaq org-lar arası ortaqdır — bir dəfə)
+            if (existingMapping == null && integration.MatchExistingByPhone && !phoneState.Searched)
+            {
+                phoneState.Match = await _legacy.FindByPhoneAsync(integration, accessToken, orgId, customer, ct);
+                phoneState.Searched = true;
+            }
+            var match = existingMapping == null ? phoneState.Match : null;
+            var conflict = match?.IsConflict == true;
+
             var iikoCustomer = new IikoCustomerDto
             {
-                Id = existingMapping != null && Guid.TryParse(existingMapping.ExternalCustomerId, out var exId) ? exId : (Guid?)null,
+                Id = existingMapping != null && Guid.TryParse(existingMapping.ExternalCustomerId, out var exId) ? exId
+                    : match != null && !conflict ? match.IikoCustomerId : (Guid?)null,
                 Name = customer.FirstName,
                 Surname = customer.LastName,
-                Phone = Helpers.PhoneNormalizer.ToE164(customer.PhoneNumber),
+                // null JSON-a yazılmır → iiko-dakı telefon dəyişmir. Konflikt: başqa Walvero müştərisinin qonağına birləşməsin
+                Phone = integration.SendPhoneToPos && !conflict ? Helpers.PhoneNormalizer.ToE164(customer.PhoneNumber) : null,
                 Email = string.IsNullOrWhiteSpace(customer.Email) ? null : customer.Email.Trim(),
                 CardTrack = primaryTrack,
                 CardNumber = primaryTrack,
@@ -232,7 +256,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (existingMapping == null)
             {
                 var enrolled = await TryEnrollInIikoProgramAsync(programId, accessToken, orgId, result.Id, customerId, ct);
-                await CreateMappingAsync(integrationId, venueId, result.Id.ToString(), customerId, enrolled, ct);
+                var legacy = match != null && !conflict && match.IikoCustomerId == result.Id ? match : null;
+                await CreateMappingAsync(integrationId, venueId, result.Id.ToString(), customerId, enrolled, ct, legacy);
+                if (integration.MatchExistingByPhone) phoneState.NewlyLinked = true;
             }
             else if (!existingMapping.IsEnrolledInProgram)
             {
@@ -273,7 +299,16 @@ namespace Loyalty.Business.Services.Implementations.Main
             return added;
         }
 
-        private async Task CreateMappingAsync(int integrationId, int? venueId, string externalId, int customerId, bool isEnrolledInProgram, CancellationToken ct)
+        /// <summary>Bir sync çağırışı üçün telefonla axtarış vəziyyəti (venue-lar arası paylaşılır).</summary>
+        private sealed class PhoneMatchState
+        {
+            public bool Searched;
+            public IikoPhoneMatch? Match;
+            public bool NewlyLinked;
+        }
+
+        private async Task CreateMappingAsync(int integrationId, int? venueId, string externalId, int customerId, bool isEnrolledInProgram, CancellationToken ct,
+            IikoPhoneMatch? legacy = null)
         {
             var mapping = new PosCustomerMapping
             {
@@ -282,6 +317,9 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ExternalCustomerId = externalId,
                 CustomerId = customerId,
                 IsEnrolledInProgram = isEnrolledInProgram,
+                // Telefonla tapılan iiko qonağının köhnə balansı — sonra Walvero kartına əlavə olunur
+                LegacyBalance = legacy?.Balance,
+                LegacyWalletId = legacy?.WalletId?.ToString(),
                 RegUserId = 1,
                 RegDate = DateTime.UtcNow,
                 IsActive = true

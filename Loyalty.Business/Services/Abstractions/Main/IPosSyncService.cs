@@ -12,6 +12,12 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<bool> SyncBalanceToPosAsync(int tenantId, int customerId, decimal currentPoints, CancellationToken ct = default);
 
         /// <summary>
+        /// Telefonla mövcud iiko qonağına bağlanmadan sonra: gözləyən köhnə balansı Walvero kartına əlavə et,
+        /// sonra iiko cüzdanını Walvero balansına bərabərləşdir. Best-effort (xəta log-lanır).
+        /// </summary>
+        Task FinalizePhoneMatchAsync(int tenantId, int customerId, CancellationToken ct = default);
+
+        /// <summary>
         /// Ambassador qonaq kateqoriyası: inteqrasiyada AmbassadorIikoCategoryId varsa müştərini hər iiko org-da
         /// kateqoriyaya əlavə et (isAmbassador) və ya çıxar. Təyin edilməyibsə no-op (true).
         /// </summary>

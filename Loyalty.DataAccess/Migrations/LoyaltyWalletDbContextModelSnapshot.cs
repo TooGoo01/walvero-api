@@ -2358,6 +2358,16 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<bool>("IsEnrolledInProgram")
                         .HasColumnType("bit");
 
+                    b.Property<decimal?>("LegacyBalance")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("LegacyImportedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LegacyWalletId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<DateTime>("RegDate")
                         .HasColumnType("datetime2");
 
@@ -3938,11 +3948,21 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int?>("LoyaltyProgramId")
                         .HasColumnType("int");
 
+                    b.Property<bool>("MatchExistingByPhone")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<DateTime>("RegDate")
                         .HasColumnType("datetime2");
 
                     b.Property<int>("RegUserId")
                         .HasColumnType("int");
+
+                    b.Property<bool>("SendPhoneToPos")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<int>("TenantId")
                         .HasColumnType("int");

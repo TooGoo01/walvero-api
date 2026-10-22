@@ -43,6 +43,10 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public PosCardTrackMode? CardTrackMode { get; set; }
         /// <summary>LastDigits üçün N (4–8).</summary>
         public int? CardTrackDigits { get; set; }
+        /// <summary>iiko-ya telefon göndərilsin (default true).</summary>
+        public bool? SendPhoneToPos { get; set; }
+        /// <summary>İlk göndərişdə telefonla mövcud iiko qonağını tap + köhnə balansını Walvero-ya əlavə et (default false).</summary>
+        public bool? MatchExistingByPhone { get; set; }
     }
 
     public class TenantIntegrationCreateResult
@@ -66,6 +70,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string CardTrackLabel { get; set; } = string.Empty;
         public int? LoyaltyProgramId { get; set; }
         public string? AmbassadorIikoCategoryId { get; set; }
+        public bool SendPhoneToPos { get; set; }
+        public bool MatchExistingByPhone { get; set; }
     }
 
     public class TenantIntegrationDetailDto
@@ -88,6 +94,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public int? CardTrackDigits { get; set; }
         public string CardTrackLabel { get; set; } = string.Empty;
         public string? AmbassadorIikoCategoryId { get; set; }
+        public bool SendPhoneToPos { get; set; }
+        public bool MatchExistingByPhone { get; set; }
     }
 
     public class TenantIntegrationUpdateDto
@@ -108,6 +116,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public int? CardTrackDigits { get; set; }
         /// <summary>iiko ambassador qonaq kateqoriyası (GUID). null = dəyişmə; "" = sil.</summary>
         public string? AmbassadorIikoCategoryId { get; set; }
+        /// <summary>Telefon flag-ləri; yalnız super admin dəyişir (controller yoxlayır). null = dəyişmə.</summary>
+        public bool? SendPhoneToPos { get; set; }
+        public bool? MatchExistingByPhone { get; set; }
     }
 
     public class TenantIntegrationVenueDto

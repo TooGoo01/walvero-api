@@ -190,6 +190,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<IPosSyncService, PosSyncService>();
             services.AddScoped<IPosCustomerIikoService, PosCustomerIikoService>();
             services.AddScoped<IPosCustomerImportService, PosCustomerImportService>();
+            services.AddScoped<IIikoLegacyBalanceService, IikoLegacyBalanceService>();
             services.AddScoped<IBranchService, BranchService>();
             services.AddScoped<IRoomService, RoomService>();
 

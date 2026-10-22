@@ -17,6 +17,12 @@ namespace Loyalty.DataAccess.Entities.Main
         // Multi-org (per-branch): hansı iiko venue/org-da yaradılıb. Legacy tək-org sətirlərdə null.
         public int? TenantIntegrationVenueId { get; set; }
 
+        // Telefonla mövcud iiko qonağına bağlananda: tapılma anındakı iiko cüzdan balansı (Walvero-ya əlavə olunacaq).
+        public decimal? LegacyBalance { get; set; }
+        public string? LegacyWalletId { get; set; }
+        /// <summary>LegacyBalance Walvero kartına yazılıb. null + LegacyBalance&gt;0 = import gözləyir (balans iiko-ya push olunmur).</summary>
+        public DateTime? LegacyImportedAt { get; set; }
+
         public TenantIntegration TenantIntegration { get; set; } = null!;
         public Customer Customer { get; set; } = null!;
         public TenantIntegrationVenue? TenantIntegrationVenue { get; set; }

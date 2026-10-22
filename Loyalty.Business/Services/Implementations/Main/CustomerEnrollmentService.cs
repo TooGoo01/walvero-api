@@ -112,7 +112,7 @@ UserManager<ApplicationUser> userManager,
         /// Best-effort: iiko multi-venue sync uğursuz olsa belə enrollment
         /// context-i zəhərlənmir — kart əlavəsi/OTP təsdiqi 500 vermir.
         /// </summary>
-        private async Task SyncPosSafeAsync(int tenantId, int customerId, CancellationToken ct)
+        private async Task SyncPosSafeAsync(int tenantId, int customerId, CancellationToken ct, LoyaltyCard? trackedCard = null)
         {
             try
             {
@@ -122,6 +122,21 @@ UserManager<ApplicationUser> userManager,
                 var customer = await db.Set<Customer>().FirstOrDefaultAsync(x => x.Id == customerId, ct);
                 if (customer == null) return;
                 await sync.SyncCustomerToPosAsync(tenantId, customer, ct);
+
+                // Sync telefonla tapılan iiko qonağının köhnə balansını karta əlavə etmiş ola bilər (ayrı scope) —
+                // izlənən kart sonra Update(card) ilə köhnə balansı üstünə yazmasın
+                if (trackedCard != null && trackedCard.Id > 0)
+                {
+                    var fresh = await db.Set<LoyaltyCard>().AsNoTracking()
+                        .Where(c => c.Id == trackedCard.Id)
+                        .Select(c => new { c.CurrentPoints, c.LifetimePoints })
+                        .FirstOrDefaultAsync(ct);
+                    if (fresh != null && fresh.CurrentPoints != trackedCard.CurrentPoints)
+                    {
+                        trackedCard.CurrentPoints = fresh.CurrentPoints;
+                        trackedCard.LifetimePoints = fresh.LifetimePoints;
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -363,7 +378,7 @@ UserManager<ApplicationUser> userManager,
             }
 
             // Auto-sync customer to POS systems (ayrı scope — context zəhərlənməsin)
-            await SyncPosSafeAsync(tenantId, customer.Id, ct);
+            await SyncPosSafeAsync(tenantId, customer.Id, ct, card);
             if (signupGift > 0)
                 await _welcomeBonus.SyncPosBalanceSafeAsync(tenantId, customer.Id, card.CurrentPoints, ct);
 

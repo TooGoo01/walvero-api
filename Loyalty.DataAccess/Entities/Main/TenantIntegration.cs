@@ -41,6 +41,14 @@ namespace Loyalty.DataAccess.Entities.Main
         /// </summary>
         public string? AmbassadorIikoCategoryId { get; set; }
 
+        /// <summary>iiko müştəri create_or_update-də telefon göndərilsin (false = telefon sahəsi göndərilmir, iiko-dakı telefon dəyişmir).</summary>
+        public bool SendPhoneToPos { get; set; } = true;
+        /// <summary>
+        /// iiko-ya ilk dəfə göndərəndə əvvəlcə telefonla mövcud iiko qonağını axtar; tapılarsa həmin qonağa bağla və
+        /// onun cüzdan balansını Walvero kartına ƏLAVƏ et (sonra iiko = Walvero).
+        /// </summary>
+        public bool MatchExistingByPhone { get; set; }
+
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
 
