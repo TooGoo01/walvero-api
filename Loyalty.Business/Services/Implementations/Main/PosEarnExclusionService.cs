@@ -698,11 +698,18 @@ namespace Loyalty.Business.Services.Implementations.Main
         [AutomaticRetry(Attempts = 0)]
         public async Task RefreshAllAsync(CancellationToken ct = default)
         {
-            var ids = await _db.PosEarnExclusions.AsNoTracking()
+            // Qrup/kateqoriya istisnası və ya qazanc qaydası olan inteqrasiyalar (qrup həlli surət tələb edir)
+            var exclusionIds = await _db.PosEarnExclusions.AsNoTracking()
                 .Where(x => x.IsActive && x.Kind != PosEarnExclusionKind.Product)
                 .Select(x => x.TenantIntegrationId)
                 .Distinct()
                 .ToListAsync(ct);
+            var earnRuleIds = await _db.PosProductEarnRules.AsNoTracking()
+                .Where(x => x.IsActive && x.Kind != PosEarnExclusionKind.Product)
+                .Select(x => x.TenantIntegrationId)
+                .Distinct()
+                .ToListAsync(ct);
+            var ids = exclusionIds.Union(earnRuleIds).ToList();
 
             foreach (var id in ids)
             {

@@ -18,6 +18,7 @@ namespace Loyalty.Business.Services.Implementations.Main
     {
         private static readonly TimeSpan GuestCategoryTtl = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan DiscountTypeTtl = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan NomenclatureAutoRefreshBackoff = TimeSpan.FromMinutes(10);
 
         private readonly IIikoRulesService _rules;
         private readonly IIikoConnectionResolver _connection;
@@ -90,9 +91,21 @@ namespace Loyalty.Business.Services.Implementations.Main
             var fetched = await FetchGuestCategoriesAsync(ti, refresh, result.Errors, ct);
             result.GuestCategories = IikoCatalogMerge.GuestCategories(fetched, result.Programs);
 
-            // 3) Nomenklatura (DB cache — refresh ayrıca endpoint-lə)
+            // 3) Nomenklatura (DB cache). Surət heç çəkilməyibsə (və ya refresh) — iiko-dan çək ki, seçim pəncərələri boş qalmasın.
+            //    Uğursuz cəhd 10 dəq təkrarlanmır (apiLogin yoxdur / lisenziya bitib).
             try
             {
+                var hasSnapshot = await _db.PosNomenclatureCaches.AsNoTracking()
+                    .AnyAsync(c => c.TenantIntegrationId == integrationId, ct);
+                var tryKey = $"iiko_nom_autorefresh_{integrationId}";
+                if (refresh || (!hasSnapshot && !_cache.TryGetValue(tryKey, out _)))
+                {
+                    _cache.Set(tryKey, true, NomenclatureAutoRefreshBackoff);
+                    var r = await _nomenclature.RefreshNomenclatureAsync(integrationId, ct);
+                    if (!r.Success && !string.IsNullOrWhiteSpace(r.Message))
+                        result.Errors.Add("Nomenklatura yenilənmədi: " + r.Message);
+                }
+
                 var nom = await _nomenclature.GetNomenclatureAsync(integrationId, ct);
                 if (nom.Success) result.Nomenclature = nom.Data;
                 else if (!string.IsNullOrWhiteSpace(nom.Message)) result.Errors.Add("Nomenklatura: " + nom.Message);
