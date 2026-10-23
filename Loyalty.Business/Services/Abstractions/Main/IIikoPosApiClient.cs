@@ -83,6 +83,10 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<List<IikoGuestCategory>?> GetGuestCategoriesAsync(
             string accessToken, Guid organizationId, CancellationToken ct = default);
 
+        /// <summary>Org-un endirim növləri (`/api/1/discounts`). null = iiko cavab vermədi.</summary>
+        Task<List<IikoDiscountType>?> GetDiscountTypesAsync(
+            string accessToken, Guid organizationId, CancellationToken ct = default);
+
         /// <summary>Müştərini qonaq kateqoriyasına əlavə et (məs. ambassador).</summary>
         Task<bool> AddCustomerCategoryAsync(
             string accessToken, Guid organizationId, Guid customerId, Guid categoryId, CancellationToken ct = default);
@@ -103,6 +107,26 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public class IikoGuestCategoriesResponse
     {
         public List<IikoGuestCategory>? GuestCategories { get; set; }
+    }
+
+    public class IikoDiscountsResponse
+    {
+        public List<IikoDiscountsOrgBlock>? Discounts { get; set; }
+    }
+
+    public class IikoDiscountsOrgBlock
+    {
+        public Guid OrganizationId { get; set; }
+        public List<IikoDiscountType>? Items { get; set; }
+    }
+
+    public class IikoDiscountType
+    {
+        public Guid Id { get; set; }
+        public string? Name { get; set; }
+        public decimal? Percent { get; set; }
+        public bool IsDeleted { get; set; }
+        public bool IsManual { get; set; }
     }
 
     // ── DTOs ──

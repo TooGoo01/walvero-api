@@ -146,7 +146,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                 if (transient) throw;
             }
 
-            if (string.Equals(req.EventType, "OrderClosed", StringComparison.OrdinalIgnoreCase) && req.Items?.Count > 0)
+            if (string.Equals(req.EventType, "OrderClosed", StringComparison.OrdinalIgnoreCase)
+                && (req.Items?.Count > 0 || req.Discounts?.Count > 0))
                 await RecordObservedProductsAsync(ctx.TenantIntegrationId, req, ct);
         }
 
@@ -160,7 +161,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 using var scope = _scopeFactory.CreateScope();
                 var recorder = scope.ServiceProvider.GetRequiredService<IPosObservedProductRecorder>();
-                await recorder.RecordAsync(tenantIntegrationId, req.Items, ct);
+                if (req.Items?.Count > 0)
+                    await recorder.RecordAsync(tenantIntegrationId, req.Items, ct);
+                if (req.Discounts?.Count > 0)
+                    await recorder.RecordDiscountsAsync(tenantIntegrationId, req.Discounts, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

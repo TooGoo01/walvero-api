@@ -229,6 +229,22 @@ namespace Loyalty.Business.Services.Implementations.Main
             return response?.GuestCategories;
         }
 
+        public async Task<List<IikoDiscountType>?> GetDiscountTypesAsync(
+            string accessToken, Guid organizationId, CancellationToken ct = default)
+        {
+            var response = await PostAsync<IikoDiscountsResponse>(
+                accessToken, "/api/1/discounts", new { organizationIds = new[] { organizationId } }, ct);
+            if (response == null)
+            {
+                _logger.LogWarning("iiko discounts unavailable for organizationId={OrgId}", organizationId);
+                return null;
+            }
+            return (response.Discounts ?? new())
+                .Where(b => b.OrganizationId == organizationId || b.OrganizationId == Guid.Empty)
+                .SelectMany(b => b.Items ?? new())
+                .ToList();
+        }
+
         public Task<bool> AddCustomerCategoryAsync(
             string accessToken, Guid organizationId, Guid customerId, Guid categoryId, CancellationToken ct = default)
             => PostRawAsync(accessToken, "/api/1/loyalty/iiko/customer/category/add",

@@ -2553,6 +2553,55 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("PosNomenclatureCaches", (string)null);
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosObservedDiscount", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("DiscountTypeId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("FirstSeenAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastSeenAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TenantIntegrationId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantIntegrationId", "DiscountTypeId")
+                        .IsUnique();
+
+                    b.ToTable("PosObservedDiscounts", (string)null);
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosObservedProduct", b =>
                 {
                     b.Property<int>("Id")
@@ -5591,6 +5640,17 @@ namespace Loyalty.DataAccess.Migrations
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosNomenclatureCache", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.TenantIntegration", "TenantIntegration")
+                        .WithMany()
+                        .HasForeignKey("TenantIntegrationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("TenantIntegration");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosObservedDiscount", b =>
                 {
                     b.HasOne("Loyalty.DataAccess.Entities.Main.TenantIntegration", "TenantIntegration")
                         .WithMany()

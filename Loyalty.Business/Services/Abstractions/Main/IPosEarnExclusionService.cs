@@ -35,6 +35,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public interface IPosObservedProductRecorder
     {
         Task RecordAsync(int tenantIntegrationId, IReadOnlyList<IikoOrderItem> items, CancellationToken ct = default);
+
+        /// <summary>Sifarişdəki endirim növlərini (DiscountTypeId + ad) hədiyyə endirimi seçimi üçün yazır.</summary>
+        Task RecordDiscountsAsync(int tenantIntegrationId, IReadOnlyList<IikoOrderDiscount> discounts, CancellationToken ct = default);
     }
 
     /// <summary>Hangfire: istisnası olan iiko inteqrasiyalarının nomenklaturasını yenilə.</summary>

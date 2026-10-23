@@ -139,6 +139,65 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         // ───────────────────────── Sifarişlərdən yığılan məhsullar ─────────────────────────
 
+        public async Task RecordDiscountsAsync(int tenantIntegrationId, IReadOnlyList<IikoOrderDiscount> discounts, CancellationToken ct = default)
+        {
+            var incoming = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var d in discounts)
+            {
+                var id = Clean(d.DiscountTypeId, 100);
+                if (id == null) continue;
+                var name = Clean(d.DiscountTypeName, 300);
+                // Eyni endirim keş müddətində (12 saat) təkrar yazılmasın
+                if (_cache.TryGetValue($"obsd:{tenantIntegrationId}:{id}", out string? cached) && cached == (name ?? "")) continue;
+                incoming[id] = name;
+            }
+            if (incoming.Count == 0) return;
+
+            var ids = incoming.Keys.ToList();
+            var existing = await _db.PosObservedDiscounts
+                .Where(x => x.TenantIntegrationId == tenantIntegrationId && ids.Contains(x.DiscountTypeId))
+                .ToListAsync(ct);
+            var now = DateTime.UtcNow;
+
+            foreach (var (id, name) in incoming)
+            {
+                var row = existing.FirstOrDefault(x => string.Equals(x.DiscountTypeId, id, StringComparison.OrdinalIgnoreCase));
+                if (row == null)
+                {
+                    _db.PosObservedDiscounts.Add(new PosObservedDiscount
+                    {
+                        TenantIntegrationId = tenantIntegrationId,
+                        DiscountTypeId = id,
+                        Name = name,
+                        FirstSeenAtUtc = now,
+                        LastSeenAtUtc = now,
+                        RegUserId = 1,
+                        RegDate = now
+                    });
+                }
+                else
+                {
+                    row.Name = name ?? row.Name;
+                    row.LastSeenAtUtc = now;
+                    row.EditDate = now;
+                }
+            }
+
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex)
+            {
+                // Paralel sifariş eyni endirimi artıq yazıb (unikal indeks) — növbəti sifarişdə yenilənəcək.
+                _logger.LogDebug(ex, "Observed discounts upsert conflict. TenantIntegrationId={Id}", tenantIntegrationId);
+                return;
+            }
+
+            foreach (var (id, name) in incoming)
+                _cache.Set($"obsd:{tenantIntegrationId}:{id}", name ?? "", ObservedCacheTtl);
+        }
+
         public async Task RecordAsync(int tenantIntegrationId, IReadOnlyList<IikoOrderItem> items, CancellationToken ct = default)
         {
             var incoming = new Dictionary<string, (string? Pid, string? Num, string? Name, string? CatId, string? CatName, string Sig)>(

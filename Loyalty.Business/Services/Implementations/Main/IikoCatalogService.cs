@@ -17,6 +17,7 @@ namespace Loyalty.Business.Services.Implementations.Main
     public sealed class IikoCatalogService : IIikoCatalogService
     {
         private static readonly TimeSpan GuestCategoryTtl = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan DiscountTypeTtl = TimeSpan.FromMinutes(10);
 
         private readonly IIikoRulesService _rules;
         private readonly IIikoConnectionResolver _connection;
@@ -279,6 +280,78 @@ namespace Loyalty.Business.Services.Implementations.Main
                 EarnRuleCount = await _db.PosProductEarnRules.CountAsync(r => r.TenantIntegrationId == integrationId && r.IsActive, ct),
                 ExclusionCount = await _db.PosEarnExclusions.CountAsync(e => e.TenantIntegrationId == integrationId && e.IsActive, ct)
             };
+        }
+
+        public async Task<ServiceResult<IikoDiscountCandidatesDto>> GetDiscountCandidatesAsync(
+            int tenantId, int integrationId, bool refresh, CancellationToken ct = default)
+        {
+            var (ti, error) = await _connection.GetOwnedIikoIntegrationAsync(tenantId, integrationId, ct);
+            if (ti == null) return ServiceResult<IikoDiscountCandidatesDto>.Fail(error ?? "İnteqrasiya tapılmadı.");
+
+            var result = new IikoDiscountCandidatesDto();
+            var catalog = await FetchDiscountTypesAsync(ti, refresh, result.Errors, ct);
+            var observed = await _db.PosObservedDiscounts.AsNoTracking()
+                .Where(x => x.TenantIntegrationId == integrationId && x.IsActive)
+                .Select(x => new ObservedDiscountSource(x.DiscountTypeId, x.Name, x.LastSeenAtUtc))
+                .ToListAsync(ct);
+            var linked = await _db.PosLoyaltyDiscountTypes.AsNoTracking()
+                .Where(x => x.TenantIntegrationId == integrationId && x.IsActive)
+                .Select(x => x.ExternalDiscountTypeId)
+                .ToListAsync(ct);
+
+            result.Items = DiscountCandidateMerge.Merge(
+                catalog.Select(d => new DiscountCandidateSource(d.Id.ToString(), d.Name, d.Percent, d.IsDeleted, d.IsManual)),
+                observed,
+                linked);
+            return ServiceResult<IikoDiscountCandidatesDto>.Ok(result);
+        }
+
+        /// <summary>Org-ların endirim növləri (org başına cache). iiko cavab verməsə xəta siyahıya düşür, sifarişlərdən görünənlər qalır.</summary>
+        private async Task<List<IikoDiscountType>> FetchDiscountTypesAsync(
+            DataAccess.Entities.Main.TenantIntegration ti, bool refresh, List<string> errors, CancellationToken ct)
+        {
+            var all = new List<IikoDiscountType>();
+            var orgs = await _connection.GetOrgsAsync(ti, ct);
+            string? token = null;
+            var tokenTried = false;
+
+            foreach (var org in orgs)
+            {
+                if (!Guid.TryParse(org.OrganizationId, out var orgId)) continue;
+                var key = $"iiko_disc_{ti.Id}_{orgId:N}";
+                if (!refresh && _cache.TryGetValue(key, out List<IikoDiscountType>? cached) && cached != null)
+                {
+                    all.AddRange(cached);
+                    continue;
+                }
+
+                if (!tokenTried)
+                {
+                    tokenTried = true;
+                    string? tokenError;
+                    (token, tokenError) = await _connection.GetTokenAsync(ti, ct);
+                    if (token == null && tokenError != null) errors.Add("Kassa endirimləri: " + tokenError);
+                }
+                if (token == null) break;
+
+                try
+                {
+                    var list = await _iiko.GetDiscountTypesAsync(token, orgId, ct);
+                    if (list == null)
+                    {
+                        errors.Add($"Kassa endirimləri alınmadı ({org.BranchName ?? org.DisplayName ?? org.OrganizationId}).");
+                        continue;
+                    }
+                    _cache.Set(key, list, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = DiscountTypeTtl });
+                    all.AddRange(list);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "iiko discounts failed. IntegrationId={Id}, Org={Org}", ti.Id, orgId);
+                    errors.Add($"Kassa endirimləri alınmadı ({org.BranchName ?? org.DisplayName ?? org.OrganizationId}).");
+                }
+            }
+            return all;
         }
 
         private async Task<List<IikoGuestCategory>> FetchGuestCategoriesAsync(

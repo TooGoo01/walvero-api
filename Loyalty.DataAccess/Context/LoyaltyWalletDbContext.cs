@@ -95,6 +95,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<PosEarnExclusion> PosEarnExclusions { get; set; }
         public DbSet<PosNomenclatureCache> PosNomenclatureCaches { get; set; }
         public DbSet<PosObservedProduct> PosObservedProducts { get; set; }
+        public DbSet<PosObservedDiscount> PosObservedDiscounts { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1232,6 +1233,21 @@ namespace Loyalty.DataAccess.Context
             });
 
             // ==== POS OBSERVED PRODUCT (sifarişlərdən yığılan məhsul siyahısı) ====
+            // ==== POS OBSERVED DISCOUNT (sifarişlərdə görünən endirim növləri) ====
+            modelBuilder.Entity<PosObservedDiscount>(entity =>
+            {
+                entity.ToTable("PosObservedDiscounts");
+                entity.HasKey(x => x.Id);
+                entity.Property(x => x.DiscountTypeId).IsRequired().HasMaxLength(100);
+                entity.Property(x => x.Name).HasMaxLength(300);
+                entity.HasIndex(x => new { x.TenantIntegrationId, x.DiscountTypeId }).IsUnique();
+
+                entity.HasOne(x => x.TenantIntegration)
+                    .WithMany()
+                    .HasForeignKey(x => x.TenantIntegrationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
             modelBuilder.Entity<PosObservedProduct>(entity =>
             {
                 entity.ToTable("PosObservedProducts");

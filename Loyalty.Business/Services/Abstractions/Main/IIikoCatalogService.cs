@@ -36,6 +36,17 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult<IikoImportResultDto>> ApplyImportAsync(int tenantId, int integrationId, List<string> keys, int userId, CancellationToken ct = default);
         /// <summary>Kassa ↔ Walvero sinxron vəziyyəti (bağlı/bağlanmamış cüzdanlar, riskli rejimlər, kateqoriya, kataloq).</summary>
         Task<ServiceResult<IikoSyncStatusDto>> GetSyncStatusAsync(int tenantId, int integrationId, CancellationToken ct = default);
+        /// <summary>
+        /// Hədiyyə (loyalty) endirimi seçimi: iiko endirim siyahısı + sifarişlərdə görünən endirimlər, bağlı olanlar işarəli,
+        /// adında "Walvero" olan təklif kimi.
+        /// </summary>
+        Task<ServiceResult<IikoDiscountCandidatesDto>> GetDiscountCandidatesAsync(int tenantId, int integrationId, bool refresh, CancellationToken ct = default);
+    }
+
+    public class IikoDiscountCandidatesDto
+    {
+        public List<DiscountCandidate> Items { get; set; } = new();
+        public List<string> Errors { get; set; } = new();
     }
 
     public class IikoImportProposalDto
