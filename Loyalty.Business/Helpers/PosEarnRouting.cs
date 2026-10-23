@@ -22,6 +22,18 @@ namespace Loyalty.Business.Helpers
                     g => g.OrderByDescending(r => r.LoyaltyProgramId.HasValue).ThenByDescending(r => r.Id).First(),
                     StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// Kartın proqramına aid qaydalar (məhsul / qrup / kateqoriya): eyni (Kind, ExternalProductId) üçün proqram-spesifik
+        /// qayda ümumidən üstündür, sonra ən yeni; başqa proqramın qaydası düşür.
+        /// </summary>
+        public static List<PosProductEarnRule> SelectForProgram(IEnumerable<PosProductEarnRule> rules, int programId)
+            => rules
+                .Where(r => !string.IsNullOrWhiteSpace(r.ExternalProductId)
+                            && (r.LoyaltyProgramId == null || r.LoyaltyProgramId == programId))
+                .GroupBy(r => (r.Kind, Id: r.ExternalProductId.Trim().ToLowerInvariant()))
+                .Select(g => g.OrderByDescending(r => r.LoyaltyProgramId.HasValue).ThenByDescending(r => r.Id).First())
+                .ToList();
+
         /// <summary>OrderClosed-da Walvero qazancı hesablasınmı (PosMirror-da iiko hesablayır).</summary>
         public static bool ComputeOrderEarn(PosEarnSource source) => source != PosEarnSource.PosMirror;
 

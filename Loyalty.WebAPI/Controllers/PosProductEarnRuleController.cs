@@ -30,6 +30,16 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(result.Data);
         }
 
+        /// <summary>Toplu əlavə/yeniləmə (məhsul / qrup / kateqoriya seçimi) — açar: proqram + növ + ID.</summary>
+        [HttpPost("bulk")]
+        public async Task<IActionResult> Bulk(int tenantIntegrationId, [FromBody] List<PosProductEarnRuleCreateDto> items, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
+            var result = await _service.BulkUpsertAsync(tenantIntegrationId, items, tid, ct);
+            if (!result.Success) return BadRequest(result.Message);
+            return Ok(result.Data);
+        }
+
         [HttpGet]
         public async Task<IActionResult> List(int tenantIntegrationId, [FromQuery] int? tenantId, CancellationToken ct)
         {

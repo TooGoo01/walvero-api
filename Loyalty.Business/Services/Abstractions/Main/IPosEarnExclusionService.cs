@@ -8,6 +8,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
     public interface IEarnExclusionResolver
     {
         Task<EarnExclusionMap> GetMapAsync(int tenantIntegrationId, CancellationToken ct = default);
+
+        /// <summary>Kartın proqramı üçün məhsul/qrup/kateqoriya qazanc qaydaları (PosProductEarnRule), yaddaş keşi ilə.</summary>
+        Task<EarnRuleMap> GetEarnRuleMapAsync(int tenantIntegrationId, int programId, CancellationToken ct = default);
     }
 
     /// <summary>Super admin: bonus qazandırmayan məhsul/qrup/kateqoriya idarəsi + iiko nomenklaturası.</summary>

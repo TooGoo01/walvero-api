@@ -80,6 +80,35 @@ namespace Loyalty.Business.Services.Implementations.Main
             return map;
         }
 
+        public async Task<EarnRuleMap> GetEarnRuleMapAsync(int tenantIntegrationId, int programId, CancellationToken ct = default)
+        {
+            var rules = await _db.PosProductEarnRules.AsNoTracking()
+                .Where(r => r.TenantIntegrationId == tenantIntegrationId && r.IsActive)
+                .ToListAsync(ct);
+            if (rules.Count == 0) return EarnRuleMap.Empty;
+            if (!EarnRuleMap.NeedsNomenclature(rules)) return EarnRuleMap.Build(rules, programId, null);
+
+            // Qrup/kateqoriya qaydaları nomenklatura surəti tələb edir — imza (qaydalar + surət vaxtı) ilə keşlə
+            var stamps = await _db.PosNomenclatureCaches.AsNoTracking()
+                .Where(c => c.TenantIntegrationId == tenantIntegrationId)
+                .Select(c => new { c.Id, c.FetchedAtUtc })
+                .ToListAsync(ct);
+            var signature = new StringBuilder().Append(programId).Append('|');
+            foreach (var r in rules.OrderBy(r => r.Id))
+                signature.Append(r.Id).Append(':').Append((int)r.Kind).Append(':').Append(r.ExternalProductId).Append(':').Append(r.Code)
+                    .Append(':').Append(r.StepsPerUnit).Append(':').Append(r.PointsPerUnit).Append(':').Append(r.LoyaltyProgramId).Append('|');
+            foreach (var st in stamps.OrderBy(x => x.Id))
+                signature.Append('#').Append(st.Id).Append('@').Append(st.FetchedAtUtc.Ticks);
+            var key = $"earnr:{tenantIntegrationId}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(signature.ToString())))}";
+
+            if (_cache.TryGetValue(key, out EarnRuleMap? cached) && cached != null)
+                return cached;
+
+            var map = EarnRuleMap.Build(rules, programId, await LoadSnapshotAsync(tenantIntegrationId, ct));
+            _cache.Set(key, map, new MemoryCacheEntryOptions { SlidingExpiration = MapCacheSliding });
+            return map;
+        }
+
         private async Task<NomenclatureSnapshot?> LoadSnapshotAsync(int tenantIntegrationId, CancellationToken ct)
         {
             var rows = await _db.PosNomenclatureCaches.AsNoTracking()
@@ -649,18 +678,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                                 .Select(t => t.LoyaltyProgramId)
                                 .FirstOrDefaultAsync(ct)
                             ?? 0;
-            // OrderClosed ilə eyni seçim: proqram-spesifik qayda ümumidən üstün
-            var rulesByProduct = PosEarnRouting.RulesForProgram(rules, programId);
-
-            EarnRuleHit? RuleFor(EarnLine l)
-            {
-                PosProductEarnRule? r = null;
-                var pid = (l.ProductId ?? "").Trim();
-                var pnum = (l.ProductNumber ?? "").Trim();
-                if (pid.Length > 0) rulesByProduct.TryGetValue(pid, out r);
-                if (r == null && pnum.Length > 0) rulesByProduct.TryGetValue(pnum, out r);
-                return r == null ? null : new EarnRuleHit(r.StepsPerUnit, r.PointsPerUnit);
-            }
+            // OrderClosed ilə eyni seçim: proqram-spesifik qayda ümumidən üstün; məhsul → qrup → kateqoriya
+            var earnRuleMap = EarnRuleMap.Build(rules, programId,
+                EarnRuleMap.NeedsNomenclature(rules) ? await LoadSnapshotAsync(tenantIntegrationId, ct) : null);
+            EarnRuleHit? RuleFor(EarnLine l) => earnRuleMap.Lookup(l);
 
             var lines = request.Items
                 .Select(i => new EarnLine(i.ProductId, i.ProductNumber, i.CategoryId, i.Name, i.Amount, i.Sum))

@@ -54,120 +54,61 @@ namespace Loyalty.Business.Helpers
     /// </summary>
     public sealed class EarnExclusionMap
     {
-        public static readonly EarnExclusionMap Empty = new(
-            new Dictionary<string, EarnBlock>(), new Dictionary<string, EarnBlock>(), new Dictionary<string, EarnBlock>());
+        public static readonly EarnExclusionMap Empty = new(ProductRuleIndex<EarnBlock>.Empty);
 
-        private readonly Dictionary<string, EarnBlock> _byProductId;
-        private readonly Dictionary<string, EarnBlock> _byCode;
-        private readonly Dictionary<string, EarnBlock> _byCategoryId;
+        private readonly ProductRuleIndex<EarnBlock> _index;
 
-        private EarnExclusionMap(
-            Dictionary<string, EarnBlock> byProductId, Dictionary<string, EarnBlock> byCode, Dictionary<string, EarnBlock> byCategoryId)
-        {
-            _byProductId = byProductId;
-            _byCode = byCode;
-            _byCategoryId = byCategoryId;
-        }
+        private EarnExclusionMap(ProductRuleIndex<EarnBlock> index) => _index = index;
 
-        public bool IsEmpty => _byProductId.Count == 0 && _byCode.Count == 0 && _byCategoryId.Count == 0;
+        public bool IsEmpty => _index.IsEmpty;
 
         public static EarnExclusionMap Build(IEnumerable<EarnExclusionRule> rules, NomenclatureSnapshot? nomenclature)
-        {
-            var cmp = StringComparer.OrdinalIgnoreCase;
-            var byProductId = new Dictionary<string, EarnBlock>(cmp);
-            var byCode = new Dictionary<string, EarnBlock>(cmp);
-            var byCategoryId = new Dictionary<string, EarnBlock>(cmp);
-
-            var productRules = new Dictionary<string, EarnBlock>(cmp);
-            var productRulesByCode = new Dictionary<string, EarnBlock>(cmp);
-            var groupRules = new Dictionary<string, EarnBlock>(cmp);
-
-            foreach (var r in rules)
-            {
-                var id = (r.ExternalId ?? "").Trim();
-                if (id.Length == 0) continue;
-                var block = new EarnBlock(r.BlockCashback, r.BlockStamps, r.Kind, string.IsNullOrWhiteSpace(r.Name) ? id : r.Name.Trim());
-                switch (r.Kind)
+            => new(ProductRuleIndex<EarnBlock>.Build(
+                rules.Select(r =>
                 {
-                    case PosEarnExclusionKind.Product:
-                        productRules[id] = block;
-                        var code = (r.Code ?? "").Trim();
-                        if (code.Length > 0) productRulesByCode[code] = block;
-                        // Əl ilə daxil edilmiş qeyri-GUID ID kod kimi də uyğunlaşsın (PosProductEarnRule kimi)
-                        if (!Guid.TryParse(id, out _)) productRulesByCode.TryAdd(id, block);
-                        break;
-                    case PosEarnExclusionKind.Group:
-                        groupRules[id] = block;
-                        break;
-                    case PosEarnExclusionKind.Category:
-                        byCategoryId[id] = block;
-                        break;
-                }
-            }
-
-            foreach (var (id, b) in productRules) byProductId[id] = b;
-            foreach (var (code, b) in productRulesByCode) byCode[code] = b;
-
-            if (nomenclature != null && (groupRules.Count > 0 || byCategoryId.Count > 0 || productRules.Count > 0))
-            {
-                var parentOf = new Dictionary<string, string?>(cmp);
-                foreach (var g in nomenclature.Groups) parentOf.TryAdd(g.Id, g.ParentGroup);
-
-                foreach (var p in nomenclature.Products)
-                {
-                    var block = ResolveProduct(p, productRules, productRulesByCode, groupRules, byCategoryId, parentOf);
-                    if (block == null) continue;
-                    byProductId.TryAdd(p.Id, block);
-                    var code = (p.Code ?? "").Trim();
-                    if (code.Length > 0) byCode.TryAdd(code, block);
-                }
-            }
-
-            return new EarnExclusionMap(byProductId, byCode, byCategoryId);
-        }
-
-        private static EarnBlock? ResolveProduct(
-            NomenclatureProduct p,
-            Dictionary<string, EarnBlock> productRules,
-            Dictionary<string, EarnBlock> productRulesByCode,
-            Dictionary<string, EarnBlock> groupRules,
-            Dictionary<string, EarnBlock> categoryRules,
-            Dictionary<string, string?> parentOf)
-        {
-            if (productRules.TryGetValue(p.Id, out var b)) return b;
-            var code = (p.Code ?? "").Trim();
-            if (code.Length > 0 && productRulesByCode.TryGetValue(code, out b)) return b;
-
-            if (groupRules.Count > 0)
-            {
-                var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var g = p.ParentGroup;
-                while (!string.IsNullOrEmpty(g) && visited.Add(g))
-                {
-                    if (groupRules.TryGetValue(g, out b)) return b;
-                    g = parentOf.TryGetValue(g, out var parent) ? parent : null;
-                }
-            }
-
-            if (!string.IsNullOrEmpty(p.CategoryId) && categoryRules.TryGetValue(p.CategoryId, out b)) return b;
-            return null;
-        }
+                    var id = (r.ExternalId ?? "").Trim();
+                    var block = new EarnBlock(r.BlockCashback, r.BlockStamps, r.Kind, string.IsNullOrWhiteSpace(r.Name) ? id : r.Name.Trim());
+                    return new ProductRuleEntry<EarnBlock>(r.Kind, id, r.Code, block);
+                }),
+                nomenclature));
 
         /// <summary>Sifariş sətri üçün qayda (ağ siyahı daxil): ProductId → kod (ProductNumber) → plugin CategoryId.</summary>
         public EarnBlock? Lookup(string? productId, string? productNumber, string? categoryId)
-        {
-            var pid = (productId ?? "").Trim();
-            if (pid.Length > 0 && _byProductId.TryGetValue(pid, out var b)) return b;
-            var pnum = (productNumber ?? "").Trim();
-            if (pnum.Length > 0 && _byCode.TryGetValue(pnum, out b)) return b;
-            var cat = (categoryId ?? "").Trim();
-            if (cat.Length > 0 && _byCategoryId.TryGetValue(cat, out b)) return b;
-            return null;
-        }
+            => _index.Lookup(productId, productNumber, categoryId);
 
         /// <summary>Yalnız real blok (ən azı bir flag) — ağ siyahı nəticəsi null qaytarır.</summary>
         public EarnBlock? Blocked(string? productId, string? productNumber, string? categoryId)
             => Lookup(productId, productNumber, categoryId) is { Any: true } b ? b : null;
+    }
+
+    /// <summary>
+    /// Kartın proqramı üçün məhsul qazanc qaydaları (PosProductEarnRule): məhsul / qrup / kateqoriya → steps/points.
+    /// Proqram-spesifik qayda ümumidən (LoyaltyProgramId null) üstündür; ən spesifik uyğunluq qalib gəlir.
+    /// </summary>
+    public sealed class EarnRuleMap
+    {
+        public static readonly EarnRuleMap Empty = new(ProductRuleIndex<EarnRuleHit>.Empty);
+
+        private readonly ProductRuleIndex<EarnRuleHit> _index;
+
+        private EarnRuleMap(ProductRuleIndex<EarnRuleHit> index) => _index = index;
+
+        public bool IsEmpty => _index.IsEmpty;
+
+        public static bool NeedsNomenclature(IEnumerable<PosProductEarnRule> rules)
+            => rules.Any(r => r.Kind != PosEarnExclusionKind.Product);
+
+        public static EarnRuleMap Build(IEnumerable<PosProductEarnRule> rules, int programId, NomenclatureSnapshot? nomenclature)
+            => new(ProductRuleIndex<EarnRuleHit>.Build(
+                PosEarnRouting.SelectForProgram(rules, programId)
+                    .Select(r => new ProductRuleEntry<EarnRuleHit>(
+                        r.Kind, r.ExternalProductId.Trim(), r.Code, new EarnRuleHit(r.StepsPerUnit, r.PointsPerUnit))),
+                nomenclature));
+
+        public EarnRuleHit? Lookup(string? productId, string? productNumber, string? categoryId)
+            => _index.Lookup(productId, productNumber, categoryId);
+
+        public EarnRuleHit? Lookup(EarnLine line) => Lookup(line.ProductId, line.ProductNumber, line.CategoryId);
     }
 
     public sealed record EarnLine(string? ProductId, string? ProductNumber, string? CategoryId, string? Name, decimal Amount, decimal Sum);

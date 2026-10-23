@@ -2626,6 +2626,10 @@ namespace Loyalty.DataAccess.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Code")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime?>("EditDate")
                         .HasColumnType("datetime2");
 
@@ -2639,6 +2643,11 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
+
+                    b.Property<int>("Kind")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
 
                     b.Property<int?>("LoyaltyProgramId")
                         .HasColumnType("int");

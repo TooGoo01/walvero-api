@@ -1185,6 +1185,8 @@ namespace Loyalty.DataAccess.Context
                 entity.HasKey(pr => pr.Id);
                 entity.Property(pr => pr.ExternalProductId).IsRequired().HasMaxLength(100);
                 entity.Property(pr => pr.ProductName).HasMaxLength(200);
+                entity.Property(pr => pr.Kind).HasDefaultValue(PosEarnExclusionKind.Product);
+                entity.Property(pr => pr.Code).HasMaxLength(100);
 
                 entity.HasOne(pr => pr.TenantIntegration)
                     .WithMany()

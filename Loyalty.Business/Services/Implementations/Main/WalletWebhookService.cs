@@ -88,6 +88,25 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
 
         /// <summary>
+        /// Kartın proqramı üçün məhsul/qrup/kateqoriya qazanc qaydaları. Resolver xəta versə nomenklaturasız qurulur
+        /// (məhsul + plugin CategoryId uyğunlaşması qalır, yalnız qrup qaydaları itir) — sifariş dayanmır.
+        /// </summary>
+        private async Task<EarnRuleMap> LoadEarnRuleMapAsync(int tenantIntegrationId, int programId, CancellationToken ct)
+        {
+            try
+            {
+                return await _earnExclusions.GetEarnRuleMapAsync(tenantIntegrationId, programId, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "Earn rule map unavailable, building without nomenclature. TenantIntegrationId={Id}",
+                    tenantIntegrationId);
+                var rules = await _earnRuleRepo.GetByTenantIntegrationIdAsync(tenantIntegrationId, ct);
+                return EarnRuleMap.Build(rules, programId, null);
+            }
+        }
+
+        /// <summary>
         /// CardTemplate entity-si üzərindən tier hesablayır (RedeemController.TierResolverDouble kimi).
         /// </summary>
         private static (string tierName, int? percent, int? percentCash, string? iconUrl) ResolveTier(
@@ -488,8 +507,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return new CollectResponse { Success = true };
             }
 
-            var earnRules = await _earnRuleRepo.GetByTenantIntegrationIdAsync(tenantIntegrationId, ct);
-            var rulesByProduct = PosEarnRouting.RulesForProgram(earnRules, card.LoyaltyProgramId);
+            var earnRuleMap = await LoadEarnRuleMapAsync(tenantIntegrationId, card.LoyaltyProgramId, ct);
             // Super admin istisnaları: Monyo item-lərində qiymət yoxdur → yalnız möhür/məhsul xalı bloku tətbiq olunur.
             var exclusionMap = await LoadExclusionMapAsync(tenantIntegrationId, ct);
 
@@ -499,7 +517,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             foreach (var item in request.Items)
             {
                 var productIdStr = item.Id.ToString().Trim();
-                if (rulesByProduct.TryGetValue(productIdStr, out var rule))
+                var rule = earnRuleMap.Lookup(productIdStr, null, null);
+                if (rule != null)
                 {
                     if (exclusionMap.Blocked(productIdStr, null, null)?.BlockStamps == true)
                     {
@@ -1190,25 +1209,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             // PosMirror: qazancı iiko hesablayır, balans iiko cüzdan güzgüsü ilə gəlir — burada earn yoxdur
             if (earnBase > 0 && PosEarnRouting.ComputeOrderEarn(earnSource))
             {
-                var earnRules = await _earnRuleRepo.GetByTenantIntegrationIdAsync(context.TenantIntegrationId, ct);
-                // Kartın proqramına aid qaydalar (proqram-spesifik > ümumi)
-                var rulesByProduct = PosEarnRouting.RulesForProgram(earnRules, card.LoyaltyProgramId);
+                // Kartın proqramına aid qaydalar (proqram-spesifik > ümumi); məhsul → ən dərin qrup → kateqoriya.
+                // Məhsul qaydası ProductId (GUID) və ya ProductNumber (iiko kodu) ilə, kateqoriya plugin CategoryId ilə uyğunlaşır.
+                var earnRuleMap = await LoadEarnRuleMapAsync(context.TenantIntegrationId, card.LoyaltyProgramId, ct);
 
                 var stampEarn = EarnExclusionMath.ApplyEarnRules(
                     earnLines,
-                    line =>
-                    {
-                        // Earn rule ProductId (GUID) və ya ProductNumber (iiko nomenklatura kodu) ilə uyğunlaşa bilər.
-                        // iiko loyalty proqramları məhsulları kod (ProductNumber) ilə saxlayır.
-                        var pid = (line.ProductId ?? "").Trim();
-                        var pnum = (line.ProductNumber ?? "").Trim();
-                        PosProductEarnRule? rule = null;
-                        if (pid.Length > 0)
-                            rulesByProduct.TryGetValue(pid, out rule);
-                        if (rule == null && pnum.Length > 0)
-                            rulesByProduct.TryGetValue(pnum, out rule);
-                        return rule == null ? null : new EarnRuleHit(rule.StepsPerUnit, rule.PointsPerUnit);
-                    },
+                    earnRuleMap.Lookup,
                     line =>
                     {
                         // Redeem açarı ProductNumber (varsa) və ya GUID ola bilər — hər ikisini yoxla.
