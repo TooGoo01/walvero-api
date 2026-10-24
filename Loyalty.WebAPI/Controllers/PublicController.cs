@@ -130,6 +130,24 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(await menuPopupService.GetPublicAsync(tenantSlug, ct));
         }
 
+        /// <summary>Link seçimi səhifəsi (/l/{slug}) — dərc olunmuş, yalnız aktiv elementlər.</summary>
+        [HttpGet("link-pages/{slug}")]
+        [ResponseCache(Duration = 30, VaryByQueryKeys = new[] { "slug" })]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> GetLinkPage(string slug, [FromServices] ILinkPageService linkPages, CancellationToken ct)
+        {
+            var r = await linkPages.GetPublicBySlugAsync(slug, ct);
+            return r.Success ? Ok(r) : NotFound(r);
+        }
+
+        /// <summary>Link seçimi səhifəsində klik (anonim, fire-and-forget — həmişə 200).</summary>
+        [HttpPost("link-pages/{slug}/click/{itemId:int}")]
+        public async Task<IActionResult> TrackLinkPageClick(string slug, int itemId, [FromServices] ILinkPageService linkPages, CancellationToken ct)
+        {
+            await linkPages.TrackClickAsync(slug, itemId, ct);
+            return Ok(new ServiceResult(true));
+        }
+
         /// <summary>
         /// Get home page offers (active, ordered by newest)
         /// </summary>

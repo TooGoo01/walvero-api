@@ -96,6 +96,9 @@ namespace Loyalty.DataAccess.Context
         public DbSet<PosNomenclatureCache> PosNomenclatureCaches { get; set; }
         public DbSet<PosObservedProduct> PosObservedProducts { get; set; }
         public DbSet<PosObservedDiscount> PosObservedDiscounts { get; set; }
+        public DbSet<LinkPage> LinkPages { get; set; }
+        public DbSet<LinkPageItem> LinkPageItems { get; set; }
+        public DbSet<LinkPageClickEvent> LinkPageClickEvents { get; set; }
         #endregion
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -1233,6 +1236,51 @@ namespace Loyalty.DataAccess.Context
             });
 
             // ==== POS OBSERVED PRODUCT (sifarişlərdən yığılan məhsul siyahısı) ====
+            // ==== LINK PAGES (/l/{slug} — super admin link seçimi səhifələri) ====
+            modelBuilder.Entity<LinkPage>(entity =>
+            {
+                entity.ToTable("LinkPages");
+                entity.HasKey(x => x.Id);
+                entity.Property(x => x.Slug).IsRequired().HasMaxLength(64);
+                entity.HasIndex(x => x.Slug).IsUnique();
+                entity.Property(x => x.Title).IsRequired().HasMaxLength(150);
+                entity.Property(x => x.Subtitle).HasMaxLength(300);
+                entity.Property(x => x.LogoUrl).HasMaxLength(1000);
+                entity.Property(x => x.BackgroundImageUrl).HasMaxLength(1000);
+                entity.Property(x => x.BackgroundColor).IsRequired().HasMaxLength(9);
+                entity.Property(x => x.TextColor).IsRequired().HasMaxLength(9);
+                entity.Property(x => x.PrimaryColor).IsRequired().HasMaxLength(9);
+                entity.Property(x => x.Layout).IsRequired().HasMaxLength(20);
+                entity.Property(x => x.FooterText).HasMaxLength(150);
+            });
+            modelBuilder.Entity<LinkPageItem>(entity =>
+            {
+                entity.ToTable("LinkPageItems");
+                entity.HasKey(x => x.Id);
+                entity.Property(x => x.Label).IsRequired().HasMaxLength(120);
+                entity.Property(x => x.Description).HasMaxLength(300);
+                entity.Property(x => x.Url).IsRequired().HasMaxLength(1000);
+                entity.Property(x => x.Style).IsRequired().HasMaxLength(20);
+                entity.Property(x => x.IconUrl).HasMaxLength(1000);
+                entity.HasIndex(x => new { x.LinkPageId, x.SortOrder });
+                entity.HasOne(x => x.LinkPage)
+                    .WithMany(p => p.Items)
+                    .HasForeignKey(x => x.LinkPageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+            modelBuilder.Entity<LinkPageClickEvent>(entity =>
+            {
+                entity.ToTable("LinkPageClickEvents");
+                entity.HasKey(x => x.Id);
+                entity.HasIndex(x => new { x.LinkPageId, x.ClickedAt });
+                entity.HasIndex(x => x.LinkPageItemId);
+                // Item silinəndə event qalır (statistikada "silinib" kimi görünür); səhifə silinəndə cascade
+                entity.HasOne(x => x.LinkPage)
+                    .WithMany()
+                    .HasForeignKey(x => x.LinkPageId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
             // ==== POS OBSERVED DISCOUNT (sifarişlərdə görünən endirim növləri) ====
             modelBuilder.Entity<PosObservedDiscount>(entity =>
             {
