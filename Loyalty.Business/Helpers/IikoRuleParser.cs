@@ -49,10 +49,25 @@ namespace Loyalty.Business.Helpers
         public List<string> GuestCategoryIds { get; set; } = new();
         /// <summary>GuestNotInCategoryCondition — bu kateqoriyalar istisnadır.</summary>
         public List<string> ExcludedGuestCategoryIds { get; set; } = new();
+        /// <summary>PresentBonusAction — "N al → 1 pulsuz" hədiyyəsi (cüzdandan vahid silinir).</summary>
+        public IikoGiftSpec? Gift { get; set; }
+        /// <summary>AdditionalBonusFixedSumAction — sabit bonus (Multiplicity ilə hər uyğun məhsula).</summary>
+        public IikoFixedEarnSpec? FixedEarn { get; set; }
     }
 
     /// <summary>PaymentAction: hansı cüzdandan, hansı məhsullara, məhsul başına neçə vahid (UnitsPrice; null = məbləğlə).</summary>
     public sealed record IikoPaymentSpec(string? WalletId, decimal? UnitsPerItem, int? WhatToPay, decimal? LimitPercent, List<IikoProductMask> Masks);
+
+    /// <summary>
+    /// PresentBonusAction: hədiyyə başına cüzdandan silinən vahid (WithdrawalMultiplier), bir istifadədə neçə hədiyyə (action sayı),
+    /// hədiyyə ola bilən məhsul kodları; "*" + ölçülər = həmin ölçülü istənilən məhsul (sifarişdə ölçü gəlmir — endirim növü ilə tanınır).
+    /// </summary>
+    public sealed record IikoGiftSpec(
+        decimal CostPerGift, int GiftsPerUse, bool WithdrawFromWallet, List<string> ProductCodes, bool AnySizedProduct,
+        string? Caption, string? WalletId, decimal? MinBalance);
+
+    /// <summary>AdditionalBonusFixedSumAction + ProductInOrderCondition: uyğun məhsula (PerItem = hər ədədə) BonusPerItem vahid.</summary>
+    public sealed record IikoFixedEarnSpec(decimal BonusPerItem, bool PerItem, string? WalletId, List<IikoProductMask> Masks);
 
     public sealed record IikoProductMask(string Value, int? Type, string? ResolvedName);
     public sealed record IikoConditionSummary(string Type, string Text);
@@ -69,7 +84,12 @@ namespace Loyalty.Business.Helpers
         public const string KindFixedBonus = "fixed_bonus";
         public const string KindPayment = "payment";
         public const string KindGuestCategory = "guest_category";
+        public const string KindGift = "gift";
         public const string KindOther = "other";
+
+        /// <summary>iiko MaskType: 1 = məhsul kodu, 3 = kateqoriya adı (";" ilə bir neçə).</summary>
+        public const int MaskTypeProduct = 1;
+        public const int MaskTypeCategory = 3;
 
         public const string AllProductsText = "Bütün məhsullar";
 
@@ -108,6 +128,15 @@ namespace Loyalty.Business.Helpers
 
             foreach (var b in orderBindings)
             {
+                // Binding səviyyəli hədiyyə / sabit bonus xammalı (action + onun şərtləri eyni binding-dədir)
+                var giftActions = new List<JsonElement?>();
+                JsonElement? fixedBonus = null;
+                var conditionMasks = new List<IikoProductMask>();
+                var multiplicity = false;
+                string? caption = null;
+                string? balanceWallet = null;
+                decimal? minBalance = null;
+
                 foreach (var a in b.Actions ?? new())
                 {
                     var type = Short(a.TypeName);
@@ -116,6 +145,15 @@ namespace Loyalty.Business.Helpers
 
                     switch (type)
                     {
+                        case "PresentBonusAction":
+                            SetKind(c, KindGift, "Hədiyyə");
+                            giftActions.Add(s);
+                            break;
+                        case "AdditionalBonusFixedSumAction":
+                            SetKind(c, KindFixedBonus, "Sabit bonus");
+                            c.Sum ??= Dec(s, "BonusValue");
+                            fixedBonus ??= s;
+                            break;
                         case "RefillWalletPercentAction":
                             SetKind(c, KindCashbackPercent, "Keşbek %");
                             c.Percent ??= Dec(s, "RefillPercent");
@@ -149,13 +187,29 @@ namespace Loyalty.Business.Helpers
                     if (type == "ProductInOrderCondition")
                     {
                         hasMaskSource |= CollectMasks(s, masks, resolveName);
+                        CollectMasks(s, conditionMasks, resolveName);
+                        multiplicity |= Bool(s, "MultiplicityEnabled") == true;
                         var count = Int(s, "ItemsCount");
                         if (count.HasValue && count.Value > 1)
                             c.Conditions.Add(new IikoConditionSummary(type, $"Sifarişdə ən azı {count} məhsul"));
                         continue;
                     }
+                    if (type == "ManualCondition") caption ??= Str(s, "Caption");
+                    if (type == "WalletBalanceCondition")
+                    {
+                        balanceWallet ??= Str(s, "WalletId");
+                        minBalance ??= Dec(s, "Sum");
+                    }
                     var text = DescribeCondition(type, s, resolveName);
                     if (text != null) c.Conditions.Add(new IikoConditionSummary(type, text));
+                }
+
+                if (giftActions.Count > 0 && c.Gift == null)
+                    c.Gift = BuildGift(giftActions, caption, balanceWallet, minBalance);
+                if (fixedBonus != null && c.FixedEarn == null && Dec(fixedBonus, "BonusValue") is decimal bonus && bonus > 0)
+                {
+                    c.FixedEarn = new IikoFixedEarnSpec(bonus, multiplicity, Str(fixedBonus, "WalletId"), SplitCategoryMasks(conditionMasks));
+                    if (multiplicity && c.Kind == KindFixedBonus) c.KindLabel =$"Hər məhsula +{bonus.ToString("0.##", CultureInfo.InvariantCulture)}";
                 }
             }
 
@@ -228,6 +282,50 @@ namespace Loyalty.Business.Helpers
                     if (!target.Contains(id, StringComparer.OrdinalIgnoreCase)) target.Add(id);
             }
         }
+
+        /// <summary>Bir binding-in PresentBonusAction-ları: hər action bir hədiyyədir (İki pulsuz içki = 2 action).</summary>
+        private static IikoGiftSpec BuildGift(List<JsonElement?> actions, string? caption, string? balanceWallet, decimal? minBalance)
+        {
+            var codes = new List<string>();
+            var anySized = false;
+            decimal? cost = null;
+            var withdraw = false;
+            foreach (var s in actions)
+            {
+                cost ??= Dec(s, "WithdrawalMultiplier");
+                withdraw |= Bool(s, "WithdrawFromWalletOnUse") == true;
+                if (s == null || !s.Value.TryGetProperty("Items", out var items) || items.ValueKind != JsonValueKind.Array) continue;
+                foreach (var it in items.EnumerateArray())
+                {
+                    if (it.ValueKind != JsonValueKind.Object) continue;
+                    var code = it.TryGetProperty("Code", out var cv) && cv.ValueKind == JsonValueKind.String ? cv.GetString()?.Trim() : null;
+                    if (string.IsNullOrEmpty(code)) continue;
+                    if (code == "*") { anySized = true; continue; }
+                    if (!codes.Contains(code, StringComparer.OrdinalIgnoreCase)) codes.Add(code);
+                }
+            }
+            return new IikoGiftSpec(cost ?? 0m, actions.Count, withdraw, codes, anySized,
+                string.IsNullOrWhiteSpace(caption) ? null : caption.Trim(), balanceWallet, minBalance);
+        }
+
+        /// <summary>Kateqoriya maskası "HOT BAR;COLD BAR" → iki ayrı maska; təkrarlar atılır.</summary>
+        private static List<IikoProductMask> SplitCategoryMasks(List<IikoProductMask> masks)
+        {
+            var result = new List<IikoProductMask>();
+            foreach (var m in masks)
+            {
+                var parts = m.Type == MaskTypeCategory
+                    ? m.Value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    : new[] { m.Value.Trim() };
+                foreach (var p in parts)
+                    if (!result.Any(x => x.Type == m.Type && string.Equals(x.Value, p, StringComparison.OrdinalIgnoreCase)))
+                        result.Add(new IikoProductMask(p, m.Type, parts.Length == 1 ? m.ResolvedName : null));
+            }
+            return result;
+        }
+
+        private static bool? Bool(JsonElement? s, string prop)
+            => s != null && s.Value.TryGetProperty(prop, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False ? v.GetBoolean() : null;
 
         private static string? Str(JsonElement? s, string prop)
             => s != null && s.Value.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
@@ -319,6 +417,19 @@ namespace Loyalty.Business.Helpers
                     }
                 case "TimetableCondition":
                     return "Vaxt cədvəli";
+                case "ManualCondition":
+                    {
+                        var caption = Str(s, "Caption");
+                        return string.IsNullOrWhiteSpace(caption) ? "Kassir əl ilə seçir" : $"Kassir əl ilə seçir: «{caption.Trim()}»";
+                    }
+                case "WalletBalanceCondition":
+                    {
+                        var sum = Dec(s, "Sum");
+                        // Operation 4 = "≥" (real Cupcup: 7 vahiddə pulsuz desert); digərləri ümumi mətn
+                        return sum.HasValue
+                            ? (Int(s, "Operation") == 4 ? "Cüzdan balansı ≥ " : "Cüzdan balansı şərti: ") + sum.Value.ToString("0.##", CultureInfo.InvariantCulture)
+                            : "Cüzdan balansı şərti";
+                    }
                 case "GuestRegistrationSourceCondition":
                     return "Qeydiyyat mənbəyi: " + Ids(s, "AcceptedSources", null);
                 case "OrderSumCondition":

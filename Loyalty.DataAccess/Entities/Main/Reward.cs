@@ -23,7 +23,13 @@ namespace Loyalty.DataAccess.Entities.Main
         public bool IsActive { get; set; } = true;
         public int? StockQuantity { get; set; } // null = unlimited
 
+        /// <summary>Kassada bu hədiyyəni verən endirim növü (iiko DiscountTypeId) — sifarişdə həmin endirim = bu hədiyyə.</summary>
+        public string? PosDiscountTypeId { get; set; }
+        /// <summary>Kassa idxalının mənbə açarı ("{iiko proqram id}:{qiymət}") — təkrar idxal eyni hədiyyəni yaratmasın.</summary>
+        public string? PosSourceKey { get; set; }
+
         // Navigation Property
         public LoyaltyProgram LoyaltyProgram { get; set; } = null!;
+        public ICollection<RewardPosProduct> PosProducts { get; set; } = new List<RewardPosProduct>();
     }
 }

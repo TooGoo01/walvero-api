@@ -22,6 +22,8 @@ namespace Loyalty.DataAccess.Entities.Main
         public string? ReverseReason { get; set; }
         public string? ReferenceNumber { get; set; }
         public string? OrderId { get; set; }
+        /// <summary>Kassada verilmiş hədiyyə (Redeemed). FK yoxdur — hədiyyə silinsə də tarixçə qalır.</summary>
+        public int? RewardId { get; set; }
 
         public decimal BalanceAfter { get; set; }
         // Timezone tracking

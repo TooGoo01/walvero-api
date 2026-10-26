@@ -22,7 +22,15 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ExternalProductId { get; set; }
         public bool IsActive { get; set; }
         public int? StockQuantity { get; set; }
+        /// <summary>Kassada bu hədiyyəni verən endirim növü.</summary>
+        public string? PosDiscountTypeId { get; set; }
+        /// <summary>Kassadan idxal olunub (iiko proqramı:qiymət).</summary>
+        public string? PosSourceKey { get; set; }
+        /// <summary>Hədiyyə ola bilən kassa məhsulları.</summary>
+        public List<RewardPosProductDto> PosProducts { get; set; } = new();
     }
+
+    public sealed record RewardPosProductDto(string Code, string? Name);
 
     public class RewardCreateDto
     {
@@ -33,6 +41,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ImageUrl { get; set; }
         public string? ExternalProductId { get; set; }
         public int? StockQuantity { get; set; }
+        public string? PosDiscountTypeId { get; set; }
+        public List<RewardPosProductDto>? PosProducts { get; set; }
     }
 
     public class RewardUpdateDto
@@ -44,5 +54,9 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ExternalProductId { get; set; }
         public bool? IsActive { get; set; }
         public int? StockQuantity { get; set; }
+        /// <summary>null = dəyişmə, "" = sil.</summary>
+        public string? PosDiscountTypeId { get; set; }
+        /// <summary>null = dəyişmə; siyahı = tam əvəz (boş siyahı = hamısını sil).</summary>
+        public List<RewardPosProductDto>? PosProducts { get; set; }
     }
 }

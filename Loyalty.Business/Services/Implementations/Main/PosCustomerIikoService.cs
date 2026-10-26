@@ -343,6 +343,122 @@ namespace Loyalty.Business.Services.Implementations.Main
             return linked;
         }
 
+        /// <summary>Sinxron HTTP sorğusunda emal olunan maksimum kart (hər kart üçün kassada axtarış edilir).</summary>
+        private const int ProgramPullMaxCards = 300;
+
+        public async Task<ServiceResult<IikoProgramPullResultDto>> PullProgramBalancesAsync(int tenantId, IikoProgramPullDto dto, CancellationToken ct = default)
+        {
+            if (!Guid.TryParse(dto.WalletId, out var walletId))
+                return ServiceResult<IikoProgramPullResultDto>.Fail("Kassa cüzdanını seçin.");
+            var program = await _db.Set<LoyaltyProgram>().AsNoTracking().Include(p => p.CardTemplate)
+                .FirstOrDefaultAsync(p => p.Id == dto.ProgramId && p.TenantId == tenantId, ct);
+            if (program == null) return ServiceResult<IikoProgramPullResultDto>.Fail("Proqram tapılmadı.");
+            var templateType = program.CardTemplate?.EffectiveType ?? CardTemplateType.PointsBased;
+            var totalSteps = Math.Max(1, program.CardTemplate?.TotalSteps ?? 10);
+
+            var cards = await _db.Set<LoyaltyCard>().AsNoTracking()
+                .Where(c => c.LoyaltyProgramId == program.Id && c.IsActive)
+                .OrderBy(c => c.Id)
+                .Select(c => new { c.Id, c.CustomerId, c.CardNumber })
+                .ToListAsync(ct);
+            if (cards.Count > ProgramPullMaxCards)
+                return ServiceResult<IikoProgramPullResultDto>.Fail($"Proqramda {cards.Count} kart var — toplu yeniləmə {ProgramPullMaxCards} karta qədərdir.");
+
+            var result = new IikoProgramPullResultDto { ProgramId = program.Id, WalletId = walletId.ToString(), Applied = dto.Apply, Total = cards.Count };
+            foreach (var card in cards)
+            {
+                var row = new IikoProgramPullRowDto { CustomerId = card.CustomerId, CardId = card.Id, CardNumber = card.CardNumber };
+                result.Rows.Add(row);
+                try
+                {
+                    _db.ChangeTracker.Clear();
+                    var (ctx, error) = await LoadAsync(tenantId, card.CustomerId, card.Id, null, ct);
+                    if (ctx == null) { row.Note = error; continue; }
+                    row.Name = $"{ctx.Customer.FirstName} {ctx.Customer.LastName}".Trim();
+                    ctx.PreferredWalletId = walletId.ToString();
+                    row.OurBalance = ctx.DefaultCard?.CurrentPoints ?? 0m;
+
+                    // iiko qonağı org-lar arası ortaqdır — cüzdanı tapılan ilk venue kifayətdir
+                    var status = await BuildStatusAsync(ctx, ct);
+                    var v = status.Venues.FirstOrDefault(x => x.Found && x.SelectedWalletId == walletId && x.IikoBalance != null);
+                    if (v == null)
+                    {
+                        result.NotFound++;
+                        row.Note = status.Venues.Select(x => x.Error ?? x.LookupNote).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
+                                   ?? "Kassada tapılmadı.";
+                        continue;
+                    }
+
+                    var target = Math.Max(0m, v.IikoBalance!.Value);
+                    if (templateType == CardTemplateType.ProgressBased) target = Math.Truncate(target);
+                    row.IikoBalance = target;
+                    row.Delta = Math.Round(target - row.OurBalance, 2);
+                    if (row.Delta == 0) continue;
+                    result.Changed++;
+                    if (dto.Apply)
+                        await SetCardBalanceAsync(card.Id, templateType, totalSteps, target, $"Kassa balansından yeniləndi ({v.BranchName})", v.BranchId, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "iiko program pull: card failed. ProgramId={ProgramId}, CardId={CardId}", program.Id, card.Id);
+                    row.Note = "Xəta: " + ex.Message;
+                }
+            }
+
+            _logger.LogInformation("iiko program pull: TenantId={TenantId}, ProgramId={ProgramId}, Wallet={Wallet}, Apply={Apply}, Total={Total}, Changed={Changed}, NotFound={NotFound}",
+                tenantId, program.Id, walletId, dto.Apply, result.Total, result.Changed, result.NotFound);
+            return ServiceResult<IikoProgramPullResultDto>.Ok(result);
+        }
+
+        /// <summary>
+        /// Kart balansını mütləq dəyərə qoyur (Adjusted tx + pass push). Möhür kartında invariant saxlanır:
+        /// CurrentPoints = CompletedCycles × addım + CurrentSteps.
+        /// </summary>
+        private async Task SetCardBalanceAsync(int cardId, CardTemplateType templateType, int totalSteps, decimal target,
+            string description, int? branchId, CancellationToken ct)
+        {
+            var card = await _uow.Repository<LoyaltyCard>().GetByIdAsync(cardId, ct);
+            if (card == null) return;
+            var delta = Math.Round(target - card.CurrentPoints, 2);
+            if (delta == 0) return;
+
+            card.CurrentPoints = target;
+            if (templateType == CardTemplateType.ProgressBased)
+            {
+                var abs = (int)target;
+                card.CompletedCycles = abs / totalSteps;
+                card.CurrentSteps = abs % totalSteps;
+            }
+            if (delta > 0) card.LifetimePoints += delta;
+            card.EditDate = DateTime.UtcNow;
+            _uow.Repository<LoyaltyCard>().Update(card);
+
+            await _uow.Repository<Transaction>().AddAsync(new Transaction
+            {
+                LoyaltyCardId = card.Id,
+                Type = TransactionType.Adjusted,
+                Status = RedeemStatus.Applied,
+                Points = delta,
+                BalanceAfter = card.CurrentPoints,
+                Description = description,
+                BranchId = branchId,
+                RegDate = DateTime.UtcNow,
+                IsActive = true,
+                LocalOccurredAt = DateTimeOffset.UtcNow,
+                TimeZoneIdUsed = "UTC"
+            });
+            await _uow.CommitAsync(ct);
+
+            try
+            {
+                BackgroundJob.Enqueue<IWalletPushJob>(j => j.RunAsync(card.Id, card.LoyaltyProgramId, delta));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "iiko program pull: wallet push enqueue failed. CardId={CardId}", card.Id);
+            }
+        }
+
         /// <summary>Bu inteqrasiyada mapping-i olmayan, telefonu olan aktiv müştərilər.</summary>
         private IQueryable<Customer> UnlinkedCustomers(int tenantId, int integrationId)
             => _db.Set<Customer>().AsNoTracking()

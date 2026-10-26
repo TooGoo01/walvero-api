@@ -32,8 +32,12 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult<IikoCatalogDto>> GetCatalogAsync(int tenantId, int integrationId, bool refresh, CancellationToken ct = default);
         /// <summary>Kassa kampaniyalarından Walvero ayar təklifləri (önbaxış, heç nə yazılmır).</summary>
         Task<ServiceResult<IikoImportPreviewDto>> PreviewImportAsync(int tenantId, int integrationId, CancellationToken ct = default);
-        /// <summary>Seçilmiş təklifləri tətbiq et (önbaxış yenidən hesablanır — köhnə ekran vəziyyəti tətbiq olunmur).</summary>
-        Task<ServiceResult<IikoImportResultDto>> ApplyImportAsync(int tenantId, int integrationId, List<string> keys, int userId, CancellationToken ct = default);
+        /// <summary>
+        /// Seçilmiş təklifləri tətbiq et (önbaxış yenidən hesablanır — köhnə ekran vəziyyəti tətbiq olunmur).
+        /// discountTypes: hədiyyə təklifi açarı → admin seçdiyi kassa endirimi (təklif olunanı əvəz edir).
+        /// </summary>
+        Task<ServiceResult<IikoImportResultDto>> ApplyImportAsync(int tenantId, int integrationId, List<string> keys,
+            IReadOnlyDictionary<string, string>? discountTypes, int userId, CancellationToken ct = default);
         /// <summary>Kassa ↔ Walvero sinxron vəziyyəti (bağlı/bağlanmamış cüzdanlar, riskli rejimlər, kateqoriya, kataloq).</summary>
         Task<ServiceResult<IikoSyncStatusDto>> GetSyncStatusAsync(int tenantId, int integrationId, CancellationToken ct = default);
         /// <summary>
@@ -64,16 +68,25 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? Warning { get; set; }
         /// <summary>Eyni qrupun təklifləri alternativdir (məs. keşbeki kassa və ya Walvero hesablasın) — yalnız biri seçilə bilər.</summary>
         public string? Group { get; set; }
+        /// <summary>Hədiyyə təklifi: kassa endirimi seçilə bilər (DiscountOptions-dan); tətbiqdə DiscountTypes[Key] ilə dəyişdirilir.</summary>
+        public bool DiscountTypeSelectable { get; set; }
+        /// <summary>Təklif olunan (adla uyğunlaşan) və ya artıq bağlı endirim növü.</summary>
+        public string? DiscountTypeId { get; set; }
     }
 
-    /// <param name="Target">program | new_ambassador_program | template | integration</param>
-    public sealed record IikoImportChangeDto(string Target, int? ProgramId, string TargetName, string Field, string? From, string? To);
+    /// <param name="Target">program | new_ambassador_program | template | integration | earn_rule | reward</param>
+    /// <param name="Amount">earn_rule: məhsul başına möhür/xal.</param>
+    public sealed record IikoImportChangeDto(string Target, int? ProgramId, string TargetName, string Field, string? From, string? To, decimal? Amount = null);
 
     public class IikoImportPreviewDto
     {
         public List<IikoImportProposalDto> Proposals { get; set; } = new();
         public List<string> Errors { get; set; } = new();
+        /// <summary>Sifarişlərdə görünmüş kassa endirimləri — hədiyyə endirimi seçimi üçün.</summary>
+        public List<IikoDiscountOptionDto> DiscountOptions { get; set; } = new();
     }
+
+    public sealed record IikoDiscountOptionDto(string Id, string? Name, DateTime? LastSeenAtUtc);
 
     public class IikoImportResultDto
     {
@@ -83,7 +96,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
     }
 
     /// <param name="Level">ok | info | warn | error</param>
-    /// <param name="Area">wallet | program | category | venue | nomenclature | rules</param>
+    /// <param name="Area">wallet | program | category | venue | nomenclature | rules | reward</param>
     public sealed record IikoSyncItemDto(string Level, string Area, string Text, string? Hint);
 
     public class IikoSyncStatusDto

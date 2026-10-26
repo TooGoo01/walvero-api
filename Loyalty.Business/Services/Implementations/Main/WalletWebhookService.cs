@@ -1125,81 +1125,32 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Select(d => d.ExternalDiscountTypeId.Trim())
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            // DiscountByItem yalnız ProductId (GUID) göndərir; reward-lar ProductNumber ilə açarlanıb.
-            // Items[]-dən GUID→ProductNumber map qur, redeem açarını ProductNumber-ə (varsa) çevir.
-            var numberByProductId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var it in request.Items)
-            {
-                var gid = (it.ProductId ?? "").Trim();
-                var num = (it.ProductNumber ?? "").Trim();
-                if (gid.Length > 0 && num.Length > 0)
-                    numberByProductId[gid] = num;
-            }
+            // Aktiv hədiyyələr: kassa endirimi (PosDiscountTypeId) və ya kassa kodları (RewardPosProducts ∪ ExternalProductId)
+            var giftRewards = (await _rewardRepo.GetActiveRewardsByProgramIdAsync(card.LoyaltyProgramId, ct))
+                .Select(r => new GiftRewardInfo(r.Id, r.Name, r.PointsCost, r.PosDiscountTypeId,
+                    r.PosProducts.Select(p => p.Code)
+                        .Append(r.ExternalProductId ?? "")
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Select(x => x.Trim())
+                        .ToList()))
+                .Where(r => r.PosDiscountTypeId != null || r.ProductCodes.Count > 0)
+                .ToList();
+            var gifts = GiftRedeemMatcher.Match(
+                request.Items.Select(i => new GiftOrderLine(i.ProductId, i.ProductNumber, i.Amount)).ToList(),
+                (request.Discounts ?? new List<IikoOrderDiscount>())
+                    .Select(d => new GiftOrderDiscount(d.DiscountTypeId,
+                        (d.DiscountByItem ?? new List<IikoOrderDiscountByItem>()).Select(x => x.ProductId).ToList()))
+                    .ToList(),
+                loyaltyDiscountIds,
+                giftRewards);
+            // Hədiyyə verilmiş sətirlər qazancdan düşür (aşağıda earn rule döngüsü)
+            var redeemedUnitsByProduct = gifts.RedeemedUnitsByProduct;
+            foreach (var pid in gifts.UnmappedProductKeys.Distinct(StringComparer.OrdinalIgnoreCase))
+                _logger.LogWarning(
+                    "iiko OrderClosed: loyalty discount for productId={Pid} but no active reward mapped. OrderId={OrderId} TenantId={TenantId}",
+                    pid, request.OrderId, context.TenantId);
 
-            // Aktiv reward-lar (ProductNumber → reward). Həm precise (DiscountByItem),
-            // həm də fallback (DiscountByItem-siz) yol üçün əvvəldən yüklə.
-            var rewardByProductId = new Dictionary<string, Reward>(StringComparer.OrdinalIgnoreCase);
-            {
-                var activeRewards = await _rewardRepo.GetActiveRewardsByProgramIdAsync(card.LoyaltyProgramId, ct);
-                rewardByProductId = activeRewards
-                    .Where(r => !string.IsNullOrWhiteSpace(r.ExternalProductId))
-                    .GroupBy(r => r.ExternalProductId!.Trim(), StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-            }
-
-            var redeemedUnitsByProduct = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            bool hasLoyaltyDiscount = false;
-            foreach (var d in request.Discounts ?? new List<IikoOrderDiscount>())
-            {
-                var dtid = (d.DiscountTypeId ?? "").Trim();
-                if (string.IsNullOrEmpty(dtid) || !loyaltyDiscountIds.Contains(dtid)) continue;
-                hasLoyaltyDiscount = true;
-                foreach (var dbi in d.DiscountByItem ?? new List<IikoOrderDiscountByItem>())
-                {
-                    var pid = (dbi.ProductId ?? "").Trim();
-                    if (string.IsNullOrEmpty(pid)) continue;
-                    // Reward match üçün ProductNumber-ə çevir (tapılmasa GUID qalsın).
-                    var key = numberByProductId.TryGetValue(pid, out var num) ? num : pid;
-                    redeemedUnitsByProduct[key] = redeemedUnitsByProduct.GetValueOrDefault(key) + 1;
-                }
-            }
-
-            // Fallback: bəzi iiko konfiqləri loyalty endirimini DiscountByItem-siz göndərir
-            // (yalnız order-level DiscountSum, məs. "Донер в подарок"). Bu halda sifarişdəki
-            // reward-məhsulları pulsuz verilmiş kimi say.
-            if (hasLoyaltyDiscount && redeemedUnitsByProduct.Count == 0 && rewardByProductId.Count > 0)
-            {
-                foreach (var item in request.Items)
-                {
-                    var pnum = (item.ProductNumber ?? "").Trim();
-                    var pid = (item.ProductId ?? "").Trim();
-                    string? key = pnum.Length > 0 && rewardByProductId.ContainsKey(pnum) ? pnum
-                        : (pid.Length > 0 && rewardByProductId.ContainsKey(pid) ? pid : null);
-                    if (key == null) continue;
-                    int units = Math.Max(1, (int)item.Amount);
-                    redeemedUnitsByProduct[key] = redeemedUnitsByProduct.GetValueOrDefault(key) + units;
-                }
-            }
-
-            int totalRedeemUnits = 0;
-            decimal totalRedeemPointsCost = 0m;
-            if (redeemedUnitsByProduct.Count > 0)
-            {
-                foreach (var (pid, count) in redeemedUnitsByProduct)
-                {
-                    if (rewardByProductId.TryGetValue(pid, out var reward))
-                    {
-                        totalRedeemUnits += count;
-                        totalRedeemPointsCost += reward.PointsCost * count;
-                    }
-                    else
-                    {
-                        _logger.LogWarning(
-                            "iiko OrderClosed: loyalty discount for productId={Pid} but no active reward mapped. OrderId={OrderId} TenantId={TenantId}",
-                            pid, request.OrderId, context.TenantId);
-                    }
-                }
-            }
+            int totalRedeemUnits = gifts.TotalUnits;
 
             decimal totalEarnPoints = 0m;
             int totalEarnSteps = 0;
@@ -1382,46 +1333,51 @@ namespace Loyalty.Business.Services.Implementations.Main
                     walletRedeemSum, request.OrderId, c.Id);
             }
 
-            // === Discount-based redeem (DiscountByItem → reward consumed) ===
+            // === Discount-based redeem (kassa hədiyyəsi → Walvero kartından silinir) ===
+            // Hər hədiyyə ayrıca tranzaksiya (RewardId + ad tarixçədə). Balans yetmirsə mənfiyə düşmür — silinən 0 ola bilər
+            // (məs. kassa cüzdanında köhnə yığım var, Walvero kartında hələ yoxdur).
             decimal discountRedeemPoints = 0m;
             if (totalRedeemUnits > 0)
             {
-                if (templateType == CardTemplateType.ProgressBased)
+                foreach (var (reward, count) in gifts.Rewards)
                 {
-                    int cyclesToConsume = Math.Min(c.CompletedCycles, totalRedeemUnits);
-                    c.CompletedCycles -= cyclesToConsume;
-                    int pointsDec = cyclesToConsume * Math.Max(1, totalStepsPerCycle);
+                    decimal pointsDec;
+                    if (templateType == CardTemplateType.ProgressBased)
+                    {
+                        int cyclesToConsume = Math.Min(c.CompletedCycles, count);
+                        c.CompletedCycles -= cyclesToConsume;
+                        pointsDec = cyclesToConsume * Math.Max(1, totalStepsPerCycle);
+                    }
+                    else
+                    {
+                        pointsDec = Math.Min(c.CurrentPoints, (decimal)reward.PointsCost * count);
+                    }
                     c.CurrentPoints = Math.Max(0m, c.CurrentPoints - pointsDec);
-                    discountRedeemPoints = pointsDec;
-                }
-                else
-                {
-                    decimal cost = Math.Min(c.CurrentPoints, totalRedeemPointsCost);
-                    c.CurrentPoints = Math.Max(0m, c.CurrentPoints - cost);
-                    discountRedeemPoints = cost;
+                    discountRedeemPoints += pointsDec;
+
+                    _uow.Repository<Transaction>().Add(new Transaction
+                    {
+                        LoyaltyCardId = c.Id,
+                        Type = TransactionType.Redeemed,
+                        Status = RedeemStatus.Applied,
+                        Points = -pointsDec,
+                        Amount = 0m,
+                        // İlk hədiyyə köhnə açarla — köhnə tarixçə/hesabatlarla uyğun qalsın
+                        OrderId = idempotencyKey + ":discount_redeem" + (reward.Id == gifts.Rewards[0].Reward.Id ? "" : ":" + reward.Id),
+                        ReferenceNumber = request.OrderNumber?.ToString(),
+                        Description = $"Hədiyyə: {reward.Name} ×{count} ({src})",
+                        RewardId = reward.Id,
+                        BranchId = context.BranchId,
+                        RegUserId = 1,
+                        RegDate = DateTime.UtcNow,
+                        IsActive = true,
+                        BalanceAfter = c.CurrentPoints,
+                        LocalOccurredAt = DateTimeOffset.UtcNow,
+                        TimeZoneIdUsed = "UTC"
+                    });
                 }
 
                 _uow.Repository<LoyaltyCard>().Update(c);
-
-                var discountRedeemTx = new Transaction
-                {
-                    LoyaltyCardId = c.Id,
-                    Type = TransactionType.Redeemed,
-                    Status = RedeemStatus.Applied,
-                    Points = -discountRedeemPoints,
-                    Amount = 0m,
-                    OrderId = idempotencyKey + ":discount_redeem",
-                    ReferenceNumber = request.OrderNumber?.ToString(),
-                    Description = $"{src} discount loyalty redeem ({totalRedeemUnits} units)",
-                    BranchId = context.BranchId,
-                    RegUserId = 1,
-                    RegDate = DateTime.UtcNow,
-                    IsActive = true,
-                    BalanceAfter = c.CurrentPoints,
-                    LocalOccurredAt = DateTimeOffset.UtcNow,
-                    TimeZoneIdUsed = "UTC"
-                };
-                _uow.Repository<Transaction>().Add(discountRedeemTx);
             }
 
             bool walletRedeemApplied = walletRedeemSum > 0 && templateType != CardTemplateType.ProgressBased

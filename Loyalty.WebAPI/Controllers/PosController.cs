@@ -230,6 +230,28 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
+        /// iiko → Walvero toplu: proqramın aktiv kartları seçilmiş kassa cüzdanının balansına bərabərləşdirilir.
+        /// apply=false — önbaxış (heç nə yazılmır). ≤300 kart.
+        /// </summary>
+        [HttpPost("programs/{programId:int}/iiko-pull-balances")]
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Policy = "TenantAdminOrSuperAdmin")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> PullProgramBalancesFromIiko(int programId, [FromBody] IikoProgramPullDto dto, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
+            if (!tid.HasValue || tid <= 0)
+                return BadRequest(new ServiceResult(false, "TenantId required."));
+            if (dto.Apply)
+            {
+                var blocked = await BlockIfTenantInactiveAsync(tid, ct);
+                if (blocked != null) return blocked;
+            }
+            dto.ProgramId = programId;
+            var result = await _posCustomerIiko.PullProgramBalancesAsync(tid.Value, dto, ct);
+            return result.Success ? Ok(result) : BadRequest(result);
+        }
+
+        /// <summary>
         /// Kassada (telefonla) tapılan mövcud qonağa bağla: köhnə kassa balansı Walvero kartına ƏLAVƏ olunur (X+Y),
         /// sonra kassa cüzdanı = Walvero. Idempotent (eyni qonaq+cüzdan bir dəfə).
         /// </summary>

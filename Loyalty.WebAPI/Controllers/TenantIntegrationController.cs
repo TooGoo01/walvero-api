@@ -305,7 +305,8 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(result.Data);
         }
 
-        public sealed record IikoImportApplyRequest(List<string> Keys);
+        /// <param name="DiscountTypes">Hədiyyə təklifi açarı → seçilmiş kassa endirimi.</param>
+        public sealed record IikoImportApplyRequest(List<string> Keys, Dictionary<string, string>? DiscountTypes = null);
 
         /// <summary>Seçilmiş idxal təkliflərini tətbiq et (proqram/şablon/inteqrasiya ayarları; lazım olsa ambassador proqramı yaradılır).</summary>
         [HttpPost("{id}/iiko/import/apply")]
@@ -315,7 +316,7 @@ namespace Loyalty.WebAPI.Controllers
             var tid = this.ScopedTenantId(tenantId, _tenantProvider);
             if (!tid.HasValue || tid <= 0) return BadRequest("TenantId required.");
             var userId = int.TryParse(_tenantProvider.CurrentUserId, out var uid) ? uid : 1;
-            var result = await _iikoCatalog.ApplyImportAsync(tid.Value, id, request?.Keys ?? new List<string>(), userId, ct);
+            var result = await _iikoCatalog.ApplyImportAsync(tid.Value, id, request?.Keys ?? new List<string>(), request?.DiscountTypes, userId, ct);
             if (!result.Success) return BadRequest(result.Message);
             return Ok(result.Data);
         }

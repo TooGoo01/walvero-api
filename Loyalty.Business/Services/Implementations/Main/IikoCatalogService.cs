@@ -126,15 +126,17 @@ namespace Loyalty.Business.Services.Implementations.Main
             var catalog = await GetCatalogAsync(tenantId, integrationId, refresh: false, ct);
             if (!catalog.Success || catalog.Data == null)
                 return ServiceResult<IikoImportPreviewDto>.Fail(catalog.Message ?? "Kassa kataloqu alınmadı.");
-            var state = await LoadWalveroStateAsync(tenantId, integrationId, ct);
+            var state = await LoadWalveroStateAsync(tenantId, integrationId, ct, catalog.Data.Nomenclature);
             return ServiceResult<IikoImportPreviewDto>.Ok(new IikoImportPreviewDto
             {
                 Proposals = IikoImportPlanner.Plan(catalog.Data.Programs, state),
-                Errors = catalog.Data.Errors
+                Errors = catalog.Data.Errors,
+                DiscountOptions = state.ObservedDiscounts
             });
         }
 
-        public async Task<ServiceResult<IikoImportResultDto>> ApplyImportAsync(int tenantId, int integrationId, List<string> keys, int userId, CancellationToken ct = default)
+        public async Task<ServiceResult<IikoImportResultDto>> ApplyImportAsync(int tenantId, int integrationId, List<string> keys,
+            IReadOnlyDictionary<string, string>? discountTypes, int userId, CancellationToken ct = default)
         {
             if (keys == null || keys.Count == 0)
                 return ServiceResult<IikoImportResultDto>.Fail("Heç bir təklif seçilməyib.");
@@ -156,6 +158,28 @@ namespace Loyalty.Business.Services.Implementations.Main
                 return ServiceResult<IikoImportResultDto>.Ok(result);
             if (selected.Where(p => p.Group != null).GroupBy(p => p.Group).Any(g => g.Count() > 1))
                 return ServiceResult<IikoImportResultDto>.Fail("Eyni kampaniya üçün yalnız bir variant seçilə bilər (kassa və ya Walvero hesablasın).");
+
+            // Hədiyyə endirimi: admin seçimi təklifi əvəz edir; yalnız sifarişlərdə görünmüş endirimlər qəbul olunur
+            var discountOptions = preview.Data.DiscountOptions.Select(d => d.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var chosenDiscount = new Dictionary<string, string?>();
+            foreach (var p in selected.Where(p => p.Kind == IikoImportPlanner.KindGiftReward))
+            {
+                string? chosen = p.DiscountTypeId;
+                if (discountTypes != null && discountTypes.TryGetValue(p.Key, out var picked) && !string.IsNullOrWhiteSpace(picked))
+                {
+                    if (!discountOptions.Contains(picked.Trim()))
+                        return ServiceResult<IikoImportResultDto>.Fail("Seçilmiş kassa endirimi sifarişlərdə görünən endirimlər arasında yoxdur.");
+                    chosen = picked.Trim();
+                }
+                if (chosen == null)
+                    return ServiceResult<IikoImportResultDto>.Fail($"«{p.Title}»: kassa endirimini seçin — onsuz hədiyyə sifarişdə tanınmır.");
+                chosenDiscount[p.Key] = chosen;
+            }
+            var productNames = await LoadObservedProductNamesAsync(integrationId,
+                selected.SelectMany(p => p.Changes)
+                    .Where(c => c.Target == IikoImportPlanner.TargetReward && c.Field == IikoImportPlanner.FieldProducts)
+                    .SelectMany(c => (c.To ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)),
+                ct);
 
             // EnableRetryOnFailure açıqdır → əl ilə transaction execution strategy içində olmalıdır
             var now = DateTime.UtcNow;
@@ -210,8 +234,36 @@ namespace Loyalty.Business.Services.Implementations.Main
                             integration.UpdatedAt = now;
                             break;
                         }
+                        case IikoImportPlanner.TargetEarnRule:
+                        {
+                            var prog = await _db.LoyaltyPrograms.Include(x => x.CardTemplate)
+                                .FirstAsync(x => x.Id == change.ProgramId && x.TenantId == tenantId, ct);
+                            var units = (int)Math.Max(1, Math.Round(change.Amount ?? 1m));
+                            // Möhür kartında addım, xal kartında (RewardAsPoints daxil) xal
+                            var stamps = prog.CardTemplate?.EffectiveType == CardTemplateType.ProgressBased;
+                            var isCategory = change.Field == IikoImportPlanner.FieldCategory;
+                            _db.PosProductEarnRules.Add(new PosProductEarnRule
+                            {
+                                TenantIntegrationId = integrationId,
+                                LoyaltyProgramId = prog.Id,
+                                Kind = isCategory ? PosEarnExclusionKind.Category : PosEarnExclusionKind.Product,
+                                ExternalProductId = change.To!,
+                                Code = isCategory ? null : change.To,
+                                ProductName = change.TargetName,
+                                StepsPerUnit = stamps ? units : 0,
+                                PointsPerUnit = stamps ? 0 : units,
+                                IsActive = true,
+                                RegUserId = userId,
+                                RegDate = now
+                            });
+                            break;
+                        }
                     }
                 }
+
+                var rewardChanges = proposal.Changes.Where(c => c.Target == IikoImportPlanner.TargetReward).ToList();
+                if (rewardChanges.Count > 0)
+                    await ApplyRewardChangesAsync(tenantId, rewardChanges, chosenDiscount.GetValueOrDefault(proposal.Key), productNames, userId, now, ct);
                 result.Applied.Add(proposal.Key);
             }
 
@@ -235,6 +287,71 @@ namespace Loyalty.Business.Services.Implementations.Main
             return ServiceResult<IikoSyncStatusDto>.Ok(new IikoSyncStatusDto { GeneratedAtUtc = DateTime.UtcNow, Level = level, Items = items });
         }
 
+        /// <summary>
+        /// Bir hədiyyə təklifinin reward dəyişiklikləri: RewardId varsa mövcudu yeniləyir, yoxdursa yaradır.
+        /// Products = əlavə olunacaq kassa kodları; endirim admin seçimi (və ya təklif) ilə.
+        /// </summary>
+        private async Task ApplyRewardChangesAsync(int tenantId, List<IikoImportChangeDto> changes, string? discountTypeId,
+            IReadOnlyDictionary<string, string> productNames, int userId, DateTime now, CancellationToken ct)
+        {
+            string? Value(string field) => changes.FirstOrDefault(c => c.Field == field)?.To;
+            var programId = changes[0].ProgramId!.Value;
+            var program = await _db.LoyaltyPrograms.FirstAsync(x => x.Id == programId && x.TenantId == tenantId, ct);
+
+            Reward reward;
+            if (int.TryParse(Value(IikoImportPlanner.FieldRewardId), out var rewardId))
+            {
+                reward = await _db.Rewards.Include(r => r.PosProducts)
+                    .FirstAsync(r => r.Id == rewardId && r.LoyaltyProgramId == program.Id, ct);
+                reward.EditDate = now;
+                reward.EditUserId = userId;
+            }
+            else
+            {
+                reward = new Reward
+                {
+                    LoyaltyProgramId = program.Id,
+                    Name = (Value(IikoImportPlanner.FieldName) ?? "Hədiyyə").Trim(),
+                    PosSourceKey = Value(IikoImportPlanner.FieldSourceKey),
+                    IsActive = true,
+                    RegUserId = userId,
+                    RegDate = now
+                };
+                _db.Rewards.Add(reward);
+            }
+
+            if (int.TryParse(Value(IikoImportPlanner.FieldPointsCost), out var cost)) reward.PointsCost = cost;
+            if (!string.IsNullOrWhiteSpace(discountTypeId)) reward.PosDiscountTypeId = discountTypeId;
+
+            var codes = (Value(IikoImportPlanner.FieldProducts) ?? "")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            foreach (var code in codes)
+            {
+                if (reward.PosProducts.Any(p => string.Equals(p.Code, code, StringComparison.OrdinalIgnoreCase))) continue;
+                reward.PosProducts.Add(new RewardPosProduct
+                {
+                    Code = code,
+                    ProductName = productNames.GetValueOrDefault(code),
+                    IsActive = true,
+                    RegUserId = userId,
+                    RegDate = now
+                });
+            }
+        }
+
+        /// <summary>Kassa kodu → məhsul adı (sifarişlərdə görünən məhsullardan).</summary>
+        private async Task<IReadOnlyDictionary<string, string>> LoadObservedProductNamesAsync(int integrationId, IEnumerable<string> codes, CancellationToken ct)
+        {
+            var list = codes.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (list.Count == 0) return new Dictionary<string, string>();
+            var rows = await _db.PosObservedProducts.AsNoTracking()
+                .Where(p => p.TenantIntegrationId == integrationId && p.ProductNumber != null && list.Contains(p.ProductNumber) && p.Name != null)
+                .Select(p => new { p.ProductNumber, p.Name })
+                .ToListAsync(ct);
+            return rows.GroupBy(r => r.ProductNumber!, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().Name!, StringComparer.OrdinalIgnoreCase);
+        }
+
         private static void ApplyProgramField(LoyaltyProgram prog, string field, string? value)
         {
             switch (field)
@@ -252,7 +369,8 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
 
         /// <summary>Ambassador proqramı + xal kartı şablonu (valyuta «məhsul»); dizayn adi proqramın şablonundan kopyalanır.</summary>
-        private async Task<WalveroPosState> LoadWalveroStateAsync(int tenantId, int integrationId, CancellationToken ct)
+        private async Task<WalveroPosState> LoadWalveroStateAsync(int tenantId, int integrationId, CancellationToken ct,
+            PosNomenclatureDto? nomenclature = null)
         {
             var integration = await _db.TenantIntegrations.AsNoTracking()
                 .Where(t => t.Id == integrationId && t.TenantId == tenantId)
@@ -267,9 +385,42 @@ namespace Loyalty.Business.Services.Implementations.Main
                     TemplateType = p.CardTemplate != null ? (CardTemplateType?)p.CardTemplate.TemplateType : null,
                     RewardAsPoints = p.CardTemplate != null && p.CardTemplate.RewardAsPoints,
                     BronzePercent = p.CardTemplate != null ? p.CardTemplate.BronzePercent : null,
-                    Currency = p.CardTemplate != null ? p.CardTemplate.Currency : null
+                    Currency = p.CardTemplate != null ? p.CardTemplate.Currency : null,
+                    TotalSteps = p.CardTemplate != null ? (int?)p.CardTemplate.TotalSteps : null
                 })
                 .ToListAsync(ct);
+            var programIds = programs.Select(p => p.Id).ToList();
+
+            var earnRules = await _db.PosProductEarnRules.AsNoTracking()
+                .Where(r => r.TenantIntegrationId == integrationId && r.IsActive)
+                .Select(r => new WalveroEarnRuleState(r.LoyaltyProgramId, r.Kind, r.ExternalProductId, r.Code))
+                .ToListAsync(ct);
+            var rewards = await _db.Rewards.AsNoTracking()
+                .Where(r => programIds.Contains(r.LoyaltyProgramId) && r.PosSourceKey != null)
+                .Select(r => new WalveroRewardState
+                {
+                    Id = r.Id, ProgramId = r.LoyaltyProgramId, Name = r.Name, PointsCost = r.PointsCost,
+                    PosSourceKey = r.PosSourceKey, PosDiscountTypeId = r.PosDiscountTypeId,
+                    ProductCodes = r.PosProducts.Select(p => p.Code).ToList()
+                })
+                .ToListAsync(ct);
+            var observedDiscounts = await _db.PosObservedDiscounts.AsNoTracking()
+                .Where(x => x.TenantIntegrationId == integrationId && x.IsActive)
+                .OrderByDescending(x => x.LastSeenAtUtc)
+                .Select(x => new IikoDiscountOptionDto(x.DiscountTypeId, x.Name, x.LastSeenAtUtc))
+                .ToListAsync(ct);
+
+            // Kateqoriya adı → ID: nomenklatura surəti + sifarişlərdə görünən məhsulların kateqoriyaları
+            var categoryIdByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in nomenclature?.Categories ?? new())
+                if (!string.IsNullOrWhiteSpace(c.Name)) categoryIdByName.TryAdd(c.Name.Trim(), c.Id);
+            var observedCategories = await _db.PosObservedProducts.AsNoTracking()
+                .Where(p => p.TenantIntegrationId == integrationId && p.CategoryId != null && p.CategoryName != null)
+                .Select(p => new { p.CategoryId, p.CategoryName })
+                .Distinct()
+                .ToListAsync(ct);
+            foreach (var c in observedCategories)
+                categoryIdByName.TryAdd(c.CategoryName!.Trim(), c.CategoryId!);
 
             return new WalveroPosState
             {
@@ -288,10 +439,15 @@ namespace Loyalty.Business.Services.Implementations.Main
                     PosWalletId = p.PosWalletId,
                     PosExternalProgramId = p.PosExternalProgramId,
                     BronzePercent = p.BronzePercent,
-                    Currency = p.Currency
+                    Currency = p.Currency,
+                    TotalSteps = p.TotalSteps
                 }).ToList(),
-                EarnRuleCount = await _db.PosProductEarnRules.CountAsync(r => r.TenantIntegrationId == integrationId && r.IsActive, ct),
-                ExclusionCount = await _db.PosEarnExclusions.CountAsync(e => e.TenantIntegrationId == integrationId && e.IsActive, ct)
+                EarnRuleCount = earnRules.Count,
+                ExclusionCount = await _db.PosEarnExclusions.CountAsync(e => e.TenantIntegrationId == integrationId && e.IsActive, ct),
+                EarnRules = earnRules,
+                Rewards = rewards,
+                ObservedDiscounts = observedDiscounts,
+                CategoryIdByName = categoryIdByName
             };
         }
 

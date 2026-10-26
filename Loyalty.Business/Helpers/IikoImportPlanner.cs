@@ -1,4 +1,5 @@
 using Loyalty.Business.Services.Abstractions.Main;
+using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Enums;
 
 namespace Loyalty.Business.Helpers
@@ -14,6 +15,27 @@ namespace Loyalty.Business.Helpers
         public List<WalveroProgramState> Programs { get; set; } = new();
         public int EarnRuleCount { get; set; }
         public int ExclusionCount { get; set; }
+
+        // ── Hədiyyə idxalı üçün ──
+        public List<WalveroEarnRuleState> EarnRules { get; set; } = new();
+        public List<WalveroRewardState> Rewards { get; set; } = new();
+        /// <summary>Sifarişlərdə görünmüş kassa endirimləri (hədiyyə endiriminin adla təklifi).</summary>
+        public List<IikoDiscountOptionDto> ObservedDiscounts { get; set; } = new();
+        /// <summary>Kassa kateqoriyası adı → ID (nomenklatura + sifarişlərdən), böyük/kiçik hərf fərqsiz.</summary>
+        public Dictionary<string, string> CategoryIdByName { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public sealed record WalveroEarnRuleState(int? ProgramId, PosEarnExclusionKind Kind, string ExternalId, string? Code);
+
+    public sealed class WalveroRewardState
+    {
+        public int Id { get; set; }
+        public int ProgramId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public int PointsCost { get; set; }
+        public string? PosSourceKey { get; set; }
+        public string? PosDiscountTypeId { get; set; }
+        public List<string> ProductCodes { get; set; } = new();
     }
 
     public sealed class WalveroProgramState
@@ -27,6 +49,8 @@ namespace Loyalty.Business.Helpers
         public string? PosExternalProgramId { get; set; }
         public int? BronzePercent { get; set; }
         public string? Currency { get; set; }
+        /// <summary>Möhür kartında hədiyyəyə qədər addım sayı.</summary>
+        public int? TotalSteps { get; set; }
     }
 
     /// <summary>
@@ -39,11 +63,26 @@ namespace Loyalty.Business.Helpers
         public const string KindUnitPayment = "unit_payment";
         public const string KindInfo = "info";
         public const string KindUnsupported = "unsupported";
+        public const string KindGiftEarn = "gift_earn";
+        public const string KindGiftReward = "gift_reward";
 
         public const string TargetProgram = "program";
         public const string TargetNewAmbassadorProgram = "new_ambassador_program";
         public const string TargetTemplate = "template";
         public const string TargetIntegration = "integration";
+        public const string TargetEarnRule = "earn_rule";
+        public const string TargetReward = "reward";
+
+        /// <summary>earn_rule dəyişikliyinin Field-i = qayda növü.</summary>
+        public const string FieldCategory = "Category";
+        public const string FieldProduct = "Product";
+        /// <summary>reward dəyişikliklərinin Field-ləri (bir təklifin reward dəyişiklikləri bir hədiyyəni təsvir edir).</summary>
+        public const string FieldRewardId = "RewardId";
+        public const string FieldName = "Name";
+        public const string FieldPointsCost = "PointsCost";
+        public const string FieldProducts = "Products";
+        public const string FieldDiscountType = "PosDiscountTypeId";
+        public const string FieldSourceKey = "PosSourceKey";
 
         public const string UnitCurrency = "məhsul";
 
@@ -62,8 +101,15 @@ namespace Loyalty.Business.Helpers
 
             foreach (var ip in iikoPrograms.Where(p => p.IsActive))
             {
+                // 0) "N al → 1 pulsuz": hədiyyə kampaniyaları + eyni proqramın sabit bonus (qazanc) kampaniyaları dəst kimi
+                var giftCampaigns = ip.Campaigns.Where(c => c.IsActive && c.Gift is { CostPerGift: > 0 }).ToList();
+                if (giftCampaigns.Count > 0)
+                    proposals.AddRange(PlanGiftSet(ip, giftCampaigns, publicTarget, w));
+
                 foreach (var c in ip.Campaigns.Where(c => c.IsActive))
                 {
+                    if (giftCampaigns.Count > 0 && (c.Gift != null || c.FixedEarn != null)) continue;
+
                     var walletId = c.Payment?.WalletId ?? c.WalletIds.FirstOrDefault() ?? ip.WalletId;
                     var label = $"{ip.Name} → {c.Name}";
 
@@ -192,6 +238,160 @@ namespace Loyalty.Business.Helpers
             return proposals;
         }
 
+        /// <summary>
+        /// Bir kassa proqramının hədiyyə dəsti: (a) sabit bonus kampaniyalarından qazanc qaydaları, (b) qiymət üzrə bir Walvero hədiyyəsi
+        /// (eyni qiymətli "Bir/İki/Üç pulsuz" kampaniyaları birləşir — say sifarişdəki endirim sətirlərindən gəlir).
+        /// Hədəf: inteqrasiyanın adi proqramı. Heç biri default seçilmir — admin hansı dəstin Walvero kartına aid olduğunu özü seçir.
+        /// </summary>
+        private static IEnumerable<IikoImportProposalDto> PlanGiftSet(
+            IikoCatalogProgramDto ip, List<IikoCampaignSummary> giftCampaigns, WalveroProgramState? target, WalveroPosState w)
+        {
+            var programLabel = (ip.Name ?? ip.Id).Trim();
+            var earnCampaigns = ip.Campaigns.Where(c => c.IsActive && c.Gift == null && c.FixedEarn != null).ToList();
+            var targetNote = target == null ? null : $"Walvero proqramı: «{target.Name}».";
+
+            // (a) Qazanc qaydaları
+            if (earnCampaigns.Count > 0)
+            {
+                var bonus = earnCampaigns[0].FixedEarn!.BonusPerItem;
+                var p = new IikoImportProposalDto
+                {
+                    Key = $"{KindGiftEarn}:{ip.Id}",
+                    Kind = KindGiftEarn,
+                    Title = $"Qazanc: hər məhsula +{bonus:0.##} — {programLabel}",
+                    Explanation = $"Kassada vahid yazan məhsul/kateqoriyalar Walvero kartına da möhür (xal) yazsın. {targetNote}".Trim()
+                };
+                if (target == null)
+                {
+                    p.Warning = "Adi (Public) Walvero proqramı yoxdur.";
+                }
+                else
+                {
+                    var unresolved = new List<string>();
+                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var mask in earnCampaigns.SelectMany(c => c.FixedEarn!.Masks.Select(m => (Mask: m, c.FixedEarn.BonusPerItem))))
+                    {
+                        var m = mask.Mask;
+                        if (m.Value == "*") { unresolved.Add("bütün məhsullar (*)"); continue; }
+                        if (m.Type == IikoRuleParser.MaskTypeCategory)
+                        {
+                            if (!w.CategoryIdByName.TryGetValue(m.Value, out var catId)) { unresolved.Add($"kateqoriya «{m.Value}»"); continue; }
+                            if (!seen.Add("c:" + catId)) continue;
+                            if (!w.EarnRules.Any(r => r.Kind == PosEarnExclusionKind.Category && Same(r.ExternalId, catId) && AppliesTo(r, target)))
+                                p.Changes.Add(new IikoImportChangeDto(TargetEarnRule, target.Id, m.Value, FieldCategory, null, catId, mask.BonusPerItem));
+                        }
+                        else if (m.Type == IikoRuleParser.MaskTypeProduct)
+                        {
+                            if (!seen.Add("p:" + m.Value)) continue;
+                            if (!w.EarnRules.Any(r => r.Kind == PosEarnExclusionKind.Product && (Same(r.Code, m.Value) || Same(r.ExternalId, m.Value)) && AppliesTo(r, target)))
+                                p.Changes.Add(new IikoImportChangeDto(TargetEarnRule, target.Id, m.ResolvedName ?? m.Value, FieldProduct, null, m.Value, mask.BonusPerItem));
+                        }
+                        else unresolved.Add($"«{m.Value}» (maska növü {m.Type})");
+                    }
+                    if (unresolved.Count > 0)
+                        p.Warning = "Kassa kataloqunda tapılmadı, əl ilə əlavə edin: " + string.Join(", ", unresolved) + ".";
+                }
+                Finish(p);
+                p.SelectedByDefault = false;
+                yield return p;
+            }
+
+            // (b) Hədiyyə(lər) — qiymət üzrə
+            foreach (var byCost in giftCampaigns.GroupBy(c => c.Gift!.CostPerGift).OrderBy(g => g.Key))
+            {
+                var cost = byCost.Key;
+                var list = byCost.ToList();
+                // Ad: tək hədiyyəli kampaniyanın kassir mətni ("Pulsuz 1 dessert", "Bir pulsuz içki")
+                var single = list.FirstOrDefault(c => c.Gift!.GiftsPerUse == 1) ?? list[0];
+                var name = (single.Gift!.Caption ?? single.Name ?? programLabel).Trim();
+                var codes = list.SelectMany(c => c.Gift!.ProductCodes).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var anySized = list.Any(c => c.Gift!.AnySizedProduct);
+                var sourceKey = $"{ip.Id}:{cost.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}";
+                var costInt = (int)Math.Ceiling(cost);
+
+                var p = new IikoImportProposalDto
+                {
+                    Key = $"{KindGiftReward}:{sourceKey}",
+                    Kind = KindGiftReward,
+                    Title = $"Hədiyyə: «{name}» — {cost:0.##} vahid, {(anySized ? "istənilən ölçülü məhsul" + (codes.Count > 0 ? $" + {codes.Count} məhsul" : "") : $"{codes.Count} məhsul")} — {programLabel}",
+                    Explanation = "Kassada bu hədiyyə veriləndə (sifarişdə kassa endirimi görünəndə) Walvero kartından da silinir, tarixçədə hədiyyə adı görünür. "
+                                  + (list.Count > 1 ? $"Birləşən kampaniyalar: {string.Join(", ", list.Select(c => c.Name))}. " : "")
+                                  + targetNote,
+                    DiscountTypeSelectable = true
+                };
+                if (target == null)
+                {
+                    p.Warning = "Adi (Public) Walvero proqramı yoxdur.";
+                    Finish(p);
+                    yield return p;
+                    continue;
+                }
+
+                var existing = w.Rewards.FirstOrDefault(r => r.ProgramId == target.Id && Same(r.PosSourceKey, sourceKey));
+                var matched = MatchDiscount(w.ObservedDiscounts, list.Select(c => c.Name).Concat(list.Select(c => c.Gift!.Caption)));
+                var suggested = existing?.PosDiscountTypeId ?? matched;
+                p.DiscountTypeId = suggested;
+
+                if (existing == null)
+                {
+                    p.Changes.Add(new IikoImportChangeDto(TargetReward, target.Id, name, FieldName, null, name));
+                    p.Changes.Add(new IikoImportChangeDto(TargetReward, target.Id, name, FieldPointsCost, null, costInt.ToString()));
+                    if (codes.Count > 0)
+                        p.Changes.Add(new IikoImportChangeDto(TargetReward, target.Id, name, FieldProducts, null, string.Join(",", codes)));
+                    p.Changes.Add(new IikoImportChangeDto(TargetReward, target.Id, name, FieldSourceKey, null, sourceKey));
+                    if (suggested != null)
+                        p.Changes.Add(new IikoImportChangeDto(TargetReward, target.Id, name, FieldDiscountType, null, suggested));
+                }
+                else
+                {
+                    if (existing.PointsCost != costInt)
+                        p.Changes.Add(new IikoImportChangeDto(TargetReward, target.Id, existing.Name, FieldPointsCost, existing.PointsCost.ToString(), costInt.ToString()));
+                    var missing = codes.Where(c => !existing.ProductCodes.Contains(c, StringComparer.OrdinalIgnoreCase)).ToList();
+                    if (missing.Count > 0)
+                        p.Changes.Add(new IikoImportChangeDto(TargetReward, target.Id, existing.Name, FieldProducts, null, string.Join(",", missing)));
+                    if (existing.PosDiscountTypeId == null && matched != null)
+                        p.Changes.Add(new IikoImportChangeDto(TargetReward, target.Id, existing.Name, FieldDiscountType, null, matched));
+                    if (p.Changes.Count > 0)
+                        p.Changes.Insert(0, new IikoImportChangeDto(TargetReward, target.Id, existing.Name, FieldRewardId, null, existing.Id.ToString()));
+                }
+
+                var warnings = new List<string>();
+                if (suggested == null)
+                    warnings.Add("Kassa endirimini seçin — sifarişdə hədiyyə onunla tanınır" + (anySized ? " (ölçülü məhsullar yalnız endirimlə tanınır)" : "") + ".");
+                if (target.TemplateType == CardTemplateType.ProgressBased && target.TotalSteps.HasValue && target.TotalSteps.Value != costInt)
+                    warnings.Add($"Walvero kartı {target.TotalSteps} möhürdə hədiyyə göstərir, kassa {costInt} vahiddə verir — kart şablonunu uyğunlaşdırın.");
+                if (warnings.Count > 0) p.Warning = string.Join(" ", warnings);
+
+                Finish(p);
+                // İdxal olunmuş, amma endirimi hələ seçilməmiş hədiyyə: endirim dialoqda seçilib tətbiq olunur
+                if (existing != null && suggested == null)
+                {
+                    p.Applicable = true;
+                    p.AlreadyApplied = false;
+                    if (!p.Changes.Any(c => c.Field == FieldRewardId))
+                        p.Changes.Insert(0,new IikoImportChangeDto(TargetReward, target.Id, existing.Name, FieldRewardId, null, existing.Id.ToString()));
+                }
+                p.SelectedByDefault = false;
+                yield return p;
+            }
+        }
+
+        private static bool AppliesTo(WalveroEarnRuleState r, WalveroProgramState target) => r.ProgramId == null || r.ProgramId == target.Id;
+
+        private static bool Same(string? a, string? b)
+            => !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b) && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Sifarişlərdə görünən endirim — adı kampaniya adı və ya kassir mətni ilə eynidir (Cupcup: «Оплата со счета»).</summary>
+        private static string? MatchDiscount(List<IikoDiscountOptionDto> observed, IEnumerable<string?> names)
+        {
+            foreach (var n in names.Where(n => !string.IsNullOrWhiteSpace(n)))
+            {
+                var hit = observed.FirstOrDefault(o => Same(o.Name, n));
+                if (hit != null) return hit.Id;
+            }
+            return null;
+        }
+
         private static void FillCashback(IikoImportProposalDto p, WalveroProgramState target, PosEarnSource source, string? walletId, string iikoProgramId, decimal percent)
         {
             AddProgramChange(p, target, "PosEarnSource", target.PosEarnSource.ToString(), source.ToString());
@@ -239,6 +439,22 @@ namespace Loyalty.Business.Helpers
             {
                 if (!wallets.Any(x => string.Equals(x.Id, p.PosWalletId, StringComparison.OrdinalIgnoreCase)) && catalog.Programs.Count > 0)
                     items.Add(new IikoSyncItemDto("error", "program", $"«{p.Name}» proqramının cüzdanı kassada tapılmadı", "Cüzdan silinib və ya dəyişib — yenidən seçin."));
+            }
+
+            // Kassa hədiyyələri ("N al → 1 pulsuz") ↔ Walvero hədiyyələri
+            foreach (var ip in catalog.Programs.Where(p => p.IsActive))
+            {
+                foreach (var cost in ip.Campaigns.Where(c => c.IsActive && c.Gift is { CostPerGift: > 0 }).Select(c => c.Gift!.CostPerGift).Distinct())
+                {
+                    var key = $"{ip.Id}:{cost.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}";
+                    var reward = w.Rewards.FirstOrDefault(r => Same(r.PosSourceKey, key));
+                    var label = $"Kassa hədiyyəsi ({(ip.Name ?? ip.Id).Trim()}, {cost:0.##} vahid)";
+                    items.Add(reward == null
+                        ? new IikoSyncItemDto("info", "reward", $"{label} Walvero-ya idxal olunmayıb", "Kassa verəndə Walvero kartından silinmir — lazımdırsa «Kassadan idxal et».")
+                        : reward.PosDiscountTypeId == null
+                            ? new IikoSyncItemDto("warn", "reward", $"{label} → «{reward.Name}», amma kassa endirimi seçilməyib", "Sifarişdə hədiyyə tanınmır — idxal dialoqunda endirimi seçin.")
+                            : new IikoSyncItemDto("ok", "reward", $"{label} → «{reward.Name}»", null));
+                }
             }
 
             // Riskli rejimlər

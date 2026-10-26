@@ -75,6 +75,31 @@ namespace Loyalty.Business.Dtos.Get.Main
         public int? ConflictCustomerId { get; set; }
     }
 
+    /// <summary>Proqram üzrə toplu "kassa balansından yenilə" (önbaxış və ya tətbiq).</summary>
+    public class IikoProgramPullResultDto
+    {
+        public int ProgramId { get; set; }
+        public string WalletId { get; set; } = string.Empty;
+        public bool Applied { get; set; }
+        public int Total { get; set; }
+        /// <summary>Balansı fərqli olan kartlar.</summary>
+        public int Changed { get; set; }
+        public int NotFound { get; set; }
+        public List<IikoProgramPullRowDto> Rows { get; set; } = new();
+    }
+
+    public class IikoProgramPullRowDto
+    {
+        public int CustomerId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public int CardId { get; set; }
+        public string? CardNumber { get; set; }
+        public decimal OurBalance { get; set; }
+        public decimal? IikoBalance { get; set; }
+        public decimal Delta { get; set; }
+        public string? Note { get; set; }
+    }
+
     public class IikoWalletDto
     {
         public Guid Id { get; set; }

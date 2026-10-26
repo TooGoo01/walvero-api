@@ -22,6 +22,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? ReverseReason { get; set; }
         public string? ReferenceNumber { get; set; }
         public string? OrderId { get; set; }
+        /// <summary>Kassada verilmiş hədiyyə (adı Description-dadır: "Hədiyyə: …").</summary>
+        public int? RewardId { get; set; }
         public DateTimeOffset LocalOccurredAt { get; set; }
         public string TimeZoneIdUsed { get; set; } = "UTC";
         public decimal BalanceAfter { get; set; }

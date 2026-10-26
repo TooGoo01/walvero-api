@@ -70,6 +70,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<TenantIntegrationVenue> TenantIntegrationVenues { get; set; }
         public DbSet<PosProductEarnRule> PosProductEarnRules { get; set; }
         public DbSet<PosLoyaltyDiscountType> PosLoyaltyDiscountTypes { get; set; }
+        public DbSet<RewardPosProduct> RewardPosProducts { get; set; }
         public DbSet<PosCustomerMapping> PosCustomerMappings { get; set; }
         public DbSet<IikoWebhookFailure> IikoWebhookFailures { get; set; }
 
@@ -1326,6 +1327,27 @@ namespace Loyalty.DataAccess.Context
                 entity.HasOne(pd => pd.TenantIntegration)
                     .WithMany()
                     .HasForeignKey(pd => pd.TenantIntegrationId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==== REWARD ↔ KASSA (hədiyyə məhsulları + endirim növü) ====
+            modelBuilder.Entity<Reward>(entity =>
+            {
+                entity.Property(r => r.PosDiscountTypeId).HasMaxLength(100);
+                entity.Property(r => r.PosSourceKey).HasMaxLength(200);
+            });
+
+            modelBuilder.Entity<RewardPosProduct>(entity =>
+            {
+                entity.ToTable("RewardPosProducts");
+                entity.HasKey(x => x.Id);
+                entity.Property(x => x.Code).IsRequired().HasMaxLength(100);
+                entity.Property(x => x.ProductName).HasMaxLength(300);
+                entity.HasIndex(x => new { x.RewardId, x.Code }).IsUnique();
+
+                entity.HasOne(x => x.Reward)
+                    .WithMany(r => r.PosProducts)
+                    .HasForeignKey(x => x.RewardId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
 

@@ -10,6 +10,8 @@ namespace Loyalty.DataAccess.Repositories.Abstractions.Main
     public interface IRewardRepository : IGenericRepository<Reward>
     {
         Task<IEnumerable<Reward>> GetByProgramIdAsync(int programId, CancellationToken cancellationToken = default);
+        /// <summary>Hədiyyə + kassa məhsulları (tracked — yeniləmə üçün).</summary>
+        Task<Reward?> GetWithPosProductsAsync(int id, CancellationToken cancellationToken = default);
         Task<IEnumerable<Reward>> GetActiveRewardsByProgramIdAsync(int programId, CancellationToken cancellationToken = default);
         Task<IEnumerable<Reward>> GetAvailableRewardsByPointsAsync(int programId, int points, CancellationToken cancellationToken = default);
     }

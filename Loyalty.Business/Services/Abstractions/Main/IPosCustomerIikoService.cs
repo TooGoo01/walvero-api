@@ -22,5 +22,11 @@ namespace Loyalty.Business.Services.Abstractions.Main
 
         /// <summary>Hangfire: bağlanmamış müştəriləri sync et (telefonla tap → bağla → köhnə balans əlavə → bərabərləşdir; tapılmayan yaradılır).</summary>
         Task<int> RunPhoneMatchBulkAsync(int tenantId, int integrationId, CancellationToken ct = default);
+
+        /// <summary>
+        /// iiko → Walvero toplu: proqramın aktiv kartları seçilmiş kassa cüzdanının balansına bərabərləşdirilir (iiko həqiqətdir).
+        /// Möhür kartında dövrlər balansdan yenidən qurulur. Apply=false — önbaxış.
+        /// </summary>
+        Task<ServiceResult<IikoProgramPullResultDto>> PullProgramBalancesAsync(int tenantId, IikoProgramPullDto dto, CancellationToken ct = default);
     }
 }

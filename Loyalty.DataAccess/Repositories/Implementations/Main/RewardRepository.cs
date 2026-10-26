@@ -18,14 +18,23 @@ namespace Loyalty.DataAccess.Repositories.Implementations.Main
         public async Task<IEnumerable<Reward>> GetByProgramIdAsync(int programId, CancellationToken cancellationToken = default)
         {
             return await GetAsQueryable()
+                .Include(r => r.PosProducts)
                 .Where(r => r.LoyaltyProgramId == programId)
                 .OrderBy(r => r.PointsCost)
                 .ToListAsync(cancellationToken);
         }
 
+        public async Task<Reward?> GetWithPosProductsAsync(int id, CancellationToken cancellationToken = default)
+        {
+            return await _LoyaltyDbContext.Rewards
+                .Include(r => r.PosProducts)
+                .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+        }
+
         public async Task<IEnumerable<Reward>> GetActiveRewardsByProgramIdAsync(int programId, CancellationToken cancellationToken = default)
         {
             return await GetAsQueryable()
+                .Include(r => r.PosProducts)
                 .Where(r => r.LoyaltyProgramId == programId && r.IsActive)
                 .OrderBy(r => r.PointsCost)
                 .ToListAsync(cancellationToken);

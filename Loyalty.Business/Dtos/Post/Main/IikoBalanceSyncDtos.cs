@@ -27,4 +27,15 @@ namespace Loyalty.Business.Dtos.Post.Main
         public int? VenueId { get; set; }
         public int? CardId { get; set; }
     }
+
+    /// <summary>
+    /// iiko → Walvero toplu: proqramın bütün aktiv kartları seçilmiş kassa cüzdanının balansına bərabərləşdirilir.
+    /// Apply=false — yalnız önbaxış (heç nə yazılmır).
+    /// </summary>
+    public class IikoProgramPullDto
+    {
+        public int ProgramId { get; set; }
+        public string WalletId { get; set; } = string.Empty;
+        public bool Apply { get; set; }
+    }
 }

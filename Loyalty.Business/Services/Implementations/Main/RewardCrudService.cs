@@ -39,10 +39,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                 ImageUrl = dto.ImageUrl?.Trim(),
                 ExternalProductId = dto.ExternalProductId?.Trim(),
                 StockQuantity = dto.StockQuantity,
+                PosDiscountTypeId = string.IsNullOrWhiteSpace(dto.PosDiscountTypeId) ? null : dto.PosDiscountTypeId.Trim(),
                 IsActive = true,
                 RegUserId = 1,
                 RegDate = DateTime.UtcNow
             };
+            if (dto.PosProducts != null) ReplacePosProducts(entity, dto.PosProducts);
             await _repo.AddAsync(entity);
             await _uow.CommitAsync(ct);
 
@@ -64,7 +66,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult<RewardDto?>> GetByIdAsync(int id, int? tenantId, CancellationToken ct = default)
         {
-            var reward = await _repo.GetByIdAsync(id, ct);
+            var reward = await _repo.GetWithPosProductsAsync(id, ct);
             if (reward == null)
                 return ServiceResult<RewardDto?>.Ok(null);
 
@@ -77,7 +79,7 @@ namespace Loyalty.Business.Services.Implementations.Main
 
         public async Task<ServiceResult<bool>> UpdateAsync(int id, RewardUpdateDto dto, int? tenantId, CancellationToken ct = default)
         {
-            var reward = await _repo.GetByIdAsync(id, ct);
+            var reward = await _repo.GetWithPosProductsAsync(id, ct);
             if (reward == null)
                 return ServiceResult<bool>.Fail("Tapılmadı.");
 
@@ -92,6 +94,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (dto.ExternalProductId != null) reward.ExternalProductId = dto.ExternalProductId.Trim();
             if (dto.IsActive.HasValue) reward.IsActive = dto.IsActive.Value;
             if (dto.StockQuantity.HasValue) reward.StockQuantity = dto.StockQuantity.Value;
+            if (dto.PosDiscountTypeId != null)
+                reward.PosDiscountTypeId = string.IsNullOrWhiteSpace(dto.PosDiscountTypeId) ? null : dto.PosDiscountTypeId.Trim();
+            if (dto.PosProducts != null) ReplacePosProducts(reward, dto.PosProducts);
 
             _repo.Update(reward);
             await _uow.CommitAsync(ct);
@@ -113,6 +118,35 @@ namespace Loyalty.Business.Services.Implementations.Main
             return ServiceResult<bool>.Ok(true);
         }
 
+        /// <summary>Kassa məhsulları siyahısını tam əvəz edir (kod üzrə təkrarsız; mövcud sətirlər saxlanır, adları yenilənir).</summary>
+        private static void ReplacePosProducts(Reward reward, List<RewardPosProductDto> items)
+        {
+            var wanted = items
+                .Where(i => !string.IsNullOrWhiteSpace(i.Code))
+                .GroupBy(i => i.Code.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().Name?.Trim(), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var existing in reward.PosProducts.Where(p => !wanted.ContainsKey(p.Code)).ToList())
+                reward.PosProducts.Remove(existing);
+            foreach (var (code, name) in wanted)
+            {
+                var row = reward.PosProducts.FirstOrDefault(p => string.Equals(p.Code, code, StringComparison.OrdinalIgnoreCase));
+                if (row != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(name)) row.ProductName = name;
+                    continue;
+                }
+                reward.PosProducts.Add(new RewardPosProduct
+                {
+                    Code = code,
+                    ProductName = string.IsNullOrWhiteSpace(name) ? null : name,
+                    IsActive = true,
+                    RegUserId = 1,
+                    RegDate = DateTime.UtcNow
+                });
+            }
+        }
+
         private static RewardDto MapToDto(Reward r) => new()
         {
             Id = r.Id,
@@ -123,7 +157,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             ImageUrl = r.ImageUrl,
             ExternalProductId = r.ExternalProductId,
             IsActive = r.IsActive,
-            StockQuantity = r.StockQuantity
+            StockQuantity = r.StockQuantity,
+            PosDiscountTypeId = r.PosDiscountTypeId,
+            PosSourceKey = r.PosSourceKey,
+            PosProducts = r.PosProducts.OrderBy(p => p.Code).Select(p => new RewardPosProductDto(p.Code, p.ProductName)).ToList()
         };
     }
 }

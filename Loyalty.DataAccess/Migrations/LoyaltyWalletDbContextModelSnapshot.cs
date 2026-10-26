@@ -3157,6 +3157,14 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<int>("PointsCost")
                         .HasColumnType("int");
 
+                    b.Property<string>("PosDiscountTypeId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PosSourceKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<DateTime>("RegDate")
                         .HasColumnType("datetime2");
 
@@ -3171,6 +3179,49 @@ namespace Loyalty.DataAccess.Migrations
                     b.HasIndex("LoyaltyProgramId");
 
                     b.ToTable("Rewards", (string)null);
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.RewardPosProduct", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ProductName")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RewardId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RewardId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("RewardPosProducts", (string)null);
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Room", b =>
@@ -4679,6 +4730,9 @@ namespace Loyalty.DataAccess.Migrations
                     b.Property<string>("ReverseReason")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("RewardId")
+                        .HasColumnType("int");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
@@ -5953,6 +6007,17 @@ namespace Loyalty.DataAccess.Migrations
                     b.Navigation("LoyaltyProgram");
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.RewardPosProduct", b =>
+                {
+                    b.HasOne("Loyalty.DataAccess.Entities.Main.Reward", "Reward")
+                        .WithMany("PosProducts")
+                        .HasForeignKey("RewardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Reward");
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Room", b =>
                 {
                     b.HasOne("Loyalty.DataAccess.Entities.Main.Branch", "Branch")
@@ -6396,6 +6461,11 @@ namespace Loyalty.DataAccess.Migrations
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.MenuItem", b =>
                 {
                     b.Navigation("MenuItemImages");
+                });
+
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Reward", b =>
+                {
+                    b.Navigation("PosProducts");
                 });
 
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.Room", b =>
