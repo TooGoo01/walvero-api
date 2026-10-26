@@ -1,4 +1,4 @@
-using Loyalty.DataAccess.Entities.Users;
+﻿using Loyalty.DataAccess.Entities.Users;
 using Loyalty.DataAccess.Enums;
 
 namespace Loyalty.Business.Dtos.Get.Main
@@ -29,6 +29,9 @@ namespace Loyalty.Business.Dtos.Get.Main
         public DateTime CreatedAt { get; set; }
         public DateTime? LastActivityDate { get; set; }
         public string? CardNumber { get; set; }
+        /// <summary>Kassa endirim səviyyəsi — iiko qonaq kateqoriyası (id) və seçim anındakı kampaniya adı.</summary>
+        public string? PosGuestCategoryId { get; set; }
+        public string? PosGuestCategoryName { get; set; }
         public int? applicationUserId { get; set; }
         public ApplicationUser? applicationUser { get; set; }
         public ICollection<GetLoyaltyCardListItemDto> LoyaltyCards { get; set; } = new List<GetLoyaltyCardListItemDto>();

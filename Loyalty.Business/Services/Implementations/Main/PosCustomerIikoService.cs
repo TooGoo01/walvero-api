@@ -1,4 +1,4 @@
-using Hangfire;
+﻿using Hangfire;
 using Loyalty.Business.Dtos.Get.Main;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Helpers;
@@ -633,6 +633,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             status.Wallets = d.WalletBalances?
                 .Select(w => new IikoWalletDto { Id = w.Id, Name = w.Name, Type = w.Type, Balance = w.Balance })
                 .ToList() ?? new List<IikoWalletDto>();
+            status.IikoCategories = d.Categories?
+                .Where(c => c.IsActive != false)
+                .Select(c => string.IsNullOrWhiteSpace(c.Name) ? c.Id.ToString() : c.Name!)
+                .ToList() ?? new List<string>();
         }
 
         private async Task SelectWalletAsync(Ctx ctx, TenantIntegration integration, TenantIntegrationVenue? venue, Guid orgId, string token, IikoVenueStatusDto status, CancellationToken ct)

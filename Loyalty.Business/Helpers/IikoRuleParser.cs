@@ -25,8 +25,10 @@ namespace Loyalty.Business.Helpers
         public bool IsActive { get; set; }
         public DateTime? PeriodFrom { get; set; }
         public DateTime? PeriodTo { get; set; }
-        /// <summary>cashback_percent | fixed_bonus | payment | guest_category | other</summary>
+        /// <summary>cashback_percent | fixed_bonus | payment | guest_category | gift | discount_percent | other</summary>
         public string Kind { get; set; } = IikoRuleParser.KindOther;
+        /// <summary>ManualCondition var — kassir kampaniyanı kassada əl ilə seçməlidir (avtomatik tətbiq olunmur).</summary>
+        public bool RequiresManualActivation { get; set; }
         /// <summary>Oxunaqlı növ ("Keşbek %", "Balansla ödəniş" …).</summary>
         public string KindLabel { get; set; } = string.Empty;
         public decimal? Percent { get; set; }
@@ -85,6 +87,8 @@ namespace Loyalty.Business.Helpers
         public const string KindPayment = "payment";
         public const string KindGuestCategory = "guest_category";
         public const string KindGift = "gift";
+        /// <summary>OrderPercentDiscountAction — sifarişə faiz endirimi (Carpax "ENDİRİM 20%": qonaq kateqoriyası şərti ilə).</summary>
+        public const string KindDiscountPercent = "discount_percent";
         public const string KindOther = "other";
 
         /// <summary>iiko MaskType: 1 = məhsul kodu, 3 = kateqoriya adı (";" ilə bir neçə).</summary>
@@ -173,8 +177,19 @@ namespace Loyalty.Business.Helpers
                         case "RemoveGuestCategoryAction":
                             SetKind(c, KindGuestCategory, "Qonaq kateqoriyası");
                             break;
+                        case "OrderPercentDiscountAction":
+                            SetKind(c, KindDiscountPercent, "Sifarişə endirim %");
+                            c.Percent ??= Dec(s, "DiscountPercent");
+                            break;
                         default:
-                            SetKind(c, KindOther, Humanize(type));
+                            // iiko-nun digər faiz endirimi variantları (məhsul səviyyəli) — eyni sahə adı ilə
+                            if (type.EndsWith("PercentDiscountAction", StringComparison.Ordinal) && Dec(s, "DiscountPercent") is decimal dp)
+                            {
+                                SetKind(c, KindDiscountPercent, "Endirim %");
+                                c.Percent ??= dp;
+                            }
+                            else
+                                SetKind(c, KindOther, Humanize(type));
                             break;
                     }
                 }
@@ -194,7 +209,11 @@ namespace Loyalty.Business.Helpers
                             c.Conditions.Add(new IikoConditionSummary(type, $"Sifarişdə ən azı {count} məhsul"));
                         continue;
                     }
-                    if (type == "ManualCondition") caption ??= Str(s, "Caption");
+                    if (type == "ManualCondition")
+                    {
+                        caption ??= Str(s, "Caption");
+                        c.RequiresManualActivation = true;
+                    }
                     if (type == "WalletBalanceCondition")
                     {
                         balanceWallet ??= Str(s, "WalletId");

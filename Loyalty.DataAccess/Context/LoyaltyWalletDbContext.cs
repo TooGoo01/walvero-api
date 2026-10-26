@@ -1,4 +1,4 @@
-using Loyalty.DataAccess.Entities.Base;
+﻿using Loyalty.DataAccess.Entities.Base;
 using Loyalty.DataAccess.Entities.Main;
 using Loyalty.DataAccess.Entities.Sequences;
 using Loyalty.DataAccess.Entities.Users;
@@ -284,6 +284,8 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(x => x.OtpDestinationMasked).HasMaxLength(120);
                 entity.Property(c => c.Gender).HasConversion<int>();
                 entity.Property(c => c.CardNumber).HasMaxLength(50);
+                entity.Property(c => c.PosGuestCategoryId).HasMaxLength(64);
+                entity.Property(c => c.PosGuestCategoryName).HasMaxLength(100);
 
                 entity.HasIndex(c => new { c.TenantId, c.PhoneNumber }).IsUnique();
                 entity.HasIndex(c => c.CardNumber)

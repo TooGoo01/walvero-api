@@ -540,6 +540,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                     customer.Id, orgId, ambCategory, catOk);
             }
 
+            // Kassa endirim səviyyəsi (müştəri kassada yaradılmazdan əvvəl seçilibsə) — kampaniya kateqoriyası
+            if (Guid.TryParse(customer.PosGuestCategoryId, out var tierCategory))
+            {
+                var tierOk = await _iikoClient.AddCustomerCategoryAsync(accessToken, orgId, result.Id, tierCategory, ct);
+                _logger.LogInformation("iiko discount-tier category add (create): CustomerId={CustomerId}, orgId={OrgId}, Category={Category}, Success={Success}",
+                    customer.Id, orgId, tierCategory, tierOk);
+            }
+
             // Əlavə kartlar: tam barkod (skan üçün həmişə) + WalveroId — əsas track create_or_update ilə yazılıb
             foreach (var track in allTracks.Where(t => !string.Equals(t, primaryCard, StringComparison.OrdinalIgnoreCase)))
             {
@@ -703,38 +711,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var accessToken = await GetIikoTokenAsync(integration, ct);
                     if (string.IsNullOrEmpty(accessToken)) { allOk = false; continue; }
 
-                    // org → iiko müştəri id (venue mapping-ləri; yoxdursa legacy tək-org mapping)
-                    var targets = new List<(Guid OrgId, string? ExternalCustomerId)>();
-                    var venues = await _venueRepo.GetActiveByIntegrationAsync(integration.Id, ct);
-                    if (venues.Count > 0)
-                    {
-                        foreach (var v in venues)
-                        {
-                            if (!Guid.TryParse(v.ExternalVenueId, out var vOrg)) continue;
-                            var m = await _mappingRepo.GetByVenueAndCustomerAsync(v.Id, customerId, ct);
-                            targets.Add((vOrg, m?.ExternalCustomerId));
-                        }
-                    }
-                    else if (Guid.TryParse(integration.ExternalVenueId, out var org))
-                    {
-                        var m = await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, customerId, ct);
-                        targets.Add((org, m?.ExternalCustomerId));
-                    }
-
-                    foreach (var (orgId, extId) in targets)
-                    {
-                        if (!Guid.TryParse(extId, out var iikoCustomerId))
-                        {
-                            _logger.LogInformation("iiko ambassador category skipped (no mapping): CustomerId={CustomerId}, orgId={OrgId}", customerId, orgId);
-                            continue;
-                        }
-                        var ok = isAmbassador
-                            ? await _iikoClient.AddCustomerCategoryAsync(accessToken, orgId, iikoCustomerId, categoryId, ct)
-                            : await _iikoClient.RemoveCustomerCategoryAsync(accessToken, orgId, iikoCustomerId, categoryId, ct);
-                        _logger.LogInformation("iiko ambassador category {Op}: CustomerId={CustomerId}, orgId={OrgId}, Category={Category}, Success={Success}",
-                            isAmbassador ? "add" : "remove", customerId, orgId, categoryId, ok);
-                        if (!ok) allOk = false;
-                    }
+                    var r = await SyncCustomerCategoryAsync(integration, accessToken, customerId, categoryId, isAmbassador, "ambassador", ct);
+                    if (!r.AllOk) allOk = false;
                 }
                 catch (Exception ex)
                 {
@@ -743,6 +721,106 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
             }
             return allOk;
+        }
+
+        public async Task<PosCategorySyncResult> SetCustomerGuestCategoryAsync(int tenantId, int customerId, Guid? oldCategoryId, Guid? newCategoryId, CancellationToken ct = default)
+        {
+            var result = new PosCategorySyncResult();
+            var integrations = await _integrationRepo.GetAllActiveByTenantAsync(tenantId, ct);
+            var iiko = (integrations ?? Enumerable.Empty<TenantIntegration>())
+                .Where(i => i.IntegrationType?.Source == "iiko_pos")
+                .ToList();
+            if (iiko.Count == 0)
+            {
+                result.NoIntegration = true;
+                return result;
+            }
+
+            // Eyni kateqoriya yenidən seçilibsə yalnız add (idempotent); dəyişibsə köhnəni sil, yenini yaz
+            var removeId = oldCategoryId.HasValue && oldCategoryId != newCategoryId ? oldCategoryId : null;
+            var addId = newCategoryId;
+            if (!removeId.HasValue && !addId.HasValue) return result;
+
+            var mapped = 0;
+            foreach (var integration in iiko)
+            {
+                var label = integration.DisplayName ?? "iiko";
+                try
+                {
+                    var accessToken = await GetIikoTokenAsync(integration, ct);
+                    if (string.IsNullOrEmpty(accessToken))
+                    {
+                        result.AllOk = false;
+                        result.Notes.Add($"{label}: kassa token alınmadı");
+                        continue;
+                    }
+
+                    if (removeId.HasValue)
+                    {
+                        var r = await SyncCustomerCategoryAsync(integration, accessToken, customerId, removeId.Value, add: false, "discount-tier", ct);
+                        mapped += r.Mapped;
+                        if (!r.AllOk) { result.AllOk = false; result.Notes.Add($"{label}: köhnə kateqoriya silinmədi"); }
+                    }
+                    if (addId.HasValue)
+                    {
+                        var r = await SyncCustomerCategoryAsync(integration, accessToken, customerId, addId.Value, add: true, "discount-tier", ct);
+                        mapped += r.Mapped;
+                        if (!r.AllOk) { result.AllOk = false; result.Notes.Add($"{label}: kateqoriya yazılmadı"); }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    result.AllOk = false;
+                    result.Notes.Add($"{label}: {ex.Message}");
+                    _logger.LogWarning(ex, "iiko discount-tier category sync FAILED: IntegrationId={IntegrationId}, CustomerId={CustomerId}", integration.Id, customerId);
+                }
+            }
+            result.NoMapping = mapped == 0;
+            return result;
+        }
+
+        /// <summary>
+        /// Bir inteqrasiyanın bütün org-larında müştərini kateqoriyaya əlavə et / çıxar. org → iiko müştəri id
+        /// venue mapping-lərindən (yoxdursa legacy tək-org mapping); mapping olmayan org atlanır (Mapped saymır).
+        /// </summary>
+        private async Task<(bool AllOk, int Mapped)> SyncCustomerCategoryAsync(
+            TenantIntegration integration, string accessToken, int customerId, Guid categoryId, bool add, string label, CancellationToken ct)
+        {
+            var targets = new List<(Guid OrgId, string? ExternalCustomerId)>();
+            var venues = await _venueRepo.GetActiveByIntegrationAsync(integration.Id, ct);
+            if (venues.Count > 0)
+            {
+                foreach (var v in venues)
+                {
+                    if (!Guid.TryParse(v.ExternalVenueId, out var vOrg)) continue;
+                    var m = await _mappingRepo.GetByVenueAndCustomerAsync(v.Id, customerId, ct);
+                    targets.Add((vOrg, m?.ExternalCustomerId));
+                }
+            }
+            else if (Guid.TryParse(integration.ExternalVenueId, out var org))
+            {
+                var m = await _mappingRepo.GetByTenantIntegrationAndCustomerAsync(integration.Id, customerId, ct);
+                targets.Add((org, m?.ExternalCustomerId));
+            }
+
+            var allOk = true;
+            var mapped = 0;
+            foreach (var (orgId, extId) in targets)
+            {
+                if (!Guid.TryParse(extId, out var iikoCustomerId))
+                {
+                    _logger.LogInformation("iiko {Label} category skipped (no mapping): CustomerId={CustomerId}, orgId={OrgId}", label, customerId, orgId);
+                    continue;
+                }
+                mapped++;
+                var ok = add
+                    ? await _iikoClient.AddCustomerCategoryAsync(accessToken, orgId, iikoCustomerId, categoryId, ct)
+                    : await _iikoClient.RemoveCustomerCategoryAsync(accessToken, orgId, iikoCustomerId, categoryId, ct);
+                _logger.LogInformation("iiko {Label} category {Op}: CustomerId={CustomerId}, orgId={OrgId}, Category={Category}, Success={Success}",
+                    label, add ? "add" : "remove", customerId, orgId, categoryId, ok);
+                if (!ok) allOk = false;
+            }
+            return (allOk, mapped);
         }
 
         /// <summary>Bir iiko org-da müştərinin wallet balansını currentPoints-ə uyğunlaşdır (diff topup). Qaytarır: uğur (fərq yoxdursa true; wallet tapılmasa false).</summary>

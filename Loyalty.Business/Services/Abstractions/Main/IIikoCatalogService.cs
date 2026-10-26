@@ -1,4 +1,4 @@
-using Loyalty.Business.Helpers;
+﻿using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
 using Loyalty.DataAccess.Entities.Main;
 
@@ -116,6 +116,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public List<IikoCatalogProgramDto> Programs { get; set; } = new();
         public List<IikoCatalogWalletDto> Wallets { get; set; } = new();
         public List<IikoCatalogGuestCategoryDto> GuestCategories { get; set; } = new();
+        /// <summary>Kassa endirim səviyyələri (faiz endirimi kampaniyası + qonaq kateqoriyası şərti) — müştəriyə təyin edilə bilər.</summary>
+        public List<IikoDiscountTierDto> DiscountTiers { get; set; } = new();
         /// <summary>Məhsul qrupları / kateqoriyaları (PosNomenclatureCache + sifarişlərdən yığılan məhsullar).</summary>
         public PosNomenclatureDto? Nomenclature { get; set; }
         public List<string> Errors { get; set; } = new();
@@ -159,6 +161,18 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public decimal? UnitsPerItem { get; set; }
         /// <summary>Kampaniyalar yalnız bu qonaq kateqoriyalarına işləyir (məs. ambassador).</summary>
         public List<string> GuestCategoryIds { get; set; } = new();
+    }
+
+    /// <summary>Bir endirim səviyyəsi: kampaniya → qonaq kateqoriyası. Müştəri kateqoriyaya yazılanda iiko endirimi verir.</summary>
+    public class IikoDiscountTierDto
+    {
+        public string CampaignId { get; set; } = string.Empty;
+        public string CampaignName { get; set; } = string.Empty;
+        public decimal Percent { get; set; }
+        public string GuestCategoryId { get; set; } = string.Empty;
+        public string? GuestCategoryName { get; set; }
+        /// <summary>Kampaniyada ManualCondition var — kassir əl ilə seçməlidir, skan ilə avtomatik tətbiq olunmur.</summary>
+        public bool RequiresManualActivation { get; set; }
     }
 
     public class IikoCatalogGuestCategoryDto

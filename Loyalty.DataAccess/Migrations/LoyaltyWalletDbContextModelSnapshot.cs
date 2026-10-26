@@ -1013,6 +1013,14 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("PosGuestCategoryId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("PosGuestCategoryName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime>("RegDate")
                         .HasColumnType("datetime2");
 

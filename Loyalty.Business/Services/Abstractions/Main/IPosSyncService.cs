@@ -1,4 +1,4 @@
-using Loyalty.DataAccess.Entities.Main;
+﻿using Loyalty.DataAccess.Entities.Main;
 
 namespace Loyalty.Business.Services.Abstractions.Main
 {
@@ -22,5 +22,21 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// kateqoriyaya əlavə et (isAmbassador) və ya çıxar. Təyin edilməyibsə no-op (true).
         /// </summary>
         Task<bool> SyncAmbassadorCategoryAsync(int tenantId, int customerId, bool isAmbassador, CancellationToken ct = default);
+
+        /// <summary>
+        /// Kassa endirim səviyyəsi: müştərini hər iiko org-da köhnə qonaq kateqoriyasından çıxar (old≠new), yenisinə yaz.
+        /// Mapping olmayan org atlanır — heç birində yoxdursa NoMapping (müştəri kassada hələ yaradılmayıb).
+        /// </summary>
+        Task<PosCategorySyncResult> SetCustomerGuestCategoryAsync(int tenantId, int customerId, Guid? oldCategoryId, Guid? newCategoryId, CancellationToken ct = default);
+    }
+
+    public class PosCategorySyncResult
+    {
+        public bool AllOk { get; set; } = true;
+        /// <summary>Tenant-da aktiv iiko inteqrasiyası yoxdur — yalnız Walvero-da saxlanıldı.</summary>
+        public bool NoIntegration { get; set; }
+        /// <summary>Heç bir org-da iiko müştəri mapping-i yoxdur — kassaya yazılmadı.</summary>
+        public bool NoMapping { get; set; }
+        public List<string> Notes { get; set; } = new();
     }
 }

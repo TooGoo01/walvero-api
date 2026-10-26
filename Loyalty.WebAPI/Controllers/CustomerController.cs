@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Loyalty.WebAPI.Tenancy;
 using System.Net;
 
 namespace Loyalty.WebAPI.Controllers
@@ -17,10 +18,12 @@ namespace Loyalty.WebAPI.Controllers
     public class CustomerController : ControllerBase
     {
         private readonly ICustomerEnrollmentService _customerEnrollmentService;
+        private readonly ICustomerGuestCategoryService _guestCategoryService;
         private readonly ITenantProvider _tenantProvider;
-        public CustomerController(ICustomerEnrollmentService customerEnrollmentService, ITenantProvider tenantProvider)
+        public CustomerController(ICustomerEnrollmentService customerEnrollmentService, ICustomerGuestCategoryService guestCategoryService, ITenantProvider tenantProvider)
         {
             _customerEnrollmentService = customerEnrollmentService;
+            _guestCategoryService = guestCategoryService;
             _tenantProvider = tenantProvider;
         }
 
@@ -79,6 +82,27 @@ namespace Loyalty.WebAPI.Controllers
 
             var result = await _customerEnrollmentService.GetTenantCustomers(tenantId.Value, "");
             return Ok(result);
+        }
+
+        /// <summary>
+        /// Kassa endirim səviyyəsi: müştərini iiko endirim kampaniyasının qonaq kateqoriyasına yaz (categoryId boş = sil).
+        /// Səviyyələr kataloqdan gəlir (GET tenant-integrations/{id}/iiko/catalog → discountTiers).
+        /// </summary>
+        [HttpPost]
+        [Authorize(Policy = "TenantAdminOrModerator")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.BadRequest)]
+        public async Task<IActionResult> SetPosCategory([FromBody] SetCustomerPosCategoryDto model, [FromQuery] int? tenantId, CancellationToken ct)
+        {
+            if (!ModelState.IsValid || model == null)
+                return BadRequest(new ServiceResult(false, "Invalid request data"));
+
+            var tid = this.ScopedTenantId(tenantId, _tenantProvider);
+            if (!tid.HasValue || tid <= 0)
+                return BadRequest(new ServiceResult(false, "Tenant not found."));
+
+            var result = await _guestCategoryService.SetAsync(tid.Value, model, ct);
+            return result.Success ? Ok(result) : BadRequest(result);
         }
 
     }

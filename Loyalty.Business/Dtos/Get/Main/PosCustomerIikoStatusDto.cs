@@ -1,4 +1,4 @@
-namespace Loyalty.Business.Dtos.Get.Main
+﻿namespace Loyalty.Business.Dtos.Get.Main
 {
     public class PosCustomerIikoStatusDto
     {
@@ -41,6 +41,8 @@ namespace Loyalty.Business.Dtos.Get.Main
         public string? IikoName { get; set; }
         public string? IikoPhone { get; set; }
         public List<string> IikoCardTracks { get; set; } = new();
+        /// <summary>iiko-dakı aktiv qonaq kateqoriyaları (ad, yoxdursa id) — ambassador / endirim səviyyəsi yoxlaması.</summary>
+        public List<string> IikoCategories { get; set; } = new();
         public List<IikoWalletDto> Wallets { get; set; } = new();
         public Guid? SelectedWalletId { get; set; }
         public decimal? IikoBalance { get; set; }

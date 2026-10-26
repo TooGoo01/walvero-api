@@ -1,4 +1,4 @@
-using Loyalty.Business.Helpers;
+﻿using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Context;
@@ -90,6 +90,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             // 2) Qonaq kateqoriyaları (org başına cache)
             var fetched = await FetchGuestCategoriesAsync(ti, refresh, result.Errors, ct);
             result.GuestCategories = IikoCatalogMerge.GuestCategories(fetched, result.Programs);
+            result.DiscountTiers = IikoDiscountTiers.Build(result.Programs, result.GuestCategories);
 
             // 3) Nomenklatura (DB cache). Surət heç çəkilməyibsə (və ya refresh) — iiko-dan çək ki, seçim pəncərələri boş qalmasın.
             //    Uğursuz cəhd 10 dəq təkrarlanmır (apiLogin yoxdur / lisenziya bitib).

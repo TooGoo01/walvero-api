@@ -1,4 +1,4 @@
-using AutoMapper;
+﻿using AutoMapper;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Mappings; // Profil(lər)inizin namespace-i (məs: TenantMappingProfile)
@@ -52,6 +52,7 @@ namespace Loyalty.Business.Services
             services.AddScoped<ICardTemplateIconService, CardTemplateIconService>();
             services.AddScoped<ICustomerEnrollmentService, CustomerEnrollmentService>();
             services.AddScoped<IAmbassadorService, AmbassadorService>();
+            services.AddScoped<ICustomerGuestCategoryService, CustomerGuestCategoryService>();
             services.AddScoped<ILoyaltyCardService, LoyaltyCardService>();
              services.AddScoped<GoogleWalletRedeemer>();
              services.AddScoped<AppleWalletRedeemer>();

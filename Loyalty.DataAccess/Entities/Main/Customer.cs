@@ -41,6 +41,11 @@ namespace Loyalty.DataAccess.Entities.Main
         // Card Number - auto-generated per tenant with dynamic prefix
         public string? CardNumber { get; set; }
 
+        // Kassa endirim səviyyəsi: tenant adminin seçdiyi iiko qonaq kateqoriyası (endirim kampaniyasının şərti).
+        // Endirimi iiko kampaniyası verir; Walvero müştərini kateqoriyaya yazır/silir. Name — seçim anındakı kampaniya adı.
+        public string? PosGuestCategoryId { get; set; }
+        public string? PosGuestCategoryName { get; set; }
+
         // Navigation Properties
         public Tenant Tenant { get; set; } = null!;
         public int? applicationUserId { get; set; } = null!;
