@@ -6,12 +6,8 @@ namespace Loyalty.Business.Helpers
     /// </summary>
     public static class WalletSecretPaths
     {
-        /// <summary>Öz Azure Blob hostlarımız: birbaşa storage və onun önündəki Front Door CDN (eyni path: /container/blob).</summary>
-        public static readonly string[] OwnBlobHosts =
-        {
-            "walverostorage.blob.core.windows.net",
-            "cdn.walvero.com"
-        };
+        /// <summary>Öz Azure Blob hostlarımız: birbaşa storage (cari + köhnə, <see cref="StorageHosts"/>) və onun önündəki Front Door CDN (eyni path: /container/blob).</summary>
+        public static IEnumerable<string> OwnBlobHosts => StorageHosts.BlobHosts.Append("cdn.walvero.com");
 
         /// <summary>
         /// Öz storage linkini (container, blob) hissələrinə ayırır. Query (SAS və s.) atılır, blob adı URL-decode olunur.

@@ -1,5 +1,6 @@
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Services.Abstractions.Storage;
 using Loyalty.Business.Services.Abstractions.Storage.Azure;
 using Microsoft.AspNetCore.Http;
@@ -32,7 +33,7 @@ namespace Loyalty.Business.Services.Implementations.Storage
 
         private string BuildPublicUrl(string containerName, string blobName)
         {
-            var raw = $"https://walverostorage.blob.core.windows.net/{containerName}/{blobName}";
+            var raw = $"{StorageHosts.CurrentBaseUrl}/{containerName}/{blobName}";
             return _urlRewriter?.Rewrite(raw) ?? raw;
         }
         public async Task DeleteAsync(string containerName, string fileName)
@@ -404,7 +405,7 @@ namespace Loyalty.Business.Services.Implementations.Storage
                     }
                 });
                 // Birbaşa blob URL (CDN rewriter YOX) — WalletSecretFetcher bunu storage açarı ilə oxuyur
-                result.Add((name, $"https://walverostorage.blob.core.windows.net/{containerName}/{name}"));
+                result.Add((name, $"{StorageHosts.CurrentBaseUrl}/{containerName}/{name}"));
             }
             return result;
         }

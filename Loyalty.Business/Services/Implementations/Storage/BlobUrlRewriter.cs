@@ -1,3 +1,4 @@
+using Loyalty.Business.Helpers;
 using Microsoft.Extensions.Configuration;
 
 namespace Loyalty.Business.Services.Implementations.Storage
@@ -12,9 +13,6 @@ namespace Loyalty.Business.Services.Implementations.Storage
     /// </summary>
     public sealed class BlobUrlRewriter
     {
-        // Hard-coded source host — matches existing AzureStorage URL builder.
-        private const string BlobHost = "https://walverostorage.blob.core.windows.net";
-
         private readonly string? _cdnBaseUrl;
 
         public BlobUrlRewriter(IConfiguration configuration)
@@ -28,8 +26,17 @@ namespace Loyalty.Business.Services.Implementations.Storage
         public string? Rewrite(string? url)
         {
             if (string.IsNullOrEmpty(url) || _cdnBaseUrl is null) return url;
-            if (!url.StartsWith(BlobHost, System.StringComparison.OrdinalIgnoreCase)) return url;
-            return _cdnBaseUrl + url.Substring(BlobHost.Length);
+            // Cari + köhnə storage hostları (StorageHosts) — köçürmədən sonra köhnə DB URL-ləri də CDN-ə gedir
+            foreach (var host in StorageHosts.BlobHosts)
+            {
+                var prefix = "https://" + host;
+                if (url.StartsWith(prefix, System.StringComparison.OrdinalIgnoreCase))
+                    return _cdnBaseUrl + url.Substring(prefix.Length);
+            }
+            return url;
         }
+
+        /// <summary>CDN bazası (sonda / yoxdur); CDN söndürülübsə null.</summary>
+        public string? CdnBaseUrl => _cdnBaseUrl;
     }
 }

@@ -75,7 +75,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         {
             try
             {
-                if (!url.Contains("walverostorage.blob.core.windows.net")) return false;
+                if (!Helpers.StorageHosts.IsOwnBlobUrl(url)) return false;
 
                 var uri = new Uri(url, UriKind.Absolute);
                 var segments = uri.AbsolutePath.TrimStart('/').Split('/', 2);

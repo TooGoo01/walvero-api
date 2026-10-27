@@ -1,3 +1,4 @@
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Services.Implementations.Storage;
 using System.Text;
 
@@ -13,8 +14,6 @@ namespace Loyalty.WebAPI.Middleware
     /// </summary>
     public sealed class BlobUrlRewriteMiddleware
     {
-        private const string BlobHost = "https://walverostorage.blob.core.windows.net";
-
         private readonly RequestDelegate _next;
         private readonly BlobUrlRewriter _rewriter;
 
@@ -47,13 +46,14 @@ namespace Loyalty.WebAPI.Middleware
                     using var reader = new StreamReader(buffer, Encoding.UTF8, leaveOpen: true);
                     var body = await reader.ReadToEndAsync();
 
-                    var cdnHost = _rewriter.Rewrite(BlobHost + "/__probe__");
-                    // probe is `cdnHost/__probe__`; isolate CDN host prefix by trimming probe path
-                    var cdnBase = cdnHost is null ? null : cdnHost.Substring(0, cdnHost.Length - "/__probe__".Length);
+                    var cdnBase = _rewriter.CdnBaseUrl;
 
                     if (!string.IsNullOrEmpty(cdnBase))
                     {
-                        var rewritten = body.Replace(BlobHost, cdnBase, StringComparison.OrdinalIgnoreCase);
+                        // Cari + köhnə storage hostları (köçürmədən sonra DB-də köhnə host qalır)
+                        var rewritten = body;
+                        foreach (var host in StorageHosts.BlobHosts)
+                            rewritten = rewritten.Replace("https://" + host, cdnBase, StringComparison.OrdinalIgnoreCase);
                         var bytes = Encoding.UTF8.GetBytes(rewritten);
                         // Let downstream middleware (compression) set framing — clear stale length.
                         context.Response.ContentLength = null;

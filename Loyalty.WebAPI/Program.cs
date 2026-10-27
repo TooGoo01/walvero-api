@@ -43,6 +43,9 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     WebRootPath = "wwwroot"
 });
 
+// Storage hostları: cari = Storage:Azure hesabı, köhnə = Storage:LegacyHosts (köçürmədən qalan DB URL-ləri üçün alias)
+Loyalty.Business.Helpers.StorageHosts.Configure(builder.Configuration["Storage:Azure"], builder.Configuration["Storage:LegacyHosts"]);
+
 static void EnsureTesseractSymlinks()
 {
     // Tesseract NuGet (5.2.0) `InteropDotNet.LibraryLoader` sistem path-larını (/usr/lib və LD_LIBRARY_PATH)
