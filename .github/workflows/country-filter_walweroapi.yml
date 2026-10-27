@@ -49,3 +49,17 @@ jobs:
           app-name: 'WalweroAPI'
           slot-name: 'Production'
           package: ${{env.DOTNET_ROOT}}/myapp
+
+      # Köçürmə: yeni Azure hesabı (nadir.ezizov, walvero-rg) — köhnə deploy-dan sonra paralel deploy
+      - name: Login to new Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.NEWAZ_CLIENT_ID }}
+          tenant-id: ${{ secrets.NEWAZ_TENANT_ID }}
+          subscription-id: ${{ secrets.NEWAZ_SUBSCRIPTION_ID }}
+
+      - name: Deploy to new Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'walvero-api'
+          package: ${{env.DOTNET_ROOT}}/myapp
