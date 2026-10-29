@@ -44,7 +44,13 @@ namespace Loyalty.Business.Services.Implementations.Main
         public Task RefreshTenantPassesAsync(int tenantId, CancellationToken ct = default)
             => RefreshProgramPassesAsync(tenantId, null, ct);
 
-        public async Task RefreshProgramPassesAsync(int tenantId, int? programId, CancellationToken ct = default)
+        public Task RefreshProgramPassesAsync(int tenantId, int? programId, CancellationToken ct = default)
+            => RefreshAsync(tenantId, programId, null, ct);
+
+        public Task RefreshCustomerPassesAsync(int tenantId, int customerId, CancellationToken ct = default)
+            => RefreshAsync(tenantId, null, customerId, ct);
+
+        private async Task RefreshAsync(int tenantId, int? programId, int? customerId, CancellationToken ct)
         {
             var cards = await _dbContext.Set<LoyaltyCard>()
                 .AsNoTracking()
@@ -52,7 +58,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                          && c.IsActive
                          && c.Status == CardStatus.Active
                          && (c.IsAndroid || c.IsIOS)
-                         && (programId == null || c.LoyaltyProgramId == programId))
+                         && (programId == null || c.LoyaltyProgramId == programId)
+                         && (customerId == null || c.CustomerId == customerId))
                 .Include(c => c.LoyaltyProgram).ThenInclude(p => p.CardTemplate).ThenInclude(t => t.Icons)
                 .ToListAsync(ct);
 
@@ -105,6 +112,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     // Kart dizayneri: Google class-ı (başlıq/issuer/rəng/logo) proqram başına 1 dəfə yenilə —
                     // obyekt PATCH-ləri class-a toxunmur, dizayn dəyişikliyi yalnız belə çatır.
                     if (CardDesignFeatureFlags.GoogleClassUpdateEnabled
+                        && customerId == null
                         && cards.Any(c => c.LoyaltyProgramId == card.LoyaltyProgramId && c.IsAndroid))
                     {
                         try

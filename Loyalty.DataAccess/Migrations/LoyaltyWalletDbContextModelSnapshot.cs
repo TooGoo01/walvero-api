@@ -1013,6 +1013,10 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<decimal?>("PosDiscountPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
                     b.Property<string>("PosGuestCategoryId")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");

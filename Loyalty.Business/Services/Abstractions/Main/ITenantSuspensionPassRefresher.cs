@@ -11,5 +11,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
 
         /// <summary>Yalnız bir proqramın kartları (məs. ambassador kartının dizaynı dəyişəndə). programId null → bütün tenant.</summary>
         Task RefreshProgramPassesAsync(int tenantId, int? programId, CancellationToken ct = default);
+
+        /// <summary>Yalnız bir müştərinin kartları (məs. kassa endirimi təyin olunanda).</summary>
+        Task RefreshCustomerPassesAsync(int tenantId, int customerId, CancellationToken ct = default);
     }
 }

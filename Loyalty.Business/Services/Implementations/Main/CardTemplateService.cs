@@ -241,6 +241,9 @@ namespace Loyalty.Business.Services.Implementations.Main
             design.Apply(dto.Title, dto.LogoText, dto.Description, dto.IssuerName,
                 dto.BalanceLabel, dto.CustomerLabel, dto.CashbackLabel,
                 dto.AboutTitle, dto.AboutText, dto.WebsiteUrl, dto.WebsiteLabel);
+            if (dto.BalanceFormat is < 0 or > 2)
+                return new ServiceResult(false, "Balans formatı yanlışdır.");
+            design.ApplyBalance(dto.BalanceUnit, dto.BalanceFormat, dto.BalanceNotify, dto.BalanceChangeText);
 
             // Faza 2: sahə yuvaları / barkod / Google banner (LayoutJson)
             var layoutWarnings = new List<string>();

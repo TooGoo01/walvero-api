@@ -64,6 +64,13 @@ namespace Loyalty.Business.Dtos.Post.Main
         [MaxLength(300)] public string? WebsiteUrl { get; set; }
         [MaxLength(40)] public string? WebsiteLabel { get; set; }
 
+        // Balans görüntüsü (bax CardDesignSettings.BalanceUnit/BalanceFormat/BalanceNotify). null = toxunma
+        [MaxLength(20)] public string? BalanceUnit { get; set; }
+        /// <summary>0 = Auto, 1 = tam ədəd, 2 = onluq.</summary>
+        public int? BalanceFormat { get; set; }
+        public bool? BalanceNotify { get; set; }
+        [MaxLength(80)] public string? BalanceChangeText { get; set; }
+
         /// <summary>Faza 2 "Sahələr": JSON (bax CardLayoutUpdateDto). null = toxunma.</summary>
         [MaxLength(8000)] public string? LayoutJson { get; set; }
     }

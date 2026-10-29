@@ -286,6 +286,7 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(c => c.CardNumber).HasMaxLength(50);
                 entity.Property(c => c.PosGuestCategoryId).HasMaxLength(64);
                 entity.Property(c => c.PosGuestCategoryName).HasMaxLength(100);
+                entity.Property(c => c.PosDiscountPercent).HasPrecision(5, 2);
 
                 entity.HasIndex(c => new { c.TenantId, c.PhoneNumber }).IsUnique();
                 entity.HasIndex(c => c.CardNumber)

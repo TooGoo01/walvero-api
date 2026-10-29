@@ -29,13 +29,14 @@ namespace Loyalty.Business.Services.Abstractions.Main
             string? classIdOverride = null,
             bool updateIfExists = false,
             decimal? lifetimePointsOverride = null,
-            string? pointsExpiryOverride = null);
+            string? pointsExpiryOverride = null,
+            decimal? discountOverride = null);
 
         /// Publish-siz test: {ClassId}-preview class + preview obyekt → Save-to-Wallet linki (Data: {url, classId, objectId, classStatus})
         Task<ServiceResult> PreviewAsync(
             CardTemplateSnapshot tpl, string previewKey, string accountName, string barcodeValue,
             decimal points, int steps, int cycles, CancellationToken ct = default,
-            decimal lifetimePoints = 0, string? pointsExpiryText = null);
+            decimal lifetimePoints = 0, string? pointsExpiryText = null, decimal? discountPercent = null);
 
         /// Real class vəziyyəti (read-only)
         Task<ServiceResult> GetClassStatusAsync(CancellationToken ct = default);

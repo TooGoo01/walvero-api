@@ -33,7 +33,8 @@ public class CardFieldCatalogTests
         f[CardFieldCatalog.Balance].Slot.Should().Be(CardFieldSlot.Header);
         f[CardFieldCatalog.CustomerName].Slot.Should().Be(CardFieldSlot.Secondary);
         f[CardFieldCatalog.Cashback].Slot.Should().Be(CardFieldSlot.Auxiliary);
-        f.Values.Where(x => x.Slot != CardFieldSlot.Hidden).Should().HaveCount(3);
+        f[CardFieldCatalog.Discount].Slot.Should().Be(CardFieldSlot.Auxiliary);   // boş dəyər → kartda görünmür
+        f.Values.Where(x => x.Slot != CardFieldSlot.Hidden).Should().HaveCount(4);
         f.Keys.Should().BeEquivalentTo(CardFieldCatalog.AllIds);
     }
 
@@ -54,7 +55,7 @@ public class CardFieldCatalogTests
         var eff = CardFieldCatalog.Effective(null, CardTemplateType.PointsBased, out var w);
         w.Should().BeEmpty();
         eff.Where(f => f.Slot != CardFieldSlot.Hidden).Select(f => f.Id)
-            .Should().BeEquivalentTo(new[] { CardFieldCatalog.Balance, CardFieldCatalog.CustomerName, CardFieldCatalog.Cashback });
+            .Should().BeEquivalentTo(new[] { CardFieldCatalog.Balance, CardFieldCatalog.CustomerName, CardFieldCatalog.Cashback, CardFieldCatalog.Discount });
     }
 
     [Fact]
@@ -107,7 +108,7 @@ public class CardFieldCatalogTests
             new() { CardFieldCatalog.GoogleImageRow },
             new() { CardFieldCatalog.Balance },
             new() { CardFieldCatalog.CustomerName },
-            new() { CardFieldCatalog.Cashback },
+            new() { CardFieldCatalog.Cashback, CardFieldCatalog.Discount },
         }, o => o.WithStrictOrdering());
     }
 
@@ -126,9 +127,10 @@ public class CardFieldCatalogTests
         };
         var eff = CardFieldCatalog.Effective(saved, CardTemplateType.PointsBased, out _);
         var rows = CardFieldCatalog.GoogleRows(eff, GoogleBannerPosition.Bottom, out var w);
-        rows.Should().HaveCount(2);
+        rows.Should().HaveCount(3);
         rows[0].Should().Equal(CardFieldCatalog.Balance, CardFieldCatalog.ProgramName);          // Header+Primary, Order ilə
         rows[1].Should().Equal(CardFieldCatalog.Cashback, CardFieldCatalog.CustomerName, CardFieldCatalog.CardNumber); // ≤3, sıra ilə
+        rows[2].Should().Equal(CardFieldCatalog.Discount);   // sonradan əlavə sahə default yerində; endirimsiz kartda Google sətri gizlədir
         w.Should().ContainSingle(x => x.Contains(CardFieldCatalog.LifetimePoints));
     }
 
@@ -299,12 +301,12 @@ public class CardFieldCatalogTests
         {
             new() { CardFieldCatalog.GoogleImageRow },
             new() { CardFieldCatalog.CustomerName, CardFieldCatalog.Balance },
-            new() { CardFieldCatalog.Cashback },
+            new() { CardFieldCatalog.Cashback, CardFieldCatalog.Discount },
             new() { CardFieldCatalog.GoogleBarcodeRow },
         }, o => o.WithStrictOrdering());
         CardFieldCatalog.LegacyGoogleRows(CardTemplateType.ProgressBased).Should().BeEquivalentTo(new List<List<string>>
         {
-            new() { CardFieldCatalog.CustomerName }, new() { CardFieldCatalog.FreeReward }, new() { CardFieldCatalog.GoogleBarcodeRow },
+            new() { CardFieldCatalog.CustomerName }, new() { CardFieldCatalog.FreeReward, CardFieldCatalog.Discount }, new() { CardFieldCatalog.GoogleBarcodeRow },
             new() { CardFieldCatalog.RewardRule }, new() { CardFieldCatalog.GoogleImageRow },
         }, o => o.WithStrictOrdering());
         CardFieldCatalog.LegacyGoogleRows(CardTemplateType.TierBased).Should().HaveCount(4);

@@ -7,6 +7,7 @@ using Loyalty.DataAccess.Enums;
 using Loyalty.DataAccess.Repositories.Abstractions.Main;
 using Loyalty.DataAccess.UnitOfWorks;
 
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Data.Entity.ModelConfiguration.Configuration;
@@ -101,6 +102,16 @@ public sealed class AppleWalletService : IAppleWalletService
         int displayCycles = card.CompletedCycles;
         decimal lifetimePoints = card.LifetimePoints;
         DateTime? expiresAt = card.ExpiresAt;
+        // Kassa endirimi (Customer.PosDiscountPercent) — «Endirim N%» sahəsi; yalnız sahə görünəndə sorğu
+        decimal? discountPercent = null;
+        if (CardFieldCatalog.IsVisible(snapshot.Design.EffectiveFields(snapshot.TemplateType), CardFieldCatalog.Discount))
+        {
+            var cust = await _uow.Repository<Customer>().Query().AsNoTracking()
+                .Where(c => c.Id == card.CustomerId)
+                .Select(c => new { c.PosGuestCategoryId, c.PosGuestCategoryName, c.PosDiscountPercent })
+                .FirstOrDefaultAsync(ct);
+            if (cust != null) discountPercent = PosDiscount.Percent(cust.PosGuestCategoryId, cust.PosGuestCategoryName, cust.PosDiscountPercent);
+        }
         if (_suspensionGuard != null)
         {
             var susp = await _suspensionGuard.GetAsync(tenantId, ct);
@@ -115,6 +126,7 @@ public sealed class AppleWalletService : IAppleWalletService
                 lotteryDrawDate = null;
                 lifetimePoints = 0;
                 expiresAt = null;
+                discountPercent = null;
             }
         }
         // Faza 2: bitmə tarixi yalnız sahə görünəndə hesablanır (əlavə DB sorğusu)
@@ -148,7 +160,7 @@ public sealed class AppleWalletService : IAppleWalletService
             {
                 var req = BuildCardPassRequest(snapshot, creds, serial, customerFullName, barcodeValue,
                     displayPoints, displaySteps, displayCycles, lotteryTickets, lotteryWinPrize, lotteryDrawDate, extraBackFields,
-                    lifetimePoints, pointsExpiryText);
+                    lifetimePoints, pointsExpiryText, discountPercent);
 
                 _logger.LogInformation(
                     "Apple pass colors — BG: {Bg}, FG: {Fg}, Label: {Lbl} (TenantId={TenantId}, CardId={CardId})",
@@ -273,7 +285,7 @@ public sealed class AppleWalletService : IAppleWalletService
         CardTemplateSnapshot snapshot, AppleWalletRuntimeCreds creds, string serial, string customerFullName, string barcodeValue,
         decimal displayPoints, int displaySteps, int displayCycles,
         int lotteryTickets, string? lotteryWinPrize, DateTime? lotteryDrawDate, IEnumerable<PassField>? extraBackFields,
-        decimal lifetimePoints = 0, string? pointsExpiryText = null)
+        decimal lifetimePoints = 0, string? pointsExpiryText = null, decimal? discountPercent = null)
     {
                 var design = snapshot.Design ?? new CardDesignSettings();
                 bool isProgressBased = snapshot.TemplateType == CardTemplateType.ProgressBased;
@@ -288,13 +300,16 @@ public sealed class AppleWalletService : IAppleWalletService
 
                 // Sahələr: dəyərlər + admin yuvaları (limitlər Effective-də tətbiq olunub)
                 var values = CardFieldCatalog.BuildValues(snapshot, customerFullName, barcodeValue,
-                    displayPoints, displaySteps, displayCycles, lifetimePoints, pointsExpiryText, CardPlatform.Apple);
+                    displayPoints, displaySteps, displayCycles, lifetimePoints, pointsExpiryText, CardPlatform.Apple, discountPercent);
+                // Balans dəyişəndə iOS kilid ekranında bildiriş (dəyər eyni qalanda göstərilmir → refresh spam etmir)
+                var changeMessage = design.NotifyOnBalanceChange ? design.EffectiveBalanceChangeText : null;
                 foreach (var f in design.EffectiveFields(snapshot.TemplateType))
                 {
                     if (f.Slot == CardFieldSlot.Hidden) continue;
                     if (!values.TryGetValue(f.Id, out var v) || string.IsNullOrWhiteSpace(v.Value)) continue;
                     var pf = new PassField(CardFieldCatalog.AppleKey(f.Id, snapshot.TemplateType), v.Value,
-                        CardFieldCatalog.EffectiveLabel(f, v, snapshot, displayPoints));
+                        CardFieldCatalog.EffectiveLabel(f, v, snapshot, displayPoints),
+                        CardFieldCatalog.NotifiesOnChange(f.Id) ? changeMessage : null);
                     switch (f.Slot)
                     {
                         case CardFieldSlot.Header: headerFields.Add(pf); break;
@@ -412,7 +427,7 @@ public sealed class AppleWalletService : IAppleWalletService
     public async Task<ServiceResult> GeneratePreviewPassAsync(
         int tenantId, int loyaltyProgramId, AppleWalletRuntimeCreds creds, CardTemplateSnapshot snapshot,
         string customerFullName, string barcodeValue, decimal points, int steps, int cycles, CancellationToken ct = default,
-        decimal lifetimePoints = 0, string? pointsExpiryText = null)
+        decimal lifetimePoints = 0, string? pointsExpiryText = null, decimal? discountPercent = null)
     {
         if (!HasValidCreds(creds, out var credsReason))
             return new ServiceResult(false, "Apple credentials not found: " + credsReason);
@@ -424,7 +439,7 @@ public sealed class AppleWalletService : IAppleWalletService
         try
         {
             var req = BuildCardPassRequest(snapshot, creds, serial, customerFullName, barcodeValue, points, steps, cycles, 0, null, null, null,
-                lifetimePoints, pointsExpiryText);
+                lifetimePoints, pointsExpiryText, discountPercent);
             // Önizləmə: cihaz qeydiyyatı/push olmasın — webServiceURL/authenticationToken göndərilmir
             req.WebServiceURL = null;
             req.AuthenticationToken = null;

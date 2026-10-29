@@ -30,7 +30,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> GeneratePreviewPassAsync(
             int tenantId, int loyaltyProgramId, AppleWalletRuntimeCreds creds, CardTemplateSnapshot snapshot,
             string customerFullName, string barcodeValue, decimal points, int steps, int cycles, CancellationToken ct = default,
-            decimal lifetimePoints = 0, string? pointsExpiryText = null);
+            decimal lifetimePoints = 0, string? pointsExpiryText = null, decimal? discountPercent = null);
 
         Task<ServiceResult> PushNotificationToCardAsync(
             int loyaltyCardId,

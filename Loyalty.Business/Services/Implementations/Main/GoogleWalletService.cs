@@ -280,7 +280,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
          string? classIdOverride = null,
          bool updateIfExists = false,
          decimal? lifetimePointsOverride = null,
-         string? pointsExpiryOverride = null)
+         string? pointsExpiryOverride = null,
+         decimal? discountOverride = null)
     {
         if (!_isInitialized || _svc == null)
         {
@@ -364,9 +365,9 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 if (!IsHttps(bannerUrl) && IsHttps(tpl.GoogleLogoUrl)) bannerUrl = tpl.GoogleLogoUrl;
             }
 
-            var extras = await LoadExtrasAsync(loyaltyCardId, tpl, fields, lifetimePointsOverride, pointsExpiryOverride, ct);
+            var extras = await LoadExtrasAsync(loyaltyCardId, tpl, fields, lifetimePointsOverride, pointsExpiryOverride, discountOverride, ct);
             var values = CardFieldCatalog.BuildValues(tpl, accountName ?? $"Card #{loyaltyCardId}", barcode,
-                currentPoints, currentSteps, completedCycles, extras.Lifetime, extras.ExpiryText, CardPlatform.Google);
+                currentPoints, currentSteps, completedCycles, extras.Lifetime, extras.ExpiryText, CardPlatform.Google, extras.Discount);
             ApplyFieldModules(textModules, tpl, fields, values, currentPoints);
             var imageModules = bannerPos == GoogleBannerPosition.Top && IsHttps(bannerUrl)
                 ? new List<ImageModuleData> { BuildBanner(bannerUrl!, isProgressBased) } : null;
@@ -413,7 +414,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 LoyaltyPoints = isProgressBased ? null : new LoyaltyPoints
                 {
                     Balance = new LoyaltyPointsBalance { Int__ = (int)Math.Round(currentPoints) },
-                    Label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency
+                    Label = CardFieldCatalog.EffectiveUnit(tpl)
                 },
                 SecondaryLoyaltyPoints = secondaryLoyaltyPoints,
 
@@ -677,9 +678,9 @@ public sealed class GoogleWalletService : IGoogleWalletService
             }
 
             // Sahə modulları: görünən → upsert (ad dəyişən müştəri də yenilənir), gizli → silinir
-            var extras = await LoadExtrasAsync(loyaltyCardId, tpl, fields, null, null, ct);
+            var extras = await LoadExtrasAsync(loyaltyCardId, tpl, fields, null, null, null, ct);
             var values = CardFieldCatalog.BuildValues(tpl, accountName, existing.Barcode?.Value ?? loyaltyCardId.ToString(),
-                nextPoints, currentSteps, completedCycles, extras.Lifetime, extras.ExpiryText, CardPlatform.Google);
+                nextPoints, currentSteps, completedCycles, extras.Lifetime, extras.ExpiryText, CardPlatform.Google, extras.Discount);
             ApplyFieldModules(textList, tpl, fields, values, nextPoints);
 
             // Lottery: show on card face via SecondaryLoyaltyPoints + TextModule
@@ -732,7 +733,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 LoyaltyPoints = isProgressBased ? null : new LoyaltyPoints
                 {
                     Balance = new LoyaltyPointsBalance { Int__ = (int)Math.Round(nextPoints) },
-                    Label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency
+                    Label = CardFieldCatalog.EffectiveUnit(tpl)
                 },
                 SecondaryLoyaltyPoints = secondaryLoyaltyPoints,
                 TextModulesData = textList,
@@ -785,6 +786,15 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
             _log?.LogInformation("Google Wallet object PATCHED (redeem): {ObjectId} (banner={Banner}) isProgress={IsProgress} lotteryTickets={LotteryTickets}",
                 objectId, bannerUrl, isProgressBased, lotteryTickets);
+
+            // Balans dəyişmə bildirişi (tenant ayarı) — Apple changeMessage-in Google qarşılığı. Best-effort.
+            if (tpl.Design?.NotifyOnBalanceChange == true && !isProgressBased
+                && existingBalance.HasValue && existingBalance.Value != (int)Math.Round(nextPoints)
+                && values.TryGetValue(CardFieldCatalog.Balance, out var balanceValue)
+                && !await IsSuspendedAsync(tpl.TenantId, ct))
+            {
+                await NotifyBalanceChangeAsync(objectId, existing.Messages, tpl, balanceValue.Value, ct);
+            }
 
             return new ServiceResult(true, patched);
         }
@@ -1071,7 +1081,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
     public async Task<ServiceResult> PreviewAsync(
         CardTemplateSnapshot tpl, string previewKey, string accountName, string barcodeValue,
         decimal points, int steps, int cycles, CancellationToken ct = default,
-        decimal lifetimePoints = 0, string? pointsExpiryText = null)
+        decimal lifetimePoints = 0, string? pointsExpiryText = null, decimal? discountPercent = null)
     {
         if (!_isInitialized || _svc == null)
             return new ServiceResult(false, "Google Wallet service not initialized");
@@ -1106,11 +1116,11 @@ public sealed class GoogleWalletService : IGoogleWalletService
         var objectId = $"{_issuerId}.{tpl.TenantId}.{tpl.LoyaltyProgramId}.preview-{previewKey}";
         var objRes = await CreateOrGetObjectByCardIdAsync(0, tpl, accountName, barcodeValue, points, steps, ct, 0, null, null, cycles,
             objectIdOverride: objectId, classIdOverride: previewClassId, updateIfExists: true,
-            lifetimePointsOverride: lifetimePoints, pointsExpiryOverride: pointsExpiryText);
+            lifetimePointsOverride: lifetimePoints, pointsExpiryOverride: pointsExpiryText, discountOverride: discountPercent);
         if (!objRes.Success)
             return new ServiceResult(false, $"Google preview obyekt xətası: {objRes.Message}");
 
-        var label = string.IsNullOrWhiteSpace(tpl.Currency) ? "Points" : tpl.Currency;
+        var label = CardFieldCatalog.EffectiveUnit(tpl);
         var url = BuildSaveLink(objectId, previewClassId, "preview", accountName, (int)Math.Round(points), label);
         _log?.LogInformation("[GW-PREVIEW] ok. ClassId={ClassId} ObjectId={ObjectId} {Msg}", previewClassId, objectId, classMsg);
         return new ServiceResult(true, new { url, classId = previewClassId, objectId, classStatus = classMsg }, classMsg);
@@ -1401,36 +1411,85 @@ public sealed class GoogleWalletService : IGoogleWalletService
         ContentDescription = new LocalizedString { DefaultValue = new TranslatedString { Language = "en-US", Value = "\u200B" } }
     };
 
-    /// <summary>Ümumi xal / bitmə tarixi — yalnız sahə görünəndə DB-dən (suspensiyada maskalanır); preview override ilə.</summary>
-    private async Task<(decimal Lifetime, string? ExpiryText)> LoadExtrasAsync(int loyaltyCardId, CardTemplateSnapshot tpl, List<CardFieldSetting> fields,
-        decimal? lifetimeOverride, string? expiryOverride, CancellationToken ct)
+    /// <summary>Ümumi xal / bitmə tarixi / kassa endirimi — yalnız sahə görünəndə DB-dən (suspensiyada maskalanır); preview override ilə.</summary>
+    private async Task<(decimal Lifetime, string? ExpiryText, decimal? Discount)> LoadExtrasAsync(int loyaltyCardId, CardTemplateSnapshot tpl, List<CardFieldSetting> fields,
+        decimal? lifetimeOverride, string? expiryOverride, decimal? discountOverride, CancellationToken ct)
     {
         var needLifetime = CardFieldCatalog.IsVisible(fields, CardFieldCatalog.LifetimePoints);
         var needExpiry = CardFieldCatalog.IsVisible(fields, CardFieldCatalog.PointsExpiry);
-        if (!needLifetime && !needExpiry) return (0, null);
-        if (lifetimeOverride.HasValue || expiryOverride != null || loyaltyCardId <= 0) return (lifetimeOverride ?? 0, expiryOverride);
+        var needDiscount = CardFieldCatalog.IsVisible(fields, CardFieldCatalog.Discount);
+        if (!needLifetime && !needExpiry && !needDiscount) return (0, null, null);
+        if (lifetimeOverride.HasValue || expiryOverride != null || discountOverride.HasValue || loyaltyCardId <= 0)
+            return (lifetimeOverride ?? 0, expiryOverride, discountOverride);
 
-        decimal lifetime = 0; System.DateTime? expiresAt = null;
+        decimal lifetime = 0; System.DateTime? expiresAt = null; decimal? discount = null;
         if (_cardRepo != null)
         {
             try
             {
-                var card = await _cardRepo.GetByIdAsync(loyaltyCardId, ct);
-                if (card != null) { lifetime = card.LifetimePoints; expiresAt = card.ExpiresAt; }
+                // GetById Customer-i include edir (endirim faizi müştəridədir)
+                var card = await _cardRepo.GetById(loyaltyCardId, ct);
+                if (card != null)
+                {
+                    lifetime = card.LifetimePoints; expiresAt = card.ExpiresAt;
+                    if (card.Customer != null)
+                        discount = PosDiscount.Percent(card.Customer.PosGuestCategoryId, card.Customer.PosGuestCategoryName, card.Customer.PosDiscountPercent);
+                }
             }
             catch (Exception ex) { _log?.LogWarning(ex, "[GW] extras load failed. CardId={CardId}", loyaltyCardId); }
         }
-        if (_suspensionGuard != null)
-        {
-            try
-            {
-                var susp = await _suspensionGuard.GetAsync(tpl.TenantId, ct);
-                if (susp.IsSuspended) { lifetime = 0; expiresAt = null; }
-            }
-            catch { /* mask best-effort */ }
-        }
+        if (await IsSuspendedAsync(tpl.TenantId, ct)) { lifetime = 0; expiresAt = null; discount = null; }
         var text = needExpiry ? await CardFieldCatalog.FormatExpiryAsync(_timeZoneService, tpl.TenantId, expiresAt, ct) : null;
-        return (needLifetime ? lifetime : 0, text);
+        return (needLifetime ? lifetime : 0, text, needDiscount ? discount : null);
+    }
+
+    private const string BalanceMessagePrefix = "balance-";
+
+    /// <summary>
+    /// Balans dəyişmə bildirişi: köhnə balans mesajları silinir (obyekt şişməsin), yenisi TEXT_AND_NOTIFY ilə əlavə olunur.
+    /// Google ~3 bildiriş/24 saat/kart limitindən artığı səssiz mesaj kimi qalır. Xəta udulur — PATCH artıq uğurludur.
+    /// </summary>
+    private async Task NotifyBalanceChangeAsync(string objectId, IList<Message>? existingMessages, CardTemplateSnapshot tpl, string balanceText, CancellationToken ct)
+    {
+        try
+        {
+            if (existingMessages?.Any(m => m.Id?.StartsWith(BalanceMessagePrefix) == true) == true)
+            {
+                var kept = existingMessages.Where(m => m.Id?.StartsWith(BalanceMessagePrefix) != true).ToList();
+                await _svc!.Loyaltyobject.Patch(new LoyaltyObject { Messages = kept }, objectId).ExecuteAsync(ct);
+            }
+
+            var body = tpl.Design!.EffectiveBalanceChangeText.Replace(CardDesignSettings.ChangeValuePlaceholder, balanceText);
+            var title = string.IsNullOrWhiteSpace(tpl.Design.Title) ? (tpl.ProgramName ?? "") : tpl.Design.Title!;
+            var start = System.DateTime.UtcNow;
+            await _svc!.Loyaltyobject.Addmessage(new AddMessageRequest
+            {
+                Message = new Message
+                {
+                    Id = $"{BalanceMessagePrefix}{Guid.NewGuid():N}",
+                    Header = title,
+                    Body = body,
+                    MessageType = "TEXT_AND_NOTIFY",
+                    DisplayInterval = new TimeInterval
+                    {
+                        Start = new Google.Apis.Walletobjects.v1.Data.DateTime { Date = start.ToString("yyyy-MM-ddTHH:mm:ss.fffZ") },
+                        End = new Google.Apis.Walletobjects.v1.Data.DateTime { Date = start.AddDays(7).ToString("yyyy-MM-ddTHH:mm:ss.fffZ") }
+                    }
+                }
+            }, objectId).ExecuteAsync(ct);
+            _log?.LogInformation("[GW] balance change message added. ObjectId={ObjectId}", objectId);
+        }
+        catch (Exception ex)
+        {
+            _log?.LogWarning(ex, "[GW] balance change message failed. ObjectId={ObjectId}", objectId);
+        }
+    }
+
+    private async Task<bool> IsSuspendedAsync(int tenantId, CancellationToken ct)
+    {
+        if (_suspensionGuard == null) return false;
+        try { return (await _suspensionGuard.GetAsync(tenantId, ct)).IsSuspended; }
+        catch { return false; /* mask best-effort */ }
     }
 
     private static string? PickTierIconByPoints(CardTemplateSnapshot tpl, decimal pts, out string tier)

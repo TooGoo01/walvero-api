@@ -3,6 +3,9 @@ using System.Text.Json.Serialization;
 
 namespace Loyalty.Business.Dtos.Post.Main
 {
+    /// <summary>Kartda balans rəqəmi: Auto = pul valyutası (AZN/₼…) olduğu kimi, qalanları (məhsul/xal) tam ədəd.</summary>
+    public enum BalanceFormat { Auto = 0, Integer = 1, Decimal = 2 }
+
     /// <summary>
     /// Kart dizayneri ayarları — CardTemplate.DesignJson-da versiyalı saxlanır.
     /// Boş/null sahə = platformaların bugünkü default mətni (mövcud kartlar dəyişmir).
@@ -52,6 +55,16 @@ namespace Loyalty.Business.Dtos.Post.Main
         /// <summary>Google banner yeri; null = template default (Points/Tier → Top, Progress → Bottom).</summary>
         public Helpers.GoogleBannerPosition? GoogleBanner { get; set; }
 
+        // ---- Balans görüntüsü + dəyişmə bildirişi ----
+        /// <summary>Balans vahidi (görüntü) — məs. "məhsul" əvəzinə "ədəd". Boş → şablon valyutası (CardTemplate.Currency məntiqdə dəyişmir).</summary>
+        public string? BalanceUnit { get; set; }
+        /// <summary>Balans rəqəm formatı; null = Auto (pul valyutası deyilsə tam ədəd).</summary>
+        public BalanceFormat? BalanceFormat { get; set; }
+        /// <summary>Balans dəyişəndə bildiriş (Apple changeMessage, Google TEXT_AND_NOTIFY). null/false = söndürülü.</summary>
+        public bool? BalanceNotify { get; set; }
+        /// <summary>Bildiriş mətni; "%@" = yeni dəyər. Boş → DefaultBalanceChangeText.</summary>
+        public string? BalanceChangeText { get; set; }
+
         [JsonIgnore] public DataAccess.Enums.BarcodeType EffectiveBarcode => Barcode ?? DataAccess.Enums.BarcodeType.Code128;
 
         public Helpers.GoogleBannerPosition EffectiveGoogleBanner(DataAccess.Enums.CardTemplateType type)
@@ -72,6 +85,8 @@ namespace Loyalty.Business.Dtos.Post.Main
             "• Fərdiləşdirilmiş mükafatlar\n• Avtomatlaşdırılmış izləmə (POS)\n• Hədəfli kampaniyalar\n• Analitika və insight-lar";
         public const string DefaultWebsiteUrl = "https://www.walvero.com";
         public const string DefaultWebsiteLabel = "Veb-sayt";
+        public const string DefaultBalanceChangeText = "Balansınız: %@";
+        public const string ChangeValuePlaceholder = "%@";
         /// <summary>Admin bölməni gizlətmək üçün bu dəyəri yazır.</summary>
         public const string Hidden = "-";
 
@@ -84,6 +99,16 @@ namespace Loyalty.Business.Dtos.Post.Main
         [JsonIgnore] public string EffectiveAboutText => Or(AboutText, DefaultAboutText);
         [JsonIgnore] public string EffectiveWebsiteUrl => Or(WebsiteUrl, DefaultWebsiteUrl);
         [JsonIgnore] public string EffectiveWebsiteLabel => Or(WebsiteLabel, DefaultWebsiteLabel);
+        [JsonIgnore] public bool NotifyOnBalanceChange => BalanceNotify == true;
+        /// <summary>"%@" yoxdursa sona əlavə olunur (Apple changeMessage dəyəri yalnız placeholder ilə göstərir).</summary>
+        [JsonIgnore] public string EffectiveBalanceChangeText
+        {
+            get
+            {
+                var t = Or(BalanceChangeText, DefaultBalanceChangeText);
+                return t.Contains(ChangeValuePlaceholder) ? t : $"{t} {ChangeValuePlaceholder}";
+            }
+        }
         [JsonIgnore] public bool ShowAbout => AboutText?.Trim() != Hidden;
         [JsonIgnore] public bool ShowWebsite => WebsiteUrl?.Trim() != Hidden;
 
@@ -125,6 +150,15 @@ namespace Loyalty.Business.Dtos.Post.Main
             AboutText = Merge(AboutText, aboutText);
             WebsiteUrl = Merge(WebsiteUrl, websiteUrl);
             WebsiteLabel = Merge(WebsiteLabel, websiteLabel);
+        }
+
+        /// <summary>Balans vahidi/formatı/bildirişi (null = toxunma; vahid/mətn "" = default; format 0 = Auto).</summary>
+        public void ApplyBalance(string? unit, int? format, bool? notify, string? changeText)
+        {
+            BalanceUnit = Merge(BalanceUnit, unit);
+            if (format.HasValue) BalanceFormat = format.Value == 0 ? null : (Main.BalanceFormat)format.Value;
+            if (notify.HasValue) BalanceNotify = notify.Value ? true : null;
+            BalanceChangeText = Merge(BalanceChangeText, changeText);
         }
 
         /// <summary>Admin layout JSON-u ({barcode, googleBanner, fields:[{id,slot,order,label}]}) — null sahə = toxunma.</summary>

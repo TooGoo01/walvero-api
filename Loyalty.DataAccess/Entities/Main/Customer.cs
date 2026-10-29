@@ -45,6 +45,8 @@ namespace Loyalty.DataAccess.Entities.Main
         // Endirimi iiko kampaniyası verir; Walvero müştərini kateqoriyaya yazır/silir. Name — seçim anındakı kampaniya adı.
         public string? PosGuestCategoryId { get; set; }
         public string? PosGuestCategoryName { get; set; }
+        // Kampaniyanın endirim faizi (seçim anında kataloqdan) — Wallet kartında «Endirim 20%» göstərmək üçün.
+        public decimal? PosDiscountPercent { get; set; }
 
         // Navigation Properties
         public Tenant Tenant { get; set; } = null!;

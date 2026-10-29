@@ -46,6 +46,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             var raw = dto.CategoryId?.Trim();
             Guid? newId = null;
             string? newName = null;
+            decimal? newPercent = null;
             if (!string.IsNullOrEmpty(raw))
             {
                 if (!Guid.TryParse(raw, out var parsed))
@@ -57,14 +58,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                     return new ServiceResult(false, error ?? "Bu kateqoriya kassa endirim kampaniyasına bağlı deyil.");
                 newId = parsed;
                 newName = tier.CampaignName;
+                newPercent = tier.Percent > 0 ? tier.Percent : null;
             }
 
             Guid? oldId = Guid.TryParse(customer.PosGuestCategoryId, out var o) ? o : null;
             customer.PosGuestCategoryId = newId?.ToString();
             customer.PosGuestCategoryName = newName;
+            customer.PosDiscountPercent = newPercent;
             await _db.SaveChangesAsync(ct);
 
             var sync = await RunCategorySyncSafeAsync(tenantId, customer.Id, oldId, newId, ct);
+            EnqueuePassRefresh(tenantId, customer.Id);
             return new ServiceResult(true, sync, DescribeSync(sync, newId.HasValue));
         }
 
@@ -108,6 +112,24 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _logger.LogWarning(ex, "Customer iiko discount category sync failed. CustomerId={CustomerId}, TenantId={TenantId}", customerId, tenantId);
                 return new PosCategorySyncResult { AllOk = false, Notes = { ex.Message } };
             }
+        }
+
+        /// <summary>Wallet kartında «Endirim N%» sahəsi dərhal yenilənsin — fire-and-forget, cavabı gecikdirmir.</summary>
+        private void EnqueuePassRefresh(int tenantId, int customerId)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = _scopeFactory.CreateScope();
+                    var refresher = scope.ServiceProvider.GetRequiredService<ITenantSuspensionPassRefresher>();
+                    await refresher.RefreshCustomerPassesAsync(tenantId, customerId, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Customer pass refresh after discount change failed. CustomerId={CustomerId}, TenantId={TenantId}", customerId, tenantId);
+                }
+            });
         }
 
         private static string DescribeSync(PosCategorySyncResult r, bool assigned)

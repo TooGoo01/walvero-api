@@ -21,6 +21,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         // Faza 2 sahələri (ümumi xal / bitmə tarixi) — admin önizləməsi ilə eyni nümunə
         private const decimal SampleLifetime = 240m;
         private const string SampleExpiry = "31.12.2026 23:59";
+        private const decimal SampleDiscount = 10m;
 
         private readonly ILoyaltyProgramRepository _programRepo;
         private readonly ITenantBrandingRepository _brandingRepo;
@@ -65,7 +66,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             return await _apple.GeneratePreviewPassAsync(tenantId, loyaltyProgramId, creds, snapshot,
-                SampleName, SampleBarcode, SamplePoints, SampleSteps, SampleCycles, ct, SampleLifetime, SampleExpiry);
+                SampleName, SampleBarcode, SamplePoints, SampleSteps, SampleCycles, ct, SampleLifetime, SampleExpiry, SampleDiscount);
         }
 
         public async Task<ServiceResult> GooglePreviewAsync(int tenantId, int loyaltyProgramId, string previewKey, CancellationToken ct = default)
@@ -78,7 +79,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             try
             {
                 var gw = await _googleFactory.CreateForTenantAsync(tenantId, loyaltyProgramId, ct);
-                return await gw.PreviewAsync(snapshot, key, SampleName, SampleBarcode, SamplePoints, SampleSteps, SampleCycles, ct, SampleLifetime, SampleExpiry);
+                return await gw.PreviewAsync(snapshot, key, SampleName, SampleBarcode, SamplePoints, SampleSteps, SampleCycles, ct, SampleLifetime, SampleExpiry, SampleDiscount);
             }
             catch (Exception ex)
             {

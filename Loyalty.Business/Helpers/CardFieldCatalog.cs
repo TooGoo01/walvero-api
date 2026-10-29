@@ -1,3 +1,4 @@
+using System.Globalization;
 using Loyalty.Business.Dtos.Post.Main;
 using Loyalty.DataAccess.Enums;
 
@@ -40,9 +41,16 @@ namespace Loyalty.Business.Helpers
         public const string ProgramName = "programName";
         public const string RewardRule = "rewardRule";
         public const string FreeReward = "freeReward";
+        public const string Discount = "discount";
 
         public static readonly string[] AllIds =
-            { CustomerName, Balance, Cashback, Tier, CardNumber, PointsExpiry, LifetimePoints, ProgramName, RewardRule, FreeReward };
+            { CustomerName, Balance, Cashback, Tier, CardNumber, PointsExpiry, LifetimePoints, ProgramName, RewardRule, FreeReward, Discount };
+
+        /// <summary>
+        /// Sonradan əlavə olunmuş sahələr: admin layout-u bunlardan əvvəl saxlanıbsa (siyahıda yoxdursa) default yuvada qalır —
+        /// yeni sahə köhnə layout-larda gizli düşməsin. Yalnız açıq Hidden seçimi gizlədir.
+        /// </summary>
+        private static readonly string[] LateIds = { Discount };
 
         /// <summary>Hansı sahələr hansı template tipində mənalıdır (admin UI yalnız bunları göstərir).</summary>
         public static bool IsApplicable(string id, CardTemplateType type) => type == CardTemplateType.ProgressBased
@@ -74,12 +82,14 @@ namespace Loyalty.Business.Helpers
                 list.Add(new() { Id = RewardRule, Slot = CardFieldSlot.Primary, Order = 1 });
                 list.Add(new() { Id = CustomerName, Slot = CardFieldSlot.Secondary, Order = 1 });
                 list.Add(new() { Id = FreeReward, Slot = CardFieldSlot.Secondary, Order = 2 });
+                list.Add(new() { Id = Discount, Slot = CardFieldSlot.Secondary, Order = 3 });
             }
             else
             {
                 list.Add(new() { Id = Balance, Slot = CardFieldSlot.Header, Order = 1 });
                 list.Add(new() { Id = CustomerName, Slot = CardFieldSlot.Secondary, Order = 1 });
                 list.Add(new() { Id = Cashback, Slot = CardFieldSlot.Auxiliary, Order = 1 });
+                list.Add(new() { Id = Discount, Slot = CardFieldSlot.Auxiliary, Order = 2 });
             }
             var order = 100;
             foreach (var id in AllIds)
@@ -98,7 +108,8 @@ namespace Loyalty.Business.Helpers
                 var savedList = saved.Where(f => f != null && AllIds.Contains(f.Id)).ToList();
                 if (savedList.Count > 0)
                 {
-                    foreach (var f in result) { f.Slot = CardFieldSlot.Hidden; f.Order = 100 + Array.IndexOf(AllIds, f.Id); }
+                    foreach (var f in result.Where(f => !(LateIds.Contains(f.Id) && savedList.All(sf => sf.Id != f.Id))))
+                    { f.Slot = CardFieldSlot.Hidden; f.Order = 100 + Array.IndexOf(AllIds, f.Id); }
                     foreach (var sf in savedList)
                     {
                         var f = result.First(x => x.Id == sf.Id);
@@ -122,6 +133,9 @@ namespace Loyalty.Business.Helpers
             }
             return result.OrderBy(f => f.Slot).ThenBy(f => f.Order).ToList();
         }
+
+        /// <summary>Balans dəyişmə bildirişi (Apple changeMessage) qoyulan sahələr.</summary>
+        public static bool NotifiesOnChange(string id) => id is Balance or FreeReward;
 
         public static bool IsVisible(IEnumerable<CardFieldSetting> fields, string id)
             => fields.Any(f => f.Id == id && f.Slot != CardFieldSlot.Hidden);
@@ -174,12 +188,12 @@ namespace Loyalty.Business.Helpers
         public static Dictionary<string, CardFieldValue> BuildValues(
             CardTemplateSnapshot s, string? customerFullName, string? barcodeValue,
             decimal displayPoints, int displaySteps, int displayCycles, decimal lifetimePoints, string? pointsExpiryText,
-            CardPlatform platform)
+            CardPlatform platform, decimal? discountPercent = null)
         {
             var d = s.Design ?? new CardDesignSettings();
             var isProgress = s.TemplateType == CardTemplateType.ProgressBased;
             var (percent, percentCash) = CashbackPercents(s, displayPoints);
-            var currency = string.IsNullOrWhiteSpace(s.Currency) ? "AZN" : s.Currency;
+            var currency = EffectiveUnit(s);
             var freeLabel = string.IsNullOrWhiteSpace(s.FreeRewardLabel) ? "bonus" : s.FreeRewardLabel;
 
             string cashbackLabel, cashbackText;
@@ -190,18 +204,45 @@ namespace Loyalty.Business.Helpers
             return new Dictionary<string, CardFieldValue>
             {
                 [CustomerName] = new(customerFullName ?? "", isProgress ? null : d.EffectiveCustomerLabel),
-                [Balance] = new($"{displayPoints} {currency}", d.EffectiveBalanceLabel),
+                [Balance] = new($"{FormatAmount(displayPoints, s)} {currency}", d.EffectiveBalanceLabel),
                 [Cashback] = new(cashbackText, cashbackLabel),
                 [Tier] = new(TierName(s, displayPoints) ?? "", "Tier"),
                 [CardNumber] = new(barcodeValue ?? "", "Kart nömrəsi"),
                 [PointsExpiry] = new(pointsExpiryText ?? "", "Bitmə tarixi"),
-                [LifetimePoints] = new($"{lifetimePoints} {currency}", "Ümumi xal"),
+                [LifetimePoints] = new($"{FormatAmount(lifetimePoints, s)} {currency}", "Ümumi xal"),
                 [ProgramName] = new(s.ProgramName ?? "", "Proqram"),
                 [RewardRule] = new(platform == CardPlatform.Apple ? rule.ToUpperInvariant() : rule, null),
                 [FreeReward] = platform == CardPlatform.Apple
                     ? new($"{freeLabel}: {displayCycles}", null)
                     : new(displayCycles.ToString(), freeLabel),
+                [Discount] = new(discountPercent is > 0 ? $"{discountPercent.Value.ToString("0.##", CultureInfo.InvariantCulture)}%" : "", "Endirim"),
             };
+        }
+
+        /// <summary>Kartda görünən balans vahidi: dizayner override → şablon valyutası → AZN.</summary>
+        public static string EffectiveUnit(CardTemplateSnapshot s)
+        {
+            var unit = s.Design?.BalanceUnit;
+            if (!string.IsNullOrWhiteSpace(unit)) return unit.Trim();
+            return string.IsNullOrWhiteSpace(s.Currency) ? "AZN" : s.Currency;
+        }
+
+        private static readonly string[] MoneyCurrencies = { "AZN", "₼", "MANAT", "USD", "$", "EUR", "€", "RUB", "₽", "TRY", "₺", "GEL", "₾" };
+
+        /// <summary>Pul valyutasıdır? (şablonun Currency-si — override vahid yox; "məhsul"/"xal" pul deyil).</summary>
+        public static bool IsMoneyCurrency(string? currency)
+            => string.IsNullOrWhiteSpace(currency) || MoneyCurrencies.Contains(currency.Trim().ToUpperInvariant());
+
+        /// <summary>
+        /// Balans rəqəmi: tam ədəd rejimi = "0.##" (10.00 → "10", 10.5 → "10.5" — dəyər gizlədilmir); onluq = köhnə çıxış (dəyişməz).
+        /// Auto: pul valyutası olduğu kimi, qalanları tam ədəd.
+        /// </summary>
+        public static string FormatAmount(decimal value, CardTemplateSnapshot s)
+        {
+            var format = s.Design?.BalanceFormat ?? Dtos.Post.Main.BalanceFormat.Auto;
+            var integer = format == Dtos.Post.Main.BalanceFormat.Integer
+                || (format == Dtos.Post.Main.BalanceFormat.Auto && !IsMoneyCurrency(s.Currency));
+            return integer ? value.ToString("0.##", CultureInfo.InvariantCulture) : $"{value}";
         }
 
         /// <summary>Admin etiketi (PayMentType cashback-də faiz suffiksi qalır); null = etiketsiz.</summary>
@@ -256,15 +297,18 @@ namespace Loyalty.Business.Helpers
         public static bool IsLegacyGoogleLayout(CardDesignSettings? d)
             => d == null || ((d.Fields == null || d.Fields.Count == 0) && d.GoogleBanner == null);
 
-        /// <summary>Bugünkü Google class sətirləri (prod-dakı class-larla eyni) — admin layout-u dəyişməyibsə dəyişmir.</summary>
+        /// <summary>
+        /// Default Google class sətirləri (admin layout-u dəyişməyibsə). Endirim cashback / hədiyyə sayı ilə eyni sətirdədir —
+        /// sınaq 2026-10-29: obyektdə modul yoxdursa Google elementi gizlədir, qonşu bütün eni tutur (boşluq qalmır).
+        /// </summary>
         public static List<List<string>> LegacyGoogleRows(CardTemplateType type) => type == CardTemplateType.ProgressBased
             ? new List<List<string>>
             {
-                new() { CustomerName }, new() { FreeReward }, new() { GoogleBarcodeRow }, new() { RewardRule }, new() { GoogleImageRow }
+                new() { CustomerName }, new() { FreeReward, Discount }, new() { GoogleBarcodeRow }, new() { RewardRule }, new() { GoogleImageRow }
             }
             : new List<List<string>>
             {
-                new() { GoogleImageRow }, new() { CustomerName, Balance }, new() { Cashback }, new() { GoogleBarcodeRow }
+                new() { GoogleImageRow }, new() { CustomerName, Balance }, new() { Cashback, Discount }, new() { GoogleBarcodeRow }
             };
 
         /// <summary>
