@@ -147,7 +147,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
     {
         MainImage = new Image
         {
-            SourceUri = new ImageUri { Uri = url, Description = isProgressBased ? "Progress Icons Grid" : "Banner" },
+            SourceUri = new ImageUri { Uri = WalletUrl.Safe(url), Description = isProgressBased ? "Progress Icons Grid" : "Banner" },
             ContentDescription = new LocalizedString { DefaultValue = new TranslatedString { Language = "en-US", Value = "\u200B" } }
         }
     };
@@ -1013,7 +1013,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 ProgramLogo = IsHttps(tpl.GoogleLogoUrl)
                     ? new Image
                     {
-                        SourceUri = new ImageUri { Uri = tpl.GoogleLogoUrl, Description = "Logo" },
+                        SourceUri = new ImageUri { Uri = WalletUrl.Safe(tpl.GoogleLogoUrl), Description = "Logo" },
                         ContentDescription = new LocalizedString
                         {
                             DefaultValue = new TranslatedString { Language = "en-US", Value = programName }
@@ -1407,7 +1407,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
 
     private static Image BuildHero(string url) => new Image
     {
-        SourceUri = new ImageUri { Uri = url, Description = "Banner" },
+        SourceUri = new ImageUri { Uri = WalletUrl.Safe(url), Description = "Banner" },
         ContentDescription = new LocalizedString { DefaultValue = new TranslatedString { Language = "en-US", Value = "\u200B" } }
     };
 
