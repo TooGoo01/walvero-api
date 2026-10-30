@@ -1470,6 +1470,7 @@ namespace Loyalty.DataAccess.Context
                 entity.Property(e => e.AzCtaText).HasMaxLength(100);
                 entity.Property(e => e.EnCtaText).HasMaxLength(100);
                 entity.Property(e => e.RuCtaText).HasMaxLength(100);
+                entity.Property(e => e.BranchIdsJson).HasMaxLength(1000);
                 entity.HasIndex(e => new { e.TenantId, e.IsEnabled, e.SortOrder });
 
                 entity.HasOne(e => e.Tenant)

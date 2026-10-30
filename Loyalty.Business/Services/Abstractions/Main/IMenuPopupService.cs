@@ -11,6 +11,7 @@ namespace Loyalty.Business.Services.Abstractions.Main
         Task<ServiceResult> DeleteAsync(int tenantId, int id, CancellationToken ct = default);
 
         /// <summary>Tenant slug üzrə birinci aktiv popup (menu-app üçün). Yoxdursa null data.</summary>
-        Task<ServiceResult> GetPublicAsync(string tenantSlug, CancellationToken ct = default);
+        /// <param name="branchSlug">Filial menyusu (/b/{slug}/menu); null = ümumi menyu — yalnız bütün filiallara aid popup-lar.</param>
+        Task<ServiceResult> GetPublicAsync(string tenantSlug, string? branchSlug = null, CancellationToken ct = default);
     }
 }

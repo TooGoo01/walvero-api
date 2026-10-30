@@ -18,6 +18,8 @@ namespace Loyalty.Business.Dtos.Main
         public string? RuCtaText { get; set; }
         public bool IsEnabled { get; set; } = true;
         public int SortOrder { get; set; }
+        /// <summary>Göstəriləcək filiallar; null/boş = bütün filiallar.</summary>
+        public List<int>? BranchIds { get; set; }
     }
 
     public class GetMenuPopupDto : SaveMenuPopupDto

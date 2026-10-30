@@ -37,5 +37,8 @@ namespace Loyalty.DataAccess.Entities.Main
 
         /// <summary>Ən kiçik SortOrder birinci göstərilir.</summary>
         public int SortOrder { get; set; }
+
+        /// <summary>Hansı filialların menyusunda göstərilir — JSON int massivi; null = bütün filiallar.</summary>
+        public string? BranchIdsJson { get; set; }
     }
 }

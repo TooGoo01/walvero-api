@@ -1,4 +1,5 @@
 using Loyalty.Business.Dtos.Main;
+using Loyalty.Business.Helpers;
 using Loyalty.Business.Results;
 using Loyalty.Business.Services.Abstractions.Main;
 using Loyalty.DataAccess.Context;
@@ -21,7 +22,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             _cache = cache;
         }
 
-        private static string PublicCacheKey(string slug) => $"menu-popup:{slug.ToLowerInvariant()}";
+        // Filial üzrə ayrıca cache; ləğv üçün tenant versiyası açarın içindədir (bütün filial açarları birdən köhnəlir)
+        private static string VersionKey(string slug) => $"menu-popup-ver:{slug.ToLowerInvariant()}";
+        private string PublicCacheKey(string slug, string? branchSlug)
+            => $"menu-popup:{slug.ToLowerInvariant()}:{(branchSlug ?? "").Trim().ToLowerInvariant()}:{_cache.Get<int>(VersionKey(slug))}";
 
         public async Task<ServiceResult> ListAsync(int tenantId, CancellationToken ct = default)
         {
@@ -66,6 +70,17 @@ namespace Loyalty.Business.Services.Implementations.Main
             e.IsEnabled = dto.IsEnabled;
             e.SortOrder = dto.SortOrder;
 
+            // Filial hədəfi: yalnız tenant-ın öz filialları; boş = bütün filiallar
+            var requested = dto.BranchIds?.Where(i => i > 0).Distinct().ToList() ?? new List<int>();
+            if (requested.Count > 0)
+            {
+                var own = await _db.Branches.AsNoTracking()
+                    .Where(b => b.TenantId == tenantId && requested.Contains(b.Id))
+                    .Select(b => b.Id).ToListAsync(ct);
+                if (own.Count != requested.Count) return new ServiceResult(false, "Seçilmiş filial tapılmadı");
+            }
+            e.BranchIdsJson = MenuPopupTargeting.Serialize(requested);
+
             await _db.SaveChangesAsync(ct);
             await InvalidatePublicCacheAsync(tenantId, ct);
             return new ServiceResult(true, Map(e));
@@ -81,12 +96,12 @@ namespace Loyalty.Business.Services.Implementations.Main
             return new ServiceResult(true, "Silindi");
         }
 
-        public async Task<ServiceResult> GetPublicAsync(string tenantSlug, CancellationToken ct = default)
+        public async Task<ServiceResult> GetPublicAsync(string tenantSlug, string? branchSlug = null, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(tenantSlug))
                 return new ServiceResult(true, (object?)null);
 
-            var key = PublicCacheKey(tenantSlug);
+            var key = PublicCacheKey(tenantSlug, branchSlug);
             if (_cache.TryGetValue(key, out PublicMenuPopupDto? cached))
                 return new ServiceResult(true, cached);
 
@@ -99,11 +114,20 @@ namespace Loyalty.Business.Services.Implementations.Main
             PublicMenuPopupDto? dto = null;
             if (tenant != null)
             {
-                var p = await _db.MenuPopups
+                int? branchId = null;
+                if (!string.IsNullOrWhiteSpace(branchSlug))
+                    branchId = await _db.Branches.AsNoTracking()
+                        .Where(b => b.TenantId == tenant.Id && b.Slug == branchSlug && b.IsActive)
+                        .Select(b => (int?)b.Id)
+                        .FirstOrDefaultAsync(ct);
+
+                // Tenant-da popup sayı azdır — filial filtri yaddaşda (JSON sütunu)
+                var candidates = await _db.MenuPopups
                     .AsNoTracking()
                     .Where(x => x.TenantId == tenant.Id && x.IsActive && x.IsEnabled)
                     .OrderBy(x => x.SortOrder).ThenByDescending(x => x.Id)
-                    .FirstOrDefaultAsync(ct);
+                    .ToListAsync(ct);
+                var p = candidates.FirstOrDefault(x => MenuPopupTargeting.AppliesTo(x.BranchIdsJson, branchId));
 
                 if (p != null)
                 {
@@ -139,7 +163,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Select(t => t.Subdomain)
                 .FirstOrDefaultAsync(ct);
             if (!string.IsNullOrWhiteSpace(slug))
-                _cache.Remove(PublicCacheKey(slug!));
+                _cache.Set(VersionKey(slug!), _cache.Get<int>(VersionKey(slug!)) + 1);
         }
 
         private static GetMenuPopupDto Map(MenuPopup p) => new()
@@ -159,6 +183,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             RuCtaText = p.RuCtaText,
             IsEnabled = p.IsEnabled,
             SortOrder = p.SortOrder,
+            BranchIds = MenuPopupTargeting.Parse(p.BranchIdsJson),
         };
     }
 }

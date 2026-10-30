@@ -121,13 +121,14 @@ namespace Loyalty.WebAPI.Controllers
         }
 
         /// <summary>
-        /// Menu-app kampaniya popup-u — tenant-ın birinci aktiv popup-u (yoxdursa data=null)
+        /// Menu-app kampaniya popup-u — tenant-ın birinci aktiv popup-u (yoxdursa data=null).
+        /// ?branch={branchSlug}: filial menyusu — həmin filiala və ya bütün filiallara aid popup; yoxdursa yalnız bütün filiallara aid.
         /// </summary>
         [HttpGet("menu-popup/{tenantSlug}")]
         [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
-        public async Task<IActionResult> GetMenuPopup(string tenantSlug, [FromServices] IMenuPopupService menuPopupService, CancellationToken ct)
+        public async Task<IActionResult> GetMenuPopup(string tenantSlug, [FromQuery] string? branch, [FromServices] IMenuPopupService menuPopupService, CancellationToken ct)
         {
-            return Ok(await menuPopupService.GetPublicAsync(tenantSlug, ct));
+            return Ok(await menuPopupService.GetPublicAsync(tenantSlug, branch, ct));
         }
 
         /// <summary>Link seçimi səhifəsi (/l/{slug}) — dərc olunmuş, yalnız aktiv elementlər.</summary>

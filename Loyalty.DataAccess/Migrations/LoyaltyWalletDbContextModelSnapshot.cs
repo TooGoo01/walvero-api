@@ -2255,6 +2255,10 @@ namespace Loyalty.DataAccess.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("BranchIdsJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<bool>("CtaEnabled")
                         .HasColumnType("bit");
 
