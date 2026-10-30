@@ -97,13 +97,19 @@ namespace Loyalty.Business.Services.Implementations.Main
         }
 
         public async Task<ServiceResult> GetPublicAsync(string tenantSlug, string? branchSlug = null, CancellationToken ct = default)
+            => new ServiceResult(true, (await GetPublicListInternalAsync(tenantSlug, branchSlug, ct)).FirstOrDefault());
+
+        public async Task<ServiceResult> GetPublicListAsync(string tenantSlug, string? branchSlug = null, CancellationToken ct = default)
+            => new ServiceResult(true, await GetPublicListInternalAsync(tenantSlug, branchSlug, ct));
+
+        /// <summary>Menyuda göstəriləcək bütün popup-lar (SortOrder sırası, filial filtri tətbiq olunub) — menu-app slayd kimi göstərir.</summary>
+        private async Task<List<PublicMenuPopupDto>> GetPublicListInternalAsync(string tenantSlug, string? branchSlug, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(tenantSlug))
-                return new ServiceResult(true, (object?)null);
+            if (string.IsNullOrWhiteSpace(tenantSlug)) return new List<PublicMenuPopupDto>();
 
             var key = PublicCacheKey(tenantSlug, branchSlug);
-            if (_cache.TryGetValue(key, out PublicMenuPopupDto? cached))
-                return new ServiceResult(true, cached);
+            if (_cache.TryGetValue(key, out List<PublicMenuPopupDto>? cached) && cached != null)
+                return cached;
 
             var tenant = await _db.Tenants
                 .AsNoTracking()
@@ -111,7 +117,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Select(t => new { t.Id, t.Subdomain })
                 .FirstOrDefaultAsync(ct);
 
-            PublicMenuPopupDto? dto = null;
+            var list = new List<PublicMenuPopupDto>();
             if (tenant != null)
             {
                 int? branchId = null;
@@ -127,11 +133,10 @@ namespace Loyalty.Business.Services.Implementations.Main
                     .Where(x => x.TenantId == tenant.Id && x.IsActive && x.IsEnabled)
                     .OrderBy(x => x.SortOrder).ThenByDescending(x => x.Id)
                     .ToListAsync(ct);
-                var p = candidates.FirstOrDefault(x => MenuPopupTargeting.AppliesTo(x.BranchIdsJson, branchId));
 
-                if (p != null)
-                {
-                    dto = new PublicMenuPopupDto
+                list = candidates
+                    .Where(p => MenuPopupTargeting.AppliesTo(p.BranchIdsJson, branchId))
+                    .Select(p => new PublicMenuPopupDto
                     {
                         ImageUrl = p.ImageUrl,
                         AzTitle = p.AzTitle,
@@ -147,12 +152,12 @@ namespace Loyalty.Business.Services.Implementations.Main
                         AzCtaText = p.AzCtaText,
                         EnCtaText = p.EnCtaText,
                         RuCtaText = p.RuCtaText,
-                    };
-                }
+                    })
+                    .ToList();
             }
 
-            _cache.Set(key, dto, CacheTtl);
-            return new ServiceResult(true, dto);
+            _cache.Set(key, list, CacheTtl);
+            return list;
         }
 
         private async Task InvalidatePublicCacheAsync(int tenantId, CancellationToken ct)

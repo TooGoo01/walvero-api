@@ -13,5 +13,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
         /// <summary>Tenant slug üzrə birinci aktiv popup (menu-app üçün). Yoxdursa null data.</summary>
         /// <param name="branchSlug">Filial menyusu (/b/{slug}/menu); null = ümumi menyu — yalnız bütün filiallara aid popup-lar.</param>
         Task<ServiceResult> GetPublicAsync(string tenantSlug, string? branchSlug = null, CancellationToken ct = default);
+
+        /// <summary>Bütün uyğun popup-lar (slayd üçün), SortOrder sırası.</summary>
+        Task<ServiceResult> GetPublicListAsync(string tenantSlug, string? branchSlug = null, CancellationToken ct = default);
     }
 }

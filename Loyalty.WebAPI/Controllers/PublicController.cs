@@ -131,6 +131,17 @@ namespace Loyalty.WebAPI.Controllers
             return Ok(await menuPopupService.GetPublicAsync(tenantSlug, branch, ct));
         }
 
+        /// <summary>
+        /// Menu-app kampaniya popup-ları — bütün aktiv popup-lar (SortOrder sırası), menyu slayd kimi göstərir. data = [] yoxdursa.
+        /// ?branch={branchSlug}: həmin filiala və ya bütün filiallara aid olanlar; yoxdursa yalnız bütün filiallara aid.
+        /// </summary>
+        [HttpGet("menu-popups/{tenantSlug}")]
+        [ProducesResponseType(typeof(ServiceResult), (int)HttpStatusCode.OK)]
+        public async Task<IActionResult> GetMenuPopups(string tenantSlug, [FromQuery] string? branch, [FromServices] IMenuPopupService menuPopupService, CancellationToken ct)
+        {
+            return Ok(await menuPopupService.GetPublicListAsync(tenantSlug, branch, ct));
+        }
+
         /// <summary>Link seçimi səhifəsi (/l/{slug}) — dərc olunmuş, yalnız aktiv elementlər.</summary>
         [HttpGet("link-pages/{slug}")]
         [ResponseCache(Duration = 30, VaryByQueryKeys = new[] { "slug" })]
