@@ -481,6 +481,10 @@ namespace Loyalty.DataAccess.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(100);
 
+                    b.Property<decimal?>("ReceiptAmountDeductionPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
                     b.Property<string>("ReceiptBranchNames")
                         .HasColumnType("nvarchar(max)");
 
@@ -2866,6 +2870,93 @@ namespace Loyalty.DataAccess.Migrations
                     b.ToTable("PosObservedProducts", (string)null);
                 });
 
+            modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosOrderMarker", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("BalanceAfter")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("BranchId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DiscountRedeemUnits")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("EarnedValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("EditDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("EditUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EventType")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ExternalOrderId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("LoyaltyCardId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("OrderKey")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("OrderNumber")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("RegDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RegUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<decimal>("TotalSum")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("WalletRedeem")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("WelcomeBonus")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoyaltyCardId");
+
+                    b.HasIndex("OrderKey")
+                        .IsUnique();
+
+                    b.ToTable("PosOrderMarkers", (string)null);
+                });
+
             modelBuilder.Entity("Loyalty.DataAccess.Entities.Main.PosProductEarnRule", b =>
                 {
                     b.Property<int>("Id")
@@ -3916,6 +4007,10 @@ namespace Loyalty.DataAccess.Migrations
 
                     b.Property<string>("PinterestUrl")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal?>("ReceiptAmountDeductionPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
                     b.Property<string>("ReceiptBranchNames")
                         .HasColumnType("nvarchar(max)");

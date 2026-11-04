@@ -141,6 +141,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             // Fraud-prevention config
             if (dto.RequireReceiptOcr.HasValue) branch.RequireReceiptOcr = dto.RequireReceiptOcr.Value;
             if (dto.OcrToleranceAzn.HasValue) branch.OcrToleranceAzn = dto.OcrToleranceAzn;
+            if (dto.ReceiptAmountDeductionPercent.HasValue) branch.ReceiptAmountDeductionPercent = dto.ReceiptAmountDeductionPercent;
             if (dto.SuspiciousAmountCap.HasValue) branch.SuspiciousAmountCap = dto.SuspiciousAmountCap;
             if (dto.SuspiciousSpendCountCap.HasValue) branch.SuspiciousSpendCountCap = dto.SuspiciousSpendCountCap;
             if (dto.EnableSuspiciousAlert.HasValue) branch.EnableSuspiciousAlert = dto.EnableSuspiciousAlert.Value;

@@ -56,6 +56,7 @@ namespace Loyalty.Business.Dtos.Post.Main
         // --- Receipt OCR + suspicious-tx config (tenant-level fallback for branches) ---
         public bool? RequireReceiptOcr { get; set; }
         public decimal? OcrToleranceAzn { get; set; }
+        [Range(0, 100)] public decimal? ReceiptAmountDeductionPercent { get; set; }
         public decimal? SuspiciousAmountCap { get; set; }
         public int? SuspiciousSpendCountCap { get; set; }
         public bool? EnableSuspiciousAlert { get; set; }

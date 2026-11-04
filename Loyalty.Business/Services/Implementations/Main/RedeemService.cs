@@ -126,6 +126,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             // Qeyri-fiskal slip qəbulu: branch.AllowNonFiscalReceipts ?? tenant
             public bool AllowNonFiscalReceipts { get; init; }
             public string? ReceiptBranchNames { get; init; }
+            // Çek yekunundan çıxılan faiz (xidmət haqqı): branch ?? tenant ?? 0
+            public decimal AmountDeductionPercent { get; init; }
             public string EkassaUrlTemplate { get; init; }
                 = "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}";
 
@@ -143,6 +145,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     t.CompanyName,
                     t.RequireReceiptOcr,
                     t.OcrToleranceAzn,
+                    t.ReceiptAmountDeductionPercent,
                     t.SuspiciousAmountCap,
                     t.SuspiciousSpendCountCap,
                     t.EnableSuspiciousAlert,
@@ -173,6 +176,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                     {
                         b.RequireReceiptOcr,
                         b.OcrToleranceAzn,
+                        b.ReceiptAmountDeductionPercent,
                         b.SuspiciousAmountCap,
                         b.SuspiciousSpendCountCap,
                         b.EnableSuspiciousAlert,
@@ -197,6 +201,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             {
                 RequireOcr = tenant.RequireReceiptOcr || (branch?.RequireReceiptOcr ?? false),
                 Tolerance = branch?.OcrToleranceAzn ?? tenant.OcrToleranceAzn ?? 1m,
+                AmountDeductionPercent = branch?.ReceiptAmountDeductionPercent ?? tenant.ReceiptAmountDeductionPercent ?? 0m,
                 AmountCap = branch?.SuspiciousAmountCap ?? tenant.SuspiciousAmountCap,
                 SpendCountCap = branch?.SuspiciousSpendCountCap ?? tenant.SuspiciousSpendCountCap,
                 AlertEnabled = (branch?.EnableSuspiciousAlert ?? false) || tenant.EnableSuspiciousAlert,
@@ -504,6 +509,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                         ekassaBlobUrl,
                         cfg.AllowNonFiscalReceipts,
                         cfg.ReceiptBranchNames,
+                        cfg.AmountDeductionPercent,
                         CancellationToken.None));
 
                     _logger.LogInformation("PendingOcr tx queued. TxId={TxId} CardId={CardId}", pendingTx.Id, card.Id);

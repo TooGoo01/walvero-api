@@ -26,16 +26,6 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Sinks.ApplicationInsights.TelemetryConverters;
-using System.Runtime.InteropServices;
-
-// Tesseract NuGet (5.2.0) literal lib adı axtarır (`libleptonica-1.82.0.so`, `libtesseract50.so`).
-// Linux App Service apt-get tesseract-ocr fərqli SONAME quraşdırır (`liblept.so.5`, `libtesseract.so.5`).
-// Boot zamanı symlink yaradırıq — startup command-dan asılı olmayaq.
-// Linux deyilsə (local Windows dev) bu blok keçilir.
-if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-{
-    EnsureTesseractSymlinks();
-}
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -45,59 +35,6 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 
 // Storage hostları: cari = Storage:Azure hesabı, köhnə = Storage:LegacyHosts (köçürmədən qalan DB URL-ləri üçün alias)
 Loyalty.Business.Helpers.StorageHosts.Configure(builder.Configuration["Storage:Azure"], builder.Configuration["Storage:LegacyHosts"]);
-
-static void EnsureTesseractSymlinks()
-{
-    // Tesseract NuGet (5.2.0) `InteropDotNet.LibraryLoader` sistem path-larını (/usr/lib və LD_LIBRARY_PATH)
-    // İGNORE edir. Yalnız Tesseract.dll yanındakı `x64/` (və ya `x86/`) qovluğunda axtarır.
-    // Ona görə apt-installed `.so` fayllarına symlink-ləri appBase/x64/ içində yaradırıq.
-    var x64Dir = Path.Combine(AppContext.BaseDirectory, "x64");
-    try
-    {
-        System.IO.Directory.CreateDirectory(x64Dir);
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[Tesseract] cannot create {x64Dir}: {ex.Message}");
-        return;
-    }
-
-    var pairs = new (string source, string link)[]
-    {
-        ("/usr/lib/x86_64-linux-gnu/liblept.so.5", Path.Combine(x64Dir, "libleptonica-1.82.0.so")),
-        ("/usr/lib/x86_64-linux-gnu/libtesseract.so.5", Path.Combine(x64Dir, "libtesseract50.so")),
-        // Tesseract NuGet `dlopen("libdl")` çağırır — Debian 12-də versiyasız `libdl.so` yox, yalnız `.so.2`
-        ("/lib/x86_64-linux-gnu/libdl.so.2", Path.Combine(x64Dir, "libdl.so")),
-        ("/lib/x86_64-linux-gnu/libdl.so.2", Path.Combine(AppContext.BaseDirectory, "libdl.so")),
-    };
-
-    foreach (var (source, link) in pairs)
-    {
-        try
-        {
-            if (System.IO.File.Exists(link)) continue;
-            if (!System.IO.File.Exists(source))
-            {
-                Console.WriteLine($"[Tesseract] source missing: {source} — apt tesseract-ocr quraşdırılmayıb?");
-                continue;
-            }
-
-            var psi = new System.Diagnostics.ProcessStartInfo("ln", $"-sf {source} {link}")
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-            };
-            using var p = System.Diagnostics.Process.Start(psi);
-            p?.WaitForExit(3000);
-            Console.WriteLine($"[Tesseract] symlink {(System.IO.File.Exists(link) ? "OK" : "FAIL")}: {link} -> {source}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Tesseract] symlink error for {link}: {ex.Message}");
-        }
-    }
-}
 
 // === Controllers & CORS & SignalR ===
 // EF navigation cycles (e.g. Tenant.Admins.Tenant…) cause JsonException at depth 32.
@@ -325,7 +262,8 @@ builder.Services.AddHangfire(cfg => cfg
             SchemaName = "Hangfire",
             CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
             SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
-            QueuePollInterval = TimeSpan.FromSeconds(2),
+            // Zero = long polling (SlidingInvisibilityTimeout ilə tövsiyə olunan rejim) — job dərhal götürülür, 2s gözləmə yoxdur
+            QueuePollInterval = TimeSpan.Zero,
             UseRecommendedIsolationLevel = true,
             DisableGlobalLocks = true
         }));
@@ -337,9 +275,19 @@ Loyalty.Business.Helpers.CardDesignFeatureFlags.GoogleClassUpdateEnabled =
 // Lokal/dev instansiya prod DB-yə qoşulanda prod job-larını (wallet push, OCR) götürməsin deyə.
 if (builder.Configuration.GetValue("Hangfire:ServerEnabled", true))
 {
+    // İki ayrı server: "pos" növbəsi (iiko OrderClosed/OrderReturned — PosBatchOperationJob) öz worker-ləri ilə,
+    // "ocr" (vision HTTP, 5–15s) + "default" (wallet push, bildiriş, retry) ayrıca — uzun OCR/push kassa
+    // sifarişlərini gözlətməsin. OCR artıq CPU-bound deyil (Tesseract yoxdur), worker sayı konfiqdən.
+    var posWorkers = builder.Configuration.GetValue("Hangfire:PosWorkerCount", 8);
+    var generalWorkers = builder.Configuration.GetValue("Hangfire:WorkerCount", 8);
     builder.Services.AddHangfireServer(opts =>
     {
-        opts.WorkerCount = 2; // OCR CPU-bound — kicik tutmaq
+        opts.WorkerCount = posWorkers;
+        opts.Queues = new[] { "pos" };
+    });
+    builder.Services.AddHangfireServer(opts =>
+    {
+        opts.WorkerCount = generalWorkers;
         opts.Queues = new[] { "ocr", "default" };
     });
 }

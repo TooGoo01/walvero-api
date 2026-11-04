@@ -991,6 +991,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             bool isReturn = string.Equals(eventType, "OrderReturned", StringComparison.OrdinalIgnoreCase);
             string idempotencyKey = $"{SourcePrefixOf(request)}:{request.OrderId}:{(isReturn ? "OrderReturned" : "OrderClosed")}";
 
+            // Idempotency: PosOrderMarkers (yeni) + köhnə marker tranzaksiyaları (migration-dan əvvəlki tarixçə).
+            var existingMarker = await _uow.Repository<PosOrderMarker>().GetAllAsync(
+                m => m.OrderKey == idempotencyKey);
+            if (existingMarker.Any())
+                return new IikoTransactionResponse { Success = true, Message = "Already processed (duplicate)" };
             var existing = await _uow.Repository<Transaction>().GetAllAsync(
                 t => t.OrderId == idempotencyKey);
             if (existing.Any())
@@ -1077,6 +1082,24 @@ namespace Loyalty.Business.Services.Implementations.Main
                 };
                 _uow.Repository<Transaction>().Add(reverseTx);
             }
+
+            _uow.Repository<PosOrderMarker>().Add(new PosOrderMarker
+            {
+                LoyaltyCardId = c.Id,
+                OrderKey = idempotencyKey,
+                Source = src,
+                ExternalOrderId = request.OrderId,
+                EventType = "OrderReturned",
+                OrderNumber = request.OrderNumber?.ToString(),
+                TotalSum = request.TotalSum,
+                EarnedValue = -totalReverseDelta,
+                BalanceAfter = c.CurrentPoints,
+                BranchId = prior[0].BranchId,
+                Note = $"reversed {prior.Count} tx",
+                RegUserId = 1,
+                RegDate = DateTime.UtcNow,
+                IsActive = true
+            });
 
             await _uow.CommitAsync(ct);
 
@@ -1382,52 +1405,29 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             bool walletRedeemApplied = walletRedeemSum > 0 && templateType != CardTemplateType.ProgressBased
                                        && PosEarnRouting.ApplyOrderWalletPayment(earnSource);
-            if (earnedValue > 0 || walletRedeemApplied || totalRedeemUnits > 0)
+            // Idempotency markeri — ayrıca cədvəl (PosOrderMarkers). Əvvəl Transactions-a Adjusted sətir yazılırdı:
+            // tarixçədə dublikat "ödəniş" kimi görünür, statistikada sayılırdı. earn/redeem olmasa da (no-op) yazılır.
+            bool noOp = !(earnedValue > 0 || walletRedeemApplied || totalRedeemUnits > 0);
+            _uow.Repository<PosOrderMarker>().Add(new PosOrderMarker
             {
-                // marker tx — duplicate guard üçün (idempotency key tam match)
-                var markerTx = new Transaction
-                {
-                    LoyaltyCardId = c.Id,
-                    Type = TransactionType.Adjusted,
-                    Status = RedeemStatus.Applied,
-                    Points = c.CurrentPoints,
-                    Amount = request.TotalSum,
-                    OrderId = idempotencyKey,
-                    ReferenceNumber = request.OrderNumber?.ToString(),
-                    Description = $"{src} OrderClosed marker (earn={earnedValue}, redeem={walletRedeemSum}, discountRedeemUnits={totalRedeemUnits})",
-                    BranchId = context.BranchId,
-                    RegUserId = 1,
-                    RegDate = DateTime.UtcNow,
-                    IsActive = true,
-                    BalanceAfter = c.CurrentPoints,
-                    LocalOccurredAt = DateTimeOffset.UtcNow,
-                    TimeZoneIdUsed = "UTC"
-                };
-                _uow.Repository<Transaction>().Add(markerTx);
-            }
-            else
-            {
-                // earn da, redeem də yoxdursa marker hələ də idempotency üçün lazımdır
-                var markerTx = new Transaction
-                {
-                    LoyaltyCardId = c.Id,
-                    Type = TransactionType.Adjusted,
-                    Status = RedeemStatus.Applied,
-                    Points = c.CurrentPoints,
-                    Amount = request.TotalSum,
-                    OrderId = idempotencyKey,
-                    ReferenceNumber = request.OrderNumber?.ToString(),
-                    Description = $"{src} OrderClosed marker (no-op)",
-                    BranchId = context.BranchId,
-                    RegUserId = 1,
-                    RegDate = DateTime.UtcNow,
-                    IsActive = true,
-                    BalanceAfter = c.CurrentPoints,
-                    LocalOccurredAt = DateTimeOffset.UtcNow,
-                    TimeZoneIdUsed = "UTC"
-                };
-                _uow.Repository<Transaction>().Add(markerTx);
-            }
+                LoyaltyCardId = c.Id,
+                OrderKey = idempotencyKey,
+                Source = src,
+                ExternalOrderId = request.OrderId,
+                EventType = "OrderClosed",
+                OrderNumber = request.OrderNumber?.ToString(),
+                TotalSum = request.TotalSum,
+                EarnedValue = earnedValue,
+                WalletRedeem = walletRedeemSum,
+                DiscountRedeemUnits = totalRedeemUnits,
+                WelcomeBonus = welcomeBonus,
+                BalanceAfter = c.CurrentPoints,
+                BranchId = context.BranchId,
+                Note = noOp ? "no-op" : null,
+                RegUserId = 1,
+                RegDate = DateTime.UtcNow,
+                IsActive = true
+            });
 
             await _uow.CommitAsync(ct);
 

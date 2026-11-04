@@ -25,6 +25,8 @@ namespace Loyalty.DataAccess.Entities.Main
         // --- Receipt OCR validation (per-tenant feature flag) ---
         public bool RequireReceiptOcr { get; set; } = false;
         public decimal? OcrToleranceAzn { get; set; } // null → defaults to 1 AZN at runtime
+        // Çek yekunundan çıxılan faiz (xidmət haqqı); OCR müqayisəsi yekun × (1 − p/100) ilə. null → 0.
+        public decimal? ReceiptAmountDeductionPercent { get; set; }
 
         // --- Suspicious-transaction cap + WhatsApp alert (per-tenant; branch override exists) ---
         public decimal? SuspiciousAmountCap { get; set; } // null → no cap

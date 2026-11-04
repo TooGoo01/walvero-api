@@ -52,6 +52,7 @@ namespace Loyalty.Business.Dtos.Get.Main
         // Fraud-prevention config (tenant-level)
         public bool RequireReceiptOcr { get; set; }
         public decimal? OcrToleranceAzn { get; set; }
+        public decimal? ReceiptAmountDeductionPercent { get; set; }
         public decimal? SuspiciousAmountCap { get; set; }
         public int? SuspiciousSpendCountCap { get; set; }
         public bool EnableSuspiciousAlert { get; set; }

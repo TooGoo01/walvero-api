@@ -73,6 +73,7 @@ namespace Loyalty.DataAccess.Context
         public DbSet<RewardPosProduct> RewardPosProducts { get; set; }
         public DbSet<PosCustomerMapping> PosCustomerMappings { get; set; }
         public DbSet<IikoWebhookFailure> IikoWebhookFailures { get; set; }
+        public DbSet<PosOrderMarker> PosOrderMarkers { get; set; }
 
         // Branches & Rooms
         public DbSet<Branch> Branches { get; set; }
@@ -251,6 +252,7 @@ namespace Loyalty.DataAccess.Context
 
                 // Receipt OCR + suspicious-tx config (decimal precision)
                 entity.Property(t => t.OcrToleranceAzn).HasPrecision(18, 2);
+                entity.Property(t => t.ReceiptAmountDeductionPercent).HasPrecision(5, 2);
                 entity.Property(t => t.SuspiciousAmountCap).HasPrecision(18, 2);
                 entity.Property(t => t.AlertWhatsappPhone).HasMaxLength(20);
 
@@ -486,6 +488,7 @@ namespace Loyalty.DataAccess.Context
 
                 // Suspicious-tx config (branch override, tenant fallback)
                 entity.Property(b => b.OcrToleranceAzn).HasPrecision(18, 2);
+                entity.Property(b => b.ReceiptAmountDeductionPercent).HasPrecision(5, 2);
                 entity.Property(b => b.SuspiciousAmountCap).HasPrecision(18, 2);
                 entity.Property(b => b.AlertWhatsappPhone).HasMaxLength(20);
 
@@ -661,6 +664,25 @@ namespace Loyalty.DataAccess.Context
                 entity.HasIndex(x => new { x.Status, x.NextAttemptAt });
                 // Upsert: OrderId + EventType
                 entity.HasIndex(x => new { x.OrderId, x.EventType });
+            });
+
+            modelBuilder.Entity<PosOrderMarker>(entity =>
+            {
+                entity.ToTable("PosOrderMarkers");
+                entity.Property(x => x.OrderKey).HasMaxLength(450).IsRequired();
+                entity.Property(x => x.Source).HasMaxLength(32);
+                entity.Property(x => x.ExternalOrderId).HasMaxLength(64);
+                entity.Property(x => x.EventType).HasMaxLength(32);
+                entity.Property(x => x.OrderNumber).HasMaxLength(32);
+                entity.Property(x => x.Note).HasMaxLength(500);
+                entity.Property(x => x.TotalSum).HasPrecision(18, 2);
+                entity.Property(x => x.EarnedValue).HasPrecision(18, 2);
+                entity.Property(x => x.WalletRedeem).HasPrecision(18, 2);
+                entity.Property(x => x.WelcomeBonus).HasPrecision(18, 2);
+                entity.Property(x => x.BalanceAfter).HasPrecision(18, 2);
+                // Idempotency: eyni sifariş hadisəsi iki dəfə emal olunmasın
+                entity.HasIndex(x => x.OrderKey).IsUnique();
+                entity.HasIndex(x => x.LoyaltyCardId);
             });
 
             modelBuilder.Entity<EkassaJsonAudit>(entity =>

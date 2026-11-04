@@ -54,6 +54,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             string? ekassaImageUrl,
             bool allowNonFiscalReceipts,
             string? receiptBranchNames,
+            decimal amountDeductionPercent,
             CancellationToken ct = default)
         {
             using var scope = _scopeFactory.CreateScope();
@@ -150,6 +151,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 EkassaImageBytes = ekassaBytes,
                 AllowNonFiscalReceipts = allowNonFiscalReceipts,
                 ReceiptBranchNames = receiptBranchNames,
+                AmountDeductionPercent = amountDeductionPercent,
             };
 
             var ocr = await validator.ValidateBytesAsync(bytes, ctx, tx.ReceiptImageUrl, ct);

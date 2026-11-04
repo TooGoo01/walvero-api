@@ -33,7 +33,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         /// Ack-first giriş (iiko_transaction): controller cavabdan əvvəl heç bir DB sorğusu etmir —
         /// iiko plugin-in 5s timeout-una görə. Tenant resolve + status guard burada, background-da gedir.
         /// </summary>
-        [Queue("default")]
+        [Queue("pos")]
         [AutomaticRetry(Attempts = 3, DelaysInSeconds = new[] { 10, 60, 300 }, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
         public async Task ProcessByTerminalGroupAsync(IikoOrderEventRequest req, CancellationToken ct = default)
         {
@@ -79,7 +79,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             await ProcessAsync(ctx, req, ct);
         }
 
-        [Queue("default")]
+        [Queue("pos")]
         [AutomaticRetry(Attempts = 3, DelaysInSeconds = new[] { 10, 60, 300 }, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
         public async Task ProcessAsync(
             WalletWebhookResolvedContext ctx,

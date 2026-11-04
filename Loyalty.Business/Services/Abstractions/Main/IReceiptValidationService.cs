@@ -20,10 +20,13 @@ namespace Loyalty.Business.Services.Abstractions.Main
         public string? ExpectedTaxNumber { get; init; }
         public bool RequireQrVerification { get; init; }
         public string? QrDocIdFromScanner { get; init; }
-        // Qeyri-fiskal slip qəbulu: fiskal əlaməti olmayan çek QR tələbindən keçir,
-        // əvəzində ReceiptBranchNames OCR mətnində axtarılır (BranchNameMismatch reject).
+        // Qeyri-fiskal slip qəbulu: fiskal əlaməti olmayan çek QR tələbindən keçir.
         public bool AllowNonFiscalReceipts { get; init; }
+        // Sahib yoxlaması: ExpectedTaxNumber və ya ReceiptBranchNames konfiqurasiya olunubsa
+        // çekdə ən azı biri tapılıb uyğun gəlməlidir (TaxNumberMismatch / MerchantMismatch).
         public string? ReceiptBranchNames { get; init; }
+        // Çek yekunundan çıxılan faiz (xidmət haqqı): müqayisə `yekun × (1 − p/100)` ilə aparılır. 0 = azalma yoxdur.
+        public decimal AmountDeductionPercent { get; init; }
         // E-kassa monitoring endpoint URL template (Tenant-dən gəlir). `{docId}` placeholder.
         public string EkassaUrlTemplate { get; init; }
             = "https://monitoring.e-kassa.gov.az/pks-monitoring/2.0.0/documents/{docId}";

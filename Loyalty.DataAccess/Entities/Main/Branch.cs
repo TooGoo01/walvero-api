@@ -58,6 +58,7 @@ namespace Loyalty.DataAccess.Entities.Main
         // --- Receipt OCR + suspicious-tx config (branch override, tenant fallback) ---
         public bool RequireReceiptOcr { get; set; } = false;
         public decimal? OcrToleranceAzn { get; set; }              // null → fallback to tenant or 1 AZN
+        public decimal? ReceiptAmountDeductionPercent { get; set; } // null → fallback to tenant (xidmət haqqı faizi)
         public decimal? SuspiciousAmountCap { get; set; }          // null → fallback to tenant
         public int? SuspiciousSpendCountCap { get; set; }          // null → fallback to tenant
         public bool EnableSuspiciousAlert { get; set; } = false;

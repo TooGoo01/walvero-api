@@ -6,25 +6,21 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-using Tesseract;
 using ZXing;
 using ZXing.ImageSharp;
 
 namespace Loyalty.Business.Services.Implementations.Main
 {
+    /// <summary>
+    /// Çek yoxlaması: QR (ZXing / scanner) → e-kassa şəkli → Azure OpenAI vision OCR (yeganə mənbə) →
+    /// prioritetli müqayisə (tarix pəncərəsi → obyekt kodu → VÖEN/filial adı → QR → məbləğ).
+    /// </summary>
     public sealed class ReceiptValidationService : IReceiptValidationService
     {
         private const string ReceiptContainer = "receipts";
-        private const int MaxOcrDimension = 2200; // telefon fotosunda kiçik rəqəmlər 1600-də əriyirdi
-        private const int MinOcrDimension = 1400; // kiçik/uzaqdan çəkilmiş şəkilləri upscale et — LSTM kiçik mətni tutmur
 
-        private static readonly Lazy<TesseractEngine> _engine = new(() =>
-        {
-            var path = Path.Combine(AppContext.BaseDirectory, "tessdata");
-            return new TesseractEngine(path, "aze+eng", EngineMode.LstmOnly);
-        }, LazyThreadSafetyMode.ExecutionAndPublication);
-        private static readonly object _engineLock = new();
+        /// <summary>Çek üzərindəki tarix skan günündən ən çox bu qədər gün əvvəl ola bilər (bu gün və ya dünən).</summary>
+        internal const int MaxReceiptAgeDays = 1;
 
         private static readonly Regex EkassaUrlRegex = new(
             @"monitoring\.e-kassa\.gov\.az/.*?[?&#]doc=(?<doc>[A-Za-z0-9_\-]+)",
@@ -129,9 +125,10 @@ namespace Loyalty.Business.Services.Implementations.Main
             string? objectCode = null;
             string? taxNumber = null;
             string? physicalReceiptId = null;
+            string? merchantName = null;
             bool qrVerified = false;
-            bool visionFiscal = false;      // vision OCR: fiskal əlaməti
-            string? visionOrderNo = null;   // vision OCR: sifariş №
+            bool visionFiscal = false;
+            string? visionOrderNo = null;
 
             // Step 1A: Flutter-in fetch etdiyi e-kassa image priority. AZ ISP-dən gəlir, ən etibarlı.
             byte[] ocrBytes = rawBytes;
@@ -185,112 +182,75 @@ namespace Loyalty.Business.Services.Implementations.Main
             if (!string.IsNullOrWhiteSpace(qrDocId))
                 physicalReceiptId = qrDocId;
 
-            // Step 2: OCR — payload trust yoxdur, OCR həmişə işləyir (qrVerified halında e-kassa image-ə).
+            // Step 2: Vision OCR (yeganə mənbə). Tenant label-ləri ipucu kimi gedir; rawText regex fallback üçün.
             string ocrText = string.Empty;
             {
-                var tessdataPath = Path.Combine(AppContext.BaseDirectory, "tessdata");
-                if (!Directory.Exists(tessdataPath))
-                {
-                    _logger.LogError("tessdata directory missing at {Path}", tessdataPath);
-                    return new(false, null, carriedReceiptUrl,
-                        "OCR data faylları tapılmadı (server konfiqurasiya xətası).",
-                        QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
-                        FailReasonCode: "OcrUnreadable");
-                }
-                var azeData = Path.Combine(tessdataPath, "aze.traineddata");
-                var engData = Path.Combine(tessdataPath, "eng.traineddata");
-                if (!System.IO.File.Exists(azeData) || !System.IO.File.Exists(engData))
-                {
-                    _logger.LogError("tessdata lang files missing.");
-                    return new(false, null, carriedReceiptUrl,
-                        "OCR dil faylları tapılmadı (aze/eng).",
-                        QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
-                        FailReasonCode: "OcrUnreadable");
-                }
-
-                byte[] preprocessed;
+                VisionReceiptFields v;
                 try
                 {
-                    preprocessed = await PreprocessAsync(ocrBytes, ct);
+                    var hints = new VisionReceiptHints(
+                        AmountLabels: ctx.OcrLabelAmount,
+                        ObjectCodeLabels: ctx.OcrLabelObjectCode,
+                        ReceiptIdLabels: ctx.OcrLabelReceiptId,
+                        TaxNumberLabels: ctx.OcrLabelTaxNumber);
+                    v = await _vision.ReadAsync(ocrBytes, hints, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Receipt image preprocessing failed. RawSize={Size}", ocrBytes.Length);
-                    return new(false, null, carriedReceiptUrl,
-                        "Çek şəkli oxunmadı (format dəstəklənmir və ya korlanıb).",
+                    _logger.LogError(ex, "Vision OCR threw unexpectedly.");
+                    v = new VisionReceiptFields { Ok = false, Transient = true };
+                }
+
+                if (!v.Ok)
+                {
+                    var msg = v.Transient
+                        ? "Çek oxuma xidməti müvəqqəti cavab vermədi. Əməliyyat admin yoxlamasına göndərildi."
+                        : "Çek oxunmadı. Yenidən aydın şəkil çəkin.";
+                    _logger.LogWarning("Vision OCR failed. Transient={Transient}", v.Transient);
+                    return new(false, null, carriedReceiptUrl, msg,
                         QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                        QrVerified: qrVerified,
                         FailReasonCode: "OcrUnreadable");
                 }
 
-                try
-                {
-                    ocrText = RunOcr(preprocessed);
-                }
-                catch (DllNotFoundException ex)
-                {
-                    _logger.LogError(ex, "Tesseract native library missing.");
-                    return new(false, null, carriedReceiptUrl,
-                        "OCR mühərriki serverdə qurulmayıb.",
-                        QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
-                        FailReasonCode: "OcrUnreadable");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Tesseract OCR call failed.");
-                    return new(false, null, carriedReceiptUrl,
-                        $"OCR uğursuz oldu: {ex.Message}",
-                        QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
-                        FailReasonCode: "OcrUnreadable");
-                }
+                ocrText = v.RawText ?? string.Empty;
+                merchantName = v.MerchantName;
+                visionFiscal = v.IsFiscal;
+                visionOrderNo = v.OrderNo;
 
-                _logger.LogInformation("OCR completed. TextLen={Len}", ocrText.Length);
-
-                extracted = ExtractByLabel(ocrText, ctx.OcrLabelAmount, AmountValuePattern)
+                // Model sahəni null qoyubsa rawText üzərində köhnə regex-lər fallback.
+                extracted = v.Amount
+                            ?? ExtractByLabel(ocrText, ctx.OcrLabelAmount, AmountValuePattern)
                             ?? ExtractFallbackAmount(ocrText);
-                objectCode ??= ExtractByLabelString(ocrText, ctx.OcrLabelObjectCode, ObjectCodeValuePattern);
-                taxNumber ??= ExtractByLabelString(ocrText, ctx.OcrLabelTaxNumber, TaxNumberValuePattern);
+                objectCode = v.ObjectCode ?? ExtractByLabelString(ocrText, ctx.OcrLabelObjectCode, ObjectCodeValuePattern);
+                taxNumber = v.TaxNumber ?? ExtractByLabelString(ocrText, ctx.OcrLabelTaxNumber, TaxNumberValuePattern);
                 if (string.IsNullOrWhiteSpace(physicalReceiptId))
-                    physicalReceiptId = ExtractByLabelString(ocrText, ctx.OcrLabelReceiptId, ReceiptIdValuePattern);
-                receiptDate ??= ExtractDate(ocrText);
+                    physicalReceiptId = v.ReceiptId ?? ExtractByLabelString(ocrText, ctx.OcrLabelReceiptId, ReceiptIdValuePattern);
+                receiptDate = v.Date ?? ExtractDate(ocrText);
 
-                // Vision OCR (Azure OpenAI) — Tesseract çek fotolarında məbləği səhv oxuyur.
-                // Məbləği authoritative vision-dan götür; digər boş sahələri doldur.
-                // Vision uğursuzsa Tesseract nəticəsi qalır (graceful degrade).
-                try
-                {
-                    var v = await _vision.ReadAsync(ocrBytes, ct);
-                    if (v.Ok)
-                    {
-                        if (v.Amount.HasValue) extracted = v.Amount;
-                        objectCode ??= v.ObjectCode;
-                        taxNumber ??= v.TaxNumber;
-                        if (string.IsNullOrWhiteSpace(physicalReceiptId)) physicalReceiptId = v.ReceiptId;
-                        receiptDate ??= v.Date;
-                        visionFiscal = v.IsFiscal;
-                        visionOrderNo = v.OrderNo;
-                        _logger.LogInformation("Vision OCR ok. Amount={Amount} Fiscal={F}", v.Amount, v.IsFiscal);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Vision OCR failed; falling back to Tesseract result.");
-                }
+                _logger.LogInformation(
+                    "Vision OCR ok. Amount={Amount} Date={Date} Tax={Tax} Obj={Obj} Rid={Rid} Fiscal={F} Merchant={M} TextLen={Len}",
+                    extracted, receiptDate, taxNumber, objectCode, physicalReceiptId, visionFiscal, merchantName, ocrText.Length);
 
                 if (extracted is null)
                 {
-                    _logger.LogInformation("OCR found no amount in receipt text.");
+                    _logger.LogInformation("OCR found no amount in receipt.");
                     return new(false, null, carriedReceiptUrl,
                         "Çekdə məbləğ tapılmadı. Yenidən aydın şəkil çəkin.",
                         QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
                         ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
+                        QrVerified: qrVerified,
                         FailReasonCode: "OcrUnreadable",
                         ExtractedTaxNumber: taxNumber);
                 }
             }
 
             // Fiskal-lıq detektoru: qeyri-fiskal "Ödəniş çeki"ndə bu əlamətlərin heç biri olmur.
-            // AllowNonFiscalReceipts aktivdirsə belə çeklər QR tələbindən keçir, əvəzində
-            // filial adı yoxlanır (3c'). Fiskal görünüşlü, amma QR oxunmayan çek yenə reject olunur.
+            // AllowNonFiscalReceipts aktivdirsə belə çeklər QR tələbindən keçir (sahib yoxlaması yenə işləyir).
             bool looksFiscal = qrVerified
                 || !string.IsNullOrWhiteSpace(qrDocId)
                 || !string.IsNullOrWhiteSpace(taxNumber)
@@ -317,13 +277,24 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
             }
 
-            // Step 3: compare (priority — RedeemService / ReceiptOcrJob FailReasonCode-a əsasən IsSuspicious yazır).
+            // Step 3: compare (priority — ReceiptOcrJob FailReasonCode-a əsasən IsSuspicious yazır).
 
-            // 3a. Date match (yalnız date varsa yoxla)
-            if (receiptDate.HasValue && !IsTodayInTenantZone(receiptDate.Value, ctx.TimeZoneId))
+            // 3a. Tarix məcburidir və pəncərə daxilində olmalıdır (bu gün və ya dünən, tenant TZ-də).
+            if (!receiptDate.HasValue)
             {
                 return new(false, extracted, carriedReceiptUrl,
-                    $"Çekin tarixi bu günkü tarixə uyğun deyil ({receiptDate:dd.MM.yyyy}).",
+                    "Çekdə tarix oxunmadı. Yenidən aydın şəkil çəkin.",
+                    QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                    ExtractedObjectCode: objectCode,
+                    QrVerified: qrVerified,
+                    FailReasonCode: "ReceiptDateMissing",
+                    ExtractedTaxNumber: taxNumber,
+                    IsNonFiscal: nonFiscalMode);
+            }
+            if (!IsWithinReceiptWindow(receiptDate.Value, ctx.TimeZoneId, MaxReceiptAgeDays))
+            {
+                return new(false, extracted, carriedReceiptUrl,
+                    $"Çekin tarixi ({receiptDate:dd.MM.yyyy}) icazə verilən pəncərədən kənardır (yalnız bu gün və ya dünən).",
                     QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
                     ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
                     QrVerified: qrVerified,
@@ -343,13 +314,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
                     QrVerified: qrVerified,
                     FailReasonCode: "ObjectCodeMismatch",
-                    ExtractedTaxNumber: taxNumber);
+                    ExtractedTaxNumber: taxNumber,
+                    IsNonFiscal: nonFiscalMode);
             }
 
-            // 3b'. Tax number (VÖEN) match — yeni
-            if (!string.IsNullOrWhiteSpace(ctx.ExpectedTaxNumber)
-                && !string.IsNullOrWhiteSpace(taxNumber)
-                && !string.Equals(ctx.ExpectedTaxNumber.Trim(), taxNumber.Trim(), StringComparison.OrdinalIgnoreCase))
+            // 3c. Sahib yoxlaması: VÖEN VƏ YA filial adı (konfiqurasiya varsa məcburi, rejimdən asılı deyil).
+            //     Fərqli VÖEN həmişə rədd (güclü siqnal); heç biri təsdiqlənməyibsə MerchantMismatch.
+            var owner = EvaluateOwnership(ctx.ExpectedTaxNumber, ctx.ReceiptBranchNames, taxNumber, merchantName, ocrText);
+            if (owner == OwnershipVerdict.TaxMismatch)
             {
                 return new(false, extracted, carriedReceiptUrl,
                     $"VÖEN uyğun deyil (gözlənilən {ctx.ExpectedTaxNumber}, tapıldı {taxNumber}).",
@@ -357,10 +329,22 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
                     QrVerified: qrVerified,
                     FailReasonCode: "TaxNumberMismatch",
-                    ExtractedTaxNumber: taxNumber);
+                    ExtractedTaxNumber: taxNumber,
+                    IsNonFiscal: nonFiscalMode);
+            }
+            if (owner == OwnershipVerdict.NotVerified)
+            {
+                return new(false, extracted, carriedReceiptUrl,
+                    "Çekdə gözlənilən VÖEN və ya filial adı tapılmadı.",
+                    QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
+                    ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
+                    QrVerified: qrVerified,
+                    FailReasonCode: "MerchantMismatch",
+                    ExtractedTaxNumber: taxNumber,
+                    IsNonFiscal: nonFiscalMode);
             }
 
-            // 3c. QR missing strict mode (qeyri-fiskal rejim QR tələbindən azaddır)
+            // 3d. QR missing strict mode (qeyri-fiskal rejim QR tələbindən azaddır)
             if (ctx.RequireQrVerification && !qrVerified && !nonFiscalMode)
             {
                 return new(false, extracted, carriedReceiptUrl,
@@ -372,35 +356,20 @@ namespace Loyalty.Business.Services.Implementations.Main
                     ExtractedTaxNumber: taxNumber);
             }
 
-            // 3c'. Qeyri-fiskal rejimdə filial adı çekdə olmalıdır (konfiqurasiya edilibsə).
-            if (nonFiscalMode && !string.IsNullOrWhiteSpace(ctx.ReceiptBranchNames))
-            {
-                var normText = NormalizeAz(ocrText);
-                var nameFound = SplitLabels(ctx.ReceiptBranchNames)
-                    .Any(n => normText.Contains(NormalizeAz(n), StringComparison.Ordinal));
-                if (!nameFound)
-                {
-                    return new(false, extracted, carriedReceiptUrl,
-                        "Çekdə filial adı tapılmadı. Yenidən aydın şəkil çəkin.",
-                        QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
-                        ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
-                        QrVerified: qrVerified,
-                        FailReasonCode: "BranchNameMismatch",
-                        ExtractedTaxNumber: taxNumber,
-                        IsNonFiscal: true);
-                }
-            }
-
-            // 3d. Amount tolerance
+            // 3e. Amount tolerance — çek yekunu konfiqurasiyalı faiz qədər azaldılıb (xidmət haqqı) müqayisə olunur.
             var entered = Math.Abs(ctx.EnteredAmount);
             var tol = ctx.ToleranceAzn <= 0 ? 1m : ctx.ToleranceAzn;
-            var diff = Math.Abs((extracted ?? 0m) - entered);
-            if (extracted.HasValue && diff > tol)
+            var pct = ctx.AmountDeductionPercent;
+            var net = NetAmount(extracted.Value, pct);
+            var diff = Math.Abs(net - entered);
+            if (diff > tol)
             {
-                _logger.LogWarning("OCR amount mismatch. Entered={Entered}, Ocr={Ocr}, Tolerance={Tol}, Diff={Diff}",
-                    entered, extracted, tol, diff);
-                return new(false, extracted, carriedReceiptUrl,
-                    $"Çek məbləği ({extracted:0.##}) daxil edilən məbləğlə ({entered:0.##}) uyğun deyil.",
+                _logger.LogWarning("OCR amount mismatch. Entered={Entered}, Ocr={Ocr}, Pct={Pct}, Net={Net}, Tolerance={Tol}, Diff={Diff}",
+                    entered, extracted, pct, net, tol, diff);
+                var msg = pct > 0
+                    ? $"Çek yekunu {extracted:0.##} (−{pct:0.##}% = {net:0.##}) daxil edilən məbləğlə ({entered:0.##}) uyğun deyil."
+                    : $"Çek məbləği ({extracted:0.##}) daxil edilən məbləğlə ({entered:0.##}) uyğun deyil.";
+                return new(false, extracted, carriedReceiptUrl, msg,
                     QrDocId: qrDocId, PhysicalReceiptId: physicalReceiptId,
                     ReceiptDate: receiptDate, ExtractedObjectCode: objectCode,
                     QrVerified: qrVerified,
@@ -421,60 +390,6 @@ namespace Loyalty.Business.Services.Implementations.Main
                 IsNonFiscal: nonFiscalMode);
         }
 
-        private static async Task<byte[]> PreprocessAsync(byte[] input, CancellationToken ct)
-        {
-            using var image = Image.Load<L8>(input);
-
-            // Ölçünü OCR üçün optimal pəncərəyə gətir: çox böyükdürsə kiçilt (noise/sürət),
-            // çox kiçikdirsə böyüt (LSTM ~30px-dən kiçik simvolları tanımır).
-            var maxDim = Math.Max(image.Width, image.Height);
-            float scale = 1f;
-            if (maxDim > MaxOcrDimension) scale = (float)MaxOcrDimension / maxDim;
-            else if (maxDim < MinOcrDimension) scale = (float)MinOcrDimension / maxDim;
-            if (scale != 1f)
-                image.Mutate(x => x.Resize((int)(image.Width * scale), (int)(image.Height * scale)));
-
-            // Termal çek printi solğun/boz + telefon fotosunda kölgə olur. AdaptiveThreshold
-            // lokal pəncərəyə görə binarizasiya edir — kölgəli hissələr qaralmır (sabit
-            // threshold-dan fərqli). Əvvəl yüngül contrast + sharpen ki, sönük print tündləşsin.
-            image.Mutate(x => x
-                .Contrast(1.3f)
-                .GaussianSharpen(1.2f)
-                .AdaptiveThreshold());
-
-            using var outMs = new MemoryStream();
-            await image.SaveAsPngAsync(outMs, ct);
-            return outMs.ToArray();
-        }
-
-        private static string RunOcr(byte[] imageBytes)
-        {
-            lock (_engineLock)
-            {
-                var engine = _engine.Value;
-                using var pix = Pix.LoadFromMemory(imageBytes);
-
-                // Çek = tək dar sütun → SingleColumn ən düzgün seqmentləşmə.
-                // SingleBlock bütün çeki tək blok sayırdı → sətirlər qarışırdı.
-                var text = RunOcrPass(engine, pix, PageSegMode.SingleColumn);
-
-                // Nəticə çox qısadırsa (seqmentləşmə uğursuz) köhnə rejimlə təkrar cəhd.
-                if (text.Trim().Length < 20)
-                {
-                    var fallback = RunOcrPass(engine, pix, PageSegMode.SingleBlock);
-                    if (fallback.Trim().Length > text.Trim().Length) text = fallback;
-                }
-                return text;
-            }
-        }
-
-        private static string RunOcrPass(TesseractEngine engine, Pix pix, PageSegMode psm)
-        {
-            engine.DefaultPageSegMode = psm;
-            using var page = engine.Process(pix);
-            return page.GetText() ?? string.Empty;
-        }
-
         private static string? TryDecodeQr(byte[] imageBytes)
         {
             using var rgba = Image.Load<Rgba32>(imageBytes);
@@ -493,15 +408,95 @@ namespace Loyalty.Business.Services.Implementations.Main
             return m.Success ? m.Groups["doc"].Value : null;
         }
 
-        // Dynamic label-əsaslı parse: "<label> ... 12,34" formasında məbləğ.
+        // ---------- Qaydalar (test edilə bilən, pure) ----------
+
+        internal enum OwnershipVerdict { NotConfigured, Verified, TaxMismatch, NotVerified }
+
+        /// <summary>
+        /// VÖEN və ya filial adı: konfiqurasiya yoxdursa NotConfigured; çekdəki VÖEN gözləniləndən fərqlidirsə TaxMismatch;
+        /// VÖEN uyğundursa və ya ad tapılıbsa Verified; əks halda NotVerified.
+        /// </summary>
+        internal static OwnershipVerdict EvaluateOwnership(
+            string? expectedTaxNumber, string? branchNamesCsv, string? foundTaxNumber, string? merchantName, string rawText)
+        {
+            var expectedTax = NormalizeTax(expectedTaxNumber);
+            var names = SplitLabels(branchNamesCsv ?? string.Empty).ToList();
+            if (expectedTax.Length == 0 && names.Count == 0) return OwnershipVerdict.NotConfigured;
+
+            var foundTax = NormalizeTax(foundTaxNumber);
+            bool taxOk = expectedTax.Length > 0 && foundTax.Length > 0 && expectedTax == foundTax;
+            bool taxMismatch = expectedTax.Length > 0 && foundTax.Length > 0 && !taxOk;
+            if (taxMismatch) return OwnershipVerdict.TaxMismatch;
+
+            bool nameOk = names.Count > 0 && ContainsAnyName(merchantName, rawText, names);
+            return (taxOk || nameOk) ? OwnershipVerdict.Verified : OwnershipVerdict.NotVerified;
+        }
+
+        internal static bool ContainsAnyName(string? merchantName, string rawText, IEnumerable<string> names)
+        {
+            var hay = NormalizeAz((merchantName ?? string.Empty) + "\n" + (rawText ?? string.Empty));
+            if (hay.Trim().Length == 0) return false;
+            foreach (var n in names)
+            {
+                var needle = NormalizeAz(n).Trim();
+                if (needle.Length > 0 && hay.Contains(needle, StringComparison.Ordinal)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// VÖEN müqayisəsi üçün: rəqəm varsa yalnız rəqəmlər ("VÖEN: 1701 332 401" → "1701332401");
+        /// rəqəmsiz dəyərdə hərf-rəqəm upper.
+        /// </summary>
+        internal static string NormalizeTax(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return string.Empty;
+            var digits = new string(s.Where(char.IsDigit).ToArray());
+            if (digits.Length > 0) return digits;
+            return new string(s.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        }
+
+        /// <summary>Çek yekununu faiz qədər azaldır (xidmət haqqı), 2 onluq.</summary>
+        internal static decimal NetAmount(decimal gross, decimal deductionPercent)
+        {
+            if (deductionPercent <= 0) return gross;
+            if (deductionPercent >= 100) return 0m;
+            return Math.Round(gross * (1m - deductionPercent / 100m), 2, MidpointRounding.AwayFromZero);
+        }
+
+        /// <summary>Çek tarixi tenant TZ-də bu gün və ya ən çox maxAgeDays gün əvvəl olmalıdır; gələcək tarix rədd.</summary>
+        internal static bool IsWithinReceiptWindow(DateTime receiptDate, string timeZoneId, int maxAgeDays, DateTime? utcNow = null)
+        {
+            var now = utcNow ?? DateTime.UtcNow;
+            DateTime todayLocal, receiptLocal;
+            try
+            {
+                var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+                todayLocal = TimeZoneInfo.ConvertTimeFromUtc(now, tz).Date;
+                var receiptUtc = receiptDate.Kind == DateTimeKind.Utc
+                    ? receiptDate
+                    : DateTime.SpecifyKind(receiptDate, DateTimeKind.Utc);
+                receiptLocal = TimeZoneInfo.ConvertTimeFromUtc(receiptUtc, tz).Date;
+            }
+            catch
+            {
+                // TZ tapılmadısa UTC fallback
+                todayLocal = now.Date;
+                receiptLocal = receiptDate.Date;
+            }
+            var age = (todayLocal - receiptLocal).Days;
+            return age >= 0 && age <= maxAgeDays;
+        }
+
+        // ---------- rawText regex fallback (model sahəni null qoyanda) ----------
+
         private const string AmountValuePattern = @"\s*[:\-]?\s*(?<val>\d{1,5}[.,]\d{2})";
         private const string ObjectCodeValuePattern = @"\s*[:\-]?\s*(?<val>[A-Za-z0-9\-]{3,20})";
         private const string ReceiptIdValuePattern = @"\s*[:\-]?\s*(?<val>[A-Za-z0-9\-]{5,40})";
         private const string TaxNumberValuePattern = @"\s*[:\-]?\s*(?<val>\d{7,15})";
 
         // Comma-separated label dəstəyi — "Yekun Məbləğ,Cəmi,Total" kimi multi-language list.
-        // Hər label-i ardıcıl yoxlayır, birincisi tapan istifadə edir.
-        private static IEnumerable<string> SplitLabels(string labelOrList)
+        internal static IEnumerable<string> SplitLabels(string labelOrList)
         {
             if (string.IsNullOrWhiteSpace(labelOrList)) yield break;
             foreach (var part in labelOrList.Split(','))
@@ -538,7 +533,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             return null;
         }
 
-        // Label tapılmadıqda OCR-da ən böyük decimal-ı götür (köhnə davranış).
+        // Label tapılmadıqda mətndə ən böyük decimal-ı götür.
         private static decimal? ExtractFallbackAmount(string ocrText)
         {
             if (string.IsNullOrWhiteSpace(ocrText)) return null;
@@ -568,8 +563,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             return null;
         }
 
-        // OCR diakritika xətalarına davamlı müqayisə: upper-invariant + AZ hərfləri ASCII-yə + whitespace collapse.
-        private static string NormalizeAz(string s)
+        // Diakritika xətalarına davamlı müqayisə: upper-invariant + AZ hərfləri ASCII-yə + whitespace collapse.
+        internal static string NormalizeAz(string s)
         {
             if (string.IsNullOrEmpty(s)) return string.Empty;
             var sb = new System.Text.StringBuilder(s.Length);
@@ -595,25 +590,6 @@ namespace Loyalty.Business.Services.Implementations.Main
             catch
             {
                 return DateTime.UtcNow.Date;
-            }
-        }
-
-        private static bool IsTodayInTenantZone(DateTime receiptDate, string timeZoneId)
-        {
-            try
-            {
-                var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-                var todayLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz).Date;
-                var receiptUtc = receiptDate.Kind == DateTimeKind.Utc
-                    ? receiptDate
-                    : DateTime.SpecifyKind(receiptDate, DateTimeKind.Utc);
-                var receiptLocal = TimeZoneInfo.ConvertTimeFromUtc(receiptUtc, tz).Date;
-                return todayLocal == receiptLocal;
-            }
-            catch
-            {
-                // TZ tapılmadısa UTC fallback
-                return receiptDate.Date == DateTime.UtcNow.Date;
             }
         }
     }
