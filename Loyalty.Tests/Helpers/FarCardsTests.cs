@@ -161,6 +161,77 @@ public class FarCardsTests
         c.CheckKey.Should().Be("7:20261105:2:9");
     }
 
+    // --- Çek versiyaları (eyni checkguid bir neçə dəfə gəlir) ---
+    private const string BaseId = "10:111330001:7BB48476-B488-47E3-A7CD-842E5BCA52E6";
+    private static (string, decimal, decimal) Closed(string id, decimal total, decimal redeem) => ($"rkeeper:{id}:OrderClosed", total, redeem);
+    private static (string, decimal, decimal) Returned(string id) => ($"rkeeper:{id}:OrderReturned", 0m, 0m);
+
+    [Fact]
+    public void ResolveCheckVersion_FirstSale_UsesBaseKey()
+    {
+        var v = RkeeperLoyaltyService.ResolveCheckVersion(BaseId, false, 4m, 4m, Array.Empty<(string, decimal, decimal)>());
+        v.Should().Be(new RkeeperCheckVersion(BaseId, false, null, 0m));
+    }
+
+    [Fact]
+    public void ResolveCheckVersion_SameAmountsAgain_IsDuplicate()
+    {
+        var v = RkeeperLoyaltyService.ResolveCheckVersion(BaseId, false, 4m, 4m, new[] { Closed(BaseId, 4m, 4m) });
+        v.Duplicate.Should().BeTrue();
+        v.ReverseFirstOrderId.Should().BeNull();
+    }
+
+    [Fact]
+    public void ResolveCheckVersion_ReclosedWithOtherPayment_ReversesOldThenNewVersion()
+    {
+        // Real hal (çek 101156 → 101157): 4.00 Walvero, fiskal alınmadı → 0.01 nağd + 3.99 Walvero, eyni checkguid, rollback gəlmir
+        var v = RkeeperLoyaltyService.ResolveCheckVersion(BaseId, false, 4m, 3.99m, new[] { Closed(BaseId, 4m, 4m) });
+        v.Should().Be(new RkeeperCheckVersion(BaseId + ".r1", false, BaseId, 4m));
+
+        // Tam nağdla yenidən bağlanma: balansdan çıxılan 4.00 geri qayıtmalıdır
+        var cash = RkeeperLoyaltyService.ResolveCheckVersion(BaseId, false, 4m, 0m, new[] { Closed(BaseId, 4m, 4m) });
+        cash.ReverseFirstOrderId.Should().Be(BaseId);
+        cash.RefundOnReverse.Should().Be(4m);
+    }
+
+    [Fact]
+    public void ResolveCheckVersion_SecondReclose_ChainsVersions()
+    {
+        var markers = new[] { Closed(BaseId, 4m, 4m), Returned(BaseId), Closed(BaseId + ".r1", 4m, 3.99m) };
+        RkeeperLoyaltyService.ResolveCheckVersion(BaseId, false, 4m, 3.99m, markers).Duplicate.Should().BeTrue();
+        RkeeperLoyaltyService.ResolveCheckVersion(BaseId, false, 4m, 2m, markers)
+            .Should().Be(new RkeeperCheckVersion(BaseId + ".r2", false, BaseId + ".r1", 3.99m));
+    }
+
+    [Fact]
+    public void ResolveCheckVersion_Return_TargetsActiveVersion()
+    {
+        var none = Array.Empty<(string, decimal, decimal)>();
+        RkeeperLoyaltyService.ResolveCheckVersion(BaseId, true, 4m, 4m, none)
+            .Should().Be(new RkeeperCheckVersion(BaseId, false, null, 0m)); // satış hələ növbədə ola bilər
+        RkeeperLoyaltyService.ResolveCheckVersion(BaseId, true, 4m, 4m, new[] { Closed(BaseId, 4m, 4m) })
+            .OrderId.Should().Be(BaseId);
+        RkeeperLoyaltyService.ResolveCheckVersion(BaseId, true, 4m, 3.99m,
+                new[] { Closed(BaseId, 4m, 4m), Returned(BaseId), Closed(BaseId + ".r1", 4m, 3.99m) })
+            .OrderId.Should().Be(BaseId + ".r1");
+        RkeeperLoyaltyService.ResolveCheckVersion(BaseId, true, 4m, 4m, new[] { Closed(BaseId, 4m, 4m), Returned(BaseId) })
+            .Duplicate.Should().BeTrue(); // artıq qaytarılıb
+    }
+
+    [Fact]
+    public void ResolveCheckVersion_SaleAfterReturn_OpensNewVersion_AndIgnoresForeignKeys()
+    {
+        // Qaytarmanın ləğvi (chmode 4) və ya qaytarılmış çekin yenidən satışı
+        var markers = new[]
+        {
+            Closed(BaseId, 4m, 4m), Returned(BaseId),
+            Closed(BaseId + "0", 9m, 9m),            // başqa çek (prefiks oxşardır) — nəzərə alınmamalıdır
+            ("rkeeper:" + BaseId + ".rX:OrderClosed", 1m, 1m)
+        };
+        RkeeperLoyaltyService.ResolveCheckVersion(BaseId, false, 4m, 4m, markers)
+            .Should().Be(new RkeeperCheckVersion(BaseId + ".r1", false, null, 0m));
+    }
+
     [Fact]
     public void ParseCardQuery_SpecSample()
     {

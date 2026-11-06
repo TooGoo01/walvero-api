@@ -16,6 +16,15 @@ namespace Loyalty.Business.Services.Implementations.Main
     /// Çek mövcud POS sifariş emalına (ProcessIikoOrderEventAsync, SourcePrefix="rkeeper") map olunur —
     /// tier / happy hours / xoş gəldin bonusu / möhür / ləğv eyni yoldan keçir.
     /// </summary>
+    /// <summary>
+    /// <see cref="RkeeperLoyaltyService.ResolveCheckVersion"/> nəticəsi.
+    /// </summary>
+    /// <param name="OrderId">Bu gəlişin emal olunacağı sifariş açarı (qaytarmada — geri alınacaq versiya).</param>
+    /// <param name="Duplicate">Dəyişiklik yoxdur, heç nə etmə.</param>
+    /// <param name="ReverseFirstOrderId">Yenidən bağlanma: əvvəlcə geri alınmalı olan aktiv versiya.</param>
+    /// <param name="RefundOnReverse">Geri alınanda balansa qayıdacaq məbləğ (balans yoxlaması üçün).</param>
+    public sealed record RkeeperCheckVersion(string OrderId, bool Duplicate, string? ReverseFirstOrderId, decimal RefundOnReverse);
+
     public sealed class RkeeperLoyaltyService : IRkeeperLoyaltyService
     {
         public const string Source = "rkeeper";
@@ -135,7 +144,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             // FarCards qismən icranı qəbul etmir (Result=0 hamısı / 1 heç biri) → əvvəl hamısını yoxla, sonra emal et
-            var plan = new List<(FarCardsCheckSummary Check, LoyaltyCard Card, IikoOrderEventRequest Request, WalletWebhookResolvedContext Ctx)>();
+            var plan = new List<(FarCardsCheckSummary Check, LoyaltyCard Card, IikoOrderEventRequest Request, WalletWebhookResolvedContext Ctx, string? ReverseFirstOrderId)>();
             foreach (var check in checks)
             {
                 if (check.HasUnknownKind)
@@ -167,12 +176,40 @@ namespace Loyalty.Business.Services.Implementations.Main
                 }
 
                 string orderId = $"{context.TenantIntegrationId}:{check.CheckKey}";
-                // WalletWebhookService idempotency açarı ilə eyni format: {SourcePrefix}:{OrderId}:{EventType}
-                string markerKey = $"{Source}:{orderId}:{(check.IsReturn ? "OrderReturned" : "OrderClosed")}";
-                // Marker PosOrderMarkers-dadır (yeni); köhnə tarixçədə Transaction.OrderId kimi
-                bool alreadyProcessed =
-                    (await _uow.Repository<PosOrderMarker>().GetAllAsync(m => m.OrderKey == markerKey)).Any()
-                    || (await _uow.Repository<Transaction>().GetAllAsync(t => t.OrderId == markerKey)).Any();
+                bool alreadyProcessed;
+                string? reverseFirstOrderId = null;
+                decimal refundOnReverse = 0m;
+
+                if (fromInpBuf && !validateOnly)
+                {
+                    // Eyni çek (checkguid) bir neçə dəfə gələ bilər: təkrar göndəriş, fiskal alınmadıqdan sonra başqa
+                    // ödənişlə yenidən bağlanma (kassa aradakı rollback-i göndərmir), qaytarma, qaytarmanın ləğvi.
+                    string keyPrefix = $"{Source}:{orderId}";
+                    var markers = await _uow.Repository<PosOrderMarker>().GetAllAsync(
+                        m => m.OrderKey.StartsWith(keyPrefix + ":") || m.OrderKey.StartsWith(keyPrefix + ".r"));
+                    var version = ResolveCheckVersion(orderId, check.IsReturn, check.OwnPaid + check.BonusPaid, check.BonusPaid,
+                        markers.Select(m => (m.OrderKey, m.TotalSum, m.WalletRedeem)));
+
+                    if (version.Duplicate)
+                    {
+                        _logger.LogInformation("rkeeper TransactionsEx DUPLICATE (dəyişiklik yoxdur). TenantId={TenantId} CardId={CardId} Check={Check} Return={Return}",
+                            context.TenantId, card.Id, check.CheckKey, check.IsReturn);
+                        continue;
+                    }
+                    orderId = version.OrderId;
+                    reverseFirstOrderId = version.ReverseFirstOrderId;
+                    refundOnReverse = version.RefundOnReverse;
+                    alreadyProcessed = false;
+                }
+                else
+                {
+                    // WalletWebhookService idempotency açarı ilə eyni format: {SourcePrefix}:{OrderId}:{EventType}
+                    string markerKey = $"{Source}:{orderId}:{(check.IsReturn ? "OrderReturned" : "OrderClosed")}";
+                    // Marker PosOrderMarkers-dadır (yeni); köhnə tarixçədə Transaction.OrderId kimi
+                    alreadyProcessed =
+                        (await _uow.Repository<PosOrderMarker>().GetAllAsync(m => m.OrderKey == markerKey)).Any()
+                        || (await _uow.Repository<Transaction>().GetAllAsync(t => t.OrderId == markerKey)).Any();
+                }
 
                 // Xalla ödənişin avtorizasiyası (retry-də balans artıq çıxılıb → yoxlama atlanır, emal duplicate qaytarır)
                 if (!check.IsReturn && check.BonusPaid > 0m && !alreadyProcessed)
@@ -181,28 +218,42 @@ namespace Loyalty.Business.Services.Implementations.Main
                     var templateType = program?.CardTemplate?.EffectiveType ?? CardTemplateType.PointsBased;
                     if (templateType == CardTemplateType.ProgressBased || card.IsPointsExpired())
                         return FarCardsXml.BuildTransactionsError(ErrPaymentNotAllowed, "Walvero: bonus payment not allowed for this card");
-                    if (card.CurrentPoints < check.BonusPaid)
+                    // Yenidən bağlanmada əvvəlki cəhdin çıxılması geri qayıdacaq → mövcud məbləğə əlavə olunur
+                    decimal available = card.CurrentPoints + refundOnReverse;
+                    if (available < check.BonusPaid)
                     {
                         _logger.LogWarning("rkeeper TransactionsEx INSUFFICIENT. TenantId={TenantId} CardId={CardId} Balance={Balance} Pay={Pay} Check={Check}",
-                            context.TenantId, card.Id, card.CurrentPoints, check.BonusPaid, check.CheckKey);
+                            context.TenantId, card.Id, available, check.BonusPaid, check.CheckKey);
                         return FarCardsXml.BuildTransactionsError(ErrInsufficientBalance,
-                            $"Walvero: balans kifayet etmir ({card.CurrentPoints:0.00} AZN)");
+                            $"Walvero: balans kifayet etmir ({available:0.00} AZN)");
                     }
                 }
 
                 var checkCtx = await WithBranchAsync(context, check.Restaurant, ct);
-                plan.Add((check, card, MapToOrderEvent(check, card, orderId), checkCtx));
+                plan.Add((check, card, MapToOrderEvent(check, card, orderId), checkCtx, reverseFirstOrderId));
             }
 
             if (validateOnly)
                 return FarCardsXml.BuildTransactionsOk();
 
-            foreach (var (check, card, request, checkCtx) in plan)
+            foreach (var (check, card, request, checkCtx, reverseFirstOrderId) in plan)
             {
+                if (reverseFirstOrderId != null)
+                {
+                    // Çek başqa ödənişlə yenidən bağlanıb → əvvəlki cəhdi geri al (ardıcıllıq vacibdir → sinxron)
+                    var reverse = MapToOrderEvent(AsReturn(check), card, reverseFirstOrderId);
+                    var reversed = await _webhookService.ProcessIikoOrderEventAsync(checkCtx, reverse, ct);
+                    _logger.LogInformation(
+                        "rkeeper TransactionsEx RECLOSE reverse. TenantId={TenantId} CardId={CardId} Check={Check} OldOrderId={OldOrderId} NewOrderId={NewOrderId} Success={Success} Message={Message}",
+                        context.TenantId, card.Id, check.CheckKey, reverseFirstOrderId, request.OrderId, reversed.Success, reversed.Message);
+                    if (!reversed.Success)
+                        return FarCardsXml.BuildTransactionsError(ErrProcessing, "Walvero: " + (reversed.Message ?? "processing failed"));
+                }
+
                 // Balansdan ödəniş olan satış sinxron qalır: çıxılma dərhal yazılmalıdır (kassanın növbəti skanı / slipi
                 // yeni balansı görsün, ikiqat xərcləmə pəncərəsi olmasın). Qalan hər şey (yalnız keşbek, qaytarma) —
                 // ack-first: Hangfire "pos" növbəsi (öz serveri var, çek OCR worker-lərini tutmur).
-                bool mustBeSync = !check.IsReturn && check.BonusPaid > 0m;
+                bool mustBeSync = reverseFirstOrderId != null || (!check.IsReturn && check.BonusPaid > 0m);
                 if (!mustBeSync && TryEnqueue(context, check, card, request, checkCtx))
                     continue;
 
@@ -217,6 +268,69 @@ namespace Loyalty.Business.Services.Implementations.Main
 
             return FarCardsXml.BuildTransactionsOk();
         }
+
+        /// <summary>
+        /// Çekin bu gəlişi üçün hansı sifariş açarı ilə nə edilməlidir. Bir çekin (checkguid) tətbiq olunmuş versiyaları
+        /// PosOrderMarkers-dadır: əsas açar <c>{base}</c>, sonrakılar <c>{base}.r1</c>, <c>{base}.r2</c>…;
+        /// "aktiv" versiya — OrderClosed-i olub OrderReturned-i olmayan ən sonuncu.
+        /// Satış: aktiv versiya eyni məbləğlədirsə dublikat; fərqlidirsə (yenidən bağlanma) əvvəl onu geri al, sonra
+        /// yeni versiya; aktiv yoxdursa (ilk dəfə / qaytarmadan sonra) yeni versiya.
+        /// Qaytarma: aktiv versiyanı geri al; hamısı artıq qaytarılıbsa dublikat.
+        /// </summary>
+        public static RkeeperCheckVersion ResolveCheckVersion(
+            string baseOrderId, bool isReturn, decimal totalSum, decimal bonusPaid,
+            IEnumerable<(string OrderKey, decimal TotalSum, decimal WalletRedeem)> markers)
+        {
+            string prefix = $"{Source}:{baseOrderId}";
+            var closed = new Dictionary<int, (decimal TotalSum, decimal WalletRedeem)>();
+            var returned = new HashSet<int>();
+            foreach (var m in markers)
+            {
+                if (m.OrderKey == null || !m.OrderKey.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                string rest = m.OrderKey[prefix.Length..]; // ":OrderClosed" | ".r2:OrderReturned"
+                int v = 0;
+                if (rest.StartsWith(".r", StringComparison.Ordinal))
+                {
+                    int colon = rest.IndexOf(':');
+                    if (colon < 0 || !int.TryParse(rest[2..colon], out v) || v <= 0) continue;
+                    rest = rest[colon..];
+                }
+                if (rest == ":OrderClosed") closed[v] = (m.TotalSum, m.WalletRedeem);
+                else if (rest == ":OrderReturned") returned.Add(v);
+            }
+
+            string IdOf(int v) => v == 0 ? baseOrderId : $"{baseOrderId}.r{v}";
+            int maxSeen = closed.Keys.Concat(returned).DefaultIfEmpty(-1).Max();
+            int? active = closed.Keys.Where(v => !returned.Contains(v)).OrderByDescending(v => v).Select(v => (int?)v).FirstOrDefault();
+
+            if (isReturn)
+            {
+                if (active.HasValue) return new RkeeperCheckVersion(IdOf(active.Value), false, null, 0m);
+                // Heç nə tətbiq olunmayıb → əsas açarla göndər (satış hələ növbədədirsə ondan sonra işlənəcək); hamısı qaytarılıbsa dublikat
+                return new RkeeperCheckVersion(baseOrderId, maxSeen >= 0, null, 0m);
+            }
+
+            if (active.HasValue)
+            {
+                var a = closed[active.Value];
+                if (a.TotalSum == totalSum && a.WalletRedeem == bonusPaid)
+                    return new RkeeperCheckVersion(IdOf(active.Value), true, null, 0m);
+                return new RkeeperCheckVersion(IdOf(maxSeen + 1), false, IdOf(active.Value), a.WalletRedeem);
+            }
+            return new RkeeperCheckVersion(maxSeen < 0 ? baseOrderId : IdOf(maxSeen + 1), false, null, 0m);
+        }
+
+        private static FarCardsCheckSummary AsReturn(FarCardsCheckSummary c) => new FarCardsCheckSummary
+        {
+            CheckKey = c.CheckKey,
+            Card = c.Card,
+            Account = c.Account,
+            Restaurant = c.Restaurant,
+            RkCheck = c.RkCheck,
+            BonusPaid = c.BonusPaid,
+            OwnPaid = c.OwnPaid,
+            IsReturn = true
+        };
 
         /// <summary>Çeki Hangfire "pos" növbəsinə qoy. Növbəyə yazıla bilmədisə false → çağıran sinxron emal edir (çek itməsin).</summary>
         private bool TryEnqueue(WalletWebhookResolvedContext context, FarCardsCheckSummary check, LoyaltyCard card,
@@ -260,9 +374,8 @@ namespace Loyalty.Business.Services.Implementations.Main
                     isReturn = true;
                     break;
                 case FarCardsChMode.ReturnRollback:
-                    // Qaytarma ləğv olundu → çek yenidən qüvvədədir; ilkin OrderClosed markeri artıq var, ona görə ayrıca açar
+                    // Qaytarma ləğv olundu → çek yenidən qüvvədədir: aktiv versiya yoxdur → ResolveCheckVersion yeni versiya açır
                     isReturn = false;
-                    if (key.Length > 0) key += "-rr";
                     break;
                 case FarCardsChMode.BeforeReceipt:
                     isReturn = false;
