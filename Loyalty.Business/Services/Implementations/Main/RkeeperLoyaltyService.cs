@@ -1,3 +1,4 @@
+using Hangfire;
 using Loyalty.Business.Helpers;
 using Loyalty.Business.Models.TenantIntegration;
 using Loyalty.Business.Services.Abstractions.Main;
@@ -33,6 +34,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ITenantIntegrationResolver _resolver;
         private readonly IWalletWebhookService _webhookService;
         private readonly IUnitOfWork _uow;
+        private readonly Hangfire.IBackgroundJobClient _jobClient;
         private readonly ILogger<RkeeperLoyaltyService> _logger;
 
         public RkeeperLoyaltyService(
@@ -42,6 +44,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             ITenantIntegrationResolver resolver,
             IWalletWebhookService webhookService,
             IUnitOfWork uow,
+            Hangfire.IBackgroundJobClient jobClient,
             ILogger<RkeeperLoyaltyService> logger)
         {
             _customerRepo = customerRepo;
@@ -50,6 +53,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _resolver = resolver;
             _webhookService = webhookService;
             _uow = uow;
+            _jobClient = jobClient;
             _logger = logger;
         }
 
@@ -110,10 +114,25 @@ namespace Loyalty.Business.Services.Implementations.Main
                 _logger.LogWarning("rkeeper TransactionsEx: XML parse olunmadı. TenantId={TenantId}", context.TenantId);
                 return FarCardsXml.BuildTransactionsError(ErrInvalidXml, "Walvero: invalid XML");
             }
-            if (transactions.Count == 0)
-                return FarCardsXml.BuildTransactionsOk();
+            var inpBuf = FarCardsXml.ParseInpBufCheck(requestXml);
+            List<FarCardsCheckSummary> checks;
+            bool fromInpBuf = false;   // çek TransactionsEx sətirlərindən yox, INPBUF sənədindən oxunub
+            bool validateOnly = false; // chmode 13: yalnız yoxla (balans), heç nə yazma
 
-            var checks = FarCardsCheck.Summarize(transactions);
+            if (transactions.Count == 0)
+            {
+                // r_keeper "Pass All Receipts XML data": <Transactions/> boş, çek INPBUF-dadır
+                var fromBuf = MapInpBufCheck(context, inpBuf, out validateOnly);
+                if (fromBuf == null)
+                    return FarCardsXml.BuildTransactionsOk();
+                checks = new List<FarCardsCheckSummary> { fromBuf };
+                fromInpBuf = true;
+            }
+            else
+            {
+                checks = FarCardsCheck.Summarize(transactions);
+                checks = SupplementOwnPaidFromInpBuf(context, checks, inpBuf);
+            }
 
             // FarCards qismən icranı qəbul etmir (Result=0 hamısı / 1 heç biri) → əvvəl hamısını yoxla, sonra emal et
             var plan = new List<(FarCardsCheckSummary Check, LoyaltyCard Card, IikoOrderEventRequest Request, WalletWebhookResolvedContext Ctx)>();
@@ -139,15 +158,21 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var card = await FindActiveCardAsync(context, check.Card, check.Account, ct);
                 if (card == null)
                 {
-                    _logger.LogWarning("rkeeper TransactionsEx CARD_NOT_FOUND. TenantId={TenantId} Card={Card} Account={Account} Check={Check}",
-                        context.TenantId, check.Card, check.Account, check.CheckKey);
+                    _logger.LogWarning("rkeeper TransactionsEx CARD_NOT_FOUND. TenantId={TenantId} Card={Card} Account={Account} Check={Check} FromInpBuf={FromInpBuf}",
+                        context.TenantId, check.Card, check.Account, check.CheckKey, fromInpBuf);
+                    // "Bütün çeklər" rejimində yad kartlı çek də gələ bilər — balansdan ödəniş yoxdursa kassanı saxlama
+                    if (fromInpBuf && (check.IsReturn || check.BonusPaid == 0m))
+                        continue;
                     return FarCardsXml.BuildTransactionsError(ErrCardNotFound, "Walvero: card not found");
                 }
 
                 string orderId = $"{context.TenantIntegrationId}:{check.CheckKey}";
                 // WalletWebhookService idempotency açarı ilə eyni format: {SourcePrefix}:{OrderId}:{EventType}
                 string markerKey = $"{Source}:{orderId}:{(check.IsReturn ? "OrderReturned" : "OrderClosed")}";
-                bool alreadyProcessed = (await _uow.Repository<Transaction>().GetAllAsync(t => t.OrderId == markerKey)).Any();
+                // Marker PosOrderMarkers-dadır (yeni); köhnə tarixçədə Transaction.OrderId kimi
+                bool alreadyProcessed =
+                    (await _uow.Repository<PosOrderMarker>().GetAllAsync(m => m.OrderKey == markerKey)).Any()
+                    || (await _uow.Repository<Transaction>().GetAllAsync(t => t.OrderId == markerKey)).Any();
 
                 // Xalla ödənişin avtorizasiyası (retry-də balans artıq çıxılıb → yoxlama atlanır, emal duplicate qaytarır)
                 if (!check.IsReturn && check.BonusPaid > 0m && !alreadyProcessed)
@@ -169,8 +194,18 @@ namespace Loyalty.Business.Services.Implementations.Main
                 plan.Add((check, card, MapToOrderEvent(check, card, orderId), checkCtx));
             }
 
+            if (validateOnly)
+                return FarCardsXml.BuildTransactionsOk();
+
             foreach (var (check, card, request, checkCtx) in plan)
             {
+                // Balansdan ödəniş olan satış sinxron qalır: çıxılma dərhal yazılmalıdır (kassanın növbəti skanı / slipi
+                // yeni balansı görsün, ikiqat xərcləmə pəncərəsi olmasın). Qalan hər şey (yalnız keşbek, qaytarma) —
+                // ack-first: Hangfire "pos" növbəsi (öz serveri var, çek OCR worker-lərini tutmur).
+                bool mustBeSync = !check.IsReturn && check.BonusPaid > 0m;
+                if (!mustBeSync && TryEnqueue(context, check, card, request, checkCtx))
+                    continue;
+
                 var result = await _webhookService.ProcessIikoOrderEventAsync(checkCtx, request, ct);
                 _logger.LogInformation(
                     "rkeeper TransactionsEx {Event}. TenantId={TenantId} CardId={CardId} Check={Check} Own={Own} BonusPaid={BonusPaid} BranchId={BranchId} Success={Success} Message={Message}",
@@ -181,6 +216,125 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             return FarCardsXml.BuildTransactionsOk();
+        }
+
+        /// <summary>Çeki Hangfire "pos" növbəsinə qoy. Növbəyə yazıla bilmədisə false → çağıran sinxron emal edir (çek itməsin).</summary>
+        private bool TryEnqueue(WalletWebhookResolvedContext context, FarCardsCheckSummary check, LoyaltyCard card,
+            IikoOrderEventRequest request, WalletWebhookResolvedContext checkCtx)
+        {
+            try
+            {
+                var jobId = _jobClient.Enqueue<RkeeperCheckJob>(j => j.ProcessAsync(checkCtx, request, CancellationToken.None));
+                _logger.LogInformation(
+                    "rkeeper TransactionsEx ENQUEUED. TenantId={TenantId} CardId={CardId} Event={Event} Check={Check} Own={Own} BonusPaid={BonusPaid} BranchId={BranchId} JobId={JobId}",
+                    context.TenantId, card.Id, request.EventType, check.CheckKey, check.OwnPaid, check.BonusPaid, checkCtx.BranchId, jobId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "rkeeper TransactionsEx enqueue alınmadı — sinxron emal. TenantId={TenantId} Check={Check}",
+                    context.TenantId, check.CheckKey);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// INPBUF sənədi → çek xülasəsi. null = ediləcək iş yoxdur (çek deyil / kart yoxdur / məbləğ sıfır / kimlik yoxdur).
+        /// chmode: 1 satış, 2 satışın geri alınması və 3 qaytarma → ləğv, 4 qaytarmanın geri alınması → satış yenidən
+        /// (ayrıca açarla), 13 çekdən əvvəl → yalnız yoxlama.
+        /// </summary>
+        private FarCardsCheckSummary? MapInpBufCheck(WalletWebhookResolvedContext context, FarCardsInpBufCheck? inp, out bool validateOnly)
+        {
+            validateOnly = false;
+            if (inp == null) return null;
+
+            bool isReturn;
+            string key = inp.CheckKey;
+            switch (inp.ChMode)
+            {
+                case FarCardsChMode.Sale:
+                    isReturn = false;
+                    break;
+                case FarCardsChMode.SaleRollback:
+                case FarCardsChMode.Return:
+                    isReturn = true;
+                    break;
+                case FarCardsChMode.ReturnRollback:
+                    // Qaytarma ləğv olundu → çek yenidən qüvvədədir; ilkin OrderClosed markeri artıq var, ona görə ayrıca açar
+                    isReturn = false;
+                    if (key.Length > 0) key += "-rr";
+                    break;
+                case FarCardsChMode.BeforeReceipt:
+                    isReturn = false;
+                    validateOnly = true;
+                    break;
+                default:
+                    return null; // sifariş redaktəsi, preçek, məlumat çapı və s.
+            }
+
+            if (inp.Card.Length == 0 || (inp.OwnPaid == 0m && inp.BonusPaid == 0m))
+                return null;
+
+            if (key.Length == 0)
+            {
+                if (validateOnly)
+                    key = "precheck"; // yazılmır, yalnız balans yoxlanır
+                else
+                {
+                    _logger.LogWarning("rkeeper TransactionsEx INPBUF: çek kimliyi yoxdur (checkguid/checknum), atlandı. TenantId={TenantId} Card={Card} ChMode={ChMode}",
+                        context.TenantId, inp.Card, inp.ChMode);
+                    return null;
+                }
+            }
+
+            _logger.LogInformation(
+                "rkeeper TransactionsEx INPBUF. TenantId={TenantId} ChMode={ChMode} Card={Card} Own={Own} BonusPaid={BonusPaid} Restaurant={Restaurant} CheckNum={CheckNum} Check={Check}",
+                context.TenantId, inp.ChMode, inp.Card, inp.OwnPaid, inp.BonusPaid, inp.Restaurant, inp.CheckNum, key);
+
+            return new FarCardsCheckSummary
+            {
+                CheckKey = key,
+                Card = inp.Card,
+                Account = 0,
+                Restaurant = inp.Restaurant,
+                RkCheck = inp.CheckNum,
+                BonusPaid = inp.BonusPaid,
+                OwnPaid = inp.OwnPaid,
+                IsReturn = isReturn
+            };
+        }
+
+        /// <summary>
+        /// Sətirlərdə yalnız balansdan ödəniş (Kind 0) gəlib, qonağın öz pulu (Kind 3) yoxdursa — keşbek bazasını
+        /// INPBUF-dakı nağd/bank ödənişlərindən götür. Yalnız tək çek və eyni kart üçün (səhv uyğunlaşdırma olmasın).
+        /// </summary>
+        private List<FarCardsCheckSummary> SupplementOwnPaidFromInpBuf(
+            WalletWebhookResolvedContext context, List<FarCardsCheckSummary> checks, FarCardsInpBufCheck? inp)
+        {
+            if (inp == null || inp.ChMode != FarCardsChMode.Sale || inp.OwnPaid <= 0m || checks.Count != 1)
+                return checks;
+            var c = checks[0];
+            if (c.IsReturn || c.OwnPaid != 0m || c.HasUnknownKind) return checks;
+            if (inp.Card.Length > 0 && c.Card.Length > 0 && !string.Equals(inp.Card, c.Card, StringComparison.Ordinal)) return checks;
+
+            _logger.LogInformation("rkeeper TransactionsEx: OwnPaid INPBUF-dan tamamlandı. TenantId={TenantId} Check={Check} Own={Own}",
+                context.TenantId, c.CheckKey, inp.OwnPaid);
+            return new List<FarCardsCheckSummary>
+            {
+                new FarCardsCheckSummary
+                {
+                    CheckKey = c.CheckKey,
+                    Card = c.Card,
+                    Account = c.Account,
+                    Restaurant = c.Restaurant,
+                    RkCheck = c.RkCheck,
+                    BonusPaid = c.BonusPaid,
+                    OwnPaid = inp.OwnPaid,
+                    IsReturn = c.IsReturn,
+                    IgnoredMinor = c.IgnoredMinor,
+                    HasUnknownKind = c.HasUnknownKind
+                }
+            };
         }
 
         /// <summary>

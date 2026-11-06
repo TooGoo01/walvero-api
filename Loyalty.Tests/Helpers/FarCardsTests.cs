@@ -37,6 +37,130 @@ public class FarCardsTests
             """;
     }
 
+    /// <summary>Real kassa sorğusu (UCS showroom, 2026-11-06): Transactions boş, çek INPBUF-da.</summary>
+    private static string InpBufRequest(
+        int chMode = 1,
+        string payments = """<PAYMENT id="{16D72549-14D8-4F31-9E2A-0A833D4F5EED}" code="1" name="AZN" uni="110" paytype="1" bsum="4" sum="4"/>""",
+        string discounts = """<DISCOUNT id="{444CBC94-D30B-4149-8AD3-56BC2BDE7B50}" code="98" name="WALVERO" uni="103" interface="14" cardcode="789607890001" account="0" sum="-5"/>""",
+        string current = "1008308",
+        string checkAttrs = """checknum="101150" checkguid="{1FEA0FDD-362C-4080-BE6C-87B19A132039}" """) => $"""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <ROOT>
+        	<Transactions/>
+        	<INPBUF>
+        		<CHECK stationcode="1" restaurantcode="111330001" cashservername="MIDTRT" generateddatetime="2026-11-06T14:52:56" chmode="{chMode}" locale="1049" shiftdate="2026-11-05" shiftnum="310" protocolversion="58">
+        			<EXTINFO reservation="">
+        				<INTERFACES current="{current}">
+        					<INTERFACE type="PDS" id="1008308" mode="1" interface="14">
+        						<HOLDERS><ITEM cardcode="789607890001"/></HOLDERS>
+        						<ALLCARDS><ITEM cardcode="789607890001"/></ALLCARDS>
+        					</INTERFACE>
+        				</INTERFACES>
+        			</EXTINFO>
+        			<CHECKDATA printnum="4" fiscdocnum="4" delprintnum="0" delfiscdocnum="0" tablename="22" ordernum="2070/1" closedatetime="2026-11-06T14:52:56" {checkAttrs}>
+        				<CHECKLINES count="1">
+        					<LINE code="101" name="Amarettissimo" type="dish" price="9" quantity="1" sum="4">
+        						<DISCOUNTS><DISCOUNTPART id="x" disclineuni="103" sum="-5"/></DISCOUNTS>
+        						<LINEPAYMENTS><LINEPAYMENT id="y" sum="4"/></LINEPAYMENTS>
+        					</LINE>
+        				</CHECKLINES>
+        				<CHECKPAYMENTS count="1">{payments}</CHECKPAYMENTS>
+        				<CHECKDISCOUNTS count="1">{discounts}</CHECKDISCOUNTS>
+        				<CURRENCIES/>
+        			</CHECKDATA>
+        		</CHECK>
+        	</INPBUF>
+        </ROOT>
+        """;
+
+    [Fact]
+    public void ParseInpBufCheck_RealSale_CashPlusBalanceDiscount()
+    {
+        var xml = InpBufRequest();
+        FarCardsXml.ParseTransactions(xml).Should().BeEmpty();
+
+        var c = FarCardsXml.ParseInpBufCheck(xml);
+        c.Should().NotBeNull();
+        c!.ChMode.Should().Be(FarCardsChMode.Sale);
+        c.Card.Should().Be("789607890001");
+        c.Restaurant.Should().Be("111330001");
+        c.CheckNum.Should().Be("101150");
+        c.OwnPaid.Should().Be(4m);    // nağd AZN
+        c.BonusPaid.Should().Be(5m);  // WALVERO endirimi (kart balansından)
+        c.CheckKey.Should().Be("111330001:1FEA0FDD-362C-4080-BE6C-87B19A132039");
+    }
+
+    [Fact]
+    public void ParseInpBufCheck_WalveroCurrencyPayment_CountsAsBalance()
+    {
+        // Real çek 101147: Walvero valyutası 8 + WALVERO endirimi 1, nağd yoxdur
+        var c = FarCardsXml.ParseInpBufCheck(InpBufRequest(
+            payments: """<PAYMENT id="{55FF5A34-2598-4711-99A8-2C30D6B94F63}" code="115" name="Walvero" uni="114" paytype="1" bsum="8" sum="8"/>""",
+            discounts: """<DISCOUNT code="98" name="WALVERO" interface="14" cardcode="789607890001" account="0" sum="-1"/>"""));
+        c!.OwnPaid.Should().Be(0m);
+        c.BonusPaid.Should().Be(9m);
+    }
+
+    [Fact]
+    public void ParseInpBufCheck_ForeignDiscountsAndMixedPayments()
+    {
+        // Başqa interfeysin / kartsız endirim balans sayılmır; nağd + bank = qazanma bazası; onluq vergül də oxunur
+        var c = FarCardsXml.ParseInpBufCheck(InpBufRequest(
+            payments: """<PAYMENT code="1" name="AZN" paytype="1" bsum="2,50" sum="2,50"/><PAYMENT code="5" name="VIZA" paytype="2" sum="10.25"/>""",
+            discounts: """<DISCOUNT code="7" name="Happy hour" sum="-3"/><DISCOUNT code="9" name="PRIME HILL" interface="6" cardcode="111" sum="-2"/>"""));
+        c!.OwnPaid.Should().Be(12.75m);
+        c.BonusPaid.Should().Be(0m);
+    }
+
+    [Fact]
+    public void ParseInpBufCheck_OtherPdsInterfaceCurrent_NoCard()
+    {
+        // Çağırış başqa PDS interfeysi üçündürsə bizim kart götürülmür
+        var c = FarCardsXml.ParseInpBufCheck(InpBufRequest(current: "999"));
+        c!.Card.Should().BeEmpty();
+        c.BonusPaid.Should().Be(0m);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(13)]
+    public void ParseInpBufCheck_KeepsChModeAndSameKeyForReturn(int chMode)
+    {
+        var c = FarCardsXml.ParseInpBufCheck(InpBufRequest(chMode: chMode));
+        c!.ChMode.Should().Be(chMode);
+        // Qaytarma sənədi satışla eyni açarı verməlidir (checkguid) — ləğv ilkin çeki tapsın
+        c.CheckKey.Should().Be(FarCardsXml.ParseInpBufCheck(InpBufRequest())!.CheckKey);
+    }
+
+    [Fact]
+    public void ParseInpBufCheck_NoGuid_FallsBackToShiftStationCheckNum_AndEmptyWhenNoIdentity()
+    {
+        FarCardsXml.ParseInpBufCheck(InpBufRequest(checkAttrs: """checknum="101150" """))!
+            .CheckKey.Should().Be("111330001:20261105:1:101150");
+        FarCardsXml.ParseInpBufCheck(InpBufRequest(checkAttrs: """checknum="0" """))!
+            .CheckKey.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ParseInpBufCheck_NoCheckOrGarbage_ReturnsNull()
+    {
+        FarCardsXml.ParseInpBufCheck("<Root><Transactions/></Root>").Should().BeNull();
+        FarCardsXml.ParseInpBufCheck("<Root><Transactions/><INPBUF/></Root>").Should().BeNull();
+        FarCardsXml.ParseInpBufCheck("not xml").Should().BeNull();
+    }
+
+    [Fact]
+    public void ParseInpBufCheck_EscapedTextInpBuf_IsParsed()
+    {
+        var inner = """<CHECK chmode="1" restaurantcode="7" stationcode="2" shiftdate="2026-11-05"><EXTINFO><INTERFACES current="1"><INTERFACE type="PDS" id="1" interface="14"><HOLDERS><ITEM cardcode="555"/></HOLDERS></INTERFACE></INTERFACES></EXTINFO><CHECKDATA checknum="9"><CHECKPAYMENTS><PAYMENT name="AZN" sum="3"/></CHECKPAYMENTS></CHECKDATA></CHECK>""";
+        var xml = new XElement("Root", new XElement("Transactions"), new XElement("INPBUF", inner)).ToString();
+        var c = FarCardsXml.ParseInpBufCheck(xml);
+        c!.Card.Should().Be("555");
+        c.OwnPaid.Should().Be(3m);
+        c.CheckKey.Should().Be("7:20261105:2:9");
+    }
+
     [Fact]
     public void ParseCardQuery_SpecSample()
     {

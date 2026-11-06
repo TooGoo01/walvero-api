@@ -108,6 +108,7 @@ namespace Loyalty.Business.Services
             });
             services.AddScoped<ReceiptOcrJob>();
             services.AddScoped<PosBatchOperationJob>();
+            services.AddScoped<RkeeperCheckJob>();
             services.AddScoped<IOtpGenerator, OtpGenerator>();
             services.AddScoped<IWalletCredentialProvider, WalletCredentialProvider>();
             services.AddScoped<IAppleWalletFactory, AppleWalletFactory>();

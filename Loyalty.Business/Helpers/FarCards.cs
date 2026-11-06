@@ -42,6 +42,82 @@ namespace Loyalty.Business.Helpers
                 .ToList();
         }
 
+        /// <summary>
+        /// INPBUF içindəki kassa sənədi (docs.rkeeper.ru "XML описание кассового документа").
+        /// r_keeper "Pass All Receipts XML data" rejimində <c>&lt;Transactions/&gt;</c> boş gəlir və çekin bütün
+        /// məlumatı buradadır: ödənişlər CHECKPAYMENTS, kart balansından ödəniş CHECKDISCOUNTS (PDS endirimi)
+        /// və ya Walvero valyutası kimi. Məbləğlər manatla (qəpiklə deyil). Çek yoxdursa null.
+        /// </summary>
+        public static FarCardsInpBufCheck? ParseInpBufCheck(string xml)
+        {
+            var doc = Load(xml);
+            if (doc == null) return null;
+
+            var inp = doc.Descendants().FirstOrDefault(e => NameIs(e, "INPBUF"));
+            if (inp == null) return null;
+            var check = inp.Descendants().FirstOrDefault(e => NameIs(e, "CHECK"))
+                        // INPBUF mətn/CDATA kimi də gələ bilər
+                        ?? Load(inp.Value)?.Descendants().FirstOrDefault(e => NameIs(e, "CHECK"));
+            if (check == null) return null;
+
+            int chMode = (int)ParseLong(Attr(check, "chmode"), -1);
+            var data = check.Elements().FirstOrDefault(e => NameIs(e, "CHECKDATA"));
+
+            // Bu çağırışın aid olduğu PDS interfeysi: INTERFACES/@current → INTERFACE/@id (eyni kassada bir neçə PDS ola bilər)
+            var interfaces = check.Descendants().FirstOrDefault(e => NameIs(e, "INTERFACES"));
+            var pdsList = (interfaces?.Elements() ?? Enumerable.Empty<XElement>())
+                .Where(e => NameIs(e, "INTERFACE") && string.Equals(Attr(e, "type"), "PDS", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            var currentId = interfaces != null ? Attr(interfaces, "current") : null;
+            var pds = pdsList.FirstOrDefault(i => !string.IsNullOrEmpty(currentId) && Attr(i, "id") == currentId)
+                      ?? (string.IsNullOrEmpty(currentId) ? pdsList.FirstOrDefault() : null);
+            string? ifaceCode = pds != null ? Attr(pds, "interface")?.Trim() : null;
+            string card = pds?.Elements().Where(e => NameIs(e, "HOLDERS"))
+                .SelectMany(h => h.Elements())
+                .Select(i => (Attr(i, "cardcode") ?? "").Trim())
+                .FirstOrDefault(c => c.Length > 0) ?? "";
+
+            bool IsOurs(XElement e)
+            {
+                var cc = (Attr(e, "cardcode") ?? "").Trim();
+                if (card.Length > 0 && cc.Length > 0 && string.Equals(cc, card, StringComparison.Ordinal)) return true;
+                var ic = Attr(e, "interface")?.Trim();
+                return !string.IsNullOrEmpty(ifaceCode) && ic == ifaceCode && (cc.Length == 0 || cc == card);
+            }
+
+            decimal own = 0m, bonus = 0m;
+            if (data != null)
+            {
+                foreach (var p in data.Elements().Where(e => NameIs(e, "CHECKPAYMENTS")).SelectMany(e => e.Elements()))
+                {
+                    // bsum — baza valyutada (çek sətirləri ilə eyni vahid); yoxdursa sum
+                    decimal amount = Math.Abs(ParseDecimal(Attr(p, "bsum")) ?? ParseDecimal(Attr(p, "sum")) ?? 0m);
+                    if (amount == 0m) continue;
+                    bool walvero = IsOurs(p) || (Attr(p, "name") ?? "").Contains("walvero", StringComparison.OrdinalIgnoreCase);
+                    if (walvero) bonus += amount; else own += amount;
+                }
+                foreach (var d in data.Elements().Where(e => NameIs(e, "CHECKDISCOUNTS")).SelectMany(e => e.Elements()))
+                {
+                    // Kart balansından ödəniş kassada "fiskal endirim" kimi qurulub → PDS endirimi (mənfi məbləğ)
+                    if (!IsOurs(d)) continue;
+                    bonus += Math.Abs(ParseDecimal(Attr(d, "sum")) ?? 0m);
+                }
+            }
+
+            string restaurant = (Attr(check, "restaurantcode") ?? "").Trim();
+            string station = (Attr(check, "stationcode") ?? "").Trim();
+            string checkNum = data != null ? (Attr(data, "checknum") ?? "").Trim() : "";
+            // checkguid qaytarma sənədində də eynidir (növbə günü dəyişsə belə) → idempotency + ləğv üçün ən etibarlı açar
+            string guid = KeyPart(data != null ? Attr(data, "checkguid") : null);
+            string day = Digits(Attr(check, "shiftdate"), 8);
+            string tail = guid.Length > 0 ? guid
+                : checkNum.Length > 0 && checkNum != "0" ? $"{day}:{KeyPart(station)}:{KeyPart(checkNum)}"
+                : "";
+            string key = tail.Length > 0 ? $"{KeyPart(restaurant)}:{tail}" : "";
+
+            return new FarCardsInpBufCheck(chMode, card, restaurant, key, checkNum, own, bonus);
+        }
+
         public static string BuildCardInfo(FarCardsCardInfo info)
         {
             var el = new XElement("GetCardInfoEx",
@@ -110,6 +186,21 @@ namespace Loyalty.Business.Helpers
         private static long ParseLong(string? s, long fallback = 0) =>
             long.TryParse(s?.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : fallback;
 
+        private static decimal? ParseDecimal(string? s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            return decimal.TryParse(s.Trim().Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var v) ? v : null;
+        }
+
+        private static string KeyPart(string? s) =>
+            new string((s ?? "").Trim().Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_').ToArray());
+
+        private static string Digits(string? s, int max)
+        {
+            var d = new string((s ?? "").Where(char.IsDigit).ToArray());
+            return d.Length > max ? d[..max] : d;
+        }
+
         private static string Truncate(string? s, int max) =>
             string.IsNullOrEmpty(s) ? "" : (s.Length <= max ? s : s[..max]);
 
@@ -127,6 +218,34 @@ namespace Loyalty.Business.Helpers
     public sealed record FarCardsTransaction(
         string Card, long Account, long PersonId, int Kind, long Summa,
         string? Restaurant, string? RkDate, string? RkUnit, string? RkCheck);
+
+    /// <summary>
+    /// INPBUF çekinin loyallıq üçün lazım olan hissəsi. Məbləğlər manatla, həmişə ≥ 0 (satış/qaytarma <see cref="ChMode"/> ilə ayrılır).
+    /// </summary>
+    /// <param name="ChMode">Sənədin növü — <see cref="FarCardsChMode"/>.</param>
+    /// <param name="Card">Bu PDS interfeysinə bağlı kart (yoxdursa boş).</param>
+    /// <param name="Restaurant">restaurantcode — filial (venue) uyğunluğu üçün.</param>
+    /// <param name="CheckKey">Idempotency açarının əsası; çek kimliyi yoxdursa boş.</param>
+    /// <param name="CheckNum">Çek nömrəsi (çap olunmayıbsa boş).</param>
+    /// <param name="OwnPaid">Qonağın öz pulu (nağd/bank) — qazanma bazası.</param>
+    /// <param name="BonusPaid">Kart balansından ödənən (PDS endirimi + Walvero valyutası).</param>
+    public sealed record FarCardsInpBufCheck(
+        int ChMode, string Card, string Restaurant, string CheckKey, string CheckNum, decimal OwnPaid, decimal BonusPaid);
+
+    /// <summary>CHECK/@chmode dəyərləri ("XML описание кассового документа").</summary>
+    public static class FarCardsChMode
+    {
+        /// <summary>Sifarişin ödənişi (bağlanmış çek).</summary>
+        public const int Sale = 1;
+        /// <summary>Satışın geri alınması: interfeys təsdiqləyib, kassa ödənişi tamamlaya bilməyib.</summary>
+        public const int SaleRollback = 2;
+        /// <summary>Çekin qaytarılması / silinməsi.</summary>
+        public const int Return = 3;
+        /// <summary>Qaytarmanın geri alınması (çek yenidən qüvvədədir).</summary>
+        public const int ReturnRollback = 4;
+        /// <summary>Tranzaksiyalardan əvvəl yoxlama (protokol 28+).</summary>
+        public const int BeforeReceipt = 13;
+    }
 
     public sealed record FarCardsCardInfo(
         string CardCode, long Account, long PersonId, string Holder, long BalanceMinor,
