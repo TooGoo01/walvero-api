@@ -585,7 +585,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
        int lotteryTickets = 0,
        string? lotteryWinPrize = null,
        System.DateTime? lotteryDrawDate = null,
-       int? completedCyclesOverride = null)
+       int? completedCyclesOverride = null,
+       string? objectIdOverride = null)
     {
         _log?.LogInformation("RedeemByCardIdAsync started. CardId={CardId}, IssuerId={IssuerId}, TenantId={TenantId}, ProgramId={ProgramId}, Delta={Delta}, Initialized={Initialized}",
             loyaltyCardId, _issuerId, tpl.TenantId, tpl.LoyaltyProgramId, delta, _isInitialized);
@@ -601,7 +602,8 @@ public sealed class GoogleWalletService : IGoogleWalletService
             await EnsureClassAsync(tpl, programName: ResolveIssuerName(tpl), ct);
 
             // FIX A: Use ObjectIdForCard instead of hardcoded format
-            var objectId = ObjectIdForCard(_issuerId, tpl.TenantId, tpl.LoyaltyProgramId, loyaltyCardId);
+            // objectIdOverride: kart keçidi — aktiv kartın datası bağlanmış qardaş kartın (host) telefondakı obyektinə yazılır
+            var objectId = objectIdOverride ?? ObjectIdForCard(_issuerId, tpl.TenantId, tpl.LoyaltyProgramId, loyaltyCardId);
             var existing = await _svc.Loyaltyobject.Get(objectId).ExecuteAsync(ct);
 
             // Resolve customer full name: caller-provided wins, else load from card, else AccountName, else "Card #N".
@@ -763,7 +765,7 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 {
                     Id = objectId,
                     ClassId = existing.ClassId ?? ClassId,
-                    State = existing.State ?? "ACTIVE",
+                    State = objectIdOverride != null ? "ACTIVE" : existing.State ?? "ACTIVE",
                     AccountId = patch.AccountId,
                     AccountName = patch.AccountName,
                     LoyaltyPoints = patch.LoyaltyPoints ?? existing.LoyaltyPoints,
@@ -779,8 +781,27 @@ public sealed class GoogleWalletService : IGoogleWalletService
                 patched = await _svc.Loyaltyobject.Update(full, objectId).ExecuteAsync(ct);
                 _log?.LogInformation("[GW] hero removed via full Update. ObjectId={ObjectId}", objectId);
             }
+            else if (objectIdOverride != null && !string.Equals(existing.ClassId, ClassId, StringComparison.Ordinal))
+            {
+                // Host obyekt köhnə proqramın class-ındadır — yeni kartın class-ına (dizayn/ad) keçirməyə cəhd;
+                // Google class dəyişməsini rədd etsə sahələr köhnə class-da yenilənir.
+                patch.ClassId = ClassId;
+                patch.State = "ACTIVE";
+                try
+                {
+                    patched = await _svc.Loyaltyobject.Patch(patch, objectId).ExecuteAsync(ct);
+                    _log?.LogInformation("[GW] host object moved to class {ClassId} (was {OldClass}). ObjectId={ObjectId}", ClassId, existing.ClassId, objectId);
+                }
+                catch (Google.GoogleApiException cex)
+                {
+                    _log?.LogWarning("[GW] host object class change rejected ({Msg}) — patching fields only. ObjectId={ObjectId}", cex.Message, objectId);
+                    patch.ClassId = null;
+                    patched = await _svc.Loyaltyobject.Patch(patch, objectId).ExecuteAsync(ct);
+                }
+            }
             else
             {
+                if (objectIdOverride != null) patch.State = "ACTIVE"; // host əvvəlki keçiddə INACTIVE edilmiş ola bilər
                 patched = await _svc.Loyaltyobject.Patch(patch, objectId).ExecuteAsync(ct);
             }
 

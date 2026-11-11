@@ -30,6 +30,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly LoyaltyWalletDbContext _db;
         private readonly IPointsExpiryService _pointsExpiry;
         private readonly ITimeZoneService _timeZoneService;
+        private readonly IWalletPassHandover _handover;
         private readonly ILogger<AmbassadorService> _logger;
 
         public AmbassadorService(
@@ -43,9 +44,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             LoyaltyWalletDbContext db,
             IPointsExpiryService pointsExpiry,
             ITimeZoneService timeZoneService,
+            IWalletPassHandover handover,
             ILogger<AmbassadorService> logger)
         {
             _timeZoneService = timeZoneService;
+            _handover = handover;
             _customerRepo = customerRepo;
             _programRepo = programRepo;
             _cardRepo = cardRepo;
@@ -434,7 +437,13 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
             await _uow.CommitAsync(ct);
 
-            // 3) Bağlanan kartların pass-ları yenilənir (inaktiv kart → Apple voided / Google INACTIVE) — background
+            // 2b) Telefondakı köhnə wallet pass hədəf karta ötürülür (Apple serial köçürmə) — voided push-lardan ƏVVƏL,
+            //     ki bağlanan kartın voided build-i cihazdakı pass-a getməsin. Google host push zamanı həll olunur.
+            var handedOver = false;
+            try { handedOver = await _handover.EnsureAppleHandoverAsync(targetCard, ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Wallet handover failed. TargetCardId={CardId}", targetCard.Id); }
+
+            // 3) Bağlanan kartların pass-ları yenilənir (inaktiv kart → Apple voided / Google INACTIVE; host obyekt toxunulmur) — background
             foreach (var old in toClose)
             {
                 var oldId = old.Id;
@@ -448,6 +457,14 @@ namespace Loyalty.Business.Services.Implementations.Main
                 var reProgramId = targetCard.LoyaltyProgramId;
                 try { BackgroundJob.Enqueue<IWalletPushJob>(j => j.ReactivateAsync(reId, reProgramId)); }
                 catch (Exception ex) { _logger.LogWarning(ex, "Reactivated card wallet push enqueue failed. CardId={CardId}", reId); }
+            }
+            else
+            {
+                // Yeni/aktiv hədəf kart: telefondakı (ötürülmüş) pass dərhal yeni dizayn + balansla yenilənsin
+                var tId = targetCard.Id;
+                var tProgramId = targetCard.LoyaltyProgramId;
+                try { BackgroundJob.Enqueue<IWalletPushJob>(j => j.RunAsync(tId, tProgramId, 0)); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Target card wallet push enqueue failed. CardId={CardId}", tId); }
             }
 
             // 4) Balans köçürməsi: köhnədən çıx (Adjusted), yeniyə kredit (wallet push + POS sync CreditPointsInternalAsync-də)
@@ -463,8 +480,8 @@ namespace Loyalty.Business.Services.Implementations.Main
             }
 
             _logger.LogInformation(
-                "Ambassador card switch: CustomerId={CustomerId}, Closed=[{Closed}], Target={TargetCardId} (Program {ProgramId}), CarriedCards={Carry}",
-                customer.Id, string.Join(",", toClose.Select(c => c.Id)), targetCard.Id, target.Id, carryCards.Count);
+                "Ambassador card switch: CustomerId={CustomerId}, Closed=[{Closed}], Target={TargetCardId} (Program {ProgramId}), CarriedCards={Carry}, AppleHandover={Handover}",
+                customer.Id, string.Join(",", toClose.Select(c => c.Id)), targetCard.Id, target.Id, carryCards.Count, handedOver);
             return new SwitchResult(true, targetCard, null);
         }
 

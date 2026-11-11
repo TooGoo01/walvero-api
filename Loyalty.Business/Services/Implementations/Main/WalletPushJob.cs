@@ -19,6 +19,7 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly ITenantBrandingRepository _brandingRepo;
         private readonly IWalletRouter _walletRouter;
         private readonly IGoogleWalletServiceFactory _googleFactory;
+        private readonly IWalletPassHandover _handover;
         private readonly ILogger<WalletPushJob> _logger;
 
         public WalletPushJob(
@@ -27,6 +28,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             ITenantBrandingRepository brandingRepo,
             IWalletRouter walletRouter,
             IGoogleWalletServiceFactory googleFactory,
+            IWalletPassHandover handover,
             ILogger<WalletPushJob> logger)
         {
             _cardRepo = cardRepo;
@@ -34,6 +36,7 @@ namespace Loyalty.Business.Services.Implementations.Main
             _brandingRepo = brandingRepo;
             _walletRouter = walletRouter;
             _googleFactory = googleFactory;
+            _handover = handover;
             _logger = logger;
         }
 
@@ -100,7 +103,11 @@ namespace Loyalty.Business.Services.Implementations.Main
             // Bağlanmış kart (ambassador keçidi): Google obyekti INACTIVE, Apple pass voided (AppleWalletService kartdan oxuyur)
             if (!card.IsActive)
             {
-                await SetGoogleStateAsync(card, loyaltyProgramId, "INACTIVE");
+                // Google obyekti müştərinin aktiv kartını təmsil edirsə (kart keçidi — WalletPassHandover) INACTIVE etmə
+                if (await _handover.IsGoogleHostForActiveCardAsync(card, CancellationToken.None))
+                    _logger.LogInformation("WalletPushJob: closed card hosts active card's Google pass — INACTIVE skipped. CardId={CardId}", cardId);
+                else
+                    await SetGoogleStateAsync(card, loyaltyProgramId, "INACTIVE");
                 if (card.IsIOS)
                 {
                     try
@@ -114,6 +121,16 @@ namespace Loyalty.Business.Services.Implementations.Main
                     }
                 }
                 return;
+            }
+
+            // Kart keçidindən sonra telefondakı köhnə Apple pass bu karta ötürülür (serial köçürmə; artıq ötürülübsə no-op)
+            try
+            {
+                await _handover.EnsureAppleHandoverAsync(card, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "WalletPushJob: Apple handover failed. CardId={CardId}", cardId);
             }
 
             var primaryPlatform = card.IsIOS ? WalletPlatform.AppleWallet : WalletPlatform.GooglePay;

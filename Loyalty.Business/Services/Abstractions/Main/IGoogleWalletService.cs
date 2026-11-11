@@ -92,7 +92,8 @@ namespace Loyalty.Business.Services.Abstractions.Main
      int lotteryTickets = 0,
      string? lotteryWinPrize = null,
      DateTime? lotteryDrawDate = null,
-     int? completedCyclesOverride = null);
+     int? completedCyclesOverride = null,
+     string? objectIdOverride = null);
         // (Legacy) skan edilmiş koddan id çıxarıb redeem edən versiya
         Task<ServiceResult> RedeemAsync(
             string scannedCode,

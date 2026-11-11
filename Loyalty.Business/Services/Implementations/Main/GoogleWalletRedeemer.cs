@@ -21,13 +21,16 @@ namespace Loyalty.Business.Services.Implementations.Main
         private readonly IGoogleWalletServiceFactory _factory;
         private readonly IUnitOfWork _uow;
         private readonly ITenantSuspensionGuard _suspensionGuard;
+        private readonly IWalletPassHandover _handover;
         private readonly ILogger<GoogleWalletRedeemer> _logger;
 
-        public GoogleWalletRedeemer(IGoogleWalletServiceFactory factory, IUnitOfWork uow, ITenantSuspensionGuard suspensionGuard, ILogger<GoogleWalletRedeemer> logger)
+        public GoogleWalletRedeemer(IGoogleWalletServiceFactory factory, IUnitOfWork uow, ITenantSuspensionGuard suspensionGuard,
+            IWalletPassHandover handover, ILogger<GoogleWalletRedeemer> logger)
         {
             _factory = factory;
             _uow = uow;
             _suspensionGuard = suspensionGuard;
+            _handover = handover;
             _logger = logger;
         }
 
@@ -82,8 +85,17 @@ namespace Loyalty.Business.Services.Implementations.Main
                     lotteryDrawDate = null;
                 }
 
+                // Kart keçidi: aktiv kartın öz Google obyekti yoxdursa telefondakı köhnə kartın obyekti (host) yenilənir
+                string? objectIdOverride = null;
+                var host = await _handover.FindGoogleHostAsync(card, ct);
+                if (host != null)
+                {
+                    objectIdOverride = gw.BuildObjectIdForCard(host.TenantId, host.LoyaltyProgramId, host.Id);
+                    _logger.LogInformation("Google redeem via host object. HostCardId={HostCardId}, ObjectId={ObjectId}", host.Id, objectIdOverride);
+                }
+
                 _logger.LogInformation("Routing to GoogleWalletService.RedeemByCardIdAsync... Cardholder={Cardholder}", cardholderName);
-                var res = await gw.RedeemByCardIdAsync(cardId, tpl, pts, steps, delta, cardholderName, ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate, completedCyclesOverride);
+                var res = await gw.RedeemByCardIdAsync(cardId, tpl, pts, steps, delta, cardholderName, ct, lotteryTickets, lotteryWinPrize, lotteryDrawDate, completedCyclesOverride, objectIdOverride);
 
                 sw.Stop();
                 if (res.Success)

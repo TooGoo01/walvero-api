@@ -206,6 +206,7 @@ namespace Loyalty.Business.Services
             services.AddSingleton<IAzureOpenAiConfigProvider, AzureOpenAiConfigProvider>();
             services.AddScoped<IPlaceAssistantService, AzureOpenAiPlaceAssistantService>();
             services.AddScoped<IWalletPushJob, WalletPushJob>();
+            services.AddScoped<IWalletPassHandover, WalletPassHandover>();
             services.AddScoped<IIikoWebhookFailureService, IikoWebhookFailureService>();
             services.AddScoped<IPointsExpiryService, PointsExpiryService>();
             // Bildirişlər v2: tenant admin servisi + Hangfire job-ları (eyni scoped instansiya)
