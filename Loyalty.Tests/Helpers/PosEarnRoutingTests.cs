@@ -61,4 +61,11 @@ public class PosEarnRoutingTests
     [InlineData(0, false, CardTemplateType.ProgressBased, 0)]
     public void StepsForOrder(int? stepsPerOrder, bool ruleMatched, CardTemplateType type, int expected)
         => PosEarnRouting.StepsForOrder(stepsPerOrder, ruleMatched, type).Should().Be(expected);
+
+    [Theory]
+    [InlineData(CardTemplateType.ProgressBased, false)] // Cupcup: desertsiz 22.80 ₼ sifariş 22 möhür yazmasın
+    [InlineData(CardTemplateType.PointsBased, true)]
+    [InlineData(CardTemplateType.TierBased, true)]
+    public void AllowAmountFallback(CardTemplateType type, bool expected)
+        => PosEarnRouting.AllowAmountFallback(type).Should().Be(expected);
 }

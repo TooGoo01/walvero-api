@@ -1221,7 +1221,13 @@ namespace Loyalty.Business.Services.Implementations.Main
                     anyEarnRuleMatched = true; // faiz fallback-ı açılmasın
                 }
 
-                if (!anyEarnRuleMatched && program != null)
+                if (!anyEarnRuleMatched && program != null && !PosEarnRouting.AllowAmountFallback(templateType))
+                {
+                    _logger.LogInformation(
+                        "iiko OrderClosed: no earn rule matched on ProgressBased card — amount fallback skipped. OrderId={OrderId} CardId={CardId} ProgramId={ProgramId} EarnBase={EarnBase}",
+                        request.OrderId, card.Id, program.Id, earnBase);
+                }
+                else if (!anyEarnRuleMatched && program != null)
                 {
                     int? tierPercent = null;
                     if (template != null)

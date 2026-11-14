@@ -53,5 +53,13 @@ namespace Loyalty.Business.Helpers
             => !anyRuleMatched && effectiveType == CardTemplateType.ProgressBased && stepsPerOrder is > 0
                 ? stepsPerOrder.Value
                 : 0;
+
+        /// <summary>
+        /// Məhsul qaydası uyğun gəlmədikdə məbləğ əsaslı fallback (tier % / PointsPerCurrency) işləsinmi.
+        /// Möhür (ProgressBased) kartında yox: manat→möhür çevrilməsi mənasızdır (22.80 ₼ → 22 möhür);
+        /// sifariş başına möhür lazımdırsa StepsPerOrder istifadə olunur.
+        /// </summary>
+        public static bool AllowAmountFallback(CardTemplateType effectiveType)
+            => effectiveType != CardTemplateType.ProgressBased;
     }
 }
