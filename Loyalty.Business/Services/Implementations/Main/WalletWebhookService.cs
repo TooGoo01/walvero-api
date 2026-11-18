@@ -1121,11 +1121,21 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .Where(p => !string.IsNullOrWhiteSpace(p.Credential))
                 .Sum(p => p.Sum);
 
+            // Compliment (pulsuz, müəssisə hesabına) ödənişi cashback/xal bazasına düşmür.
+            decimal complimentSum = PosPaymentRules.ComplimentSum(request.Payments);
+            decimal nonEarnPaid = walletRedeemSum + complimentSum;
+            bool fullyComplimentary = complimentSum > 0m && complimentSum >= request.TotalSum;
+
             // ProgressBased-də iikoCard pay ignore olunur (məntiqsiz manat→step conversion).
-            // Earn isə item count əsasındadır, ödəniş növündən asılı olmasın.
+            // Earn isə item count əsasındadır — yalnız tam Compliment sifarişə möhür düşmür.
             decimal earnBase = templateType == CardTemplateType.ProgressBased
-                ? request.TotalSum
-                : Math.Max(0m, request.TotalSum - walletRedeemSum);
+                ? (fullyComplimentary ? 0m : request.TotalSum)
+                : Math.Max(0m, request.TotalSum - nonEarnPaid);
+
+            if (complimentSum > 0m)
+                _logger.LogInformation(
+                    "iiko OrderClosed: compliment payment excluded from earn. OrderId={OrderId} TotalSum={TotalSum} ComplimentSum={ComplimentSum} EarnBase={EarnBase}",
+                    request.OrderId, request.TotalSum, complimentSum, earnBase);
 
             // === Bonus istisnaları (super admin, PosEarnExclusions) ===
             // BlockCashback sətirləri məbləğ bonusunun bazasından çıxır (cashback %, xal/₼, xoş gəldin %);
@@ -1138,7 +1148,7 @@ namespace Loyalty.Business.Services.Implementations.Main
                 .SelectMany(d => d.DiscountByItem ?? new List<IikoOrderDiscountByItem>())
                 .Select(x => new EarnItemDiscount(x.ProductId, x.DiscountSum))
                 .ToList();
-            var exclusion = EarnExclusionMath.Compute(earnLines, itemDiscounts, request.TotalSum, walletRedeemSum,
+            var exclusion = EarnExclusionMath.Compute(earnLines, itemDiscounts, request.TotalSum, nonEarnPaid,
                 templateType == CardTemplateType.ProgressBased, exclusionMap);
             decimal cashbackBase = exclusion.CashbackBase;
             decimal stampSkippedUnits = 0m;
